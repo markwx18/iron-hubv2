@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IRON HUB — Vanguard Training Center</title>
+<style>
+  :root{
+    --bg:#101114; --panel:#191b20; --panel2:#1f2228; --line:#2a2d35;
+    --text:#e9e7e2; --muted:#8d909a; --dim:#5b5e68;
+    --d1:#d23b3b; --d2:#2f6fd0; --d3:#dfae36; --d4:#3da25f; --d5:#e9e7e2; --d6:#9aa0ab;
+    --accent:#d23b3b; --good:#3da25f; --warn:#dfae36; --bad:#d23b3b;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.5}
+  ::selection{background:var(--accent);color:#fff}
+
+  /* ---------- header ---------- */
+  header{border-bottom:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .brand{font-weight:900;letter-spacing:.14em;text-transform:uppercase;font-size:17px}
+  .brand small{display:block;font-weight:400;letter-spacing:.22em;font-size:9.5px;color:var(--muted)}
+  .plate{width:42px;height:42px;border-radius:50%;background:radial-gradient(circle at 50% 50%, var(--bg) 0 26%, var(--accent) 27% 100%);border:3px solid var(--accent);box-shadow:inset 0 0 0 6px rgba(0,0,0,.35);flex:none}
+  .hdr-right{margin-left:auto;text-align:right;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .hdr-right b{color:var(--text);font-size:13px}
+  .daychip{display:inline-block;padding:2px 10px;border-radius:3px;background:var(--accent);color:#0e0f12;font-weight:800;letter-spacing:.08em;font-size:11px;text-transform:uppercase}
+
+  /* ---------- nav ---------- */
+  nav{display:flex;border-bottom:1px solid var(--line);overflow-x:auto;background:var(--panel)}
+  nav button{flex:1;min-width:88px;background:none;border:none;color:var(--muted);padding:12px 8px;font:inherit;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+  nav button:hover{color:var(--text)}
+  nav button.on{color:var(--text);border-bottom-color:var(--accent)}
+  nav button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+  main{max-width:980px;margin:0 auto;padding:20px 16px 80px}
+  section{display:none}
+  section.on{display:block}
+  h2{font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:22px 0 10px}
+  h2:first-child{margin-top:0}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:14px}
+  .card.flat{background:transparent}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:640px){.grid2{grid-template-columns:1fr}}
+
+  /* ---------- exercise rows ---------- */
+  .ex{border:1px solid var(--line);border-radius:8px;background:var(--panel);margin-bottom:10px;overflow:hidden}
+  .ex-head{display:flex;align-items:baseline;gap:10px;padding:12px 14px;flex-wrap:wrap}
+  .ex-name{font-weight:800;font-size:15px}
+  .ex-rec{font-family:var(--mono);font-size:12.5px;color:var(--accent);font-weight:600}
+  .ex-note{width:100%;font-size:12px;color:var(--muted)}
+  .sets{display:flex;gap:8px;padding:0 14px 12px;flex-wrap:wrap}
+  .setrow{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .setrow input{width:62px;background:var(--bg);border:1px solid var(--line);border-radius:5px;color:var(--text);font:inherit;padding:7px 8px;text-align:center}
+  .setrow input:focus{outline:none;border-color:var(--accent)}
+  .setrow input.done{border-color:var(--good);color:var(--good)}
+  .setrow .rm{background:none;border:1px solid var(--line);border-radius:5px;color:var(--dim);cursor:pointer;font-size:13px;line-height:1;padding:6px 8px}
+  .setrow .rm:hover{color:var(--bad);border-color:var(--bad)}
+
+  /* ---------- buttons & inputs ---------- */
+  button.btn{background:var(--accent);color:#0e0f12;border:none;border-radius:6px;padding:11px 18px;font:inherit;font-weight:800;letter-spacing:.05em;text-transform:uppercase;font-size:12.5px;cursor:pointer}
+  button.btn:hover{filter:brightness(1.12)}
+  button.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+  button.btn.ghost:hover{border-color:var(--muted);filter:none}
+  button.btn.sm{padding:7px 12px;font-size:11px}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  input[type=text],input[type=password],input[type=number],input[type=date],select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--text);font:inherit;padding:9px 11px;width:100%}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  label{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:10px 0 5px}
+  .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  .row>div{flex:1;min-width:130px}
+
+  /* ---------- stats ---------- */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .stat .v{font-family:var(--mono);font-size:21px;font-weight:700}
+  .stat .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+  .stat .s{font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .up{color:var(--good)} .dn{color:var(--bad)} .fl{color:var(--warn)}
+
+  /* ---------- barbell milestone graphic ---------- */
+  .bar-wrap{padding:6px 0 2px}
+  .bar-label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-bottom:4px}
+  .bar-label b{color:var(--text)}
+
+  /* ---------- log history ---------- */
+  .hist{border-left:3px solid var(--line);padding:8px 0 8px 14px;margin-bottom:8px}
+  .hist .h-date{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .hist .h-day{font-weight:800;font-size:13px;letter-spacing:.04em}
+  .hist .h-ex{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:2px}
+  .hist .h-ex b{color:var(--text);font-weight:600}
+  .hist .del{float:right;background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px}
+  .hist .del:hover{color:var(--bad)}
+
+  /* ---------- chat ---------- */
+  .chat-box{height:420px;overflow-y:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:85%;padding:10px 13px;border-radius:10px;font-size:14px;white-space:pre-wrap}
+  .msg.me{align-self:flex-end;background:var(--accent);color:#0e0f12;font-weight:500}
+  .msg.ai{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
+  .msg.sys{align-self:center;color:var(--dim);font-size:12px;background:none;font-family:var(--mono)}
+  .chat-in{display:flex;gap:8px;margin-top:10px}
+  .chat-in textarea{resize:none;height:52px}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:20px;padding:2px 10px;color:var(--muted);margin:2px 4px 2px 0}
+  .ok{color:var(--good)} .err{color:var(--bad);font-family:var(--mono);font-size:12px}
+  .small{font-size:12px;color:var(--muted)}
+  .mono{font-family:var(--mono)}
+  hr{border:none;border-top:1px solid var(--line);margin:14px 0}
+  svg text{font-family:var(--mono)}
+
+  /* ---------- PR celebration ---------- */
+  .pr-overlay{position:fixed;inset:0;background:rgba(14,15,18,.94);display:flex;align-items:center;justify-content:center;z-index:99;cursor:pointer}
+  .pr-card{text-align:center;padding:20px}
+  .pr-plate{width:130px;height:130px;border-radius:50%;margin:0 auto 20px;border:9px solid var(--accent);background:radial-gradient(circle,var(--bg) 0 24%,var(--accent) 25% 100%);box-shadow:0 0 70px var(--accent),inset 0 0 0 10px rgba(0,0,0,.35)}
+  .pr-eyebrow{font-size:12px;letter-spacing:.5em;text-transform:uppercase;color:var(--accent);font-weight:800}
+  .pr-big{font-size:46px;font-weight:900;letter-spacing:.04em;margin:6px 0 2px}
+  .pr-sub{font-family:var(--mono);font-size:15px;color:var(--muted)}
+  .pr-tap{margin-top:22px;font-size:11px;color:var(--dim);letter-spacing:.2em;text-transform:uppercase}
+  @media(prefers-reduced-motion:no-preference){
+    .pr-card{animation:pop .55s cubic-bezier(.2,1.5,.4,1)}
+    .pr-plate{animation:spin 1.1s ease-out}
+    @keyframes pop{from{transform:scale(.55);opacity:0}}
+    @keyframes spin{from{transform:rotate(-160deg)}}
+  }
+
+  /* ---------- muscle heatmap ---------- */
+  .hm{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
+  .hm-cell{border:1px solid var(--line);border-radius:8px;padding:10px 11px;background:var(--panel)}
+  .hm-cell .g{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .hm-cell .n{font-family:var(--mono);font-size:21px;font-weight:700;margin:2px 0}
+  .hm-cell .t{font-size:10px;font-family:var(--mono)}
+  .hm-bar{height:5px;border-radius:3px;background:var(--line);margin-top:6px;overflow:hidden}
+  .hm-bar i{display:block;height:100%}
+
+  /* ---------- road ---------- */
+  .goal-card{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:16px;margin-bottom:14px}
+  .goal-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .goal-name{font-weight:900;font-size:17px;letter-spacing:.02em}
+  .goal-tgt{font-family:var(--mono);color:var(--accent);font-weight:700}
+  @media(prefers-reduced-motion:no-preference){
+    section.on{animation:fade .18s ease}
+    @keyframes fade{from{opacity:.4}to{opacity:1}}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="plate" id="hdrPlate" aria-hidden="true"></div>
+  <div class="brand">Iron Hub<small>Vanguard · Newburyport</small></div>
+  <div class="hdr-right">
+    <div id="hdrDate"></div>
+    <div><span class="daychip" id="hdrDay">—</span></div>
+    <div class="mono" id="hdrSync" style="font-size:10px;color:var(--dim);margin-top:3px"></div>
+  </div>
+</header>
+
+<nav id="nav">
+  <button data-t="today" class="on">Today</button>
+  <button data-t="log">Log</button>
+  <button data-t="progress">Progress</button>
+  <button data-t="road">Road</button>
+  <button data-t="coach">Coach</button>
+  <button data-t="bulk">Bulk</button>
+  <button data-t="settings">Settings</button>
+</nav>
+
+<main>
+  <section id="today" class="on"></section>
+  <section id="log"></section>
+  <section id="progress"></section>
+  <section id="road"></section>
+  <section id="coach"></section>
+  <section id="bulk"></section>
+  <section id="settings"></section>
+</main>
+
+<script>
+'use strict';
+/* ================= STATE ================= */
+const LS_KEY = 'ironhub:v1';
+const DEFAULT_SPLIT = {
+  D1:{name:'Chest + Triceps', color:'var(--d1)', hex:'#d23b3b', exercises:[
+    'Barbell Bench Press','Incline Dumbbell Press','Pec Deck Fly','Dips','JM Press']},
+  D2:{name:'Back + Biceps', color:'var(--d2)', hex:'#2f6fd0', exercises:[
+    'Lat Pulldown','Cable Row','Preacher Curl Machine','Incline Prone Reverse Fly','Hammer Curl']},
+  D3:{name:'Legs + Abs (Squat)', color:'var(--d3)', hex:'#dfae36', exercises:[
+    'Barbell Back Squat','Machine Leg Curl','Machine Leg Extension','Hanging Leg Raise','Abdominal Machine']},
+  D4:{name:'Shoulders + Arms', color:'var(--d4)', hex:'#3da25f', exercises:[
+    'Cable Lateral Raise','Overhead Press Machine','Rear Delt Machine','Incline Dumbbell Curl','V-Cable Tricep Pushdown','Dumbbell Overhead Extension','Reverse EZ Bar Curl']},
+  D5:{name:'Chest + Back (Accessory)', color:'var(--d5)', hex:'#e9e7e2', exercises:[
+    'Smith Machine Bench Press','Incline Press Machine','Cable Fly','Plate-Loaded Lat Pulldown','Row Machine']},
+  D6:{name:'Legs + Abs (Leg Press)', color:'var(--d6)', hex:'#9aa0ab', exercises:[
+    'Leg Press','Machine Leg Curl','Machine Leg Extension','Hanging Leg Raise','Hip Thrust Machine']}
+};
+const DEFAULT_STATE = {
+  split: JSON.parse(JSON.stringify(DEFAULT_SPLIT)),
+  schedule: {1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6',0:'REST'}, // JS getDay(): 0=Sun
+  overrideDay: null,           // {date:'YYYY-MM-DD', day:'D2'}
+  logs: [],                    // {id, date, day, entries:[{exercise, sets:[{w,r}]}]}
+  weights: [],                 // {date, lbs}
+  nutrition: [],               // {date, cals, protein}
+  chat: [],                    // {role, content}
+  road: [],                    // {id, exercise, target, start, deadline}
+  settings: {apiKey:'', repLow:8, repHigh:12, ghToken:'', gistId:'', autoSync:true},
+  meta: {changedAt:0, lastSync:0}
+};
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return JSON.parse(JSON.stringify(DEFAULT_STATE));
+    const s = JSON.parse(raw);
+    return Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), s);
+  }catch(e){ return JSON.parse(JSON.stringify(DEFAULT_STATE)); }
+}
+function save(touch){
+  if(touch !== false){
+    S.meta = S.meta || {changedAt:0,lastSync:0};
+    S.meta.changedAt = Date.now();
+    schedulePush();
+  }
+  localStorage.setItem(LS_KEY, JSON.stringify(S));
+}
+
+/* ================= HELPERS ================= */
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function todayKey(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function fmtDate(k){
+  const [y,m,d] = k.split('-').map(Number);
+  return new Date(y,m-1,d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+}
+function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
+function epley(w,r){ return r<=1 ? w : w*(1+r/30); }
+function currentDayKey(){
+  const t = todayKey();
+  if(S.overrideDay && S.overrideDay.date===t) return S.overrideDay.day;
+  return S.schedule[new Date().getDay()] || 'REST';
+}
+function dayColor(d){ return (S.split[d] && S.split[d].hex) || '#8d909a'; }
+function setAccent(){
+  const d = currentDayKey();
+  document.documentElement.style.setProperty('--accent', d==='REST' ? '#8d909a' : dayColor(d));
+}
+function incFor(name){
+  const n = name.toLowerCase();
+  if(/squat|leg press|hip thrust/.test(n)) return 10;
+  if(/bench|row|pulldown|overhead press|dip/.test(n)) return 5;
+  return 5; // machines/isolation — most stacks move in 5s
+}
+function isBodyweight(name){ return /hanging leg raise/i.test(name); }
+
+/* last sessions containing an exercise, newest first */
+function historyFor(ex){
+  const out = [];
+  const sorted = [...S.logs].sort((a,b)=> b.date.localeCompare(a.date));
+  for(const lg of sorted){
+    const e = lg.entries.find(en => en.exercise===ex);
+    if(e && e.sets.length) out.push({date:lg.date, sets:e.sets});
+  }
+  return out;
+}
+
+/* ================= RECOMMENDATION ENGINE ================= */
+function recommend(ex){
+  const hist = historyFor(ex);
+  const lo = S.settings.repLow, hi = S.settings.repHigh;
+  if(!hist.length){
+    return {target:'Find your weight', detail:'First logged session — pick a weight you can move for '+lo+'–'+(lo+2)+' clean reps, leaving 1–2 in the tank.', sets:[{w:'',r:''},{w:'',r:''},{w:'',r:''}]};
+  }
+  const last = hist[0];
+  const topW = Math.max(...last.sets.map(s=>+s.w||0));
+  const topSets = last.sets.filter(s=>(+s.w||0)===topW);
+  const minReps = Math.min(...topSets.map(s=>+s.r||0));
+  const inc = incFor(ex);
+  // stall detection: 3+ sessions at same weight, no min-rep improvement
+  let stall = false;
+  if(hist.length>=3){
+    const w2=Math.max(...hist[1].sets.map(s=>+s.w||0)), w3=Math.max(...hist[2].sets.map(s=>+s.w||0));
+    if(w2===topW && w3===topW){
+      const m2=Math.min(...hist[1].sets.filter(s=>+s.w===w2).map(s=>+s.r||0));
+      if(minReps<=m2) stall = true;
+    }
+  }
+  if(isBodyweight(ex)){
+    return {target:(minReps>=hi? 'Add reps or slow tempo':'Beat '+minReps+' reps'), detail:'Last: '+summ(last.sets)+'. Bodyweight movement — progress by reps and control.', sets:last.sets.map(s=>({w:s.w,r:''}))};
+  }
+  if(minReps>=hi){
+    const nw = topW+inc;
+    return {target:nw+' lb × '+lo+'+', detail:'You hit '+hi+'+ on every top set ('+summ(last.sets)+'). Load goes up '+inc+' lb — reps reset to the bottom of the range.', sets:[{w:nw,r:''},{w:nw,r:''},{w:nw,r:''}]};
+  }
+  if(stall){
+    return {target:topW+' lb — break the stall', detail:'Three sessions at '+topW+' lb without rep progress ('+summ(last.sets)+'). Options: tighten rest to 2–3 min and push the first set hard, or drop ~10% for one session and rebuild.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+  }
+  if(minReps>=lo){
+    return {target:topW+' lb × beat '+minReps, detail:'Last: '+summ(last.sets)+'. Same load — add at least 1 rep to your weakest set before the weight moves.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+  }
+  return {target:topW+' lb × build to '+lo, detail:'Last session dipped below range ('+summ(last.sets)+'). Hold '+topW+' lb and climb back to '+lo+' reps per set before adding load.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+}
+function summ(sets){ return sets.map(s=>s.w+'×'+s.r).join(', '); }
+
+
+/* ================= PLATE CALCULATOR ================= */
+function plateCalc(total){
+  const BAR = 45;
+  let per = (total - BAR) / 2;
+  if(per < 0) return null;
+  if(per === 0) return {plates:[], txt:'empty bar (45)'};
+  const out = [];
+  [45,35,25,10,5,2.5].forEach(pl=>{ while(per >= pl-0.001){ out.push(pl); per -= pl; } });
+  return {plates:out, txt:out.join(' + ') + (per>0.01 ? ' (+'+per.toFixed(1)+' short)' : '')};
+}
+function isPlateLift(ex){ return /^barbell/i.test(ex); }
+
+/* ================= MUSCLE MAP ================= */
+const EX_MUSCLES = {
+  'Barbell Bench Press':{p:['Chest'],s:['Triceps','Shoulders']},
+  'Incline Dumbbell Press':{p:['Chest'],s:['Triceps','Shoulders']},
+  'Pec Deck Fly':{p:['Chest'],s:[]},
+  'Cable Fly':{p:['Chest'],s:[]},
+  'Dips':{p:['Chest','Triceps'],s:[]},
+  'JM Press':{p:['Triceps'],s:[]},
+  'Smith Machine Bench Press':{p:['Chest'],s:['Triceps','Shoulders']},
+  'Incline Press Machine':{p:['Chest'],s:['Triceps','Shoulders']},
+  'Lat Pulldown':{p:['Back'],s:['Biceps']},
+  'Plate-Loaded Lat Pulldown':{p:['Back'],s:['Biceps']},
+  'Cable Row':{p:['Back'],s:['Biceps']},
+  'Row Machine':{p:['Back'],s:['Biceps']},
+  'Preacher Curl Machine':{p:['Biceps'],s:[]},
+  'Hammer Curl':{p:['Biceps'],s:[]},
+  'Incline Dumbbell Curl':{p:['Biceps'],s:[]},
+  'Reverse EZ Bar Curl':{p:['Biceps'],s:[]},
+  'Incline Prone Reverse Fly':{p:['Shoulders'],s:['Back']},
+  'Rear Delt Machine':{p:['Shoulders'],s:[]},
+  'Cable Lateral Raise':{p:['Shoulders'],s:[]},
+  'Overhead Press Machine':{p:['Shoulders'],s:['Triceps']},
+  'V-Cable Tricep Pushdown':{p:['Triceps'],s:[]},
+  'Dumbbell Overhead Extension':{p:['Triceps'],s:[]},
+  'Barbell Back Squat':{p:['Quads','Glutes'],s:['Hamstrings']},
+  'Leg Press':{p:['Quads','Glutes'],s:[]},
+  'Machine Leg Curl':{p:['Hamstrings'],s:[]},
+  'Machine Leg Extension':{p:['Quads'],s:[]},
+  'Hip Thrust Machine':{p:['Glutes'],s:['Hamstrings']},
+  'Hanging Leg Raise':{p:['Abs'],s:[]},
+  'Abdominal Machine':{p:['Abs'],s:[]}
+};
+function musclesFor(ex){
+  if(EX_MUSCLES[ex]) return EX_MUSCLES[ex];
+  const n = ex.toLowerCase(); // fallback keyword inference for custom exercises
+  if(/squat|leg press|lunge|hack/.test(n)) return {p:['Quads','Glutes'],s:['Hamstrings']};
+  if(/leg curl|rdl|romanian|hamstring/.test(n)) return {p:['Hamstrings'],s:[]};
+  if(/extension/.test(n) && /leg/.test(n)) return {p:['Quads'],s:[]};
+  if(/hip thrust|glute/.test(n)) return {p:['Glutes'],s:[]};
+  if(/curl/.test(n)) return {p:['Biceps'],s:[]};
+  if(/pushdown|tricep|jm|skull|dip/.test(n)) return {p:['Triceps'],s:[]};
+  if(/lateral|delt|shoulder|overhead press|ohp/.test(n)) return {p:['Shoulders'],s:[]};
+  if(/row|pulldown|pull-up|pullup|lat/.test(n)) return {p:['Back'],s:['Biceps']};
+  if(/bench|chest|fly|pec|press/.test(n)) return {p:['Chest'],s:['Triceps']};
+  if(/ab|crunch|leg raise|core/.test(n)) return {p:['Abs'],s:[]};
+  return {p:[],s:[]};
+}
+const MUSCLE_GROUPS = ['Chest','Back','Shoulders','Biceps','Triceps','Quads','Hamstrings','Glutes','Abs'];
+function heatmapHTML(){
+  const cut = new Date(Date.now()-6*86400000);
+  const cutKey = cut.getFullYear()+'-'+String(cut.getMonth()+1).padStart(2,'0')+'-'+String(cut.getDate()).padStart(2,'0');
+  const vol = {}; MUSCLE_GROUPS.forEach(g=>vol[g]=0);
+  S.logs.filter(l=>l.date>=cutKey).forEach(l=>l.entries.forEach(e=>{
+    const m = musclesFor(e.exercise);
+    const n = e.sets.length;
+    m.p.forEach(g=>{ if(vol[g]!=null) vol[g]+=n; });
+    m.s.forEach(g=>{ if(vol[g]!=null) vol[g]+=n*0.5; });
+  }));
+  let html = '<h2>Weekly Volume Heatmap <span style="font-weight:400;letter-spacing:0;text-transform:none">(sets / 7 days, secondary muscles count half)</span></h2><div class="hm">';
+  MUSCLE_GROUPS.forEach(g=>{
+    const v = Math.round(vol[g]*10)/10;
+    let col, tag;
+    if(v===0){ col='#3a3d45'; tag='untouched'; }
+    else if(v<6){ col='#dfae36'; tag='low'; }
+    else if(v<=20){ col='#3da25f'; tag='solid'; }
+    else { col='#d23b3b'; tag='very high'; }
+    const pct = Math.min(100, v/20*100);
+    html += '<div class="hm-cell"><div class="g">'+g+'</div><div class="n">'+v+'</div>'+
+      '<div class="t" style="color:'+col+'">'+tag+'</div>'+
+      '<div class="hm-bar"><i style="width:'+pct+'%;background:'+col+'"></i></div></div>';
+  });
+  html += '</div><p class="small" style="margin-top:8px">Rough hypertrophy guide: 10\u201320 hard sets per muscle per week. Yellow = room to add, red = watch recovery.</p>';
+  return html;
+}
+
+/* ================= PR CELEBRATION ================= */
+function bestE1RM(ex){ const pts = e1rmSeries(ex); return pts.length ? Math.max(...pts.map(p=>p.v)) : 0; }
+function prWatchList(){ return [...new Set([...Object.keys(PR_LIFTS), ...S.road.map(g=>g.exercise)])]; }
+function snapshotPRs(){ const m={}; prWatchList().forEach(ex=>m[ex]=bestE1RM(ex)); return m; }
+function checkPRs(before){
+  let top = null;
+  prWatchList().forEach(ex=>{
+    const now = bestE1RM(ex);
+    if(before[ex] > 0 && now > before[ex] + 0.01){
+      if(!top || (now-before[ex]) > top.gain) top = {ex, now, prev:before[ex], gain:now-before[ex]};
+    }
+  });
+  if(top) celebrate(top);
+}
+function celebrate(pr){
+  const o = document.createElement('div');
+  o.className = 'pr-overlay';
+  o.innerHTML = '<div class="pr-card"><div class="pr-plate"></div>'+
+    '<div class="pr-eyebrow">New PR</div>'+
+    '<div class="pr-big">'+Math.round(pr.now)+' <span style="font-size:22px;color:var(--muted)">e1RM</span></div>'+
+    '<div class="pr-sub">'+esc(pr.ex)+' \u00b7 was '+Math.round(pr.prev)+' (+'+pr.gain.toFixed(1)+' lb)</div>'+
+    '<div class="pr-tap">tap to continue</div></div>';
+  o.addEventListener('click', ()=>o.remove());
+  document.body.appendChild(o);
+  setTimeout(()=>{ if(o.parentNode) o.remove(); }, 7000);
+}
+
+/* ================= TODAY TAB ================= */
+function renderToday(){
+  const dk = currentDayKey();
+  const el = $('#today');
+  const t = todayKey();
+  const already = S.logs.find(l=>l.date===t);
+  let html = '';
+
+  if(dk==='REST'){
+    html += '<div class="card"><div class="ex-name" style="font-size:18px">Rest Day</div>'+
+      '<p class="small" style="margin-top:6px">Recovery is where the size gets built. Eat your surplus, sleep 8+, and let the legs come back.</p>'+
+      '<div style="margin-top:12px"><button class="btn ghost sm" onclick="trainAnyway()">Train anyway — pick a day</button></div></div>';
+    html += weeklyVolumeCard();
+    el.innerHTML = html; return;
+  }
+
+  const day = S.split[dk];
+  html += '<div class="card" style="border-left:4px solid '+dayColor(dk)+'">'+
+    '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
+    '<span class="ex-name" style="font-size:19px">'+esc(dk)+' — '+esc(day.name)+'</span>'+
+    '<button class="btn ghost sm" style="margin-left:auto" onclick="trainAnyway()">Switch day</button></div>'+
+    (already? '<p class="small ok" style="margin-top:4px">✓ Already logged today — logging again will add a second session.</p>':'')+
+    '<p class="small" style="margin-top:4px">Targets below are computed from your last sessions. Hit the numbers, type what you actually got, save at the end.</p></div>';
+
+  day.exercises.forEach((ex,i)=>{
+    const rec = recommend(ex);
+    let plateTxt = '';
+    if(isPlateLift(ex) && rec.sets[0] && +rec.sets[0].w > 0){
+      const pc = plateCalc(+rec.sets[0].w);
+      if(pc) plateTxt = '<span class="ex-note mono" style="color:var(--accent)">Per side: '+esc(pc.txt)+' (45 lb bar)</span>';
+    }
+    html += '<div class="ex">'+
+      '<div class="ex-head"><span class="ex-name">'+esc(ex)+'</span>'+
+      '<span class="ex-rec">▸ '+esc(rec.target)+'</span>'+
+      '<span class="ex-note">'+esc(rec.detail)+'</span>'+plateTxt+'</div>'+
+      '<div class="sets" id="sets-'+i+'">';
+    rec.sets.forEach((s,j)=>{ html += setRowHTML(i,j,s.w); });
+    html += '</div><div style="padding:0 14px 12px"><button class="btn ghost sm" onclick="addSet('+i+')">+ set</button></div></div>';
+  });
+
+  html += '<button class="btn" style="width:100%;padding:15px" onclick="saveToday()">Save Workout</button>'+
+          '<p class="small" id="saveMsg" style="margin-top:8px;text-align:center"></p>';
+  html += weeklyVolumeCard();
+  el.innerHTML = html;
+}
+function setRowHTML(i,j,w){
+  return '<div class="setrow"><span>S'+(j+1)+'</span>'+
+    '<input inputmode="decimal" placeholder="lb" id="w-'+i+'-'+j+'" value="'+(w!==''&&w!=null?esc(w):'')+'" onchange="markDone(this)">'+
+    '<span>×</span><input inputmode="numeric" placeholder="reps" id="r-'+i+'-'+j+'" onchange="markDone(this)">'+
+    '<button class="rm" title="Remove set" aria-label="Remove set" onclick="removeSet(this)">×</button></div>';
+}
+function removeSet(btn){
+  const box = btn.closest('.sets');
+  btn.closest('.setrow').remove();
+  box.querySelectorAll('.setrow span:first-child').forEach((sp,k)=>{ sp.textContent='S'+(k+1); });
+}
+function markDone(inp){ if(inp.value) inp.classList.add('done'); else inp.classList.remove('done'); }
+function addSet(i){
+  const box = $('#sets-'+i);
+  const j = box.querySelectorAll('.setrow').length;
+  box.insertAdjacentHTML('beforeend', setRowHTML(i,j,''));
+}
+function trainAnyway(){
+  const pick = prompt('Which day? Enter D1–D6:\n'+Object.keys(S.split).map(k=>k+' = '+S.split[k].name).join('\n'));
+  if(pick && S.split[pick.toUpperCase().trim()]){
+    S.overrideDay = {date:todayKey(), day:pick.toUpperCase().trim()};
+    save(); setAccent(); renderHeader(); renderToday();
+  }
+}
+function saveToday(){
+  const dk = currentDayKey();
+  if(dk==='REST') return;
+  const day = S.split[dk];
+  const entries = [];
+  day.exercises.forEach((ex,i)=>{
+    const sets = [];
+    const box = $('#sets-'+i);
+    if(!box) return;
+    box.querySelectorAll('.setrow').forEach(row=>{
+      const ins = row.querySelectorAll('input');
+      const w = ins[0] ? ins[0].value.trim() : '';
+      const r = ins[1] ? ins[1].value.trim() : '';
+      if(w!=='' && r!=='') sets.push({w:+w, r:+r});
+      else if(isBodyweight(ex) && r!=='') sets.push({w:0, r:+r});
+    });
+    if(sets.length) entries.push({exercise:ex, sets});
+  });
+  if(!entries.length){ $('#saveMsg').textContent='Nothing entered yet — fill in at least one set.'; return; }
+  const beforePR = snapshotPRs();
+  S.logs.push({id:Date.now(), date:todayKey(), day:dk, entries});
+  save();
+  checkPRs(beforePR);
+  $('#saveMsg').innerHTML='<span class="ok">✓ Saved. '+entries.length+' exercises logged.</span>';
+  setTimeout(()=>{ renderToday(); renderProgress(); }, 900);
+}
+function weeklyVolumeCard(){
+  const now = new Date(); const cut = new Date(now-6*86400000);
+  const cutKey = cut.getFullYear()+'-'+String(cut.getMonth()+1).padStart(2,'0')+'-'+String(cut.getDate()).padStart(2,'0');
+  const recent = S.logs.filter(l=>l.date>=cutKey);
+  const sessions = recent.length;
+  let sets=0, tonnage=0;
+  recent.forEach(l=>l.entries.forEach(e=>e.sets.forEach(s=>{sets++; tonnage+=(+s.w||0)*(+s.r||0);})));
+  return '<h2>Last 7 Days</h2><div class="stats">'+
+    '<div class="stat"><div class="v">'+sessions+'</div><div class="l">sessions</div></div>'+
+    '<div class="stat"><div class="v">'+sets+'</div><div class="l">working sets</div></div>'+
+    '<div class="stat"><div class="v">'+(tonnage? (tonnage/1000).toFixed(1)+'k':'0')+'</div><div class="l">lb tonnage</div></div></div>';
+}
+
+/* ================= LOG TAB ================= */
+function renderLog(){
+  const el = $('#log');
+  let html = '<h2>Screenshot Import</h2><div class="card">'+
+    '<p class="small">Upload a workout-summary screenshot (Gymverse or similar). The AI reads it, matches exercises to your split, and you confirm before it saves.</p>'+
+    '<div class="row" style="margin-top:10px"><div><input type="file" id="shot" accept="image/*"></div>'+
+    '<div style="flex:none"><button class="btn sm" onclick="ingestShot()">Read Screenshot</button></div></div>'+
+    '<div id="shotOut" style="margin-top:10px"></div></div>';
+
+  html += '<h2>Manual Entry</h2><div class="card">'+
+    '<div class="row"><div><label>Date</label><input type="date" id="mDate" value="'+todayKey()+'"></div>'+
+    '<div><label>Day</label><select id="mDay">'+Object.keys(S.split).map(k=>'<option value="'+k+'">'+k+' — '+esc(S.split[k].name)+'</option>').join('')+'</select></div>'+
+    '<div style="flex:none"><button class="btn sm ghost" onclick="manualForm()">Open Form</button></div></div>'+
+    '<div id="mForm" style="margin-top:10px"></div></div>';
+
+  html += '<h2>History ('+S.logs.length+' sessions)</h2>';
+  const sorted = [...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
+  if(!sorted.length) html += '<p class="small">No sessions yet. Your first log starts the engine — recommendations and projections all build from here.</p>';
+  sorted.forEach(l=>{
+    html += '<div class="hist" style="border-left-color:'+dayColor(l.day)+'">'+
+      '<button class="del" onclick="delLog('+l.id+')">delete</button>'+
+      '<div class="h-date">'+fmtDate(l.date)+'</div><div class="h-day">'+esc(l.day)+' — '+esc((S.split[l.day]||{}).name||'')+'</div>'+
+      l.entries.map(e=>'<div class="h-ex"><b>'+esc(e.exercise)+'</b> '+esc(summ(e.sets))+'</div>').join('')+'</div>';
+  });
+  el.innerHTML = html;
+}
+function delLog(id){
+  if(!confirm('Delete this session permanently?')) return;
+  S.logs = S.logs.filter(l=>l.id!==id); save(); renderLog(); renderProgress();
+}
+function manualForm(){
+  const dk = $('#mDay').value;
+  const day = S.split[dk];
+  let html = '';
+  day.exercises.forEach((ex,i)=>{
+    html += '<div class="ex"><div class="ex-head"><span class="ex-name" style="font-size:13.5px">'+esc(ex)+'</span></div>'+
+      '<div class="sets" id="msets-'+i+'">';
+    for(let j=0;j<3;j++) html += '<div class="setrow"><span>S'+(j+1)+'</span><input inputmode="decimal" placeholder="lb"><span>×</span><input inputmode="numeric" placeholder="reps"><button class="rm" title="Remove set" aria-label="Remove set" onclick="removeSet(this)">×</button></div>';
+    html += '</div><div style="padding:0 14px 12px"><button class="btn ghost sm" onclick="addManualSet('+i+')">+ set</button></div></div>';
+  });
+  html += '<button class="btn" onclick="saveManual()">Save Session</button> <span class="small" id="mMsg"></span>';
+  $('#mForm').innerHTML = html;
+}
+function addManualSet(i){
+  const box = $('#msets-'+i);
+  const j = box.querySelectorAll('.setrow').length;
+  box.insertAdjacentHTML('beforeend','<div class="setrow"><span>S'+(j+1)+'</span><input inputmode="decimal" placeholder="lb"><span>×</span><input inputmode="numeric" placeholder="reps"><button class="rm" title="Remove set" aria-label="Remove set" onclick="removeSet(this)">×</button></div>');
+}
+function saveManual(){
+  const dk = $('#mDay').value, date = $('#mDate').value || todayKey();
+  const day = S.split[dk]; const entries=[];
+  day.exercises.forEach((ex,i)=>{
+    const sets=[];
+    const box=$('#msets-'+i);
+    if(!box) return;
+    box.querySelectorAll('.setrow').forEach(row=>{
+      const ins=row.querySelectorAll('input');
+      const w=ins[0]?ins[0].value.trim():'', r=ins[1]?ins[1].value.trim():'';
+      if(w!==''&&r!=='') sets.push({w:+w,r:+r});
+      else if(isBodyweight(ex)&&r!=='') sets.push({w:0,r:+r});
+    });
+    if(sets.length) entries.push({exercise:ex, sets});
+  });
+  if(!entries.length){ $('#mMsg').textContent='Fill in at least one set.'; return; }
+  const beforePR = snapshotPRs();
+  S.logs.push({id:Date.now(), date, day:dk, entries});
+  save(); checkPRs(beforePR); renderLog(); renderProgress();
+}
+
+/* ================= PROGRESS TAB ================= */
+const PR_LIFTS = {
+  'Barbell Bench Press': {milestones:[95,115,135,155,185,205,225,245], capPerWeek:1.75},
+  'Barbell Back Squat':  {milestones:[135,185,225,275,315,365], capPerWeek:2.5}
+};
+function e1rmSeries(ex){
+  const pts = [];
+  [...S.logs].sort((a,b)=>a.date.localeCompare(b.date)).forEach(l=>{
+    const e = l.entries.find(en=>en.exercise===ex);
+    if(!e) return;
+    let best = 0;
+    e.sets.forEach(s=>{ const v = epley(+s.w||0, +s.r||0); if(v>best) best=v; });
+    if(best>0) pts.push({date:l.date, v:Math.round(best*10)/10});
+  });
+  return pts;
+}
+function linreg(pts){
+  // x in days since first point
+  if(pts.length<2) return null;
+  const x0 = new Date(pts[0].date).getTime();
+  const xs = pts.map(p=>(new Date(p.date).getTime()-x0)/86400000);
+  const ys = pts.map(p=>p.v);
+  const n = xs.length;
+  const mx = xs.reduce((a,b)=>a+b,0)/n, my = ys.reduce((a,b)=>a+b,0)/n;
+  let num=0, den=0;
+  for(let i=0;i<n;i++){ num += (xs[i]-mx)*(ys[i]-my); den += (xs[i]-mx)**2; }
+  if(den===0) return null;
+  return {slope:num/den, intercept:my-(num/den)*mx, x0};
+}
+function renderProgress(){
+  const el = $('#progress');
+  let html = heatmapHTML();
+  for(const lift in PR_LIFTS){
+    const cfg = PR_LIFTS[lift];
+    const pts = e1rmSeries(lift);
+    html += '<h2>'+esc(lift)+'</h2>';
+    if(!pts.length){ html += '<div class="card"><p class="small">No data yet — log a session with this lift and the projection engine kicks in.</p></div>'; continue; }
+    const cur = pts[pts.length-1].v;
+    const reg = linreg(pts.slice(-12)); // recent trend
+    let slopeWk = reg ? reg.slope*7 : 0;
+    const capped = reg && slopeWk > cfg.capPerWeek;
+    if(capped) slopeWk = cfg.capPerWeek;
+    const next = cfg.milestones.find(m=>m>cur);
+    let projTxt = '—';
+    if(next && reg && slopeWk>0.05){
+      const weeks = (next-cur)/slopeWk;
+      const d = new Date(Date.now()+weeks*7*86400000);
+      projTxt = next+' lb ≈ '+d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    } else if(next){ projTxt = next+' lb — need more sessions to project'; }
+    html += '<div class="stats" style="margin-bottom:10px">'+
+      '<div class="stat"><div class="v">'+Math.round(cur)+'</div><div class="l">est. 1RM (lb)</div></div>'+
+      '<div class="stat"><div class="v '+(slopeWk>0.05?'up':slopeWk<-0.05?'dn':'fl')+'">'+(slopeWk>=0?'+':'')+slopeWk.toFixed(1)+'</div><div class="l">lb / week'+(capped?' (capped)':'')+'</div></div>'+
+      '<div class="stat"><div class="v" style="font-size:14px;line-height:1.9">'+esc(projTxt)+'</div><div class="l">next milestone</div></div></div>';
+    html += '<div class="card flat" style="padding:0;border:none">'+barbellGraphic(cur, cfg.milestones)+'</div>';
+    html += '<div class="card">'+lineChart(pts, dayColorForLift(lift))+'</div>';
+  }
+  html += '<h2>Best Sets — All Exercises</h2><div class="card">';
+  const bests = {};
+  S.logs.forEach(l=>l.entries.forEach(e=>e.sets.forEach(s=>{
+    const v = epley(+s.w||0,+s.r||0);
+    if(!bests[e.exercise] || v>bests[e.exercise].v) bests[e.exercise]={v, w:s.w, r:s.r, date:l.date};
+  })));
+  const keys = Object.keys(bests).sort();
+  if(!keys.length) html += '<p class="small">Nothing logged yet.</p>';
+  keys.forEach(k=>{
+    const b=bests[k];
+    html += '<div class="h-ex" style="padding:3px 0"><b>'+esc(k)+'</b> — '+b.w+' lb × '+b.r+' <span class="small">(e1RM '+Math.round(b.v)+', '+fmtDate(b.date)+')</span></div>';
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+function dayColorForLift(l){ return l.includes('Squat') ? '#dfae36' : '#d23b3b'; }
+function barbellGraphic(cur, milestones){
+  // bar with plates: each milestone reached = plate loaded
+  const reached = milestones.filter(m=>m<=cur);
+  const W=700, H=90, sleeveX=140, sleeveW=420;
+  let svg = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Milestones as plates on a bar" style="width:100%;height:auto">';
+  svg += '<rect x="20" y="42" width="660" height="7" rx="3" fill="#5b5e68"/>';
+  svg += '<rect x="'+(sleeveX-14)+'" y="34" width="14" height="23" rx="2" fill="#8d909a"/>';
+  const colors=['#d23b3b','#2f6fd0','#dfae36','#3da25f','#e9e7e2','#9aa0ab','#d23b3b','#2f6fd0'];
+  milestones.forEach((m,i)=>{
+    const x = sleeveX + 18 + i*48;
+    const hit = m<=cur;
+    const h = 56-i*2;
+    svg += '<rect x="'+x+'" y="'+(45-h/2+3)+'" width="22" height="'+h+'" rx="4" fill="'+(hit?colors[i%colors.length]:'none')+'" stroke="'+(hit?'rgba(0,0,0,.4)':'#3a3d45')+'" stroke-width="2" stroke-dasharray="'+(hit?'0':'4 3')+'"/>';
+    svg += '<text x="'+(x+11)+'" y="'+H-4+'" text-anchor="middle" font-size="11" fill="'+(hit?'#e9e7e2':'#5b5e68')+'">'+m+'</text>';
+  });
+  svg += '</svg>';
+  return '<div class="bar-wrap"><div class="bar-label"><span>Plates = milestones reached (<b>'+reached.length+'/'+milestones.length+'</b>)</span><span>dashed = next up</span></div>'+svg+'</div>';
+}
+function lineChart(pts, color){
+  const W=700, H=200, P=36;
+  if(pts.length===1){
+    return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto"><circle cx="'+(W/2)+'" cy="'+(H/2)+'" r="4" fill="'+color+'"/><text x="'+(W/2)+'" y="'+(H/2-12)+'" text-anchor="middle" font-size="12" fill="#8d909a">'+pts[0].v+' lb — one point so far</text></svg>';
+  }
+  const t0=new Date(pts[0].date).getTime(), t1=new Date(pts[pts.length-1].date).getTime()||t0+1;
+  const vmin=Math.min(...pts.map(p=>p.v)), vmax=Math.max(...pts.map(p=>p.v));
+  const pad=(vmax-vmin)*0.15||5;
+  const x=t=>P+( (t-t0)/(t1-t0||1) )*(W-2*P);
+  const y=v=>H-P-((v-(vmin-pad))/((vmax+pad)-(vmin-pad)))*(H-2*P);
+  let path='';
+  pts.forEach((p,i)=>{ path += (i?'L':'M')+x(new Date(p.date).getTime()).toFixed(1)+' '+y(p.v).toFixed(1)+' '; });
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">';
+  [vmin, (vmin+vmax)/2, vmax].forEach(v=>{
+    svg+='<line x1="'+P+'" x2="'+(W-P)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#2a2d35" stroke-width="1"/>'+
+         '<text x="'+(P-6)+'" y="'+(y(v)+4)+'" text-anchor="end" font-size="10" fill="#5b5e68">'+Math.round(v)+'</text>';
+  });
+  svg+='<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round"/>';
+  pts.forEach(p=>{ svg+='<circle cx="'+x(new Date(p.date).getTime())+'" cy="'+y(p.v)+'" r="3.5" fill="'+color+'"/>'; });
+  svg+='<text x="'+P+'" y="'+(H-8)+'" font-size="10" fill="#5b5e68">'+fmtDate(pts[0].date)+'</text>';
+  svg+='<text x="'+(W-P)+'" y="'+(H-8)+'" text-anchor="end" font-size="10" fill="#5b5e68">'+fmtDate(pts[pts.length-1].date)+'</text>';
+  svg+='</svg>';
+  return svg;
+}
+
+
+/* ================= ROAD TAB ================= */
+function renderRoad(){
+  const el = $('#road');
+  const allEx = [...new Set(Object.values(S.split).flatMap(d=>d.exercises))].sort();
+  let html = '<h2>Goal Roads</h2>';
+  if(!S.road.length){
+    html += '<div class="card"><p class="small">Pick a lift, name the number, and the road tracks every session between you and it \u2014 pace, projection, and whether you\u2019re on schedule.</p></div>';
+  }
+  S.road.forEach(g=>{ html += goalCard(g); });
+  html += '<h2>Add a Goal</h2><div class="card"><div class="row">'+
+    '<div><label>Lift</label><select id="gEx">'+allEx.map(e=>'<option'+(e==='Barbell Bench Press'?' selected':'')+'>'+esc(e)+'</option>').join('')+'</select></div>'+
+    '<div><label>Target e1RM (lb)</label><input inputmode="numeric" id="gTgt" placeholder="225"></div>'+
+    '<div><label>Deadline (optional)</label><input type="date" id="gDl"></div>'+
+    '<div style="flex:none"><button class="btn sm" onclick="addGoal()">Start the Road</button></div></div>'+
+    '<p class="small" style="margin-top:8px">Target is estimated 1RM \u2014 e.g. 225 means a true single at 225, which is roughly 190\u00d75 or 170\u00d710.</p></div>';
+  el.innerHTML = html;
+}
+function goalCard(g){
+  const pts = e1rmSeries(g.exercise);
+  const cur = pts.length ? pts[pts.length-1].v : 0;
+  const start = (g.start && g.start>0) ? g.start : (pts.length ? pts[0].v : 0);
+  const span = Math.max(g.target - start, 1);
+  const pct = Math.max(0, Math.min(100, (cur-start)/span*100));
+  const done = cur >= g.target;
+  // trend
+  const reg = pts.length>=2 ? linreg(pts.slice(-12)) : null;
+  const cap = PR_LIFTS[g.exercise] ? PR_LIFTS[g.exercise].capPerWeek : 2.0;
+  let slopeWk = reg ? Math.min(reg.slope*7, cap) : 0;
+  let projTxt = 'log more sessions to project';
+  if(done) projTxt = 'GOAL REACHED';
+  else if(slopeWk > 0.05){
+    const wks = (g.target-cur)/slopeWk;
+    projTxt = '\u2248 '+new Date(Date.now()+wks*7*86400000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' at +'+slopeWk.toFixed(1)+' lb/wk';
+  } else if(pts.length>=2) projTxt = 'trend is flat \u2014 push the progression';
+  // deadline pace
+  let paceTxt = '';
+  if(g.deadline && !done){
+    const wksLeft = daysBetween(todayKey(), g.deadline)/7;
+    if(wksLeft > 0){
+      const need = (g.target-cur)/wksLeft;
+      const onPace = slopeWk >= need;
+      paceTxt = '<div class="small" style="margin-top:6px">Deadline '+fmtDate(g.deadline)+': need <b class="mono">+'+need.toFixed(1)+' lb/wk</b> \u2014 '+
+        (slopeWk>0.05 ? '<span class="'+(onPace?'up':'dn')+'">currently +'+slopeWk.toFixed(1)+' ('+(onPace?'on pace':'behind pace')+')</span>' : '<span class="fl">no trend yet</span>')+'</div>';
+    } else paceTxt = '<div class="small dn" style="margin-top:6px">Deadline passed \u2014 reset it or finish the job.</div>';
+  }
+  return '<div class="goal-card" style="border-left:4px solid '+(done?'#3da25f':'var(--accent)')+'">'+
+    '<div class="goal-head"><span class="goal-name">Road to '+g.target+'</span>'+
+    '<span class="goal-tgt">'+esc(g.exercise)+'</span>'+
+    '<button class="del" style="margin-left:auto" onclick="delGoal('+g.id+')">remove</button></div>'+
+    '<div class="stats" style="margin:10px 0">'+
+      '<div class="stat"><div class="v">'+(cur?Math.round(cur):'\u2014')+'</div><div class="l">current e1RM</div></div>'+
+      '<div class="stat"><div class="v">'+g.target+'</div><div class="l">target</div></div>'+
+      '<div class="stat"><div class="v '+(done?'up':'')+'">'+(done?'\u2713':Math.round(pct)+'%')+'</div><div class="l">of the road</div></div>'+
+      '<div class="stat"><div class="v" style="font-size:13px;line-height:2.1">'+projTxt+'</div><div class="l">projection</div></div></div>'+
+    roadSVG(start, cur, g.target, done) + paceTxt + '</div>';
+}
+function roadSVG(start, cur, target, done){
+  const W=700, H=84, L=30, R=W-30;
+  const x = v => L + Math.max(0,Math.min(1,(v-start)/Math.max(target-start,1)))*(R-L);
+  let svg = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Progress road" style="width:100%;height:auto">';
+  svg += '<rect x="'+L+'" y="30" width="'+(R-L)+'" height="26" rx="6" fill="#23262d" stroke="#2a2d35"/>';
+  svg += '<line x1="'+(L+8)+'" x2="'+(R-8)+'" y1="43" y2="43" stroke="#5b5e68" stroke-width="2.5" stroke-dasharray="12 10"/>';
+  // quarter mile markers
+  for(let q=1;q<4;q++){
+    const v = start + (target-start)*q/4;
+    svg += '<line x1="'+x(v)+'" x2="'+x(v)+'" y1="30" y2="56" stroke="#2a2d35" stroke-width="2"/>'+
+           '<text x="'+x(v)+'" y="70" text-anchor="middle" font-size="10" fill="#5b5e68">'+Math.round(v)+'</text>';
+  }
+  // finish: checkered
+  for(let r2=0;r2<4;r2++) for(let c=0;c<2;c++){
+    svg += '<rect x="'+(R-10+c*5)+'" y="'+(30+r2*6.5)+'" width="5" height="6.5" fill="'+(((r2+c)%2)?'#e9e7e2':'#101114')+'"/>';
+  }
+  svg += '<text x="'+L+'" y="22" font-size="10" fill="#5b5e68">START '+Math.round(start)+'</text>';
+  svg += '<text x="'+R+'" y="22" text-anchor="end" font-size="11" font-weight="bold" fill="'+(done?'#3da25f':'#e9e7e2')+'">'+target+'</text>';
+  // your plate marker
+  const px = x(cur);
+  svg += '<circle cx="'+px+'" cy="43" r="12" fill="var(--accent)" stroke="#0e0f12" stroke-width="3"/>'+
+         '<circle cx="'+px+'" cy="43" r="3.5" fill="#0e0f12"/>';
+  svg += '</svg>';
+  return svg;
+}
+function addGoal(){
+  const ex = $('#gEx').value, tgt = parseInt($('#gTgt').value), dl = $('#gDl').value || null;
+  if(!ex || !tgt){ alert('Pick a lift and enter a target number.'); return; }
+  const pts = e1rmSeries(ex);
+  const cur = pts.length ? pts[pts.length-1].v : 0;
+  if(cur && tgt <= cur){ alert('Target must be above your current e1RM ('+Math.round(cur)+').'); return; }
+  S.road.push({id:Date.now(), exercise:ex, target:tgt, start:cur||0, deadline:dl});
+  save(); renderRoad();
+}
+function delGoal(id){
+  if(!confirm('Remove this goal road?')) return;
+  S.road = S.road.filter(g=>g.id!==id); save(); renderRoad();
+}
+
+/* ================= API ================= */
+async function callClaude(messages, system, maxTokens){
+  const headers = {'Content-Type':'application/json'};
+  if(S.settings.apiKey){
+    headers['x-api-key'] = S.settings.apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
+  }
+  const body = {model:'claude-sonnet-4-20250514', max_tokens:maxTokens||1000, messages};
+  if(system) body.system = system;
+  const res = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers,body:JSON.stringify(body)});
+  if(!res.ok){ const t=await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
+  const data = await res.json();
+  return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+}
+function trainingContext(){
+  const recent = [...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
+  const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+((S.split[l.day]||{}).name||'')+']\n'+
+    l.entries.map(e=>'  '+e.exercise+': '+summ(e.sets)).join('\n')).join('\n');
+  const wts = S.weights.slice(-10).map(w=>w.date+': '+w.lbs+' lb').join(', ');
+  const nut = S.nutrition.slice(-7).map(n=>n.date+': '+n.cals+' cal / '+n.protein+'g protein').join(', ');
+  const bench = e1rmSeries('Barbell Bench Press'); const squat = e1rmSeries('Barbell Back Squat');
+  return 'ATHLETE PROFILE:\n- Mark, 18, male, ~150 lb, goal: gain size and strength (bulk), accelerate bench/squat PRs.\n'+
+    '- Trains 5-6x/week at a commercial gym, 6-day split (D1 Chest+Tri, D2 Back+Bi, D3 Legs squat-focus, D4 Shoulders+Arms, D5 Chest+Back accessory, D6 Legs press-focus).\n'+
+    '- Nutrition target: 3000+ cal, 130g+ protein daily, tracked via Cal AI.\n\n'+
+    'CURRENT e1RM: Bench '+(bench.length?Math.round(bench[bench.length-1].v)+' lb':'no data')+
+    ', Squat '+(squat.length?Math.round(squat[squat.length-1].v)+' lb':'no data')+'\n'+
+    'BODYWEIGHT LOG: '+(wts||'none yet')+'\n'+
+    'NUTRITION LOG: '+(nut||'none yet')+'\n\n'+
+    'RECENT SESSIONS (newest first):\n'+(logTxt||'No sessions logged yet.');
+}
+
+/* ================= COACH TAB ================= */
+function renderCoach(){
+  const el = $('#coach');
+  let html = '<div class="card flat" style="padding:0;border:none">'+
+    '<div class="chat-box" id="chatBox">';
+  if(!S.chat.length) html += '<div class="msg sys">Coach is loaded with your full training log, bodyweight trend, and split.\nAsk anything — "why is my incline stalling", "build me a deload week", "am I eating enough".</div>';
+  S.chat.forEach(m=>{ html += '<div class="msg '+(m.role==='user'?'me':'ai')+'">'+esc(m.content)+'</div>'; });
+  html += '</div><div class="chat-in">'+
+    '<textarea id="chatIn" placeholder="Ask your coach…" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>'+
+    '<button class="btn" onclick="sendChat()">Send</button></div>'+
+    '<div style="margin-top:6px"><button class="btn ghost sm" onclick="if(confirm(\'Clear chat history?\')){S.chat=[];save();renderCoach();}">Clear chat</button></div></div>';
+  el.innerHTML = html;
+  const box=$('#chatBox'); box.scrollTop=box.scrollHeight;
+}
+async function sendChat(){
+  const inp = $('#chatIn'); const txt = inp.value.trim();
+  if(!txt) return;
+  S.chat.push({role:'user', content:txt}); save(); renderCoach();
+  const box=$('#chatBox');
+  box.insertAdjacentHTML('beforeend','<div class="msg sys" id="thinking">coach is thinking…</div>');
+  box.scrollTop=box.scrollHeight;
+  try{
+    const system = 'You are an evidence-based strength coach for a motivated 18-year-old natural lifter on a bulk. '+
+      'Be direct and concrete: give specific weights, reps, set counts, and food amounts when relevant. '+
+      'No fluff, no over-hedging. Keep answers tight (under ~250 words unless asked for a program). '+
+      'Never recommend steroids, SARMs, or other PEDs; if asked, explain briefly why not at his age and move on. '+
+      'Encourage adequate recovery and realistic rate-of-gain (~0.5-1 lb/week on a lean bulk).\n\n'+trainingContext();
+    const msgs = S.chat.slice(-16).map(m=>({role:m.role, content:m.content}));
+    const reply = await callClaude(msgs, system, 1000);
+    S.chat.push({role:'assistant', content:reply}); save(); renderCoach();
+  }catch(e){
+    const t=$('#thinking'); if(t) t.textContent='Coach unavailable: '+e.message+' — check your API key in Settings.';
+  }
+}
+
+/* ================= SCREENSHOT INGESTION ================= */
+async function ingestShot(){
+  const f = $('#shot').files[0];
+  const out = $('#shotOut');
+  if(!f){ out.innerHTML='<span class="err">Choose an image first.</span>'; return; }
+  out.innerHTML='<span class="small">Reading screenshot…</span>';
+  try{
+    const b64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.onerror=()=>rej(new Error('Read failed')); r.readAsDataURL(f); });
+    const allEx = [...new Set(Object.values(S.split).flatMap(d=>d.exercises))];
+    const prompt = 'Extract the workout from this fitness-app screenshot. Respond with ONLY valid JSON, no markdown fences, no commentary:\n'+
+      '{"date":"YYYY-MM-DD or null","exercises":[{"name":"...","sets":[{"weight_lbs":0,"reps":0}]}]}\n'+
+      'Where possible, map exercise names to the closest match from this list (use the exact list spelling): '+allEx.join('; ')+
+      '. If a weight is in kg, convert to lbs. If bodyweight, use 0.';
+    const reply = await callClaude([{role:'user', content:[
+      {type:'image', source:{type:'base64', media_type:f.type||'image/png', data:b64}},
+      {type:'text', text:prompt}
+    ]}], null, 1500);
+    const clean = reply.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(clean);
+    window._pendingShot = parsed;
+    let html = '<hr><p class="small"><b>Found '+parsed.exercises.length+' exercises'+(parsed.date?' — '+esc(parsed.date):'')+'</b>. Review, pick the day, then confirm:</p>';
+    parsed.exercises.forEach(e=>{ html += '<div class="h-ex"><b>'+esc(e.name)+'</b> '+e.sets.map(s=>s.weight_lbs+'×'+s.reps).join(', ')+'</div>'; });
+    html += '<div class="row" style="margin-top:10px">'+
+      '<div><label>Date</label><input type="date" id="shotDate" value="'+esc(parsed.date||todayKey())+'"></div>'+
+      '<div><label>Day</label><select id="shotDay">'+Object.keys(S.split).map(k=>'<option value="'+k+'">'+k+' — '+esc(S.split[k].name)+'</option>').join('')+'</select></div>'+
+      '<div style="flex:none"><button class="btn sm" onclick="confirmShot()">Confirm &amp; Save</button></div></div>';
+    out.innerHTML = html;
+  }catch(e){ out.innerHTML='<span class="err">Could not read it: '+esc(e.message)+'</span>'; }
+}
+function confirmShot(){
+  const p = window._pendingShot; if(!p) return;
+  const entries = p.exercises.filter(e=>e.sets&&e.sets.length).map(e=>({exercise:e.name, sets:e.sets.map(s=>({w:+s.weight_lbs||0, r:+s.reps||0}))}));
+  const beforePR = snapshotPRs();
+  S.logs.push({id:Date.now(), date:$('#shotDate').value||todayKey(), day:$('#shotDay').value, entries});
+  save(); checkPRs(beforePR); window._pendingShot=null; renderLog(); renderProgress();
+}
+
+
+/* ================= GIST SYNC ================= */
+const GIST_FILE = 'ironhub_data.json';
+function syncReady(){ return !!(S.settings.ghToken && S.settings.gistId); }
+function ghHeaders(){ return {'Authorization':'Bearer '+S.settings.ghToken, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'}; }
+function syncPayload(){
+  const d = JSON.parse(JSON.stringify(S));
+  delete d.settings.ghToken; delete d.settings.gistId; delete d.settings.apiKey; // secrets never leave the device
+  return JSON.stringify({app:'ironhub', v:1, exportedAt:Date.now(), data:d});
+}
+function setSyncMsg(t, err){ const el = $('#syncMsg'); if(el){ el.textContent = t; el.className = err ? 'err' : 'small ok'; } }
+function markSynced(){
+  S.meta = S.meta || {changedAt:0,lastSync:0};
+  S.meta.lastSync = Date.now();
+  localStorage.setItem(LS_KEY, JSON.stringify(S));
+  const el = $('#hdrSync');
+  if(el) el.textContent = '\u25cf synced '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
+async function connectSync(){
+  const tok = $('#ghToken').value.trim();
+  if(!tok){ setSyncMsg('Paste a token first.', true); return; }
+  S.settings.ghToken = tok; save(false);
+  setSyncMsg('Connecting to GitHub\u2026');
+  try{
+    const res = await fetch('https://api.github.com/gists?per_page=100',{headers:ghHeaders()});
+    if(!res.ok) throw new Error('GitHub error '+res.status+(res.status===401?' \u2014 token invalid or missing the gist scope':''));
+    const gists = await res.json();
+    const found = gists.find(g=>g.files && g.files[GIST_FILE]);
+    if(found){
+      S.settings.gistId = found.id; save(false);
+      await syncPull(true);
+      setSyncMsg('\u2713 Connected \u2014 found your existing sync gist and pulled its data.');
+    } else {
+      const c = await fetch('https://api.github.com/gists',{method:'POST',headers:ghHeaders(),
+        body:JSON.stringify({description:'Iron Hub training data (auto-sync)', public:false, files:{[GIST_FILE]:{content:syncPayload()}}})});
+      if(!c.ok) throw new Error('Could not create gist ('+c.status+')');
+      const g = await c.json();
+      S.settings.gistId = g.id; save(false);
+      setSyncMsg('\u2713 Private sync gist created \u2014 this device pushed the first copy.');
+    }
+    markSynced(); renderSettings();
+  }catch(e){ setSyncMsg(e.message, true); }
+}
+async function syncPush(manual){
+  if(!syncReady()){ if(manual) setSyncMsg('Not connected \u2014 paste your token and hit Connect first.', true); return; }
+  try{
+    const res = await fetch('https://api.github.com/gists/'+S.settings.gistId,{method:'PATCH',headers:ghHeaders(),
+      body:JSON.stringify({files:{[GIST_FILE]:{content:syncPayload()}}})});
+    if(!res.ok) throw new Error('Push failed ('+res.status+')');
+    markSynced();
+    if(manual) setSyncMsg('\u2713 Pushed to cloud at '+new Date().toLocaleTimeString());
+  }catch(e){ if(manual) setSyncMsg(e.message, true); }
+}
+async function fetchGistData(){
+  const res = await fetch('https://api.github.com/gists/'+S.settings.gistId,{headers:ghHeaders()});
+  if(!res.ok) throw new Error('Pull failed ('+res.status+')');
+  const g = await res.json();
+  const f = g.files && g.files[GIST_FILE];
+  if(!f) throw new Error('Sync file missing from gist.');
+  let content = f.content;
+  if(f.truncated) content = await (await fetch(f.raw_url)).text();
+  const p = JSON.parse(content);
+  if(p.app !== 'ironhub') throw new Error('Gist content not recognized as Iron Hub data.');
+  return p;
+}
+async function syncPull(force){
+  if(!syncReady()){ setSyncMsg('Not connected \u2014 paste your token and hit Connect first.', true); return; }
+  try{
+    const p = await fetchGistData();
+    if(!force && S.meta && S.meta.changedAt > p.exportedAt){
+      if(!confirm('This device has NEWER local changes than the cloud copy. Pull anyway and overwrite them?')) return;
+    }
+    applyPulled(p.data);
+    markSynced();
+    setSyncMsg('\u2713 Pulled cloud data at '+new Date().toLocaleTimeString());
+    setAccent(); renderHeader(); renderToday(); renderSettings();
+  }catch(e){ setSyncMsg(e.message, true); }
+}
+function applyPulled(d){
+  const keep = {apiKey:S.settings.apiKey, ghToken:S.settings.ghToken, gistId:S.settings.gistId, autoSync:S.settings.autoSync};
+  S = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), d);
+  S.settings = Object.assign({}, DEFAULT_STATE.settings, d.settings||{}, keep);
+  S.meta = S.meta || {changedAt:0,lastSync:0};
+  S.meta.changedAt = d && d.meta ? (d.meta.changedAt||Date.now()) : Date.now();
+  save(false);
+}
+let _pushTimer = null;
+function schedulePush(){
+  if(!syncReady() || S.settings.autoSync === false) return;
+  clearTimeout(_pushTimer);
+  _pushTimer = setTimeout(()=>syncPush(false), 2500);
+}
+async function autoPullOnLoad(){
+  if(!syncReady() || S.settings.autoSync === false) return;
+  try{
+    const p = await fetchGistData();
+    if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
+      applyPulled(p.data);
+      setAccent(); renderHeader(); renderToday();
+    }
+    markSynced();
+  }catch(e){ const el=$('#hdrSync'); if(el){ el.textContent='\u25cb sync offline'; } }
+}
+function disconnectSync(){
+  if(!confirm('Disconnect cloud sync on this device? (The gist itself is not deleted \u2014 other devices keep working.)')) return;
+  S.settings.ghToken=''; S.settings.gistId=''; save(false); renderSettings();
+}
+
+/* ================= BULK TAB ================= */
+function renderBulk(){
+  const el = $('#bulk');
+  const w = [...S.weights].sort((a,b)=>a.date.localeCompare(b.date));
+  let rate = null;
+  if(w.length>=2){
+    const span = daysBetween(w[0].date, w[w.length-1].date);
+    if(span>0) rate = (w[w.length-1].lbs - w[0].lbs)/(span/7);
+    // prefer recent 4 weeks if enough data
+    const cutD = new Date(Date.now()-28*86400000);
+    const cutKey = cutD.toISOString().slice(0,10);
+    const recent = w.filter(p=>p.date>=cutKey);
+    if(recent.length>=2){
+      const s = daysBetween(recent[0].date, recent[recent.length-1].date);
+      if(s>0) rate = (recent[recent.length-1].lbs - recent[0].lbs)/(s/7);
+    }
+  }
+  let verdict = '';
+  if(rate!==null){
+    if(rate < 0.15) verdict = '<span class="dn">Scale is flat — the surplus is not landing. Add ~200–300 cal/day (easiest: one more solid meal or a shake) and re-check in 2 weeks.</span>';
+    else if(rate <= 1.1) verdict = '<span class="up">Right in the lean-bulk pocket (0.5–1 lb/week). Hold this intake.</span>';
+    else verdict = '<span class="fl">Gaining faster than ~1 lb/week — some of that is likely fat. Trim ~150–200 cal/day if you want it leaner.</span>';
+  }
+  let html = '<h2>Bodyweight</h2><div class="stats" style="margin-bottom:12px">'+
+    '<div class="stat"><div class="v">'+(w.length? w[w.length-1].lbs : '—')+'</div><div class="l">current (lb)</div></div>'+
+    '<div class="stat"><div class="v '+(rate===null?'':'')+'">'+(rate===null?'—':(rate>=0?'+':'')+rate.toFixed(2))+'</div><div class="l">lb / week</div></div>'+
+    '<div class="stat"><div class="v">'+(w.length? (w[w.length-1].lbs - w[0].lbs).toFixed(1):'—')+'</div><div class="l">total change</div></div></div>';
+  if(verdict) html += '<div class="card"><p class="small">'+verdict+'</p></div>';
+  html += '<div class="card"><div class="row">'+
+    '<div><label>Date</label><input type="date" id="wDate" value="'+todayKey()+'"></div>'+
+    '<div><label>Weight (lb)</label><input inputmode="decimal" id="wLbs" placeholder="150.5"></div>'+
+    '<div style="flex:none"><button class="btn sm" onclick="addWeight()">Log Weight</button></div></div>'+
+    '<p class="small" style="margin-top:8px">Weigh first thing in the morning, after the bathroom, before food — same conditions every time or the trend means nothing.</p></div>';
+  if(w.length) html += '<div class="card">'+lineChart(w.map(p=>({date:p.date, v:p.lbs})), '#3da25f')+'</div>';
+
+  html += '<h2>Daily Intake (from Cal AI)</h2><div class="card"><div class="row">'+
+    '<div><label>Date</label><input type="date" id="nDate" value="'+todayKey()+'"></div>'+
+    '<div><label>Calories</label><input inputmode="numeric" id="nCals" placeholder="3100"></div>'+
+    '<div><label>Protein (g)</label><input inputmode="numeric" id="nProt" placeholder="140"></div>'+
+    '<div style="flex:none"><button class="btn sm" onclick="addNutrition()">Log Intake</button></div></div></div>';
+  const nut = [...S.nutrition].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
+  if(nut.length){
+    html += '<div class="card">'+nut.map(n=>'<div class="h-ex"><b>'+fmtDate(n.date)+'</b> — '+n.cals+' cal · '+n.protein+'g protein '+
+      (n.cals>=3000&&n.protein>=130?'<span class="ok">✓</span>':'<span class="fl">below target</span>')+'</div>').join('')+'</div>';
+  }
+  html += '<div class="card"><p class="small"><b>Protein note:</b> at 150 lb on a bulk, 130g is the floor — pushing toward 150–160g/day gives you margin. Calories drive the scale; protein decides how much of it is muscle.</p></div>';
+  el.innerHTML = html;
+}
+function addWeight(){
+  const d=$('#wDate').value, v=parseFloat($('#wLbs').value);
+  if(!d||!v) return;
+  S.weights = S.weights.filter(w=>w.date!==d);
+  S.weights.push({date:d, lbs:v}); save(); renderBulk();
+}
+function addNutrition(){
+  const d=$('#nDate').value, c=parseInt($('#nCals').value), p=parseInt($('#nProt').value);
+  if(!d||!c) return;
+  S.nutrition = S.nutrition.filter(n=>n.date!==d);
+  S.nutrition.push({date:d, cals:c, protein:p||0}); save(); renderBulk();
+}
+
+/* ================= SETTINGS TAB ================= */
+function renderSettings(){
+  const el = $('#settings');
+  const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  let html = '<h2>Anthropic API</h2><div class="card">'+
+    '<label>API Key</label><input type="password" id="apiKey" value="'+esc(S.settings.apiKey||'')+'" placeholder="sk-ant-…">'+
+    '<p class="small" style="margin-top:6px">Stored only in this browser\'s localStorage. Powers the Coach and screenshot import. Leave blank if running inside Claude.ai preview.</p>'+
+    '<div style="margin-top:10px"><button class="btn sm" onclick="saveSettings()">Save</button> <span class="ok small" id="setMsg"></span></div></div>';
+
+  html += '<h2>Weekly Schedule</h2><div class="card">';
+  for(let i=1;i<=6;i++){ html += scheduleRow(i, dayNames[i]); }
+  html += scheduleRow(0, dayNames[0]);
+  html += '<p class="small" style="margin-top:8px">Changes apply immediately to the Today tab.</p></div>';
+
+  html += '<h2>Rep Range</h2><div class="card"><div class="row">'+
+    '<div><label>Low</label><input inputmode="numeric" id="repLow" value="'+S.settings.repLow+'"></div>'+
+    '<div><label>High (triggers weight increase)</label><input inputmode="numeric" id="repHigh" value="'+S.settings.repHigh+'"></div>'+
+    '<div style="flex:none"><button class="btn sm" onclick="saveSettings()">Save</button></div></div></div>';
+
+  html += '<h2>Split Editor</h2><div class="card">'+
+    '<p class="small">Advanced: edit your split as JSON (names, exercises, colors). Be careful with commas.</p>'+
+    '<textarea id="splitJson" rows="10" class="mono" style="font-size:11.5px;margin-top:8px">'+esc(JSON.stringify(S.split,null,1))+'</textarea>'+
+    '<div style="margin-top:8px"><button class="btn sm ghost" onclick="saveSplit()">Apply Split</button> <span class="err" id="splitMsg"></span></div></div>';
+
+  html += '<h2>Cloud Sync \u2014 GitHub Gist</h2><div class="card">';
+  if(syncReady()){
+    html += '<p class="small"><span class="ok">\u25cf Connected</span> \u00b7 gist <span class="mono">'+esc(S.settings.gistId.slice(0,10))+'\u2026</span>'+
+      (S.meta && S.meta.lastSync ? ' \u00b7 last sync '+new Date(S.meta.lastSync).toLocaleString() : '')+'</p>'+
+      '<div class="row" style="margin-top:10px">'+
+      '<div style="flex:none"><button class="btn sm" onclick="syncPush(true)">Push Now</button></div>'+
+      '<div style="flex:none"><button class="btn sm ghost" onclick="syncPull(false)">Pull Now</button></div>'+
+      '<div style="flex:none"><button class="btn sm ghost" onclick="disconnectSync()" style="color:var(--bad);border-color:var(--bad)">Disconnect</button></div></div>'+
+      '<label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
+      '<input type="checkbox" style="width:auto" '+(S.settings.autoSync!==false?'checked':'')+' onchange="S.settings.autoSync=this.checked;save(false);">'+
+      'Auto-sync (pull on open, push ~3s after every save)</label>';
+  } else {
+    html += '<p class="small">Sync your data across devices through a <b>private</b> GitHub Gist. Your Anthropic API key and GitHub token never leave this device \u2014 only training data is synced.</p>'+
+      '<label>GitHub Token (gist scope only)</label><input type="password" id="ghToken" placeholder="ghp_\u2026 or github_pat_\u2026">'+
+      '<div style="margin-top:10px"><button class="btn sm" onclick="connectSync()">Connect</button></div>'+
+      '<p class="small" style="margin-top:10px"><b>One-time setup:</b> GitHub \u2192 Settings \u2192 Developer settings \u2192 Personal access tokens \u2192 Tokens (classic) \u2192 Generate new token (classic) \u2192 check only <b>gist</b> \u2192 set expiration to your preference \u2192 Generate \u2192 copy it here. On your second device, paste the same token and hit Connect \u2014 it finds your gist automatically.</p>';
+  }
+  html += '<p class="small" id="syncMsg" style="margin-top:8px"></p></div>';
+
+  html += '<h2>Data</h2><div class="card"><div class="row">'+
+    '<div style="flex:none"><button class="btn sm ghost" onclick="exportData()">Export JSON</button></div>'+
+    '<div style="flex:none"><label class="btn sm ghost" style="display:inline-block;cursor:pointer">Import JSON<input type="file" accept=".json" style="display:none" onchange="importData(this)"></label></div>'+
+    '<div style="flex:none"><button class="btn sm ghost" onclick="resetAll()" style="color:var(--bad);border-color:var(--bad)">Reset Everything</button></div></div>'+
+    '<p class="small" style="margin-top:8px">Export regularly — localStorage can be wiped by browser cleanup. The JSON file is your backup.</p></div>';
+  el.innerHTML = html;
+}
+function scheduleRow(i, name){
+  let opts = '<option value="REST"'+(S.schedule[i]==='REST'?' selected':'')+'>Rest</option>';
+  Object.keys(S.split).forEach(k=>{ opts += '<option value="'+k+'"'+(S.schedule[i]===k?' selected':'')+'>'+k+' — '+esc(S.split[k].name)+'</option>'; });
+  return '<div class="row" style="margin-bottom:6px;align-items:center"><div style="flex:0 0 110px" class="small"><b>'+name+'</b></div>'+
+    '<div><select onchange="S.schedule['+i+']=this.value;save();setAccent();renderHeader();renderToday();">'+opts+'</select></div></div>';
+}
+function saveSettings(){
+  S.settings.apiKey = $('#apiKey').value.trim();
+  S.settings.repLow = parseInt($('#repLow').value)||8;
+  S.settings.repHigh = parseInt($('#repHigh').value)||12;
+  save(); $('#setMsg').textContent='✓ saved';
+  setTimeout(()=>{const m=$('#setMsg'); if(m) m.textContent='';},1500);
+}
+function saveSplit(){
+  try{
+    const p = JSON.parse($('#splitJson').value);
+    if(typeof p!=='object'||!Object.keys(p).length) throw new Error('Empty split');
+    for(const k in p){ if(!p[k].name||!Array.isArray(p[k].exercises)) throw new Error(k+' needs name + exercises[]'); if(!p[k].hex) p[k].hex='#8d909a'; }
+    S.split = p; save(); renderSettings(); renderToday(); setAccent(); renderHeader();
+  }catch(e){ $('#splitMsg').textContent=e.message; }
+}
+function exportData(){
+  const blob = new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ironhub_backup_'+todayKey()+'.json';
+  a.click();
+}
+function importData(inp){
+  const f = inp.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    try{
+      const p = JSON.parse(r.result);
+      if(!p.logs || !p.split) throw new Error('Not an Iron Hub backup');
+      if(!confirm('Replace ALL current data with this backup ('+p.logs.length+' sessions)?')) return;
+      S = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), p);
+      save(); location.reload();
+    }catch(e){ alert('Import failed: '+e.message); }
+  };
+  r.readAsText(f);
+}
+function resetAll(){
+  if(!confirm('This wipes every log, weight entry, and setting. Export first if you want a backup. Continue?')) return;
+  if(!confirm('Last check — really delete everything?')) return;
+  localStorage.removeItem(LS_KEY); location.reload();
+}
+
+/* ================= SHELL ================= */
+function renderHeader(){
+  const dk = currentDayKey();
+  $('#hdrDate').innerHTML = '<b>'+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+'</b>';
+  $('#hdrDay').textContent = dk==='REST' ? 'Rest Day' : dk+' · '+S.split[dk].name;
+  $('#hdrDay').style.background = dk==='REST' ? '#8d909a' : dayColor(dk);
+}
+document.querySelectorAll('nav button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('main section').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    $('#'+b.dataset.t).classList.add('on');
+    ({today:renderToday, log:renderLog, progress:renderProgress, road:renderRoad, coach:renderCoach, bulk:renderBulk, settings:renderSettings})[b.dataset.t]();
+  });
+});
+setAccent(); renderHeader(); renderToday();
+autoPullOnLoad();
+</script>
+</body>
+</html>
