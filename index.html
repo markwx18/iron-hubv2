@@ -3416,7 +3416,6 @@ function renderRoadV2(){
 /* Bulk: bodyweight chart + sleep/recovery subsection */
 function renderBulkV2(){
   renderBulk();
-  injectBulkChart();
   const sec=document.getElementById('bulk'); if(!sec || sec.querySelector('.p2-sleep')) return;
   const wrap=document.createElement('div'); wrap.className='p2-sleep';
   wrap.innerHTML = '<h2>Recovery</h2>' + subSection('Sleep & performance', '<div id="sleep"></div>', false);
