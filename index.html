@@ -212,7 +212,7 @@
   .dockrow{display:flex; gap:8px; align-items:stretch;}
   .dockrow .field{flex:1;}
   .dockrow .field label{margin-bottom:4px;}
-  .dockrow input{text-align:center; font-size:18px; padding:11px 6px; font-weight:600;}
+  .dockrow input{text-align:center; font-size:16px; padding:11px 8px; font-weight:600; min-width:0;}
   .efftog{display:flex; gap:4px; margin-top:9px;}
   .efftog button{flex:1; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:8px 4px; border:1px solid var(--line2); border-radius:2px; background:var(--base); color:var(--muted);}
   .efftog button.sel{color:#1a0e02;}
@@ -266,10 +266,79 @@
 
   /* ---- fuel: missing V1 classes ---- */
   .rank{font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--dim); display:inline-block; min-width:20px; margin-right:4px; vertical-align:middle;}
-  .fm{font-family:var(--mono); font-size:11px; color:var(--amber); margin-left:8px; vertical-align:middle;}
+  .fopt .fm{display:inline-block !important; font-family:var(--mono); font-size:11px; color:var(--amber); margin-left:8px; vertical-align:middle; padding:0;}
   .fopt .fh{padding:5px 0 0; background:none; cursor:default; display:block; font-size:12px; color:var(--muted); font-style:italic; width:100%; border:none; gap:0;}
   .fuel-shead .sn{font-family:var(--disp); font-weight:600; font-size:16px; text-transform:uppercase; letter-spacing:.04em;}
+
+  /* ===== PHASE 2 ===== */
+  /* collapsible subsections */
+  .sub{margin:12px 0; border:1px solid var(--line); border-radius:4px; overflow:hidden; background:var(--panel);}
+  .sub-head{padding:12px 14px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-family:var(--disp); font-weight:600; font-size:15px; letter-spacing:.04em; text-transform:uppercase; color:var(--text);}
+  .sub-head .chev{transition:transform .2s; color:var(--muted); font-size:13px;}
+  .sub.open .sub-head .chev{transform:rotate(180deg);}
+  .sub-body{display:none; padding:0 14px 14px;}
+  .sub.open .sub-body{display:block;}
+  .chev{display:inline-block;}
+
+  /* charts */
+  .chart-h{font-family:var(--disp); font-weight:600; font-size:14px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; display:flex; align-items:baseline; gap:8px;}
+  .chart-sub{font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--dim); text-transform:none;}
+  .goal-chart .chart-h{margin-bottom:4px;}
+
+  /* exercise info button + modal */
+  .ex-info-btn{background:none; border:none; color:var(--amber); font-size:16px; margin-left:8px; padding:0 2px; vertical-align:middle; cursor:pointer; opacity:.85;}
+  .ex-info-btn:hover{opacity:1;}
+  .exinfo-modal{max-width:440px; width:100%; background:var(--panel); border:1px solid var(--line2); border-radius:6px; padding:0; text-align:left; max-height:84vh; overflow-y:auto;}
+  .exinfo-top{position:sticky; top:0; background:var(--panel2); border-bottom:1px solid var(--line); padding:14px 16px; display:flex; align-items:center; justify-content:space-between;}
+  .exinfo-title{font-family:var(--disp); font-weight:700; font-size:20px; text-transform:uppercase; letter-spacing:.01em; line-height:1.05;}
+  .exinfo-x{background:none; border:none; color:var(--muted); font-size:24px; cursor:pointer; line-height:1; padding:0 4px;}
+  #exInfoBody{padding:16px;}
+  .exinfo-muscles{display:flex; flex-wrap:wrap; gap:4px; margin-bottom:14px;}
+  .exinfo-sec{margin-bottom:14px;}
+  .exinfo-h{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); margin-bottom:7px;}
+  .exinfo-cue{display:flex; gap:9px; font-size:13.5px; color:var(--text); padding:4px 0; line-height:1.45; align-items:flex-start;}
+  .exinfo-cue span{color:var(--cyan); flex:none; font-size:12px; margin-top:2px;}
+  .exinfo-cue.bad span{color:var(--red);}
+
+  /* dock last-session + deltas */
+  .dock-last{font-family:var(--mono); font-size:11px; color:var(--muted); margin-bottom:9px; padding:7px 9px; background:var(--base); border:1px solid var(--line); border-radius:3px; line-height:1.5;}
+  .dock-last .dl-tag{color:var(--dim); letter-spacing:.06em; text-transform:uppercase; font-size:9px; margin-right:7px;}
+  .delta{font-family:var(--mono); font-size:10px; letter-spacing:.03em; padding:1px 6px; border-radius:2px; margin-left:2px;}
+  .delta.up{color:var(--cyan); border:1px solid var(--cyan-dim);}
+  .delta.down{color:var(--red); border:1px solid var(--red-dim);}
+  .delta.same{color:var(--dim); border:1px solid var(--line2);}
+
+  /* 1RM lab */
+  .rm-step{display:flex; align-items:center; gap:10px; padding:11px 14px; border-bottom:1px solid var(--line);}
+  .rm-step:last-child{border-bottom:none;}
+  .rm-step.attempt{background:linear-gradient(90deg,rgba(246,134,47,.08),transparent);}
+  .rm-w{font-family:var(--mono); font-weight:600; font-size:18px; min-width:74px;}
+  .rm-w .rm-lb{font-size:10px; color:var(--dim); margin-left:2px;}
+  .rm-mid{flex:1; min-width:0;}
+  .rm-label{font-family:var(--disp); font-weight:600; font-size:13px; letter-spacing:.03em; text-transform:uppercase; color:var(--muted);}
+  .rm-step.attempt .rm-label{color:var(--amber);}
+  .rm-note{font-size:11px; color:var(--dim);}
+  .rm-reps{font-family:var(--mono); font-size:14px; color:var(--text); min-width:36px; text-align:right;}
+  .rm-rest{font-family:var(--mono); font-size:10px; color:var(--dim); min-width:54px; text-align:right;}
+
+  /* sleep */
+  .sleep-btns{display:flex; gap:7px;}
+  .sleep-btns button{flex:1; font-family:var(--mono); font-size:13px; padding:11px 4px; border:1px solid var(--line2); border-radius:3px; background:var(--base); color:var(--muted);}
+  .sleep-btns button.sel{background:var(--cyan); color:var(--base); border-color:var(--cyan);}
+
+  /* library */
+  .lib-day{margin:12px 0;}
+  .lib-dh{font-family:var(--disp); font-weight:700; font-size:15px; letter-spacing:.05em; text-transform:uppercase; margin-bottom:7px;}
+  .lib-ex{width:100%; text-align:left; display:flex; align-items:center; justify-content:space-between; padding:13px 14px; margin-bottom:6px; border:1px solid var(--line); border-radius:4px; background:var(--panel); color:var(--text); font-family:var(--disp); font-weight:600; font-size:16px; text-transform:uppercase; letter-spacing:.01em;}
+  .lib-ex:hover{border-color:var(--amber);}
+  .lib-arrow{font-family:var(--mono); font-size:11px; font-weight:400; color:var(--amber); text-transform:none; letter-spacing:.04em;}
+
+  /* drag-drop split editor */
+  .drag-h{cursor:grab; color:var(--dim); font-size:15px; padding:0 4px; flex:none; touch-action:none;}
+  .sd-ex.dragging{opacity:.4;}
+  .sd-ex.dragover{border-top:2px solid var(--amber);}
 </style>
+
 </head>
 <body>
 
@@ -296,6 +365,7 @@
         <button data-t="road">Road</button>
         <button data-t="bulk">Bulk</button>
         <button data-t="fuel">Fuel</button>
+        <button data-t="library">Library</button>
         <button data-t="coach">Coach</button>
         <button data-t="log">Log</button>
         <button data-t="settings">Settings</button>
@@ -305,6 +375,7 @@
         <section id="road"></section>
         <section id="bulk"></section>
         <section id="fuel"></section>
+        <section id="library"></section>
         <section id="coach"></section>
         <section id="log"></section>
         <section id="settings"></section>
@@ -314,6 +385,13 @@
   </div>
 
   <div class="botnav" id="botnav"></div>
+</div>
+
+<div class="overlay" id="exInfoOverlay" onclick="if(event.target===this)closeExInfo()">
+  <div class="exinfo-modal">
+    <div class="exinfo-top"><span class="exinfo-title" id="exInfoTitle">Exercise</span><button onclick="closeExInfo()" class="exinfo-x">×</button></div>
+    <div id="exInfoBody"></div>
+  </div>
 </div>
 
 <div class="overlay" id="prOverlay" onclick="this.classList.remove('show')">
@@ -2595,7 +2673,7 @@ function liveExHTML(ex,i){
   ex.advW=adv.w; ex.advLo=adv.lo; ex.advHi=adv.hi; ex.advTag=adv.tag; ex.advCls=adv.cls; ex.advMsg=adv.msg;
   let h = '<div class="liveex '+(active?'active':'')+' '+(ex.done?'done':'')+'" id="liveex-'+i+'">';
   h += '<div class="liveex-head" onclick="focusLiveEx('+i+')">';
-  h += '<div class="liveex-name">'+esc(ex.name)+'</div>';
+  h += '<div class="liveex-name">'+esc(ex.name)+'<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+esc(ex.name).replace(/'/g,"\\'")+'\')" title="Form cues">\u24d8</button></div>';
   h += '<div class="liveex-chips">';
   h += '<span class="pill" style="border-color:'+(ex.repMode==='str'?'var(--violet-dim);color:var(--violet)':'var(--line2)')+'">'+(ex.repMode==='str'?'STR · 3–6':'HYP · '+ex.lo+'–'+ex.hi)+'</span>';
   if(ex.formFocus) h += '<span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">FORM</span>';
@@ -2607,6 +2685,7 @@ function liveExHTML(ex,i){
   ex.sets.forEach((s,j)=>{
     h += '<div class="lset logged"><span class="lsn">Set '+(j+1)+'</span><span class="lchk">✓</span>'+
          '<span class="lval">'+s.w+'<span class="x">×</span>'+s.r+'</span>'+
+         setDeltaChip(ex.name, j, +s.w, +s.r)+
          (s.e?'<span class="leff e-'+s.e+'">'+s.e.toUpperCase()+'</span>':'<span class="leff">—</span>')+'</div>';
   });
   if(!ex.done){
@@ -2619,6 +2698,7 @@ function liveExHTML(ex,i){
   // dock (only on active exercise)
   if(active){
     h += '<div class="livedock">';
+    h += lastSessionStrip(ex.name);
     h += '<div class="dock-presc">'+(adv.tag?'<b style="color:'+(adv.cls==='up'?'var(--cyan)':adv.cls==='back'?'var(--red)':'var(--amber)')+'">'+esc(adv.tag)+'</b> · ':'')+esc(adv.msg)+'</div>';
     if(isPlateLift(ex.name) && adv.w){
       const pc = plateCalc(+adv.w); if(pc) h += '<div class="dock-presc" style="color:var(--muted)">Per side: '+esc(pc.txt)+' (45 lb bar)</div>';
@@ -2727,16 +2807,20 @@ function closeSummary(){ document.getElementById('summaryOverlay').classList.rem
 
 /* ===================== REST TIMER ===================== */
 const RT_C = 2*Math.PI*70;
-let rest = {running:false, secs:0, total:0, exIdx:-1, timer:null};
+/* Wall-clock rest timer: stores endTime so background pauses don't lose time.
+   On visibilitychange (returning to app), paintRest() recalculates from real clock. */
+let rest = {running:false, endTime:0, total:0, exIdx:-1, timer:null};
+function restSecsRemaining(){ return Math.max(0, Math.round((rest.endTime - Date.now()) / 1000)); }
 function startRest(seconds, exIdx){
   stopRest();
-  rest = {running:true, secs:seconds, total:seconds, exIdx:exIdx, timer:setInterval(restTick,1000)};
+  rest = {running:true, endTime:Date.now()+seconds*1000, total:seconds, exIdx:exIdx, timer:setInterval(restTick,500)};
   mountRestTimer();
 }
 function stopRest(){ if(rest.timer) clearInterval(rest.timer); rest.running=false; rest.timer=null; const slot=document.getElementById('restSlot'); if(slot) slot.innerHTML=''; }
-function restTick(){ if(rest.secs>0){ rest.secs--; paintRest(); } else { clearInterval(rest.timer); rest.timer=null; paintRest(); } }
-function adjustRest(d){ rest.secs=Math.max(0, rest.secs+d); rest.total=Math.max(rest.total, rest.secs); paintRest(); }
+function restTick(){ paintRest(); if(restSecsRemaining()<=0){ clearInterval(rest.timer); rest.timer=null; } }
+function adjustRest(d){ rest.endTime = Math.max(Date.now(), rest.endTime + d*1000); rest.total = Math.max(rest.total, restSecsRemaining()); paintRest(); }
 function skipRest(){ stopRest(); }
+document.addEventListener('visibilitychange', function(){ if(!document.hidden && rest.running) paintRest(); });
 function mountRestTimer(){
   const slot = document.getElementById('restSlot');
   if(!slot){ return; }
@@ -2751,10 +2835,11 @@ function mountRestTimer(){
 function paintRest(){
   const arc=document.getElementById('rtArc'), t=document.getElementById('rtTime'), l=document.getElementById('rtLabel');
   if(!arc||!t) return;
-  const frac = rest.total>0 ? Math.max(0,rest.secs/rest.total) : 0;
+  const secs = restSecsRemaining();
+  const frac = rest.total>0 ? Math.max(0,secs/rest.total) : 0;
   arc.style.strokeDashoffset = (RT_C*(1-frac)).toFixed(1);
-  t.textContent = Math.floor(rest.secs/60)+':'+String(rest.secs%60).padStart(2,'0');
-  if(rest.secs<=0){ arc.style.stroke='var(--cyan)'; t.style.color='var(--cyan)'; if(l) l.textContent='Ready — go'; }
+  t.textContent = Math.floor(secs/60)+':'+String(secs%60).padStart(2,'0');
+  if(secs<=0){ arc.style.stroke='var(--cyan)'; t.style.color='var(--cyan)'; if(l) l.textContent='Ready — go'; }
   else { arc.style.stroke='var(--amber)'; t.style.color='var(--text)'; if(l) l.textContent='Rest'; }
 }
 
@@ -2970,6 +3055,381 @@ function renderCoach(){
 }
 
 
+
+/* ============================================================
+   PHASE 2 — library, last-session, charts, drag-editor,
+   deload, comparison deltas, 1RM lab, sleep correlation
+   ============================================================ */
+
+/* ---- collapsible subsection helper ---- */
+function toggleSub(head){ head.parentElement.classList.toggle('open'); }
+function subSection(title, bodyHTML, openByDefault){
+  return '<div class="sub'+(openByDefault?' open':'')+'"><div class="sub-head" onclick="toggleSub(this)">'+
+    '<span>'+esc(title)+'</span><span class="chev">\u25be</span></div><div class="sub-body">'+bodyHTML+'</div></div>';
+}
+
+/* ===================== 1. EXERCISE LIBRARY ===================== */
+const EX_LIBRARY = {
+  'Barbell Bench Press':{cues:['Shoulder blades pinned back and down, chest up','Bar travels to lower-chest/nipple line, not the throat','Tuck elbows ~45° from torso, not flared to 90°','Drive feet into the floor, slight leg drive'],mistakes:['Bouncing the bar off the chest','Flaring elbows wide (shoulder strain)','Butt lifting off the bench'],setup:'Eyes under the bar, grip slightly wider than shoulders.'},
+  'Barbell Back Squat':{cues:['Brace your core like bracing for a punch before you descend','Break at hips and knees together, sit between your heels','Knees track over toes, push them out','Hit at least parallel — hip crease below knee cap'],mistakes:['Knees caving inward','Heels lifting / weight on toes','Rounding the lower back at the bottom'],setup:'Bar on rear delts (low bar) or traps (high bar), feet shoulder-width.'},
+  'Incline Dumbbell Press':{cues:['Bench at 30°, not steeper — steeper shifts load to shoulders','Lower until dumbbells are level with chest','Press up and slightly together at the top','Keep wrists stacked over elbows'],mistakes:['Bench angle too high','Clanking dumbbells together at the top','Bouncing at the bottom'],setup:'30° incline, dumbbells start at lower-chest level.'},
+  'Lat Pulldown':{cues:['Pull the bar to your upper chest, not behind the neck','Drive elbows down and back, think "elbows to back pockets"','Slight lean back, chest proud','Control the bar back up — no slingshotting'],mistakes:['Using momentum / heaving with the lower back','Pulling behind the neck','Not getting a full stretch at the top'],setup:'Grip slightly wider than shoulders, thighs locked under pad.'},
+  'Preacher Curl Machine':{cues:['Keep the back of your upper arms flat on the pad','Full stretch at the bottom, hard squeeze at the top','Control the lowering — 2-3 seconds down','Don\u2019t let the elbows drift'],mistakes:['Half reps at the top','Letting the weight yank the arm straight','Lifting the elbows off the pad'],setup:'Seat height so armpits sit at the top of the pad.'},
+  'Cable Lateral Raise':{cues:['Lead with the elbow, not the hand','Raise to shoulder height — no higher','Slight forward lean, pinky slightly up','Slow eccentric, no swinging'],mistakes:['Using traps to shrug the weight up','Going above shoulder height','Swinging with body english'],setup:'Cable at the lowest setting, handle in the far hand across the body.'},
+  'JM Press':{cues:['Half bench press, half skull crusher','Lower the bar toward the chin/upper neck','Keep elbows tucked and pointed forward','Short range, triceps stay loaded throughout'],mistakes:['Letting elbows flare','Going too heavy and losing the groove','Treating it like a full bench press'],setup:'Close-ish grip, bar starts over the upper chest.'},
+  'Hip Thrust Machine':{cues:['Chin tucked, ribs down — posterior pelvic tilt at the top','Drive through the heels','Full lockout, squeeze glutes hard for a beat','Lower under control, don\u2019t just drop'],mistakes:['Hyperextending the lower back at the top','Pushing through the toes','Short range of motion'],setup:'Pad across the hips, upper back braced on the bench/pad.'},
+  'Leg Press':{cues:['Feet shoulder-width on the platform','Lower until knees reach ~90° or just past','Don\u2019t let the lower back round off the seat','Push through the whole foot, drive the knees out'],mistakes:['Bouncing at the bottom','Locking out hard and hyperextending knees','Butt lifting off the seat (lumbar flexion)'],setup:'Back flat against the pad, feet mid-platform.'},
+  'Machine Leg Curl':{cues:['Point toes (or pull them) consistently each rep','Squeeze the hamstrings at full contraction','Slow negative — hamstrings respond to the eccentric','Keep hips pinned to the pad'],mistakes:['Lifting the hips to cheat the weight up','Rushing the lowering phase','Partial range of motion'],setup:'Pad just above the heels, knees just off the bench edge.'},
+  'Hanging Leg Raise':{cues:['Posteriorly tilt the pelvis — curl the hips up, not just the legs','Control the descent, no swinging','Exhale as you crunch up','Quality over quantity'],mistakes:['Using momentum to swing the legs','Only raising the legs (hip flexors, not abs)','Half range'],setup:'Dead hang from the bar, shoulders engaged.'}
+};
+function exLibInfo(name){
+  if(EX_LIBRARY[name]) return EX_LIBRARY[name];
+  const n=name.toLowerCase();
+  // keyword fallback so every exercise gets something useful
+  if(/squat/.test(n)) return EX_LIBRARY['Barbell Back Squat'];
+  if(/bench/.test(n)) return EX_LIBRARY['Barbell Bench Press'];
+  if(/incline.*press|incline.*db/.test(n)) return EX_LIBRARY['Incline Dumbbell Press'];
+  if(/pulldown|pull-?up|pullup/.test(n)) return EX_LIBRARY['Lat Pulldown'];
+  if(/preacher|curl/.test(n)) return EX_LIBRARY['Preacher Curl Machine'];
+  if(/lateral|side raise|lat raise/.test(n)) return EX_LIBRARY['Cable Lateral Raise'];
+  if(/leg press/.test(n)) return EX_LIBRARY['Leg Press'];
+  if(/leg curl|hamstring/.test(n)) return EX_LIBRARY['Machine Leg Curl'];
+  if(/hip thrust|glute/.test(n)) return EX_LIBRARY['Hip Thrust Machine'];
+  if(/jm press|pushdown|tricep|skull|extension.*tri/.test(n)) return EX_LIBRARY['JM Press'];
+  if(/leg raise|crunch|ab |core/.test(n)) return EX_LIBRARY['Hanging Leg Raise'];
+  const m=musclesFor(name);
+  return {cues:['Controlled tempo — own the eccentric (lowering)','Full range of motion through the working muscle','Stop 1\u20132 reps short of failure on most sets','Match or beat last session\u2019s reps before adding weight'],
+    mistakes:['Using momentum instead of the target muscle','Cutting the range of motion short','Adding weight before owning the current load'],
+    setup:'Primary: '+((m.p||[]).join(', ')||'\u2014')+(m.s&&m.s.length?'. Secondary: '+m.s.join(', '):'')+'.'};
+}
+function exInfoCardHTML(name){
+  const info=exLibInfo(name); const mus=musclesFor(name);
+  let h='<div class="exinfo-muscles">';
+  (mus.p||[]).forEach(m=>h+='<span class="pill" style="border-color:var(--amber-dim);color:var(--amber)">'+esc(m)+'</span>');
+  (mus.s||[]).forEach(m=>h+='<span class="pill">'+esc(m)+'</span>');
+  h+='</div>';
+  h+='<div class="exinfo-sec"><div class="exinfo-h">Setup</div><p class="small">'+esc(info.setup)+'</p></div>';
+  h+='<div class="exinfo-sec"><div class="exinfo-h">Cues</div>'+info.cues.map(c=>'<div class="exinfo-cue"><span>\u2713</span>'+esc(c)+'</div>').join('')+'</div>';
+  h+='<div class="exinfo-sec"><div class="exinfo-h">Common mistakes</div>'+info.mistakes.map(c=>'<div class="exinfo-cue bad"><span>\u2717</span>'+esc(c)+'</div>').join('')+'</div>';
+  return h;
+}
+function showExInfo(name){
+  document.getElementById('exInfoTitle').textContent=name;
+  document.getElementById('exInfoBody').innerHTML=exInfoCardHTML(name);
+  document.getElementById('exInfoOverlay').classList.add('show');
+}
+function closeExInfo(){ document.getElementById('exInfoOverlay').classList.remove('show'); }
+
+/* ===================== 2 + 6. LAST SESSION + DELTAS ===================== */
+function lastSessionFor(name){ const h=historyFor(name); return h.length?h[0]:null; }
+function lastSessionStrip(name){
+  const ls=lastSessionFor(name);
+  if(!ls) return '<div class="dock-last"><span class="dl-tag">First time</span> no prior data for this lift</div>';
+  const sets=ls.sets.map(s=>s.w+'×'+s.r+(s.e?({easy:'\u1d49',solid:'',grind:'\u1d4d',fail:'\u1da0'}[s.e]||''):'')).join('  ');
+  return '<div class="dock-last"><span class="dl-tag">Last \u00b7 '+fmtDate(ls.date)+'</span>'+esc(sets)+'</div>';
+}
+function setDeltaChip(name, setIdx, w, r){
+  const ls=lastSessionFor(name); if(!ls||!ls.sets[setIdx]) return '';
+  const pw=+ls.sets[setIdx].w||0, pr=+ls.sets[setIdx].r||0;
+  const dw=w-pw, dr=r-pr;
+  if(dw===0 && dr===0) return '<span class="delta same">=</span>';
+  let parts=[];
+  if(dw!==0) parts.push((dw>0?'+':'')+dw+'lb');
+  if(dr!==0) parts.push((dr>0?'+':'')+dr+'r');
+  const better = dw>0 || (dw===0&&dr>0);
+  return '<span class="delta '+(better?'up':(dw<0&&dr<=0?'down':'same'))+'">'+parts.join(' ')+'</span>';
+}
+
+/* ===================== 3. CHARTS (injected) ===================== */
+function chartCard(title, pts, color, sub){
+  if(!pts || pts.length<1) return '';
+  return '<div class="card"><div class="chart-h">'+esc(title)+(sub?'<span class="chart-sub">'+esc(sub)+'</span>':'')+'</div>'+lineChart(pts,color)+'</div>';
+}
+function volumeSeries(){
+  // weekly total tonnage over time (per training week)
+  const byWeek={};
+  S.logs.forEach(l=>{ const wk=weekKeyOf(l.date); const v=l.entries.reduce((a,e)=>a+e.sets.reduce((b,s)=>b+(+s.w||0)*(+s.r||0),0),0); byWeek[wk]=(byWeek[wk]||0)+v; });
+  return Object.keys(byWeek).sort().map(k=>({date:k, v:Math.round(byWeek[k])}));
+}
+function weekKeyOf(dateStr){
+  // Monday-anchored week key for grouping
+  const d=new Date(dateStr+'T00:00:00'); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function injectRoadCharts(){
+  const sec=document.getElementById('road'); if(!sec) return;
+  const cards=sec.querySelectorAll('.goal-card');
+  S.road.forEach((g,gi)=>{
+    const c=cards[gi]; if(!c || c.querySelector('.goal-chart')) return;
+    const pts=prSeries(g.exercise); if(pts.length<1) return;
+    const div=document.createElement('div'); div.className='goal-chart'; div.style.marginTop='12px';
+    div.innerHTML='<div class="chart-h" style="font-size:11px">PR progression</div>'+lineChart(pts,'#F6862F');
+    c.appendChild(div);
+  });
+}
+function injectBulkChart(){
+  const sec=document.getElementById('bulk'); if(!sec || sec.querySelector('.bw-chart')) return;
+  const pts=bodyweightSeries(); if(pts.length<1) return;
+  const div=document.createElement('div'); div.className='card bw-chart';
+  div.innerHTML='<div class="chart-h">Bodyweight trend<span class="chart-sub">'+pts.length+' weigh-ins</span></div>'+lineChart(pts,'#46CDBA');
+  sec.insertBefore(div, sec.firstChild.nextSibling||null);
+}
+
+/* ===================== 5. DELOAD DETECTION ===================== */
+function deloadCheck(){
+  const reasons=[]; let score=0;
+  const mains=['Barbell Bench Press','Barbell Back Squat'];
+  // 1) main lift e1RM flat/declining over last 4 sessions
+  mains.forEach(ex=>{
+    const pts=e1rmSeries(ex); if(pts.length>=4){
+      const recent=pts.slice(-4); const first=recent[0].v, last=recent[recent.length-1].v;
+      if(last < first*0.985){ reasons.push(ex.replace('Barbell ','')+' e1RM has slipped over the last 4 sessions'); score+=2; }
+      else if(last < first*1.005){ reasons.push(ex.replace('Barbell ','')+' has stalled (no e1RM gain in 4 sessions)'); score+=1; }
+    }
+  });
+  // 2) recent grind/fail density across last ~10 logged sessions
+  const recentLogs=[...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+  let grind=0, total=0;
+  recentLogs.forEach(l=>l.entries.forEach(e=>e.sets.forEach(s=>{ total++; if(s.e==='grind'||s.e==='fail') grind++; })));
+  if(total>=10){ const pct=grind/total; if(pct>=0.4){ reasons.push(Math.round(pct*100)+'% of recent sets tagged grind/fail \u2014 effort is creeping up'); score+=2; } else if(pct>=0.25){ reasons.push('A quarter of recent sets are grinders'); score+=1; } }
+  // 3) consecutive training weeks (sessions logged) without a light week
+  const weeks=new Set(S.logs.map(l=>weekKeyOf(l.date)));
+  if(weeks.size>=6){ reasons.push(weeks.size+' weeks of accumulated training on record'); score+=1; }
+  let severity = score>=4 ? 'recommend' : score>=2 ? 'watch' : 'clear';
+  return {severity, score, reasons};
+}
+function deloadCardHTML(){
+  const d=deloadCheck();
+  if(d.severity==='clear'){
+    return '<div class="card" style="border-left:3px solid var(--cyan)"><div class="chart-h" style="margin-bottom:4px">Fatigue check <span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">Clear</span></div><p class="small">No deload signals right now \u2014 recovery is keeping up with the work. Keep pushing.</p></div>';
+  }
+  const col = d.severity==='recommend' ? 'var(--red)' : 'var(--amber)';
+  const head = d.severity==='recommend' ? 'Deload recommended' : 'Watch for fatigue';
+  let how = d.severity==='recommend'
+    ? 'Take a deload week: keep the same exercises but drop to ~60% of your working weights, cut each lift to 2 sets, and stay 3\u20134 reps shy of failure. You\u2019ll come back stronger \u2014 fatigue is masking fitness right now.'
+    : 'Not urgent, but the signals are building. Make sure you\u2019re hitting 3000+ cal and 8h sleep this week. If the grinders keep stacking up, deload next week.';
+  return '<div class="card" style="border-left:3px solid '+col+'"><div class="chart-h" style="margin-bottom:6px">Fatigue check <span class="pill" style="border-color:'+col+';color:'+col+'">'+head+'</span></div>'+
+    '<div class="small" style="margin-bottom:8px">'+d.reasons.map(r=>'<div class="exinfo-cue"><span style="color:'+col+'">\u25b8</span>'+esc(r)+'</div>').join('')+'</div>'+
+    '<p class="small" style="color:var(--text)">'+how+'</p></div>';
+}
+
+/* ===================== 7. 1RM TEST PROTOCOL ===================== */
+function oneRMRamp(target){
+  target=Math.round(target);
+  const round5=w=>Math.round(w/5)*5;
+  const steps=[
+    {pct:0,   reps:'8\u201310', rest:'\u2014',    label:'Empty bar', note:'Grease the groove'},
+    {pct:.40, reps:5,          rest:'60s',  label:'Warm-up'},
+    {pct:.60, reps:3,          rest:'90s',  label:'Warm-up'},
+    {pct:.75, reps:2,          rest:'2 min', label:'Warm-up'},
+    {pct:.85, reps:1,          rest:'2\u20133 min', label:'Primer'},
+    {pct:.93, reps:1,          rest:'3\u20134 min', label:'Last primer', note:'Should move fast'},
+    {pct:1.00,reps:1,          rest:'3\u20135 min', label:'1RM ATTEMPT', attempt:true},
+    {pct:1.03,reps:1,          rest:'3\u20135 min', label:'If it flew \u2014 small jump', attempt:true}
+  ];
+  return steps.map(s=>({...s, w: s.pct===0 ? 'Bar' : round5(target*s.pct)}));
+}
+function render1RMLab(){
+  const el=document.getElementById('onerm'); if(!el) return;
+  const mains=[...new Set([...Object.keys(PR_LIFTS), ...Object.values(S.split).flatMap(d=>(d.exercises||[]).map(exName))])];
+  const sel = window._rmLift || 'Barbell Bench Press';
+  const e1=Math.round(bestE1RM(sel)||0);
+  const pr=actualPR(sel);
+  const est = window._rmTarget || (e1||(pr?pr.w:135));
+  let h='<p class="small">A structured warm-up ramp to a true 1-rep max. Test a main lift every 8\u201312 weeks \u2014 not more. Make sure you\u2019re fresh (ideally after a rest day) and have a spotter for bench.</p>';
+  h+='<div class="card"><div class="row">'+
+     '<div><label>Lift</label><select id="rmLift" onchange="setRmLift(this.value)">'+mains.map(m=>'<option'+(m===sel?' selected':'')+'>'+esc(m)+'</option>').join('')+'</select></div>'+
+     '<div><label>Target 1RM (lb)</label><input id="rmTarget" inputmode="numeric" value="'+est+'" onchange="setRmTarget(this.value)"></div>'+
+     '</div>'+
+     '<p class="small" style="margin-top:8px">'+(e1?('Your current estimated 1RM is ~<b style="color:var(--amber)">'+e1+' lb</b> (from logged sets). '):'')+'Adjust the target if you\u2019re feeling strong or conservative.</p></div>';
+  const ramp=oneRMRamp(+est||135);
+  h+='<div class="card" style="padding:0;overflow:hidden">';
+  ramp.forEach((s,i)=>{
+    h+='<div class="rm-step'+(s.attempt?' attempt':'')+'">'+
+       '<div class="rm-w">'+(s.w==='Bar'?'Bar':s.w+'<span class="rm-lb">lb</span>')+'</div>'+
+       '<div class="rm-mid"><div class="rm-label">'+esc(s.label)+(s.pct>0?' \u00b7 '+Math.round(s.pct*100)+'%':'')+'</div>'+(s.note?'<div class="rm-note">'+esc(s.note)+'</div>':'')+'</div>'+
+       '<div class="rm-reps">\u00d7'+s.reps+'</div>'+
+       '<div class="rm-rest">'+s.rest+'</div>'+
+       '</div>';
+  });
+  h+='</div>';
+  h+='<p class="small">After a successful single moves fast, take one more small jump (+3\u20135%). The first rep that grinds hard or stalls is your max for the day \u2014 stop there.</p>';
+  el.innerHTML=h;
+}
+function setRmLift(v){ window._rmLift=v; const e1=Math.round(bestE1RM(v)||0); const pr=actualPR(v); window._rmTarget = e1||(pr?pr.w:135); render1RMLab(); }
+function setRmTarget(v){ window._rmTarget=parseInt(v)||135; render1RMLab(); }
+
+/* ===================== 8. SLEEP / PERFORMANCE ===================== */
+const SLEEP_SCORE={'<6':1,'6-7':2,'7-8':3,'8+':4};
+function quickLogSleep(bucket){
+  const k=todayKey();
+  let rd=S.readiness.find(r=>r.date===k);
+  if(rd){ rd.sleep=bucket; } else { S.readiness.push({date:k, sleep:bucket, sore:'', energy:'', tier:'ok'}); }
+  save(); renderSleep();
+}
+function sleepPerfData(){
+  // pair each day's sleep bucket with that day's best e1RM across logged lifts
+  const out=[];
+  S.readiness.forEach(r=>{
+    if(!r.sleep || !SLEEP_SCORE[r.sleep]) return;
+    const log=S.logs.find(l=>l.date===r.date); if(!log) return;
+    let best=0;
+    log.entries.forEach(e=>e.sets.forEach(s=>{ const v=epley(+s.w||0,+s.r||0); if(v>best) best=v; }));
+    if(best>0) out.push({date:r.date, sleep:SLEEP_SCORE[r.sleep], bucket:r.sleep, perf:Math.round(best)});
+  });
+  return out;
+}
+function renderSleep(){
+  const el=document.getElementById('sleep'); if(!el) return;
+  const today=S.readiness.find(r=>r.date===todayKey());
+  let h='<p class="small">Log how you slept and the app tracks whether your strength actually tracks with sleep. Sleep is logged automatically when you do a pre-session check-in too.</p>';
+  h+='<div class="card"><div class="chart-h" style="margin-bottom:8px">Last night\u2019s sleep'+(today&&today.sleep?' <span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">logged: '+esc(today.sleep)+'h</span>':'')+'</div>'+
+     '<div class="sleep-btns">'+['<6','6-7','7-8','8+'].map(b=>'<button class="'+(today&&today.sleep===b?'sel':'')+'" onclick="quickLogSleep(\''+b+'\')">'+b+'h</button>').join('')+'</div></div>';
+  const data=sleepPerfData();
+  if(data.length<3){
+    h+='<div class="card"><p class="small">Not enough overlapping data yet \u2014 keep logging sleep and training for about a week and a correlation view will appear here. ('+data.length+'/3 days so far.)</p></div>';
+  } else {
+    const good=data.filter(d=>d.sleep>=3), poor=data.filter(d=>d.sleep<=2);
+    const avg=arr=>arr.length?Math.round(arr.reduce((a,b)=>a+b.perf,0)/arr.length):0;
+    const gAvg=avg(good), pAvg=avg(poor);
+    h+='<div class="card"><div class="chart-h" style="margin-bottom:10px">Sleep vs strength output</div>';
+    if(good.length && poor.length){
+      const diff=gAvg-pAvg; const pct=pAvg?Math.round(diff/pAvg*100):0;
+      h+='<div class="stats" style="margin-bottom:10px">'+
+        '<div class="stat"><div class="v good">'+gAvg+'</div><div class="l">Avg e1RM \u00b7 7h+ sleep</div><div class="s">'+good.length+' days</div></div>'+
+        '<div class="stat"><div class="v '+(pAvg<gAvg?'bad':'')+'">'+pAvg+'</div><div class="l">Avg e1RM \u00b7 under 7h</div><div class="s">'+poor.length+' days</div></div>'+
+        '</div>';
+      h+='<p class="small" style="color:var(--text)">'+(diff>0
+        ? 'On nights you slept 7h+, your best lifts averaged <b style="color:var(--cyan)">'+pct+'% higher</b>. The pattern is real \u2014 protect your sleep like it\u2019s part of the program, because it is.'
+        : 'Interestingly, no clear strength penalty from shorter sleep in your data so far. Keep logging \u2014 small samples can hide the effect, and sleep still drives recovery and growth beyond just today\u2019s numbers.')+'</p>';
+    } else {
+      h+='<p class="small">You\u2019ve been consistent on one side of the sleep range \u2014 once you have a mix of good and short nights logged, the comparison will populate.</p>';
+    }
+    // simple trend of perf points
+    h+='<div style="margin-top:10px">'+lineChart(data.map(d=>({date:d.date,v:d.perf})),'#B79BFF')+'</div></div>';
+  }
+  el.innerHTML=h;
+}
+
+/* ===================== LIBRARY TAB ===================== */
+function renderLibrary(){
+  const el=document.getElementById('library'); if(!el) return;
+  const all=[...new Set(Object.values(S.split).flatMap(d=>(d.exercises||[]).map(exName)))].sort();
+  let h='<p class="small">Every exercise in your split with setup, cues, and common mistakes. Tap any lift. You can also pull this up mid-set from the live screen.</p>';
+  // group by day
+  Object.keys(S.split).forEach(dk=>{
+    const d=S.split[dk]; const list=(d.exercises||[]).map(exName);
+    if(!list.length) return;
+    h+='<div class="lib-day"><div class="lib-dh" style="color:'+(d.hex||'#8d909a')+'">'+dk+' \u00b7 '+esc(d.name||'')+'</div>';
+    list.forEach(nm=>{
+      h+='<button class="lib-ex" onclick="showExInfo(\''+esc(nm).replace(/'/g,"\\'")+'\')"><span>'+esc(nm)+'</span><span class="lib-arrow">view \u203a</span></button>';
+    });
+    h+='</div>';
+  });
+  el.innerHTML=h;
+}
+
+/* ===================== 4. DRAG-DROP SPLIT EDITOR ===================== */
+function moveExTo(dk, from, to){
+  const list=S.split[dk].exercises; if(!list) return;
+  if(to<0||to>=list.length||from===to) return;
+  const [item]=list.splice(from,1); list.splice(to,0,item);
+  save(); refreshSplitEditor();
+}
+let _dragSrc=null;
+function enableSplitDrag(){
+  document.querySelectorAll('#sdWrap .sd-ex').forEach(row=>{
+    row.setAttribute('draggable','true');
+    row.addEventListener('dragstart',e=>{ _dragSrc=row; row.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragend',()=>{ row.classList.remove('dragging'); document.querySelectorAll('.sd-ex.dragover').forEach(r=>r.classList.remove('dragover')); });
+    row.addEventListener('dragover',e=>{ e.preventDefault(); if(_dragSrc && _dragSrc!==row && _dragSrc.parentElement===row.parentElement){ row.classList.add('dragover'); } });
+    row.addEventListener('dragleave',()=>row.classList.remove('dragover'));
+    row.addEventListener('drop',e=>{ e.preventDefault(); row.classList.remove('dragover');
+      if(_dragSrc && _dragSrc!==row && _dragSrc.parentElement===row.parentElement){
+        const dk=row.getAttribute('data-dk'); const from=+_dragSrc.getAttribute('data-i'); const to=+row.getAttribute('data-i');
+        moveExTo(dk, from, to);
+      }
+    });
+  });
+}
+
+/* ===================== OVERRIDES / WIRING ===================== */
+/* enhanced split editor: adds drag handle + data attrs, keeps arrows */
+function splitEditorHTML(){
+  let h='';
+  Object.keys(S.split).forEach(dk=>{
+    const d=S.split[dk]; const list=d.exercises||[];
+    h+='<div class="sd-day"><div class="sd-dhead" onclick="toggleSdDay(\''+dk+'\')">'+
+      '<span class="dk" style="color:'+(d.hex||'#8d909a')+'">'+dk+'</span>'+
+      '<input class="dn" style="background:var(--base);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:4px 8px;font-size:12px;flex:1;max-width:240px" value="'+esc(d.name||'')+'" onclick="event.stopPropagation()" onchange="renameDay(\''+dk+'\',this.value)">'+
+      '<span class="chev" id="chev-'+dk+'">\u25be</span></div>'+
+      '<div class="sd-body" id="sdbody-'+dk+'">';
+    list.forEach((x,i)=>{
+      const nm=exName(x), inc=exInc(x);
+      const ff=typeof x==='object' && !!x.formFocus;
+      const str=typeof x==='object' && x.repMode==='str';
+      h+='<div class="sd-ex" data-dk="'+dk+'" data-i="'+i+'">'+
+        '<span class="drag-h" title="Drag to reorder">\u2630</span>'+
+        '<input class="nm" value="'+esc(nm)+'" onchange="renameEx(\''+dk+'\','+i+',this.value)">'+
+        '<div class="inc-presets" title="Weight increment">'+
+          INC_PRESETS.map(v=>'<button class="'+(Math.abs(inc-v)<0.01?'sel':'')+'" onclick="setInc(\''+dk+'\','+i+','+v+')">+'+v+'</button>').join('')+
+        '</div>'+
+        '<button class="ord ff-toggle" style="'+(ff?'color:var(--cyan);border-color:var(--cyan);font-weight:800':'')+'" onclick="toggleFormFocus(\''+dk+'\','+i+')">FORM</button>'+
+        '<button class="ord ff-toggle" style="'+(str?'color:var(--violet);border-color:var(--violet);font-weight:800':'')+'" onclick="toggleRepMode(\''+dk+'\','+i+')">'+(str?'STR':'HYP')+'</button>'+
+        '<button class="ord" title="Move up" onclick="moveEx(\''+dk+'\','+i+',-1)">\u2191</button>'+
+        '<button class="ord" title="Move down" onclick="moveEx(\''+dk+'\','+i+',1)">\u2193</button>'+
+        '<button class="xx" title="Delete" onclick="delEx(\''+dk+'\','+i+')">\u00d7</button>'+
+      '</div>';
+    });
+    h+='<div style="padding:8px 0 2px"><button class="btn ghost sm" onclick="addEx(\''+dk+'\')">+ add exercise</button></div>';
+    h+='</div></div>';
+  });
+  return h;
+}
+function refreshSplitEditor(){ const w=$('#sdWrap'); if(w){ w.innerHTML=splitEditorHTML(); enableSplitDrag(); } }
+
+/* Progress: body map + ported progress + Trends(volume) + Fatigue check */
+function renderProgressV2(){
+  renderProgress();
+  const sec=document.getElementById('progress'); if(!sec) return;
+  if(!sec.querySelector('.bodymap-card')){
+    const wrap=document.createElement('div'); wrap.innerHTML=bodyMapCardHTML('progress');
+    sec.insertBefore(wrap.firstElementChild, sec.firstChild); initBodyMap('progress');
+  }
+  if(!sec.querySelector('.p2-extras')){
+    const extras=document.createElement('div'); extras.className='p2-extras';
+    const vol=volumeSeries();
+    extras.innerHTML = deloadCardHTML() + (vol.length>=1 ? subSection('Volume trend', '<div class="chart-h" style="font-size:11px">Weekly tonnage (lb lifted)</div>'+lineChart(vol,'#46CDBA'), false) : '');
+    sec.appendChild(extras);
+  }
+}
+/* Road: goals + PR charts + 1RM lab subsection */
+function renderRoadV2(){
+  renderRoad();
+  injectRoadCharts();
+  const sec=document.getElementById('road'); if(!sec || sec.querySelector('.p2-onerm')) return;
+  const wrap=document.createElement('div'); wrap.className='p2-onerm';
+  wrap.innerHTML = '<h2>Tools</h2>' + subSection('1RM Test Lab', '<div id="onerm"></div>', false);
+  sec.appendChild(wrap);
+  render1RMLab();
+}
+/* Bulk: bodyweight chart + sleep/recovery subsection */
+function renderBulkV2(){
+  renderBulk();
+  injectBulkChart();
+  const sec=document.getElementById('bulk'); if(!sec || sec.querySelector('.p2-sleep')) return;
+  const wrap=document.createElement('div'); wrap.className='p2-sleep';
+  wrap.innerHTML = '<h2>Recovery</h2>' + subSection('Sleep & performance', '<div id="sleep"></div>', false);
+  sec.appendChild(wrap);
+  renderSleep();
+}
+/* re-point the review render map to the V2 wrappers + library */
+REVIEW_RENDER.progress = renderProgressV2;
+REVIEW_RENDER.road = renderRoadV2;
+REVIEW_RENDER.bulk = renderBulkV2;
+REVIEW_RENDER.library = renderLibrary;
+REVIEW_RENDER.settings = function(){ renderSettings(); enableSplitDrag(); };
+
 /* ===================== BOOT ===================== */
 setAccent();
 setupPWA();
@@ -2988,4 +3448,3 @@ try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progres
 </script>
 </body>
 </html>
-
