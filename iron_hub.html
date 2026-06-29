@@ -135,7 +135,7 @@
 
   .sd-day{margin:10px 0; border:1px solid var(--line); border-radius:4px; overflow:hidden;}
   .sd-dhead{padding:11px 13px; background:var(--panel2); display:flex; align-items:center; gap:9px; cursor:pointer;}
-  .sd-body{padding:11px 13px; display:none;} .sd-day.open .sd-body{display:block;}
+  .sd-body{padding:11px 13px; display:none;} .sd-body.open{display:block;}
   .sd-ex{display:flex; align-items:center; gap:6px; padding:6px 0; flex-wrap:wrap; border-top:1px solid var(--line);}
   .sd-ex .nm{flex:1; min-width:120px;}
   .inc-presets{display:flex; gap:3px;} .inc-presets button{font-family:var(--mono); font-size:10px; padding:4px 7px; border:1px solid var(--line2); background:var(--base); color:var(--muted); border-radius:2px;}
@@ -741,16 +741,23 @@ const EX_MUSCLES = {
   'V-Cable Tricep Pushdown':{p:['Triceps'],s:[]},
   'Dumbbell Overhead Extension':{p:['Triceps'],s:[]},
   'Barbell Back Squat':{p:['Quads','Glutes'],s:['Hamstrings']},
+  'Trap Bar Deadlift':{cues:['Hinge at the hips, push the floor away — it\'s a deadlift not a squat','Neutral spine throughout — no rounding the lower back at lockout','Bar stays close to your body, arms hang vertical','Full hip extension at the top, squeeze glutes'],mistakes:['Squatting the weight up (knees too far forward)','Rounding the lower back off the floor','Jerking the bar off the floor instead of building tension first'],setup:'Stand centered in the trap bar, feet hip-width, handles level with mid-shin.'},
   'Leg Press':{p:['Quads','Glutes'],s:[]},
   'Machine Leg Curl':{p:['Hamstrings'],s:[]},
   'Machine Leg Extension':{p:['Quads'],s:[]},
   'Hip Thrust Machine':{p:['Glutes'],s:['Hamstrings']},
   'Hanging Leg Raise':{p:['Abs'],s:[]},
-  'Abdominal Machine':{p:['Abs'],s:[]}
+  'Abdominal Machine':{p:['Abs'],s:[]},
+  'Trap Bar Deadlift':{p:['Glutes','Hamstrings'],s:['Back']},
+  'Conventional Deadlift':{p:['Glutes','Hamstrings'],s:['Back']},
+  'Romanian Deadlift':{p:['Hamstrings','Glutes'],s:['Back']},
+  'Sumo Deadlift':{p:['Glutes','Quads'],s:['Hamstrings','Back']}
 };
 function musclesFor(ex){
   if(EX_MUSCLES[ex]) return EX_MUSCLES[ex];
   const n = ex.toLowerCase(); // fallback keyword inference for custom exercises
+  if(/trap bar|trap-bar/.test(n)) return {p:['Glutes','Hamstrings'],s:['Back']};
+  if(/deadlift|rdl|romanian/.test(n)) return {p:['Hamstrings','Glutes'],s:['Back']};
   if(/squat|leg press|lunge|hack/.test(n)) return {p:['Quads','Glutes'],s:['Hamstrings']};
   if(/leg curl|rdl|romanian|hamstring/.test(n)) return {p:['Hamstrings'],s:[]};
   if(/extension/.test(n) && /leg/.test(n)) return {p:['Quads'],s:[]};
@@ -2669,6 +2676,7 @@ function liveIdleHTML(){
 }
 function liveExHTML(ex,i){
   const active = i===liveActiveIdx && !ex.done;
+  if(ex._1rm) return liveExHTML_1rm(ex, i, active);
   const adv = intraAdvice(ex);
   ex.advW=adv.w; ex.advLo=adv.lo; ex.advHi=adv.hi; ex.advTag=adv.tag; ex.advCls=adv.cls; ex.advMsg=adv.msg;
   let h = '<div class="liveex '+(active?'active':'')+' '+(ex.done?'done':'')+'" id="liveex-'+i+'">';
@@ -2679,6 +2687,7 @@ function liveExHTML(ex,i){
   if(ex.formFocus) h += '<span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">FORM</span>';
   if(ex.done) h += '<span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">✓ Done</span>';
   else if(active) h += '<span class="pill" style="border-color:var(--amber);color:var(--amber)">▸ Active</span>';
+  if(!ex.done) h += '<button class="ex-info-btn" onclick="event.stopPropagation();activate1RM('+i+')" title="Switch to 1RM test mode" style="color:var(--violet);font-size:11px;margin-left:4px">1RM</button>';
   h += '</div></div>';
   // logged sets
   h += '<div class="liveex-sets">';
@@ -2737,7 +2746,14 @@ function logLiveSet(i){
   liveDockEff = '';
   saveLiveDraft();
   // auto-start rest with mode-appropriate duration
-  startRest(ex.repMode==='str' && !ex.formFocus ? 180 : 110, i);
+  // rest: use ramp step timing in 1RM mode, else mode-based default
+  if(ex._1rm && ex._1rmRamp){
+    const stepIdx = ex.sets.length - 1; // just logged
+    const step = ex._1rmRamp[stepIdx];
+    startRest(step ? rampRestSecs(step) : 180, i);
+  } else {
+    startRest(ex.repMode==='str' && !ex.formFocus ? 180 : 110, i);
+  }
   renderLive();
   document.getElementById('liveex-'+i).scrollIntoView({behavior:'smooth', block:'center'});
 }
@@ -2847,7 +2863,7 @@ function paintRest(){
 const BM_GROUPS = ['chest','traps','frontDelts','sideDelts','rearDelts','biceps','triceps','forearms','abs','obliques','lats','lowerBack','glutes','quads','hamstrings','calves'];
 const BM_LABELS = {chest:'Chest',traps:'Trapezius',frontDelts:'Front delts',sideDelts:'Side delts',rearDelts:'Rear delts',biceps:'Biceps',triceps:'Triceps',forearms:'Forearms',abs:'Abs',obliques:'Obliques',lats:'Lats',lowerBack:'Lower back',glutes:'Glutes',quads:'Quads',hamstrings:'Hamstrings',calves:'Calves'};
 /* map fine heatmap groups -> V1 broad groups */
-const BM_TO_BROAD = {chest:'Chest',traps:'Back',frontDelts:'Shoulders',sideDelts:'Shoulders',rearDelts:'Shoulders',biceps:'Biceps',triceps:'Triceps',forearms:null,abs:'Abs',obliques:'Abs',lats:'Back',lowerBack:null,glutes:'Glutes',quads:'Quads',hamstrings:'Hamstrings',calves:null};
+const BM_TO_BROAD = {chest:'Chest',traps:'Back',frontDelts:'Shoulders',sideDelts:'Shoulders',rearDelts:'Shoulders',biceps:'Biceps',triceps:'Triceps',forearms:'Biceps',abs:'Abs',obliques:'Abs',lats:'Back',lowerBack:'Back',glutes:'Glutes',quads:'Quads',hamstrings:'Hamstrings',calves:'Quads'};
 const BM_C = {green:'#3a9e6e',yellow:'#c9952a',red:'#c04040',off:'#39424e'};
 const BM_OP = {green:.92,yellow:.86,red:.86,off:.34};
 let bmState = {}; // container -> {mode, selected}
@@ -3254,7 +3270,37 @@ function render1RMLab(){
   });
   h+='</div>';
   h+='<p class="small">After a successful single moves fast, take one more small jump (+3\u20135%). The first rep that grinds hard or stalls is your max for the day \u2014 stop there.</p>';
+
+  // plate calculator
+  h+='<div class="card"><div class="chart-h" style="margin-bottom:10px">Plate Calculator <span class="chart-sub">45 lb bar</span></div>'+
+     '<div class="row" style="margin-bottom:10px">'+
+     '<div><label>Weight (lb)</label><input id="pcWeight" inputmode="numeric" placeholder="185" oninput="calcPlates(this.value)"></div>'+
+     '</div>'+
+     '<div id="pcOut" class="small" style="font-family:var(--mono);line-height:2"></div></div>';
+
   el.innerHTML=h;
+
+  // pre-fill plate calc with current target
+  const pcIn = document.getElementById('pcOut');
+  if(pcIn) calcPlates(+est||135);
+}
+
+function calcPlates(total){
+  const out = document.getElementById('pcOut'); if(!out) return;
+  total = Math.round(+total||0);
+  const BAR = 45;
+  if(total < BAR){ out.innerHTML='<span style="color:var(--red)">Below bar weight (45 lb)</span>'; return; }
+  if(total === BAR){ out.innerHTML='Empty bar · 45 lb'; return; }
+  let per = (total - BAR) / 2;
+  const plates = [45,35,25,10,5,2.5];
+  const used = []; let rem = per;
+  plates.forEach(p=>{ while(rem >= p-0.001){ used.push(p); rem -= p; } });
+  if(rem > 0.1){ out.innerHTML='<span style="color:var(--amber)">Cannot make '+total+' lb exactly with standard plates ('+rem.toFixed(1)+' lb short)</span>'; return; }
+  // group plates
+  const counts = {}; used.forEach(p=>counts[p]=(counts[p]||0)+1);
+  const summary = plates.filter(p=>counts[p]).map(p=>counts[p]+'\u00d7'+p).join(' + ');
+  out.innerHTML='<div style="color:var(--amber);font-size:15px;margin-bottom:4px">'+summary+' <span style="font-size:11px;color:var(--dim)">per side</span></div>'+
+    '<div style="color:var(--muted)">Total: <b style="color:var(--text)">'+total+' lb</b> · '+used.length+' plate'+(used.length!==1?'s':'')+' per side</div>';
 }
 function setRmLift(v){ window._rmLift=v; const e1=Math.round(bestE1RM(v)||0); const pr=actualPR(v); window._rmTarget = e1||(pr?pr.w:135); render1RMLab(); }
 function setRmTarget(v){ window._rmTarget=parseInt(v)||135; render1RMLab(); }
@@ -3428,6 +3474,109 @@ REVIEW_RENDER.road = renderRoadV2;
 REVIEW_RENDER.bulk = renderBulkV2;
 REVIEW_RENDER.library = renderLibrary;
 REVIEW_RENDER.settings = function(){ renderSettings(); enableSplitDrag(); };
+
+/* ===================== 1RM LIVE MODE ===================== */
+function rampRestSecs(step){
+  const r = step.rest||'';
+  if(!r||r==='—') return 60;
+  if(/^60/.test(r)) return 60;
+  if(/^90/.test(r)) return 90;
+  if(/2 min$/.test(r)) return 120;
+  if(/2/.test(r)&&/3/.test(r)) return 150;
+  if(/3/.test(r)&&/4/.test(r)) return 210;
+  if(/3/.test(r)&&/5/.test(r)) return 240;
+  return 120;
+}
+function activate1RM(i){
+  if(event) event.stopPropagation();
+  const ex = live.exercises[i];
+  const e1 = Math.round(bestE1RM(ex.name)||0);
+  const pr = (typeof actualPR==='function') ? actualPR(ex.name) : null;
+  const target = e1 || (pr?pr.w:0) || ex.targetW || 135;
+  ex._1rm = true;
+  ex._1rmTarget = target;
+  ex._1rmRamp = oneRMRamp(target);
+  ex.sets = [];
+  liveDockEff = '';
+  saveLiveDraft();
+  renderLive();
+  document.getElementById('liveex-'+i).scrollIntoView({behavior:'smooth',block:'center'});
+}
+function cancel1RM(i){
+  if(event) event.stopPropagation();
+  live.exercises[i]._1rm = false;
+  live.exercises[i]._1rmRamp = null;
+  live.exercises[i].sets = [];
+  saveLiveDraft();
+  renderLive();
+}
+function liveExHTML_1rm(ex, i, active){
+  const ramp = ex._1rmRamp || oneRMRamp(ex._1rmTarget||ex.targetW||135);
+  const curStep = ex.sets.length;
+  const allDone = ex.done || curStep >= ramp.length;
+
+  let h = '<div class="liveex '+(active?'active':'')+' '+(allDone?'done':'')+'" id="liveex-'+i+'">';
+  // header
+  h += '<div class="liveex-head" onclick="focusLiveEx('+i+')">';
+  h += '<div class="liveex-name">'+esc(ex.name)+
+    '<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+esc(ex.name).replace(/'/g,"\\'")+'\')">&#9432;</button></div>';
+  h += '<div class="liveex-chips">';
+  h += '<span class="pill" style="border-color:var(--violet-dim);color:var(--violet)">1RM TEST</span>';
+  if(!allDone) h += '<span class="pill" style="border-color:var(--amber);color:var(--amber)">Step '+(curStep+1)+'/'+ramp.length+'</span>';
+  if(allDone)  h += '<span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">\u2713 Done</span>';
+  h += '<button class="ex-info-btn" onclick="cancel1RM('+i+')" style="color:var(--muted);font-size:11px;margin-left:4px">\u00d7 cancel</button>';
+  h += '</div></div>';
+
+  // ramp step list
+  h += '<div class="liveex-sets">';
+  ramp.forEach((step, si)=>{
+    const logged = ex.sets[si];
+    const isPast = si < curStep;
+    const isCur  = si === curStep && !allDone;
+    h += '<div class="lset '+(isPast?'logged':'')+'" style="'+(isCur?'background:rgba(246,134,47,0.05)':'')+'">'+
+      '<span class="lsn" style="min-width:18px">'+(isPast?'\u2713':isCur?'\u25b8':'\u25cb')+'</span>'+
+      '<span class="lval" style="color:var('+(isPast?'--cyan':isCur?'--text':'--dim')+')">'+(step.w==='Bar'?'Bar':step.w+' lb')+
+        '<span class="x" style="margin:0 3px">\u00d7</span>'+(isPast&&logged?logged.r:step.reps)+'</span>'+
+      '<span style="font-family:var(--mono);font-size:10px;color:var('+(step.attempt?'--amber':'--muted')+');margin-left:8px">'+esc(step.label)+(step.pct>0?' \u00b7 '+Math.round(step.pct*100)+'%':'')+'</span>'+
+      (step.rest&&step.rest!=='\u2014'?'<span style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:auto">'+esc(step.rest)+'</span>':'')+
+      '</div>';
+  });
+  h += '</div>';
+
+  // dock — active step
+  if(active && !allDone && curStep < ramp.length){
+    const step = ramp[curStep];
+    const isAttempt = !!step.attempt;
+    h += '<div class="livedock">';
+    h += '<div class="dock-presc" style="color:var('+(isAttempt?'--amber':'--muted')+');font-weight:'+(isAttempt?700:400)+'">';
+    h += esc(step.label)+(step.pct>0?' \u00b7 '+Math.round(step.pct*100)+'%':'')+(step.note?' \u2014 <em style="color:var(--dim)">'+esc(step.note)+'</em>':'');
+    h += '</div>';
+    if(step.w!=='Bar' && isPlateLift(ex.name)){
+      const pc = plateCalc(+step.w); if(pc) h += '<div class="dock-presc" style="color:var(--muted)">Per side: '+esc(pc.txt)+'</div>';
+    }
+    h += '<div class="dockrow">'+
+      '<div class="field"><label>Weight (lb)</label><input id="dockW" inputmode="decimal" value="'+(step.w==='Bar'?45:step.w)+'"></div>'+
+      '<div class="field"><label>Reps</label><input id="dockR" inputmode="numeric" placeholder="'+(typeof step.reps==='number'?step.reps:step.reps)+'"></div>'+
+      '</div>';
+    if(isAttempt){
+      h += '<div class="efftog">'+
+        ['easy','solid','grind','fail'].map(e=>'<button class="'+(liveDockEff===e?'sel e-'+e:'')+'" onclick="pickEff(\''+e+'\')">'+e+'</button>').join('')+
+        '</div>';
+    }
+    h += '<div class="dockbtns">'+
+      '<button class="btn primary" onclick="logLiveSet('+i+')">'+(isAttempt?'Log attempt':'Log set')+'</button>'+
+      (curStep>=ramp.length-1?'<button class="btn" onclick="finishExercise('+i+')">Done with this lift</button>':'')+
+      '</div>';
+    h += '</div>';
+    h += '<div id="restSlot"></div>';
+  } else if(allDone && active){
+    h += '<div class="livedock"><div class="dock-presc" style="color:var(--cyan)">All ramp steps logged. Move on when ready.</div>'+
+      '<div class="dockbtns"><button class="btn" onclick="finishExercise('+i+')">Mark done</button></div></div>';
+  }
+
+  h += '</div>';
+  return h;
+}
 
 /* ===================== BOOT ===================== */
 setAccent();
