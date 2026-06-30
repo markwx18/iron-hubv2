@@ -193,34 +193,34 @@
   .liveex{margin:12px 0; border:1px solid var(--line); border-radius:5px; background:var(--panel); overflow:hidden; opacity:.5; transition:opacity .25s;}
   .liveex.active{opacity:1; border-color:var(--line2);}
   .liveex.done{opacity:.66;}
-  .liveex-head{position:relative; padding:15px 15px 13px;}
+  .liveex-head{position:relative; padding:11px 13px 10px;}
   .liveex.active .liveex-head::before{content:""; position:absolute; top:-1px; left:-1px; width:15px; height:15px; border:2px solid var(--amber); border-right:none; border-bottom:none;}
   .liveex.active .liveex-head::after{content:""; position:absolute; top:-1px; right:-1px; width:15px; height:15px; border:2px solid var(--amber); border-left:none; border-bottom:none;}
   .liveex-name{font-family:var(--disp); font-weight:700; font-size:22px; text-transform:uppercase; letter-spacing:.01em; line-height:1;}
   .liveex-chips{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:center;}
-  .liveex-sets{padding:0 15px 8px; display:flex; flex-direction:column; gap:7px;}
-  .lset{display:flex; align-items:center; gap:9px; padding:9px 11px; border:1px solid var(--line); border-radius:3px; background:var(--base);}
+  .liveex-sets{padding:0 13px 7px; display:flex; flex-direction:column; gap:5px;}
+  .lset{display:flex; align-items:center; gap:7px; padding:6px 9px; border:1px solid var(--line); border-radius:3px; background:var(--base);}
   .lset.logged{border-color:var(--cyan-dim);}
   .lset .lsn{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--dim); width:42px; text-transform:uppercase;}
-  .lset .lval{font-family:var(--mono); font-size:15px;} .lset .lval .x{color:var(--dim); margin:0 2px;}
+  .lset .lval{font-family:var(--mono); font-size:14px;} .lset .lval .x{color:var(--dim); margin:0 2px;}
   .lset.logged .lchk{color:var(--cyan);} .lchk{color:var(--dim);}
   .lset .leff{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.08em; padding:2px 7px; border-radius:2px; border:1px solid var(--line2); color:var(--muted);}
   .lset.logged .leff.e-easy{color:var(--cyan); border-color:var(--cyan-dim);} .leff.e-grind{color:var(--amber); border-color:var(--amber-dim);} .leff.e-fail{color:var(--red); border-color:var(--red-dim);}
 
-  .livedock{padding:13px 15px; border-top:1px solid var(--line); background:var(--panel2);}
-  .livedock .dock-presc{font-family:var(--mono); font-size:11px; color:var(--amber); letter-spacing:.04em; margin-bottom:9px;}
+  .livedock{padding:10px 13px; border-top:1px solid var(--line); background:var(--panel2);}
+  .livedock .dock-presc{font-family:var(--mono); font-size:11px; color:var(--amber); letter-spacing:.04em; margin-bottom:6px;}
   .dockrow{display:flex; gap:8px; align-items:stretch;}
   .dockrow .field{flex:1;}
   .dockrow .field label{margin-bottom:4px;}
-  .dockrow input{text-align:center; font-size:16px; padding:11px 8px; font-weight:600; min-width:0;}
-  .efftog{display:flex; gap:4px; margin-top:9px;}
-  .efftog button{flex:1; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:8px 4px; border:1px solid var(--line2); border-radius:2px; background:var(--base); color:var(--muted);}
+  .dockrow input{text-align:center; font-size:15px; padding:9px 6px; font-weight:600; min-width:0;}
+  .efftog{display:flex; gap:4px; margin-top:7px;}
+  .efftog button{flex:1; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:6px 4px; border:1px solid var(--line2); border-radius:2px; background:var(--base); color:var(--muted);}
   .efftog button.sel{color:#1a0e02;}
   .efftog button.sel.e-easy{background:var(--cyan); border-color:var(--cyan);}
   .efftog button.sel.e-solid{background:var(--muted); border-color:var(--muted);}
   .efftog button.sel.e-grind{background:var(--amber); border-color:var(--amber);}
   .efftog button.sel.e-fail{background:var(--red); border-color:var(--red); color:#fff;}
-  .dockbtns{display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:11px;}
+  .dockbtns{display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px;}
 
   .resttimer{margin:12px 0; border:1px solid var(--line2); border-radius:5px; padding:15px; background:radial-gradient(120% 90% at 50% 0%,rgba(246,134,47,.07),transparent 70%),var(--panel2); text-align:center;}
   .rt-arcwrap{position:relative; width:158px; height:158px; margin:6px auto 2px;}
@@ -301,7 +301,7 @@
   .exinfo-cue.bad span{color:var(--red);}
 
   /* dock last-session + deltas */
-  .dock-last{font-family:var(--mono); font-size:11px; color:var(--muted); margin-bottom:9px; padding:7px 9px; background:var(--base); border:1px solid var(--line); border-radius:3px; line-height:1.5;}
+  .dock-last{font-family:var(--mono); font-size:11px; color:var(--muted); margin-bottom:6px; padding:5px 8px; background:var(--base); border:1px solid var(--line); border-radius:3px; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .dock-last .dl-tag{color:var(--dim); letter-spacing:.06em; text-transform:uppercase; font-size:9px; margin-right:7px;}
   .delta{font-family:var(--mono); font-size:10px; letter-spacing:.03em; padding:1px 6px; border-radius:2px; margin-left:2px;}
   .delta.up{color:var(--cyan); border:1px solid var(--cyan-dim);}
@@ -385,6 +385,13 @@
   </div>
 
   <div class="botnav" id="botnav"></div>
+</div>
+
+<div class="overlay" id="editSessionOverlay" onclick="if(event.target===this)closeEditSession()">
+  <div class="exinfo-modal" style="max-width:520px">
+    <div class="exinfo-top"><span class="exinfo-title" id="editSessionTitle">Edit Session</span><button onclick="closeEditSession()" class="exinfo-x">&times;</button></div>
+    <div id="editSessionBody" style="padding:16px"></div>
+  </div>
 </div>
 
 <div class="overlay" id="exInfoOverlay" onclick="if(event.target===this)closeExInfo()">
@@ -1133,7 +1140,8 @@ function renderLog(){
   if(!sorted.length) html += '<p class="small">No sessions yet. Your first log starts the engine — recommendations and projections all build from here.</p>';
   sorted.forEach(l=>{
     html += '<div class="hist" style="border-left-color:'+dayColor(l.day)+'">'+
-      '<button class="del" onclick="delLog('+l.id+')">delete</button>'+
+      '<button class="del" onclick="openEditSession('+l.id+')">edit</button>'+
+      '<button class="del" style="margin-left:4px" onclick="delLog('+l.id+')">delete</button>'+
       '<div class="h-date">'+fmtDate(l.date)+'</div><div class="h-day">'+esc(l.day)+' — '+esc((S.split[l.day]||{}).name||'')+'</div>'+
       l.entries.map(e=>'<div class="h-ex"><b>'+esc(e.exercise)+'</b> '+esc(summ(e.sets))+'</div>').join('')+'</div>';
   });
@@ -1400,13 +1408,23 @@ function nextLevelCardHTML(){
 }
 function projectMetric(pts, capPerWeek, horizonWeeks){
   if(pts.length < 3) return null;
-  const recent = pts.slice(-12);
+  let recent = pts.slice(-12);
+  // outlier guard: drop points that deviate wildly from their neighbors (likely data-entry errors)
+  if(recent.length >= 4){
+    const vals = recent.map(p=>p.v);
+    const med = [...vals].sort((a,b)=>a-b)[Math.floor(vals.length/2)];
+    const devs = vals.map(v=>Math.abs(v-med));
+    const madSorted = [...devs].sort((a,b)=>a-b);
+    const mad = madSorted[Math.floor(madSorted.length/2)] || 1;
+    recent = recent.filter(p => Math.abs(p.v-med) <= Math.max(mad*5, med*0.4));
+    if(recent.length < 3) recent = pts.slice(-12); // fallback if filter was too aggressive
+  }
   const reg = linreg(recent);
   if(!reg) return null;
   let slopeWk = reg.slope*7;
   if(capPerWeek!=null && slopeWk > capPerWeek) slopeWk = capPerWeek;
-  const lastV = pts[pts.length-1].v;
-  const proj = lastV + slopeWk*horizonWeeks;
+  const lastV = recent[recent.length-1].v;
+  let proj = lastV + slopeWk*horizonWeeks;
   const x0 = new Date(recent[0].date).getTime();
   const resid = recent.map(p=>{
     const x = (new Date(p.date).getTime()-x0)/86400000;
@@ -1414,7 +1432,12 @@ function projectMetric(pts, capPerWeek, horizonWeeks){
   });
   const sd = Math.sqrt(resid.reduce((a,r)=>a+r*r,0)/Math.max(1,resid.length-1)) || 0;
   const band = (sd*1.5) + Math.abs(slopeWk)*horizonWeeks*0.35;
-  return {value:Math.round(proj), lo:Math.round(proj-band), hi:Math.round(proj+band), slopeWk};
+  // sanity floor: a projection can never be negative or absurdly below current value
+  const floor = lastV*0.5;
+  proj = Math.max(proj, floor);
+  const lo = Math.max(proj-band, floor*0.7, 0);
+  const hi = Math.max(proj+band, lo+1);
+  return {value:Math.round(proj), lo:Math.round(lo), hi:Math.round(hi), slopeWk};
 }
 function bodyweightSeries(){
   return [...S.weights].sort((a,b)=>a.date.localeCompare(b.date)).map(w=>({date:w.date, v:w.lbs}));
@@ -3492,7 +3515,10 @@ function activate1RM(i){
   const ex = live.exercises[i];
   const e1 = Math.round(bestE1RM(ex.name)||0);
   const pr = (typeof actualPR==='function') ? actualPR(ex.name) : null;
-  const target = e1 || (pr?pr.w:0) || ex.targetW || 135;
+  const suggested = e1 || (pr?pr.w:0) || ex.targetW || 135;
+  const inp = prompt('1RM target weight (lb) — adjust if needed:', suggested);
+  if(inp===null) return; // cancelled
+  const target = parseInt(inp)||suggested;
   ex._1rm = true;
   ex._1rmTarget = target;
   ex._1rmRamp = oneRMRamp(target);
@@ -3577,6 +3603,64 @@ function liveExHTML_1rm(ex, i, active){
   h += '</div>';
   return h;
 }
+
+/* ===================== SESSION EDITOR ===================== */
+function openEditSession(id){
+  const log = S.logs.find(l=>l.id===id); if(!log) return;
+  document.getElementById('editSessionTitle').textContent = fmtDate(log.date)+' \u00b7 '+log.day;
+  let h = '<p class="small" style="margin-bottom:12px">Edit any set below. Leave a row blank to remove it. Add rows manually if needed.</p>';
+  log.entries.forEach((entry, ei)=>{
+    h += '<div style="margin-bottom:14px">'+
+      '<div class="exinfo-h" style="margin-bottom:6px">'+esc(entry.exercise)+'</div>';
+    entry.sets.forEach((s, si)=>{
+      h += '<div class="row" style="gap:6px;margin-bottom:5px">'+
+        '<div style="flex:none;width:42px;display:flex;align-items:center;font-family:var(--mono);font-size:10px;color:var(--dim)">S'+(si+1)+'</div>'+
+        '<div class="field" style="flex:1"><input inputmode="decimal" placeholder="lb" id="es-w-'+ei+'-'+si+'" value="'+esc(s.w||'')+'"></div>'+
+        '<div style="flex:none;display:flex;align-items:center;font-size:12px;color:var(--dim)">&times;</div>'+
+        '<div class="field" style="flex:1"><input inputmode="numeric" placeholder="reps" id="es-r-'+ei+'-'+si+'" value="'+esc(s.r||'')+'"></div>'+
+        '</div>';
+    });
+    // extra blank row to add a set
+    const nextSi = entry.sets.length;
+    h += '<div class="row" style="gap:6px;margin-bottom:2px">'+
+      '<div style="flex:none;width:42px;display:flex;align-items:center;font-family:var(--mono);font-size:10px;color:var(--dim)">+</div>'+
+      '<div class="field" style="flex:1"><input inputmode="decimal" placeholder="lb" id="es-w-'+ei+'-'+nextSi+'"></div>'+
+      '<div style="flex:none;display:flex;align-items:center;font-size:12px;color:var(--dim)">&times;</div>'+
+      '<div class="field" style="flex:1"><input inputmode="numeric" placeholder="reps" id="es-r-'+ei+'-'+nextSi+'"></div>'+
+      '</div>';
+    h += '</div>';
+  });
+  h += '<div style="display:flex;gap:8px;margin-top:4px">'+
+    '<button class="btn" onclick="saveEditSession('+id+')">Save changes</button>'+
+    '<button class="btn ghost" onclick="closeEditSession()">Cancel</button>'+
+    '</div>';
+  document.getElementById('editSessionBody').innerHTML = h;
+  document.getElementById('editSessionOverlay').classList.add('show');
+}
+function closeEditSession(){
+  document.getElementById('editSessionOverlay').classList.remove('show');
+}
+function saveEditSession(id){
+  const log = S.logs.find(l=>l.id===id); if(!log) return;
+  log.entries.forEach((entry, ei)=>{
+    const newSets = [];
+    for(let si=0; si<=entry.sets.length; si++){
+      const wEl = document.getElementById('es-w-'+ei+'-'+si);
+      const rEl = document.getElementById('es-r-'+ei+'-'+si);
+      if(!wEl||!rEl) continue;
+      const w = parseFloat(wEl.value), r = parseInt(rEl.value);
+      if(w>0 && r>0) newSets.push({w, r});
+    }
+    entry.sets = newSets;
+  });
+  // remove entries with no sets left
+  log.entries = log.entries.filter(e=>e.sets.length>0);
+  save(); closeEditSession(); renderLog();
+  // re-render progress if open
+  const prog = document.getElementById('progress');
+  if(prog && prog.innerHTML.length > 50) renderProgressV2();
+}
+
 
 /* ===================== BOOT ===================== */
 setAccent();
