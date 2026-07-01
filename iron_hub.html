@@ -337,7 +337,34 @@
   .drag-h{cursor:grab; color:var(--dim); font-size:15px; padding:0 4px; flex:none; touch-action:none;}
   .sd-ex.dragging{opacity:.4;}
   .sd-ex.dragover{border-top:2px solid var(--amber);}
+
+  /* ===== PHASE 3 ===== */
+  /* engine log in Log tab */
+  .elog-toggle{margin-top:10px; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); cursor:pointer; display:flex; align-items:center; gap:6px; padding:6px 0;}
+  .elog-toggle:hover{color:var(--amber);}
+  .elog-toggle .et-chev{transition:transform .2s; font-size:11px;}
+  .elog-toggle .et-chev.open{transform:rotate(180deg);}
+  .elog-wrap{display:none; margin-top:4px;}
+  .elog-wrap.open{display:block;}
+  .elog{background:var(--base); border:1px solid var(--line); border-radius:4px; padding:10px 12px;}
+  .elog-src{font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin-bottom:8px;}
+  .elog-row{display:flex; gap:9px; padding:6px 0; border-top:1px solid var(--line); align-items:flex-start;}
+  .elog-row:first-of-type{border-top:none;}
+  .elog-dot{width:7px; height:7px; border-radius:50%; margin-top:5px; flex:none;}
+  .elog-ex{font-family:var(--disp); font-weight:600; font-size:13px; letter-spacing:.02em; color:var(--text);}
+  .elog-reason{font-size:12px; color:var(--muted); line-height:1.45; margin-top:1px;}
+
+  /* library expandable detail */
+  .lib-ex-wrap{margin-bottom:6px;}
+  .lib-ex .lib-meta{font-family:var(--mono); font-size:10px; font-weight:400; color:var(--dim); text-transform:none; letter-spacing:.03em; display:flex; align-items:center; gap:7px;}
+  .lib-chev{display:inline-block; transition:transform .2s; font-size:12px; color:var(--muted);}
+  .lib-detail{background:var(--panel); border:1px solid var(--line); border-top:none; border-radius:0 0 4px 4px; padding:14px; margin-top:-6px;}
+  .lib-legend{display:flex; gap:16px; margin-top:8px; font-family:var(--mono); font-size:10px; color:var(--muted);}
+  .lib-legend span{display:flex; align-items:center; gap:5px;}
+  .lib-legend i{width:14px; height:3px; border-radius:2px; display:inline-block;}
+  .stat .v.good{color:var(--cyan);} .stat .v.bad{color:var(--red);}
 </style>
+
 
 </head>
 <body>
@@ -617,6 +644,7 @@ function historyFor(ex){
   const out = [];
   const sorted = [...S.logs].sort((a,b)=> b.date.localeCompare(a.date));
   for(const lg of sorted){
+    if(lg.deload) continue; // deload sessions never drive the next target
     const e = lg.entries.find(en => en.exercise===ex);
     if(e && e.sets.length) out.push({date:lg.date, sets:e.sets});
   }
@@ -831,7 +859,7 @@ function bestE1RM(ex){ const pts = e1rmSeries(ex); return pts.length ? Math.max(
    is what the Road now tracks \u2014 chunkier than e1RM since it only moves when a
    real heavier weight is touched, but never inflated by a formula. */
 function prSeries(ex){
-  const sorted = [...S.logs].filter(l=>l.entries.some(e=>e.exercise===ex)).sort((a,b)=>a.date.localeCompare(b.date));
+  const sorted = [...S.logs].filter(l=>!l.deload && l.entries.some(e=>e.exercise===ex)).sort((a,b)=>a.date.localeCompare(b.date));
   const out = [];
   let runningMax = 0;
   sorted.forEach(l=>{
@@ -1142,8 +1170,11 @@ function renderLog(){
     html += '<div class="hist" style="border-left-color:'+dayColor(l.day)+'">'+
       '<button class="del" onclick="openEditSession('+l.id+')">edit</button>'+
       '<button class="del" style="margin-left:4px" onclick="delLog('+l.id+')">delete</button>'+
-      '<div class="h-date">'+fmtDate(l.date)+'</div><div class="h-day">'+esc(l.day)+' — '+esc((S.split[l.day]||{}).name||'')+'</div>'+
-      l.entries.map(e=>'<div class="h-ex"><b>'+esc(e.exercise)+'</b> '+esc(summ(e.sets))+'</div>').join('')+'</div>';
+      '<div class="h-date">'+fmtDate(l.date)+(l.deload?' <span class="pill" style="border-color:var(--violet);color:var(--violet);padding:1px 7px">DELOAD</span>':'')+'</div><div class="h-day">'+esc(l.day)+' — '+esc((S.split[l.day]||{}).name||'')+'</div>'+
+      l.entries.map(e=>'<div class="h-ex"><b>'+esc(e.exercise)+'</b> '+esc(summ(e.sets))+'</div>').join('')+
+      '<div class="elog-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\');this.querySelector(\'.et-chev\').classList.toggle(\'open\')">\u2699 Engine log <span class="et-chev">\u25be</span></div>'+
+      '<div class="elog-wrap">'+engineLogHTML(l)+'</div>'+
+      '</div>';
   });
   el.innerHTML = html;
 }
@@ -1202,6 +1233,7 @@ const PR_LIFTS = {
 function e1rmSeries(ex){
   const pts = [];
   [...S.logs].sort((a,b)=>a.date.localeCompare(b.date)).forEach(l=>{
+    if(l.deload) return; // exclude deload weeks from strength trend
     const e = l.entries.find(en=>en.exercise===ex);
     if(!e) return;
     let best = 0;
@@ -2609,16 +2641,19 @@ function clearLiveDraft(){ localStorage.removeItem(LIVE_KEY); }
 
 function buildLiveExercises(dk){
   const tier = currentReadinessTier();
+  const deload = deloadActive();
   return dayExNames(dk).map((nm,i)=>{
+    if(deload){ const dex = deloadExercise(nm); dex._decision = {code:'deload', moved:false, reason:'Deload week — loaded ~60% for 2 light sets. This session is excluded from progression and trend charts.'}; return dex; }
     const rec = recommend(nm, tier);
     const firstW = (rec.sets && rec.sets[0] && rec.sets[0].w!=='') ? +rec.sets[0].w : '';
     const {lo,hi} = exRepMode(nm);
+    let decision; try{ decision = classifyDecision(nm, tier); }catch(e){ decision = null; }
     return {
       name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
       targetW:firstW, lo:lo, hi:hi,
       recTarget:rec.target, recDetail:rec.detail,
       planned:(rec.sets||[]).length||3,
-      sets:[], done:false,
+      sets:[], done:false, _decision:decision,
       advW:firstW, advLo:lo, advHi:hi, advTag:'', advCls:'', advMsg:rec.detail
     };
   });
@@ -2674,7 +2709,7 @@ let liveDockEff = '';  // selected effort for the in-progress set
 function renderLive(){
   const body = document.getElementById('liveBody');
   if(!live){
-    body.innerHTML = welcomeHTML() + liveIdleHTML();
+    body.innerHTML = welcomeHTML() + deloadBannerHTML() + liveIdleHTML();
     initBodyMap('live');
     return;
   }
@@ -2804,7 +2839,13 @@ function endLiveSession(){
   const before = snapshotPRs();
   const prsBefore = {};
   entries.forEach(en=>{ prsBefore[en.exercise]=actualPR(en.exercise); });
-  S.logs.push({id:Date.now(), date:todayKey(), day:live.day, entries});
+  // capture engine decisions + deload flag for the system logger
+  const decisions = {};
+  live.exercises.forEach(e=>{ if(e._decision) decisions[e.name]=e._decision; });
+  const isDeload = deloadActive() || live.exercises.some(e=>e._deload);
+  const logRec = {id:Date.now(), date:todayKey(), day:live.day, entries, decisions};
+  if(isDeload) logRec.deload = true;
+  S.logs.push(logRec);
   save();
   // compute summary
   const totalSets = entries.reduce((a,e)=>a+e.sets.length,0);
@@ -3238,6 +3279,11 @@ function deloadCheck(){
   return {severity, score, reasons};
 }
 function deloadCardHTML(){
+  if(deloadActive()){
+    return '<div class="card" style="border-left:3px solid var(--violet)"><div class="chart-h" style="margin-bottom:4px">Fatigue check <span class="pill" style="border-color:var(--violet);color:var(--violet)">Deloading</span></div>'+
+      '<p class="small">Deload week is active through '+fmtDate(S.deload.until)+'. Sessions this week are auto-lightened and excluded from your progression and trend charts.</p>'+
+      '<div style="margin-top:10px"><button class="btn ghost sm" onclick="endDeloadWeek()">End deload early</button></div></div>';
+  }
   const d=deloadCheck();
   if(d.severity==='clear'){
     return '<div class="card" style="border-left:3px solid var(--cyan)"><div class="chart-h" style="margin-bottom:4px">Fatigue check <span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">Clear</span></div><p class="small">No deload signals right now \u2014 recovery is keeping up with the work. Keep pushing.</p></div>';
@@ -3249,7 +3295,8 @@ function deloadCardHTML(){
     : 'Not urgent, but the signals are building. Make sure you\u2019re hitting 3000+ cal and 8h sleep this week. If the grinders keep stacking up, deload next week.';
   return '<div class="card" style="border-left:3px solid '+col+'"><div class="chart-h" style="margin-bottom:6px">Fatigue check <span class="pill" style="border-color:'+col+';color:'+col+'">'+head+'</span></div>'+
     '<div class="small" style="margin-bottom:8px">'+d.reasons.map(r=>'<div class="exinfo-cue"><span style="color:'+col+'">\u25b8</span>'+esc(r)+'</div>').join('')+'</div>'+
-    '<p class="small" style="color:var(--text)">'+how+'</p></div>';
+    '<p class="small" style="color:var(--text)">'+how+'</p>'+
+    '<div style="margin-top:10px"><button class="btn sm" onclick="if(confirm(\'Start a deload week? Loads drop to ~60% for 2 sets and this week won\\u2019t count toward progression.\'))startDeloadWeek()">Start deload week</button></div></div>';
 }
 
 /* ===================== 7. 1RM TEST PROTOCOL ===================== */
@@ -3661,6 +3708,271 @@ function saveEditSession(id){
   if(prog && prog.innerHTML.length > 50) renderProgressV2();
 }
 
+
+
+/* ============================================================
+   PHASE 3 — engine logger, deload week, per-exercise graphs
+   ============================================================ */
+
+/* ===================== ENGINE DECISION CLASSIFIER ===================== */
+/* Mirrors recommend()'s decision tree, returns a structured, concise decision
+   for the internal system logger. One entry per exercise per session. */
+function classifyDecision(ex, ready){
+  const nm = exName(ex);
+  const hist = historyFor(nm);
+  const ff = isFormFocus(nm);
+  const rm = exRepMode(nm);
+  const lo = ff ? FORM_LO : rm.lo, hi = ff ? FORM_HI : rm.hi;
+  if(!hist.length) return {code:'first', from:null, to:null, moved:false,
+    reason:'First time logging this lift \u2014 no target set yet. Pick a weight for '+lo+'\u2013'+(lo+2)+' clean reps.'};
+  const last = hist[0];
+  const topW = Math.max(...last.sets.map(s=>+s.w||0));
+  const topSets = last.sets.filter(s=>(+s.w||0)===topW);
+  const minReps = Math.min(...topSets.map(s=>+s.r||0));
+  const maxReps = Math.max(...topSets.map(s=>+s.r||0));
+  const str = !ff && isStrMode(nm);
+  const ceilReps = str ? maxReps : minReps;
+  let inc = incForExercise(nm);
+  const effs = topSets.map(s=>s.e).filter(Boolean);
+  const hadFail = effs.includes('fail');
+  const hadGrind = effs.includes('grind') || hadFail;
+  const allEasy = effs.length===topSets.length && effs.length>0 && effs.every(e=>e==='easy');
+
+  if(isBodyweight(nm)) return {code:'bw', from:null, to:null, moved:false,
+    reason:'Bodyweight movement \u2014 progression tracked by reps and control, not load.'};
+
+  if(ff){
+    const streak = consecutiveEasyStreak(hist);
+    if(hadFail){ const dw=Math.max(topW-inc,inc); return {code:'form-back', from:topW, to:dw, moved:true,
+      reason:'Form Focus: a set broke down last time \u2014 stepped back '+topW+'\u2192'+dw+' lb to rebuild clean reps.'}; }
+    if(streak>=FORM_STREAK_NEEDED){ const nw=topW+inc; return {code:'form-increase', from:topW, to:nw, moved:true,
+      reason:'Form Focus: '+streak+' straight sessions tagged easy across all sets \u2014 control earned the bump '+topW+'\u2192'+nw+' lb.'}; }
+    if(minReps<lo) return {code:'form-build', from:topW, to:topW, moved:false,
+      reason:'Form Focus: last dipped below '+lo+' reps \u2014 held at '+topW+' lb to rebuild control before loading.'};
+    return {code:'form-hold', from:topW, to:topW, moved:false,
+      reason:'Form Focus: held at '+topW+' lb \u2014 '+streak+'/'+FORM_STREAK_NEEDED+' easy sessions logged toward the next bump.'};
+  }
+
+  let stall=false;
+  if(hist.length>=3){
+    const w2=Math.max(...hist[1].sets.map(s=>+s.w||0)), w3=Math.max(...hist[2].sets.map(s=>+s.w||0));
+    if(w2===topW && w3===topW){
+      const ts2=hist[1].sets.filter(s=>+s.w===w2);
+      const ceil2 = str ? Math.max(...ts2.map(s=>+s.r||0)) : Math.min(...ts2.map(s=>+s.r||0));
+      if(ceilReps<=ceil2) stall=true;
+    }
+  }
+  if(ceilReps>=hi){
+    if(ready==='low') return {code:'defer', from:topW, to:topW, moved:false,
+      reason:'Earned the jump (hit '+hi+' reps), but readiness was low \u2014 deferred, repeated '+topW+' lb to take the jump fresh.'};
+    if(allEasy){ const nw=topW+inc*2; return {code:'double', from:topW, to:nw, moved:true,
+      reason:'Hit the '+hi+'-rep ceiling AND all sets tagged easy \u2014 double jump '+topW+'\u2192'+nw+' lb.'}; }
+    const nw=topW+inc; return {code:'increase', from:topW, to:nw, moved:true,
+      reason:'Hit the '+hi+'-rep ceiling ('+(str?'top set':'every top set')+') \u2014 weight up '+topW+'\u2192'+nw+' lb, reps reset to '+lo+'.'+(hadGrind?' (last was a grind \u2014 expect heavy.)':'')};
+  }
+  if(stall) return {code:'stall', from:topW, to:topW, moved:false,
+    reason:'3 sessions at '+topW+' lb with no rep progress \u2014 held to break the stall (tighten rest or drop 10% to rebuild).'};
+  if(minReps>=lo){
+    let r='In range but not at ceiling \u2014 held at '+topW+' lb, '+(str?'push top set to '+hi+' reps':'add a rep to your weakest set')+' before load moves.';
+    if(allEasy) r='In range and all tagged easy \u2014 held at '+topW+' lb but leaving reps in the tank; take sets 1\u20132 shy of failure.';
+    else if(hadFail) r='In range with a failed set \u2014 held at '+topW+' lb to win back the reps cleanly.';
+    return {code:'hold', from:topW, to:topW, moved:false, reason:r};
+  }
+  if(hadFail){ const dw=Math.max(topW-inc,inc); return {code:'deload-back', from:topW, to:dw, moved:true,
+    reason:'Below range with failure tags \u2014 stepped back '+topW+'\u2192'+dw+' lb to own the range, then climb.'}; }
+  return {code:'build', from:topW, to:topW, moved:false,
+    reason:'Below range \u2014 held at '+topW+' lb to climb back to '+lo+' reps per set before adding load.'};
+}
+
+/* Retro decision for logs saved without a stored decision (old/manual/screenshot).
+   Compares each exercise's top weight to the previous non-deload session. */
+function retroDecision(log, exercise){
+  const priors = [...S.logs].filter(l=>l.date<log.date && !l.deload && l.entries.some(e=>e.exercise===exercise))
+    .sort((a,b)=>b.date.localeCompare(a.date));
+  const cur = log.entries.find(e=>e.exercise===exercise);
+  if(!cur) return null;
+  const curTop = Math.max(...cur.sets.map(s=>+s.w||0));
+  if(!priors.length) return {moved:false, reason:'First recorded session for this lift.'};
+  const prev = priors[0].entries.find(e=>e.exercise===exercise);
+  const prevTop = Math.max(...prev.sets.map(s=>+s.w||0));
+  if(curTop>prevTop) return {moved:true, reason:'Weight moved up '+prevTop+'\u2192'+curTop+' lb vs previous session.'};
+  if(curTop<prevTop) return {moved:true, reason:'Weight stepped down '+prevTop+'\u2192'+curTop+' lb vs previous session.'};
+  return {moved:false, reason:'Held at '+curTop+' lb (same as previous session).'};
+}
+
+/* ===================== DELOAD WEEK ===================== */
+function deloadActive(){ return !!(S.deload && S.deload.until && todayKey() <= S.deload.until); }
+function startDeloadWeek(){
+  const end = new Date(Date.now()+6*86400000);
+  const until = end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')+'-'+String(end.getDate()).padStart(2,'0');
+  S.deload = {until, startedAt:todayKey()};
+  save();
+  if(typeof renderLive==='function') renderLive();
+  if(document.getElementById('progress') && document.getElementById('progress').innerHTML.length>50) renderProgressV2();
+}
+function endDeloadWeek(){
+  S.deload = null; save();
+  if(typeof renderLive==='function') renderLive();
+  if(document.getElementById('progress') && document.getElementById('progress').innerHTML.length>50) renderProgressV2();
+}
+function deloadBannerHTML(){
+  if(!deloadActive()) return '';
+  return '<div class="card" style="border-left:3px solid var(--violet);background:rgba(183,155,255,0.06)">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">'+
+    '<div><b style="color:var(--violet);letter-spacing:.04em">DELOAD WEEK ACTIVE</b>'+
+    '<div class="small" style="margin-top:3px">Through '+fmtDate(S.deload.until)+' \u00b7 loads auto-reduced to ~60%, 2 sets, well shy of failure. These sessions won\u2019t count toward progression or your trend charts.</div></div>'+
+    '<button class="btn ghost sm" onclick="endDeloadWeek()">End early</button></div></div>';
+}
+/* build deload version of an exercise: 60% of last real working weight, 2 sets */
+function deloadExercise(nm){
+  const hist = historyFor(nm); // already excludes prior deloads
+  const rm = exRepMode(nm);
+  let baseW = '';
+  if(hist.length){ const topW = Math.max(...hist[0].sets.map(s=>+s.w||0)); baseW = topW; }
+  const dw = baseW ? Math.max(Math.round((baseW*0.6)/5)*5, 5) : '';
+  const reps = rm.lo;
+  return {
+    name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
+    targetW:dw, lo:rm.lo, hi:rm.hi,
+    recTarget:(dw?dw+' lb':'light')+' \u00d7 '+reps+' (deload)',
+    recDetail:'Deload: '+(dw?'~60% of your '+baseW+' lb working weight':'go light')+', 2 easy sets at '+reps+' reps. Stay 3\u20134 reps from failure \u2014 this is active recovery, not training.',
+    planned:2, _deload:true,
+    sets:[], done:false,
+    advW:dw, advLo:rm.lo, advHi:rm.hi, advTag:'DELOAD', advCls:'hold',
+    advMsg:'Deload set \u2014 keep it light and clean, well short of failure.'
+  };
+}
+
+/* ===================== IDEAL PROJECTION + DUAL LINE CHART ===================== */
+function idealRateWeekly(ex){
+  const nm = exName(ex);
+  // compounds progress faster in absolute terms; use % of starting e1RM per week
+  if(isPlateLift(nm) || isStrMode(nm) || /squat|bench|deadlift|press|row/i.test(nm)) return 0.0125;
+  return 0.0075;
+}
+function idealSeries(ex, actualPts){
+  if(!actualPts || actualPts.length<1) return [];
+  const start = actualPts[0].v;
+  const t0 = new Date(actualPts[0].date).getTime();
+  const rate = idealRateWeekly(ex); // fraction of start per week (linear)
+  return actualPts.map(p=>{
+    const wks = (new Date(p.date).getTime()-t0)/(7*86400000);
+    return {date:p.date, v: Math.round((start + start*rate*wks)*10)/10};
+  });
+}
+function dualLineChart(actual, ideal){
+  const W=700, H=200, P=36;
+  if(!actual.length) return '<p class="small">No data yet.</p>';
+  if(actual.length===1){
+    return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto"><circle cx="'+(W/2)+'" cy="'+(H/2)+'" r="4" fill="var(--amber)"/><text x="'+(W/2)+'" y="'+(H/2-12)+'" text-anchor="middle" font-size="12" fill="var(--muted)">'+actual[0].v+' lb e1RM \u2014 log another session to see the trend</text></svg>';
+  }
+  const all = actual.concat(ideal);
+  const t0=new Date(actual[0].date).getTime(), t1=new Date(actual[actual.length-1].date).getTime()||t0+1;
+  const vmin=Math.min(...all.map(p=>p.v)), vmax=Math.max(...all.map(p=>p.v));
+  const pad=(vmax-vmin)*0.15||5;
+  const x=t=>P+((t-t0)/(t1-t0||1))*(W-2*P);
+  const y=v=>H-P-((v-(vmin-pad))/((vmax+pad)-(vmin-pad)))*(H-2*P);
+  const pathOf=pts=>{ let d=''; pts.forEach((p,i)=>{ d+=(i?'L':'M')+x(new Date(p.date).getTime()).toFixed(1)+' '+y(p.v).toFixed(1)+' '; }); return d; };
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">';
+  [vmin,(vmin+vmax)/2,vmax].forEach(v=>{
+    svg+='<line x1="'+P+'" x2="'+(W-P)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="var(--line)" stroke-width="1"/>'+
+         '<text x="'+(P-6)+'" y="'+(y(v)+4)+'" text-anchor="end" font-size="10" fill="var(--dim)">'+Math.round(v)+'</text>';
+  });
+  // ideal (behind, lower opacity, dashed)
+  if(ideal.length>=2){
+    svg+='<path d="'+pathOf(ideal)+'" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-dasharray="5 5" opacity="0.4" stroke-linejoin="round"/>';
+  }
+  // actual (front, solid)
+  svg+='<path d="'+pathOf(actual)+'" fill="none" stroke="var(--amber)" stroke-width="2.5" stroke-linejoin="round"/>';
+  actual.forEach(p=>{ svg+='<circle cx="'+x(new Date(p.date).getTime())+'" cy="'+y(p.v)+'" r="3.5" fill="var(--amber)"/>'; });
+  svg+='<text x="'+P+'" y="'+(H-8)+'" font-size="10" fill="var(--dim)">'+fmtDate(actual[0].date)+'</text>';
+  svg+='<text x="'+(W-P)+'" y="'+(H-8)+'" text-anchor="end" font-size="10" fill="var(--dim)">'+fmtDate(actual[actual.length-1].date)+'</text>';
+  svg+='</svg>';
+  return svg;
+}
+
+/* ===================== LIBRARY WITH PER-EXERCISE GRAPHS ===================== */
+let _libExpanded = {};
+function toggleLibDetail(idx, nm){
+  _libExpanded[idx] = !_libExpanded[idx];
+  const panel = document.getElementById('libdetail-'+idx);
+  const chev = document.getElementById('libchev-'+idx);
+  if(!panel) return;
+  if(_libExpanded[idx]){
+    panel.style.display='block';
+    panel.innerHTML = libDetailHTML(nm);
+    if(chev) chev.style.transform='rotate(180deg)';
+  } else {
+    panel.style.display='none';
+    panel.innerHTML='';
+    if(chev) chev.style.transform='';
+  }
+}
+function libDetailHTML(nm){
+  const actual = e1rmSeries(nm);
+  const ideal = idealSeries(nm, actual);
+  let h='';
+  if(actual.length<1){
+    h+='<p class="small">No sessions logged for this lift yet. Once you train it, your e1RM trend and ideal-pace line show up here.</p>';
+  } else {
+    const cur=actual[actual.length-1].v, idealNow=ideal.length?ideal[ideal.length-1].v:cur;
+    const diff=cur-idealNow; const ahead=diff>=0;
+    h+='<div class="chart-h" style="font-size:11px;margin-bottom:6px">e1RM \u00b7 actual vs ideal pace</div>';
+    h+=dualLineChart(actual, ideal);
+    h+='<div class="lib-legend"><span><i style="background:var(--amber)"></i>Actual</span>'+
+       '<span><i style="background:var(--cyan);opacity:.5"></i>Ideal pace ('+(idealRateWeekly(nm)*100).toFixed(2).replace(/0$/,'')+'%/wk)</span></div>';
+    if(actual.length>=2){
+      h+='<div class="stats" style="margin-top:10px">'+
+        '<div class="stat"><div class="v">'+Math.round(cur)+'</div><div class="l">current e1RM</div></div>'+
+        '<div class="stat"><div class="v">'+Math.round(idealNow)+'</div><div class="l">ideal pace</div></div>'+
+        '<div class="stat"><div class="v '+(ahead?'good':'bad')+'">'+(ahead?'+':'')+Math.round(diff)+'</div><div class="l">'+(ahead?'ahead of pace':'behind pace')+'</div></div>'+
+        '</div>';
+      h+='<p class="small" style="margin-top:8px">'+(ahead
+        ? 'You\u2019re tracking at or above a textbook progression rate for this lift \u2014 keep the pressure on.'
+        : 'You\u2019re behind an idealized pace here. That\u2019s common on accessories and not alarming \u2014 focus on beating reps before load, and make sure this lift isn\u2019t getting shortchanged late in sessions.')+'</p>';
+    }
+  }
+  h+='<div style="margin-top:8px"><button class="btn ghost sm" onclick="showExInfo(\''+esc(nm).replace(/'/g,"\\'")+'\')">View form cues \u2192</button></div>';
+  return h;
+}
+function renderLibrary(){
+  const el=document.getElementById('library'); if(!el) return;
+  let h='<p class="small">Every exercise in your split. Tap one to expand its e1RM trend (actual vs. ideal pace) and form cues.</p>';
+  let idx=0;
+  Object.keys(S.split).forEach(dk=>{
+    const d=S.split[dk]; const list=(d.exercises||[]).map(exName);
+    if(!list.length) return;
+    h+='<div class="lib-day"><div class="lib-dh" style="color:'+(d.hex||'#8d909a')+'">'+dk+' \u00b7 '+esc(d.name||'')+'</div>';
+    list.forEach(nm=>{
+      const myIdx=idx++;
+      const sessions=e1rmSeries(nm).length;
+      h+='<div class="lib-ex-wrap">'+
+        '<button class="lib-ex" onclick="toggleLibDetail('+myIdx+',\''+esc(nm).replace(/'/g,"\\'")+'\')">'+
+          '<span>'+esc(nm)+'</span>'+
+          '<span class="lib-meta">'+(sessions?sessions+' logged':'no data')+' <span class="lib-chev" id="libchev-'+myIdx+'">\u25be</span></span>'+
+        '</button>'+
+        '<div class="lib-detail" id="libdetail-'+myIdx+'" style="display:none"></div>'+
+        '</div>';
+    });
+    h+='</div>';
+  });
+  el.innerHTML=h;
+}
+
+/* ===================== ENGINE LOG (in LOG tab) ===================== */
+function engineLogHTML(log){
+  const rows = log.entries.map(entry=>{
+    let dec = (log.decisions && log.decisions[entry.exercise]) || null;
+    let moved, reason;
+    if(dec){ moved=dec.moved; reason=dec.reason; }
+    else { const rd=retroDecision(log, entry.exercise); if(!rd) return ''; moved=rd.moved; reason=rd.reason; }
+    const dot = moved ? 'var(--amber)' : 'var(--dim)';
+    return '<div class="elog-row"><span class="elog-dot" style="background:'+dot+'"></span>'+
+      '<div><div class="elog-ex">'+esc(entry.exercise)+'</div><div class="elog-reason">'+esc(reason)+'</div></div></div>';
+  }).filter(Boolean).join('');
+  const src = log.decisions ? 'live engine decisions' : 'reconstructed from history';
+  return '<div class="elog"><div class="elog-src">\u2699 '+src+'</div>'+rows+'</div>';
+}
 
 /* ===================== BOOT ===================== */
 setAccent();
