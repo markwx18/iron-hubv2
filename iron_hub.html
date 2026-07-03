@@ -414,6 +414,13 @@
   <div class="botnav" id="botnav"></div>
 </div>
 
+<div class="overlay" id="liveEditOverlay" onclick="if(event.target===this)closeLiveExEdit()">
+  <div class="exinfo-modal" style="max-width:460px">
+    <div class="exinfo-top"><span class="exinfo-title" id="liveEditTitle">Edit exercise</span><button onclick="closeLiveExEdit()" class="exinfo-x">&times;</button></div>
+    <div id="liveEditBody" style="padding:16px"></div>
+  </div>
+</div>
+
 <div class="overlay" id="editSessionOverlay" onclick="if(event.target===this)closeEditSession()">
   <div class="exinfo-modal" style="max-width:520px">
     <div class="exinfo-top"><span class="exinfo-title" id="editSessionTitle">Edit Session</span><button onclick="closeEditSession()" class="exinfo-x">&times;</button></div>
@@ -1474,6 +1481,21 @@ function projectMetric(pts, capPerWeek, horizonWeeks){
 function bodyweightSeries(){
   return [...S.weights].sort((a,b)=>a.date.localeCompare(b.date)).map(w=>({date:w.date, v:w.lbs}));
 }
+// weekly-averaged version: daily bodyweight is noisy (water, food timing, bathroom),
+// so raw-point regression can read as flat/negative from noise alone. Averaging by week
+// before fitting the trend gives a far more stable signal for projections.
+function bodyweightSeriesSmoothed(){
+  const raw = bodyweightSeries();
+  if(raw.length<2) return raw;
+  const byWeek = {};
+  raw.forEach(p=>{
+    const wk = weekKeyOf(p.date);
+    if(!byWeek[wk]) byWeek[wk] = {sum:0, n:0, lastDate:p.date};
+    byWeek[wk].sum += p.v; byWeek[wk].n++;
+    if(p.date > byWeek[wk].lastDate) byWeek[wk].lastDate = p.date;
+  });
+  return Object.keys(byWeek).sort().map(wk=>({date:byWeek[wk].lastDate, v:Math.round((byWeek[wk].sum/byWeek[wk].n)*10)/10}));
+}
 function projectionCardHTML(){
   const horizons = [{w:13,label:'3 months'},{w:26,label:'6 months'},{w:52,label:'1 year'}];
   const rows = [];
@@ -1485,8 +1507,9 @@ function projectionCardHTML(){
     if(cells.some(c=>c)) rows.push({label:lift, unit:'lb e1RM', cur:pts[pts.length-1].v, cells});
   }
   const bw = bodyweightSeries();
-  if(bw.length>=3){
-    const cells = horizons.map(h=>projectMetric(bw, 1.2, h.w));
+  const bwSmoothed = bodyweightSeriesSmoothed();
+  if(bwSmoothed.length>=3){
+    const cells = horizons.map(h=>projectMetric(bwSmoothed, 1.2, h.w));
     if(cells.some(c=>c)) rows.push({label:'Bodyweight', unit:'lb', cur:bw[bw.length-1].v, cells});
   }
   if(!rows.length){
@@ -2639,24 +2662,29 @@ function loadLiveDraft(){
 function saveLiveDraft(){ if(live) localStorage.setItem(LIVE_KEY, JSON.stringify(live)); }
 function clearLiveDraft(){ localStorage.removeItem(LIVE_KEY); }
 
-function buildLiveExercises(dk){
+function buildOneLiveExercise(nm){
   const tier = currentReadinessTier();
-  const deload = deloadActive();
-  return dayExNames(dk).map((nm,i)=>{
-    if(deload){ const dex = deloadExercise(nm); dex._decision = {code:'deload', moved:false, reason:'Deload week — loaded ~60% for 2 light sets. This session is excluded from progression and trend charts.'}; return dex; }
-    const rec = recommend(nm, tier);
-    const firstW = (rec.sets && rec.sets[0] && rec.sets[0].w!=='') ? +rec.sets[0].w : '';
-    const {lo,hi} = exRepMode(nm);
-    let decision; try{ decision = classifyDecision(nm, tier); }catch(e){ decision = null; }
-    return {
-      name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
-      targetW:firstW, lo:lo, hi:hi,
-      recTarget:rec.target, recDetail:rec.detail,
-      planned:(rec.sets||[]).length||3,
-      sets:[], done:false, _decision:decision,
-      advW:firstW, advLo:lo, advHi:hi, advTag:'', advCls:'', advMsg:rec.detail
-    };
-  });
+  if(deloadActive()){
+    const dex = deloadExercise(nm);
+    dex._decision = {code:'deload', moved:false, reason:'Deload week — loaded ~60% for 2 light sets. This session is excluded from progression and trend charts.'};
+    return dex;
+  }
+  const rec = recommend(nm, tier);
+  const firstW = (rec.sets && rec.sets[0] && rec.sets[0].w!=='') ? +rec.sets[0].w : '';
+  const {lo,hi} = exRepMode(nm);
+  let decision; try{ decision = classifyDecision(nm, tier); }catch(e){ decision = null; }
+  return {
+    name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
+    targetW:firstW, lo:lo, hi:hi,
+    recTarget:rec.target, recDetail:rec.detail,
+    planned:(rec.sets||[]).length||3,
+    sets:[], done:false, _decision:decision,
+    advW:firstW, advLo:lo, advHi:hi, advTag:'', advCls:'', advMsg:rec.detail,
+    _swapped:false
+  };
+}
+function buildLiveExercises(dk){
+  return dayExNames(dk).map(nm=>buildOneLiveExercise(nm));
 }
 function liveStartSession(){
   const dk = currentDayKey()==='REST' ? null : currentDayKey();
@@ -2718,6 +2746,7 @@ function renderLive(){
        '<span class="sb-prog" id="sbProg"></span><span class="sb-clock" id="sbClock">00:00</span></div>';
   live.exercises.forEach((ex,i)=>{ h += liveExHTML(ex,i); });
   h += '<div style="display:flex; gap:10px; margin:16px 0 8px">'+
+       '<button class="btn ghost" onclick="openLiveAddEx()" style="flex:none">+ Add exercise</button>'+
        '<button class="btn cyan block" onclick="endLiveSessionConfirm()">End &amp; save session</button></div>';
   body.innerHTML = h;
   updateSessionBar();
@@ -2746,6 +2775,7 @@ function liveExHTML(ex,i){
   if(ex.done) h += '<span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">✓ Done</span>';
   else if(active) h += '<span class="pill" style="border-color:var(--amber);color:var(--amber)">▸ Active</span>';
   if(!ex.done) h += '<button class="ex-info-btn" onclick="event.stopPropagation();activate1RM('+i+')" title="Switch to 1RM test mode" style="color:var(--violet);font-size:11px;margin-left:4px">1RM</button>';
+  h += '<button class="ex-info-btn" onclick="openLiveExEdit('+i+')" title="Swap or remove (today only)" style="color:var(--muted);font-size:12px;margin-left:4px">\u270e</button>';
   h += '</div></div>';
   // logged sets
   h += '<div class="liveex-sets">';
@@ -2948,13 +2978,18 @@ function bmWeeklyVol(broad){
 }
 function bmProgress(broad){
   // green if any exercise hitting this group improved e1RM in last ~4wks, yellow if flat, red if declining, off if no data
+  // walk every exercise actually logged (not just the hardcoded EX_MUSCLES keys) so keyword-fallback
+  // exercises (e.g. anything matched via musclesFor's regex fallback) aren't silently excluded
+  const seen = new Set();
+  S.logs.forEach(l=>l.entries.forEach(e=>seen.add(e.exercise)));
+  Object.keys(S.split).forEach(dk=>(S.split[dk].exercises||[]).forEach(x=>seen.add(exName(x))));
   let any=false, improved=false, declined=false;
-  for(const ex in EX_MUSCLES){
-    const m=EX_MUSCLES[ex]; if(!(m.p.includes(broad))) continue;
-    const pts=e1rmSeries(ex); if(pts.length<2) continue; any=true;
+  seen.forEach(ex=>{
+    const m=musclesFor(ex); if(!m.p.includes(broad) && !m.s.includes(broad)) return;
+    const pts=e1rmSeries(ex); if(pts.length<2) return; any=true;
     const recent=pts.slice(-4); const a=recent[0].v, b=recent[recent.length-1].v;
     if(b>a*1.01) improved=true; else if(b<a*0.99) declined=true;
-  }
+  });
   if(!any) return 'off';
   if(improved) return 'green'; if(declined) return 'red'; return 'yellow';
 }
@@ -3972,6 +4007,88 @@ function engineLogHTML(log){
   }).filter(Boolean).join('');
   const src = log.decisions ? 'live engine decisions' : 'reconstructed from history';
   return '<div class="elog"><div class="elog-src">\u2699 '+src+'</div>'+rows+'</div>';
+}
+
+
+/* ===================== LIVE SESSION EDITOR (today only) ===================== */
+function allKnownExerciseNames(){
+  const set = new Set();
+  Object.keys(EX_MUSCLES).forEach(n=>set.add(n));
+  Object.keys(EX_LIBRARY).forEach(n=>set.add(n));
+  Object.keys(S.split).forEach(dk=>(S.split[dk].exercises||[]).forEach(x=>set.add(exName(x))));
+  S.logs.forEach(l=>l.entries.forEach(e=>set.add(e.exercise)));
+  return [...set].filter(Boolean).sort((a,b)=>a.localeCompare(b));
+}
+function liveExOptionsHTML(){
+  return allKnownExerciseNames().map(n=>'<option value="'+esc(n)+'">').join('');
+}
+function openLiveExEdit(i){
+  if(event) event.stopPropagation();
+  const ex = live.exercises[i];
+  document.getElementById('liveEditTitle').textContent = 'Edit today\u2019s exercise';
+  const hasSets = ex.sets.length>0;
+  let h = '<datalist id="liveExDatalist">'+liveExOptionsHTML()+'</datalist>';
+  h += '<p class="small" style="margin-bottom:10px">Swaps apply to <b>today only</b> \u2014 your saved split is unchanged.</p>';
+  if(hasSets) h += '<p class="small" style="color:var(--amber);margin-bottom:10px">You\u2019ve already logged '+ex.sets.length+' set'+(ex.sets.length!==1?'s':'')+' on '+esc(ex.name)+'. Swapping will clear those sets for this slot.</p>';
+  h += '<div class="field" style="margin-bottom:12px"><label>Exercise name</label>'+
+       '<input id="liveEditName" list="liveExDatalist" value="'+esc(ex.name)+'" placeholder="Start typing an exercise\u2026"></div>';
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+       '<button class="btn" onclick="confirmSwapLiveEx('+i+')">Swap exercise</button>'+
+       '<button class="btn ghost" onclick="removeLiveEx('+i+')" style="color:var(--red)">Remove for today</button>'+
+       '<button class="btn ghost" onclick="closeLiveExEdit()">Cancel</button>'+
+       '</div>';
+  document.getElementById('liveEditBody').innerHTML = h;
+  document.getElementById('liveEditOverlay').classList.add('show');
+}
+function closeLiveExEdit(){
+  document.getElementById('liveEditOverlay').classList.remove('show');
+}
+function confirmSwapLiveEx(i){
+  const nm = (document.getElementById('liveEditName').value||'').trim();
+  if(!nm) return;
+  const ex = live.exercises[i];
+  if(nm === ex.name){ closeLiveExEdit(); return; }
+  if(ex.sets.length && !confirm('Swap '+ex.name+' \u2192 '+nm+'? This clears the '+ex.sets.length+' logged set'+(ex.sets.length!==1?'s':'')+' for this slot (today only \u2014 your saved split is untouched).')){
+    return;
+  }
+  const rebuilt = buildOneLiveExercise(nm);
+  rebuilt._swapped = true;
+  live.exercises[i] = rebuilt;
+  if(liveActiveIdx===i || live.exercises[i].done===false) liveActiveIdx = i;
+  saveLiveDraft(); closeLiveExEdit(); renderLive();
+}
+function removeLiveEx(i){
+  const ex = live.exercises[i];
+  if(!confirm('Remove '+ex.name+' from today\u2019s session? (Today only \u2014 your saved split is untouched.)')) return;
+  live.exercises.splice(i,1);
+  if(!live.exercises.length){
+    // nothing left; just clear the draft entirely
+    live=null; clearLiveDraft(); closeLiveExEdit(); renderLive(); return;
+  }
+  liveActiveIdx = live.exercises.findIndex(e=>!e.done);
+  if(liveActiveIdx<0) liveActiveIdx = 0;
+  saveLiveDraft(); closeLiveExEdit(); renderLive();
+}
+function openLiveAddEx(){
+  document.getElementById('liveEditTitle').textContent = 'Add exercise (today only)';
+  let h = '<datalist id="liveExDatalist">'+liveExOptionsHTML()+'</datalist>';
+  h += '<p class="small" style="margin-bottom:10px">Adds an extra exercise to today\u2019s session. Your saved split is unchanged.</p>';
+  h += '<div class="field" style="margin-bottom:12px"><label>Exercise name</label>'+
+       '<input id="liveEditName" list="liveExDatalist" placeholder="Start typing an exercise\u2026"></div>';
+  h += '<div style="display:flex;gap:8px">'+
+       '<button class="btn" onclick="confirmAddLiveEx()">Add to today</button>'+
+       '<button class="btn ghost" onclick="closeLiveExEdit()">Cancel</button>'+
+       '</div>';
+  document.getElementById('liveEditBody').innerHTML = h;
+  document.getElementById('liveEditOverlay').classList.add('show');
+}
+function confirmAddLiveEx(){
+  const nm = (document.getElementById('liveEditName').value||'').trim();
+  if(!nm) return;
+  const rebuilt = buildOneLiveExercise(nm);
+  rebuilt._swapped = true;
+  live.exercises.push(rebuilt);
+  saveLiveDraft(); closeLiveExEdit(); renderLive();
 }
 
 /* ===================== BOOT ===================== */
