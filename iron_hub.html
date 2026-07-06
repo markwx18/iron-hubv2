@@ -365,7 +365,8 @@
   .stat .v.good{color:var(--cyan);} .stat .v.bad{color:var(--red);}
 
   /* ===== INVESTIGATION ===== */
-  .inv-banner{display:flex; align-items:center; gap:10px; margin:14px 0 4px; padding:11px 13px; background:var(--panel); border:1px solid; border-radius:4px; cursor:pointer;}
+  #globalInvBanner:not(:empty){ padding:0 16px; }
+  .inv-banner{display:flex; align-items:center; gap:10px; margin:10px 0; padding:11px 13px; background:var(--panel); border:1px solid; border-radius:4px; cursor:pointer;}
   .inv-banner-tag{font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.1em; color:var(--base); padding:3px 8px; border-radius:2px; flex:none;}
   .inv-banner-txt{font-size:13px; color:var(--text); line-height:1.35;}
   .inv-dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-left:5px; position:relative; top:-1px;}
@@ -406,6 +407,7 @@
       <button id="mReview" class="review" onclick="setMode('review')">Review</button>
     </div>
   </div>
+  <div id="globalInvBanner"></div>
 
   <div id="liveMode">
     <div class="live-body" id="liveBody"></div>
@@ -2606,6 +2608,7 @@ function setMode(m){
   buildBotNav();
   if(m==='live'){ renderLive(); }
   else { showReviewTab(activeReviewTab); }
+  try{ invUpdateBadge(); }catch(e){}
   window.scrollTo({top:0, behavior:'instant'});
 }
 function buildBotNav(){
@@ -2623,6 +2626,7 @@ function showReviewTab(t){
   document.querySelectorAll('#rnav button').forEach(b=>b.classList.toggle('on', b.dataset.t===t));
   document.querySelectorAll('#reviewMode main section').forEach(s=>s.classList.toggle('on', s.id===t));
   (REVIEW_RENDER[t]||function(){})();
+  try{ invUpdateBadge(); }catch(e){}
 }
 /* Progress in V2 = ported V1 progress + a body heatmap card on top */
 function renderProgressV2(){
@@ -2771,9 +2775,10 @@ let liveDockEff = '';  // selected effort for the in-progress set
 
 /* ---- render LIVE mode ---- */
 function renderLive(){
+  try{ invUpdateBadge(); }catch(e){}
   const body = document.getElementById('liveBody');
   if(!live){
-    body.innerHTML = welcomeHTML() + invBannerHTML() + deloadBannerHTML() + liveIdleHTML();
+    body.innerHTML = welcomeHTML() + deloadBannerHTML() + liveIdleHTML();
     initBodyMap('live');
     return;
   }
@@ -4378,36 +4383,38 @@ function invOverrideFor(nm){
 function invCheckResolutions(){
   const flags = [...invActiveFlags()];
   flags.forEach(f=>{
-    let resolved=false, note='';
-    if(f.cat==='lift'){
-      const nm = f.key.slice(5);
-      const pts = e1rmSeries(nm);
-      // only count sessions logged strictly AFTER the flag was raised — otherwise ordinary
-      // non-monotonic noise already sitting in old history can "resolve" a flag on the very
-      // next app open with zero new training in between.
-      const newPts = pts.filter(p=>p.date>f.created);
-      if(newPts.length>=2){
-        const idx = pts.findIndex(p=>p.date===newPts[0].date);
-        const baseline = idx>0 ? pts[idx-1].v : -Infinity;
-        const a = newPts[newPts.length-2].v, b = newPts[newPts.length-1].v;
-        if(b>a && a>baseline){ resolved=true; note='2 consecutive e1RM improvements since flagged'; }
+    try{
+      let resolved=false, note='';
+      if(f.cat==='lift'){
+        const nm = f.key.slice(5);
+        const pts = e1rmSeries(nm);
+        // only count sessions logged strictly AFTER the flag was raised — otherwise ordinary
+        // non-monotonic noise already sitting in old history can "resolve" a flag on the very
+        // next app open with zero new training in between.
+        const newPts = pts.filter(p=>p.date>f.created);
+        if(newPts.length>=2){
+          const idx = pts.findIndex(p=>p.date===newPts[0].date);
+          const baseline = idx>0 ? pts[idx-1].v : -Infinity;
+          const a = newPts[newPts.length-2].v, b = newPts[newPts.length-1].v;
+          if(b>a && a>baseline){ resolved=true; note='2 consecutive e1RM improvements since flagged'; }
+        }
+      } else if(f.cat==='bulk'){
+        const sm = bodyweightSeriesSmoothed();
+        if(sm.length>=3){
+          const reg = linreg(sm.slice(-3));
+          const rate = reg? reg.slope*7 : 0;
+          if(rate>=0.4 && rate<=1.2){ resolved=true; note='rate back in the 0.4\u20131.2 lb/wk band'; }
+        }
+      } else if(f.cat==='split'){
+        const {start,end} = lastCompletedWeekRange();
+        const vol = weeklyVolumeByGroup(start,end);
+        const gaps = MUSCLE_GROUPS.filter(g=>g!=='Abs').filter(g=>vol[g]<10);
+        const stale = staleExercises();
+        const trained = S.logs.some(l=>l.date>=start&&l.date<=end);
+        if(trained && !gaps.length && !stale.length){ resolved=true; note='volume gaps closed and nothing stale'; }
       }
-    } else if(f.cat==='bulk'){
-      const sm = bodyweightSeriesSmoothed();
-      if(sm.length>=3){
-        const reg = linreg(sm.slice(-3));
-        const rate = reg? reg.slope*7 : 0;
-        if(rate>=0.4 && rate<=1.2){ resolved=true; note='rate back in the 0.4\u20131.2 lb/wk band'; }
-      }
-    } else if(f.cat==='split'){
-      const {start,end} = lastCompletedWeekRange();
-      const vol = weeklyVolumeByGroup(start,end);
-      const gaps = MUSCLE_GROUPS.filter(g=>g!=='Abs').filter(g=>vol[g]<10);
-      const stale = staleExercises();
-      const trained = S.logs.some(l=>l.date>=start&&l.date<=end);
-      if(trained && !gaps.length && !stale.length){ resolved=true; note='volume gaps closed and nothing stale'; }
-    }
-    if(resolved){ f.resolveNote=note; invArchive(f,'resolved'); }
+      if(resolved){ f.resolveNote=note; invArchive(f,'resolved'); }
+    }catch(e){ console.warn('invCheckResolutions: skipped one flag due to error', f.key, e); }
   });
   invUpdateBadge();
 }
@@ -4458,10 +4465,11 @@ function invBannerHTML(){
 }
 function invUpdateBadge(){
   const btn = document.querySelector('#rnav button[data-t="invest"]');
-  if(!btn) return;
   const flags = invActiveFlags().filter(f=>f.status==='active');
   const worst = flags.length ? flags.reduce((a,f)=>INV_SEV_RANK[f.severity]>INV_SEV_RANK[a.severity]?f:a, flags[0]) : null;
-  btn.innerHTML = 'Investigate' + (worst ? ' <span class="inv-dot" style="background:'+INV_SEV_COLOR[worst.severity]+'"></span>' : '');
+  if(btn) btn.innerHTML = 'Investigate' + (worst ? ' <span class="inv-dot" style="background:'+INV_SEV_COLOR[worst.severity]+'"></span>' : '');
+  const banner = document.getElementById('globalInvBanner');
+  if(banner) banner.innerHTML = invBannerHTML();
 }
 
 /* -------------------- INVESTIGATION TAB UI -------------------- */
