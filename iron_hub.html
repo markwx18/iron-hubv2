@@ -363,7 +363,33 @@
   .lib-legend span{display:flex; align-items:center; gap:5px;}
   .lib-legend i{width:14px; height:3px; border-radius:2px; display:inline-block;}
   .stat .v.good{color:var(--cyan);} .stat .v.bad{color:var(--red);}
+
+  /* ===== INVESTIGATION ===== */
+  .inv-banner{display:flex; align-items:center; gap:10px; margin:14px 0 4px; padding:11px 13px; background:var(--panel); border:1px solid; border-radius:4px; cursor:pointer;}
+  .inv-banner-tag{font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.1em; color:var(--base); padding:3px 8px; border-radius:2px; flex:none;}
+  .inv-banner-txt{font-size:13px; color:var(--text); line-height:1.35;}
+  .inv-dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-left:5px; position:relative; top:-1px;}
+  .inv-card{margin-bottom:12px;}
+  .inv-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;}
+  .inv-head .pill{margin:0; padding:2px 8px; font-size:10px;}
+  .inv-title{font-family:var(--disp); font-size:15px; letter-spacing:.02em;}
+  .inv-date{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--dim);}
+  .inv-findings{margin:6px 0;}
+  .inv-finding{font-size:12.5px; color:var(--muted); line-height:1.5; padding:2px 0;}
+  .inv-fix{background:var(--base); border:1px solid var(--line); border-radius:4px; padding:10px 12px; margin:8px 0;}
+  .inv-fix-h{font-family:var(--mono); font-size:9px; letter-spacing:.12em; color:var(--dim); margin-bottom:4px;}
+  .inv-fix b{font-size:13.5px; color:var(--amber);}
+  .inv-applied{font-size:12px; color:var(--cyan); background:rgba(70,205,186,0.06); border:1px solid var(--cyan-dim); border-radius:4px; padding:9px 11px; margin:8px 0; line-height:1.5;}
+  .inv-acts{display:flex; gap:8px; margin-top:8px;}
+  .inv-trigger-row{display:flex; gap:8px; align-items:stretch;}
+  .inv-trigger-row select{background:var(--base); border:1px solid var(--line2); color:var(--text); border-radius:3px; padding:8px 10px; font-family:var(--body); font-size:13px;}
+  .inv-hist-row{display:flex; align-items:center; gap:9px; padding:7px 0; border-top:1px solid var(--line); font-size:12px;}
+  .inv-hist-row:first-child{border-top:none;}
+  .inv-hist-t{color:var(--text); font-weight:600;}
+  .inv-hist-o{color:var(--muted); font-family:var(--mono); font-size:10.5px;}
+  .inv-hist-d{margin-left:auto; color:var(--dim); font-family:var(--mono); font-size:10px; flex:none;}
 </style>
+
 
 
 </head>
@@ -394,6 +420,7 @@
         <button data-t="fuel">Fuel</button>
         <button data-t="library">Library</button>
         <button data-t="coach">Coach</button>
+        <button data-t="invest">Investigate</button>
         <button data-t="log">Log</button>
         <button data-t="settings">Settings</button>
       </div>
@@ -404,6 +431,7 @@
         <section id="fuel"></section>
         <section id="library"></section>
         <section id="coach"></section>
+        <section id="invest"></section>
         <section id="log"></section>
         <section id="settings"></section>
         <section id="today" style="display:none"></section>
@@ -2670,9 +2698,17 @@ function buildOneLiveExercise(nm){
     return dex;
   }
   const rec = recommend(nm, tier);
-  const firstW = (rec.sets && rec.sets[0] && rec.sets[0].w!=='') ? +rec.sets[0].w : '';
+  let firstW = (rec.sets && rec.sets[0] && rec.sets[0].w!=='') ? +rec.sets[0].w : '';
   const {lo,hi} = exRepMode(nm);
   let decision; try{ decision = classifyDecision(nm, tier); }catch(e){ decision = null; }
+  // investigation target override (reset & rebuild)
+  const _ov = (typeof invOverrideFor==='function') ? invOverrideFor(nm) : null;
+  if(_ov){
+    firstW = _ov.w;
+    rec.target = _ov.w+' lb \u00d7 '+lo+'\u2013'+hi+' (rebuild)';
+    rec.detail = _ov.note+'. Keep every rep clean \u2014 climbing back fast is the point.';
+    decision = {code:'inv-override', moved:true, reason:'Investigation fix active: targets reset to '+_ov.w+' lb through '+fmtDate(_ov.until)+' to rebuild momentum.'};
+  }
   return {
     name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
     targetW:firstW, lo:lo, hi:hi,
@@ -2737,7 +2773,7 @@ let liveDockEff = '';  // selected effort for the in-progress set
 function renderLive(){
   const body = document.getElementById('liveBody');
   if(!live){
-    body.innerHTML = welcomeHTML() + deloadBannerHTML() + liveIdleHTML();
+    body.innerHTML = welcomeHTML() + invBannerHTML() + deloadBannerHTML() + liveIdleHTML();
     initBodyMap('live');
     return;
   }
@@ -2890,6 +2926,7 @@ function endLiveSession(){
   showSummary({exercises:entries.length, sets:totalSets, vol:totalVol, prs:newPRs, note});
   checkPRs(before);  // fires the e1RM-based PR overlay if applicable (after summary close it remains)
   live=null; clearLiveDraft(); stopRest();
+  try{ invCheckResolutions(); }catch(e){}
 }
 function sessionNote(entries, dk){
   // compare to previous same-day session
@@ -3579,6 +3616,7 @@ REVIEW_RENDER.road = renderRoadV2;
 REVIEW_RENDER.bulk = renderBulkV2;
 REVIEW_RENDER.library = renderLibrary;
 REVIEW_RENDER.settings = function(){ renderSettings(); enableSplitDrag(); };
+REVIEW_RENDER.invest = renderInvestigation;
 
 /* ===================== 1RM LIVE MODE ===================== */
 function rampRestSecs(step){
@@ -4091,6 +4129,440 @@ function confirmAddLiveEx(){
   saveLiveDraft(); closeLiveExEdit(); renderLive();
 }
 
+
+/* ============================================================
+   INVESTIGATION SYSTEM — diagnose, recommend, apply, resolve
+   Categories: bulk | lift | split  ·  Severity: yellow < orange < red
+   ============================================================ */
+function invState(){
+  if(!S.invest) S.invest = {flags:[], history:[], lastAuto:{}, overrides:{}};
+  if(!S.invest.overrides) S.invest.overrides = {};
+  if(!S.invest.history) S.invest.history = [];
+  if(!S.invest.lastAuto) S.invest.lastAuto = {};
+  return S.invest;
+}
+function invUid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+const INV_SEV_RANK = {yellow:1, orange:2, red:3};
+const INV_SEV_COLOR = {yellow:'#dfae36', orange:'var(--amber)', red:'var(--red)'};
+const INV_CAT_LABEL = {bulk:'BULK', lift:'STRENGTH', split:'SPLIT'};
+
+/* -------------------- INVESTIGATORS (pure analysis) -------------------- */
+/* Each returns {severity:null|'yellow'|'orange'|'red', key, title, findings:[], fix:{label, desc, type, payload}} */
+
+function investigateBulk(){
+  const sm = bodyweightSeriesSmoothed();
+  const f = S.fuel||{};
+  const cal = f.calTarget||3000, pro = f.proTarget||150;
+  const findings = [];
+  if(sm.length < 3){
+    return {severity:null, key:'bulk', title:'Bulk check', findings:['Fewer than 3 weeks of bodyweight data \u2014 not enough to judge a trend yet. Keep weighing in most mornings.'], fix:null};
+  }
+  const recent = sm.slice(-4); // last ~4 weekly averages
+  const reg = linreg(recent);
+  const rate = reg ? reg.slope*7 : 0;
+  const cur = sm[sm.length-1].v;
+  findings.push('Trailing rate: '+(rate>=0?'+':'')+rate.toFixed(2)+' lb/week (weekly-averaged, last '+recent.length+' weeks). Current: '+cur.toFixed(1)+' lb.');
+  const proFloor = Math.round(cur*0.95); // ~1g/lb guideline
+  let severity=null, title='Bulk on track', fix=null;
+  if(rate < -0.15){
+    severity='red'; title='Losing weight mid-bulk';
+    findings.push('You\u2019re in a deficit or at maintenance despite bulking intent \u2014 muscle gain is severely limited without a surplus.');
+    fix={label:'Raise calorie target +300', desc:'Bump daily target '+cal+' \u2192 '+(cal+300)+' cal. Re-check in two weeks \u2014 the goal is +0.5\u20131 lb/week.', type:'cal', payload:{delta:300}};
+  } else if(rate < 0.25){
+    severity='orange'; title='Bulk rate too slow';
+    findings.push('Under the 0.5\u20131 lb/week lean-bulk pocket \u2014 progress is being left on the table.');
+    fix={label:'Raise calorie target +250', desc:'Bump daily target '+cal+' \u2192 '+(cal+250)+' cal to get into the 0.5\u20131 lb/week band.', type:'cal', payload:{delta:250}};
+  } else if(rate > 1.5){
+    severity='orange'; title='Bulk rate too fast';
+    findings.push('Above ~1.5 lb/week \u2014 at this pace a meaningful share of the gain is fat, not muscle.');
+    fix={label:'Trim calorie target \u2212200', desc:'Drop daily target '+cal+' \u2192 '+(cal-200)+' cal to settle back toward 1 lb/week.', type:'cal', payload:{delta:-200}};
+  } else if(rate > 1.0){
+    severity='yellow'; title='Bulk slightly hot';
+    findings.push('Slightly above the 1 lb/week upper bound \u2014 fine short-term, worth watching.');
+    fix=null;
+  }
+  if(pro < proFloor){
+    findings.push('Protein target '+pro+'g is under the ~1g/lb guideline ('+proFloor+'g at your weight).');
+    if(!fix && severity===null){ severity='yellow'; title='Protein target low'; }
+    if(!fix) fix={label:'Raise protein to '+proFloor+'g', desc:'Set protein target '+pro+' \u2192 '+proFloor+'g/day.', type:'pro', payload:{to:proFloor}};
+  }
+  return {severity, key:'bulk', title, findings, fix};
+}
+
+function investigateLift(nm){
+  const pts = e1rmSeries(nm);
+  const findings = [];
+  if(pts.length < 4){
+    return {severity:null, key:'lift:'+nm, title:nm, findings:['Only '+pts.length+' logged session'+(pts.length===1?'':'s')+' \u2014 not enough history to judge a trend.'], fix:null};
+  }
+  const recent = pts.slice(-6);
+  const reg = linreg(recent);
+  const slope = reg ? reg.slope*7 : 0;
+  const cur = recent[recent.length-1].v;
+  const spanWks = (new Date(recent[recent.length-1].date)-new Date(recent[0].date))/(7*86400000);
+  findings.push('e1RM trend over last '+recent.length+' sessions ('+Math.round(spanWks*10)/10+' wks): '+(slope>=0?'+':'')+slope.toFixed(1)+' lb/wk. Current e1RM: '+Math.round(cur)+' lb.');
+  // grind/fail density over last 6 sessions of this lift
+  const hist = historyFor(nm).slice(0,6);
+  let tagged=0, hard=0;
+  hist.forEach(h=>h.sets.forEach(s=>{ if(s.e){tagged++; if(s.e==='grind'||s.e==='fail')hard++;} }));
+  const hardPct = tagged? Math.round(100*hard/tagged) : null;
+  if(hardPct!=null) findings.push('Effort mix (last '+hist.length+' sessions): '+hardPct+'% of tagged sets were grind/fail.');
+  // stall length: sessions at same top weight without ceiling
+  const declinePct = recent.length>=2 ? (cur - Math.max(...recent.map(p=>p.v)))/Math.max(...recent.map(p=>p.v)) : 0;
+
+  let severity=null, title=nm+' on track', fix=null;
+  const bestRecent = Math.max(...recent.map(p=>p.v));
+  if(slope < -1.0 && cur < bestRecent*0.96){
+    severity='red'; title=nm+' declining';
+    findings.push('Clear downward trend \u2014 you\u2019re losing ground on this lift, not just plateauing.');
+    const resetW = Math.max(Math.round((cur*0.9)/5)*5, 45);
+    fix={label:'Reset & rebuild at ~90%', desc:'Set next targets to ~'+resetW+' lb for 2 weeks and climb back with clean reps. Momentum beats grinding a declining max. (Auto-expires after 14 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:14}};
+  } else if(slope < -0.3){
+    severity='orange'; title=nm+' trending down';
+    findings.push('Mild decline over recent sessions \u2014 could be fatigue, sleep, or accumulated grinding.');
+    if(hardPct!=null && hardPct>=40){
+      fix={label:'Start deload week', desc:'High grind density plus a downward trend is the classic overreach signature. A deload week ('+'~60% loads) usually restores the trend within 1\u20132 weeks after.', type:'deload', payload:{}};
+    } else {
+      const resetW = Math.max(Math.round((cur*0.92)/5)*5, 45);
+      fix={label:'Light reset at ~92%', desc:'Take next sessions at ~'+resetW+' lb and rebuild rep quality. (Auto-expires after 10 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:10}};
+    }
+  } else if(Math.abs(slope) <= 0.3 && spanWks >= 3){
+    severity='yellow'; title=nm+' flat';
+    findings.push('No meaningful movement in either direction for '+Math.round(spanWks)+'+ weeks.');
+    if(hardPct!=null && hardPct>=50){
+      fix={label:'Start deload week', desc:'Flat trend with heavy grinding \u2014 recovery is likely the limiter. Deload, then push again.', type:'deload', payload:{}};
+    } else {
+      findings.push('Effort tags don\u2019t show excessive grinding \u2014 this may just need more food, sleep, or patience. No forced fix recommended; the progression engine will hold weight until reps climb.');
+    }
+  }
+  return {severity, key:'lift:'+nm, title, findings, fix};
+}
+
+function investigateSplit(){
+  const {start, end} = lastCompletedWeekRange();
+  const vol = weeklyVolumeByGroup(start, end);
+  const trained = S.logs.some(l=>l.date>=start && l.date<=end);
+  const findings = [];
+  if(!trained){
+    return {severity:null, key:'split', title:'Split check', findings:['No sessions logged in the last completed week \u2014 nothing to review yet.'], fix:null};
+  }
+  const gaps = MUSCLE_GROUPS.filter(g=>g!=='Abs').map(g=>({g, v:vol[g]})).filter(x=>x.v<10).sort((a,b)=>a.v-b.v);
+  const stale = staleExercises();
+  let severity=null, title='Split balanced', fix=null;
+  if(gaps.length){
+    const worst = gaps[0];
+    severity = worst.v < 6 ? 'orange' : 'yellow';
+    title = gaps.length===1 ? (worst.g+' volume light') : (gaps.length+' muscle groups under target');
+    gaps.forEach(x=>findings.push(x.g+': '+(Math.round(x.v*10)/10)+' sets last week (guide: 10\u201320).'));
+    const sug = invSuggestAccessory(worst.g);
+    if(sug) fix={label:'Add '+sug+' to your split', desc:'Adds '+sug+' to your lightest applicable day to close the '+worst.g+' gap. Permanent split change \u2014 remove it any time in Settings.', type:'addEx', payload:{name:sug, group:worst.g}};
+  }
+  if(stale.length){
+    stale.slice(0,3).forEach(s=>findings.push(s.name+': flat ~'+s.weeks+' wks (best e1RM '+s.bestRecent+' lb, was '+s.bestOlder+').'));
+    if(!severity) { severity='yellow'; title = stale.length===1 ? (stale[0].name+' gone stale') : (stale.length+' lifts gone stale'); }
+    else severity = INV_SEV_RANK[severity]>=2 ? severity : 'yellow';
+    if(!fix){
+      const s0 = stale[0];
+      const alt = invSuggestSwap(s0.name);
+      if(alt) fix={label:'Swap '+s0.name+' \u2192 '+alt, desc:'Same muscle group, fresh stimulus. Permanent split change \u2014 the old exercise\u2019s history stays saved if you ever bring it back.', type:'swapEx', payload:{from:s0.name, to:alt}};
+    }
+  }
+  if(!findings.length) findings.push('All muscle groups hit 10+ sets last week and nothing is stale. Keep rolling.');
+  return {severity, key:'split', title, findings, fix};
+}
+
+/* accessory suggestion pools per muscle group (names chosen to resolve in EX_MUSCLES/musclesFor) */
+const INV_ACC_POOL = {
+  Chest:['Cable Fly','Pec Fly Machine','Incline Dumbbell Press','Machine Chest Press'],
+  Back:['Lat Pulldown','Seated Cable Row','Chest Supported Row','Straight Arm Pulldown'],
+  Shoulders:['Cable Lateral Raise','Dumbbell Lateral Raise','Rear Delt Machine','Seated Overhead Press Machine'],
+  Biceps:['Incline Dumbbell Curl','Preacher Curl Machine','Hammer Curl','Cable Curl'],
+  Triceps:['JM Press','Cable Pushdown','Overhead Cable Extension','Seated DB Overhead Extension'],
+  Quads:['Leg Extension','Leg Press','Hack Squat','Bulgarian Split Squat'],
+  Hamstrings:['Seated Leg Curl','Lying Leg Curl','Romanian Deadlift','Reverse Leg Curl'],
+  Glutes:['Hip Thrust Machine','Bulgarian Split Squat','Cable Kickback','Romanian Deadlift'],
+  Abs:['Cable Crunch','Hanging Leg Raise','Abdominal Machine']
+};
+function invAllSplitNames(){ return new Set(Object.values(S.split).flatMap(d=>(d.exercises||[]).map(exName))); }
+function invSuggestAccessory(group){
+  const inSplit = invAllSplitNames();
+  const pool = INV_ACC_POOL[group]||[];
+  return pool.find(n=>!inSplit.has(n)) || null;
+}
+function invSuggestSwap(fromName){
+  const m = musclesFor(fromName);
+  const g = (m.p && m.p[0]) || null; if(!g) return null;
+  const inSplit = invAllSplitNames();
+  const pool = INV_ACC_POOL[g]||[];
+  return pool.find(n=>!inSplit.has(n) && n!==fromName) || null;
+}
+
+/* -------------------- FLAG LIFECYCLE -------------------- */
+function invActiveFlags(){ return invState().flags.filter(f=>f.status==='active'||f.status==='applied'); }
+function invFindFlag(key){ return invActiveFlags().find(f=>f.key===key); }
+function invRaise(result, source){
+  if(!result || !result.severity) return null;
+  const st = invState();
+  const existing = invFindFlag(result.key);
+  if(existing){
+    // update severity/findings in place; don't duplicate
+    existing.severity = result.severity; existing.title = result.title;
+    existing.findings = result.findings; if(existing.status!=='applied') existing.fix = result.fix;
+    existing.updated = todayKey(); save(false); return existing;
+  }
+  const flag = {id:invUid(), cat:result.key.startsWith('lift:')?'lift':(result.key==='bulk'?'bulk':'split'),
+    key:result.key, severity:result.severity, title:result.title, findings:result.findings,
+    fix:result.fix, status:'active', source:source||'auto', created:todayKey(), updated:todayKey()};
+  st.flags.push(flag); save(false);
+  return flag;
+}
+function invArchive(flag, outcome){
+  flag.status = outcome; flag.closed = todayKey();
+  const st = invState();
+  st.flags = st.flags.filter(f=>f.id!==flag.id);
+  st.history.unshift(flag);
+  if(st.history.length>25) st.history.length = 25;
+  save(false);
+}
+function invDismiss(id){
+  const f = invActiveFlags().find(x=>x.id===id); if(!f) return;
+  invArchive(f,'dismissed'); renderInvestigation(); invUpdateBadge();
+}
+function invApplyFix(id){
+  const f = invActiveFlags().find(x=>x.id===id); if(!f || !f.fix) return;
+  const fx = f.fix;
+  if(fx.type==='cal'){
+    S.fuel = S.fuel||{}; S.fuel.calTarget = (S.fuel.calTarget||3000) + fx.payload.delta;
+  } else if(fx.type==='pro'){
+    S.fuel = S.fuel||{}; S.fuel.proTarget = fx.payload.to;
+  } else if(fx.type==='liftReset'){
+    invState().overrides[fx.payload.name] = {w:fx.payload.w, until:dateKeyOf(new Date(Date.now()+fx.payload.days*86400000)), note:'Investigation reset \u2014 rebuild with clean reps, expires '+fx.payload.days+'d'};
+  } else if(fx.type==='deload'){
+    startDeloadWeek();
+  } else if(fx.type==='addEx'){
+    const dk = invLightestDayFor(fx.payload.group);
+    if(dk){ S.split[dk].exercises.push({name:fx.payload.name, inc:incFor(fx.payload.name)}); }
+  } else if(fx.type==='swapEx'){
+    for(const dk in S.split){
+      const arr = S.split[dk].exercises;
+      const i = arr.findIndex(x=>exName(x)===fx.payload.from);
+      if(i>=0){ arr[i] = {name:fx.payload.to, inc:incFor(fx.payload.to)}; break; }
+    }
+  }
+  f.status='applied'; f.appliedAt=todayKey(); save();
+  renderInvestigation(); invUpdateBadge();
+}
+function invLightestDayFor(group){
+  // pick the training day whose exercises touch this group least (or any non-rest day as fallback)
+  let best=null, bestScore=Infinity;
+  Object.keys(S.split).forEach(dk=>{
+    const names=(S.split[dk].exercises||[]).map(exName); if(!names.length) return;
+    let score=0; names.forEach(n=>{ const m=musclesFor(n); if(m.p.includes(group))score+=2; if(m.s.includes(group))score+=1; });
+    // prefer days already touching the group lightly (fits the day theme) over days not touching at all
+    const adj = score===0 ? 100+names.length : score*10+names.length;
+    if(adj<bestScore){ bestScore=adj; best=dk; }
+  });
+  return best;
+}
+function invClearExpiredOverrides(){
+  const ov = invState().overrides; const t = todayKey();
+  Object.keys(ov).forEach(k=>{ if(ov[k].until < t) delete ov[k]; });
+}
+function invOverrideFor(nm){
+  invClearExpiredOverrides();
+  const o = invState().overrides[nm];
+  return (o && o.until >= todayKey()) ? o : null;
+}
+
+/* -------------------- RESOLUTION -------------------- */
+function invCheckResolutions(){
+  const flags = [...invActiveFlags()];
+  flags.forEach(f=>{
+    let resolved=false, note='';
+    if(f.cat==='lift'){
+      const nm = f.key.slice(5);
+      const pts = e1rmSeries(nm);
+      // only count sessions logged strictly AFTER the flag was raised — otherwise ordinary
+      // non-monotonic noise already sitting in old history can "resolve" a flag on the very
+      // next app open with zero new training in between.
+      const newPts = pts.filter(p=>p.date>f.created);
+      if(newPts.length>=2){
+        const idx = pts.findIndex(p=>p.date===newPts[0].date);
+        const baseline = idx>0 ? pts[idx-1].v : -Infinity;
+        const a = newPts[newPts.length-2].v, b = newPts[newPts.length-1].v;
+        if(b>a && a>baseline){ resolved=true; note='2 consecutive e1RM improvements since flagged'; }
+      }
+    } else if(f.cat==='bulk'){
+      const sm = bodyweightSeriesSmoothed();
+      if(sm.length>=3){
+        const reg = linreg(sm.slice(-3));
+        const rate = reg? reg.slope*7 : 0;
+        if(rate>=0.4 && rate<=1.2){ resolved=true; note='rate back in the 0.4\u20131.2 lb/wk band'; }
+      }
+    } else if(f.cat==='split'){
+      const {start,end} = lastCompletedWeekRange();
+      const vol = weeklyVolumeByGroup(start,end);
+      const gaps = MUSCLE_GROUPS.filter(g=>g!=='Abs').filter(g=>vol[g]<10);
+      const stale = staleExercises();
+      const trained = S.logs.some(l=>l.date>=start&&l.date<=end);
+      if(trained && !gaps.length && !stale.length){ resolved=true; note='volume gaps closed and nothing stale'; }
+    }
+    if(resolved){ f.resolveNote=note; invArchive(f,'resolved'); }
+  });
+  invUpdateBadge();
+}
+
+/* -------------------- AUTO-RUN SCHEDULER -------------------- */
+function invDaysSince(key){
+  const la = invState().lastAuto[key];
+  if(!la) return Infinity;
+  return (new Date(todayKey()) - new Date(la))/86400000;
+}
+function invAutoRun(){
+  const st = invState();
+  invClearExpiredOverrides();
+  invCheckResolutions();
+  let raised=false;
+  if(invDaysSince('split')>=7){
+    const r = investigateSplit(); if(r.severity){ invRaise(r,'auto'); raised=true; }
+    st.lastAuto.split = todayKey();
+  }
+  if(invDaysSince('lift')>=7){
+    const names = [...invAllSplitNames()];
+    const results = names.map(n=>investigateLift(n)).filter(r=>r.severity);
+    results.sort((a,b)=>INV_SEV_RANK[b.severity]-INV_SEV_RANK[a.severity]);
+    results.slice(0,3).forEach(r=>{ invRaise(r,'auto'); raised=true; }); // cap at 3 to avoid spam
+    st.lastAuto.lift = todayKey();
+  }
+  if(invDaysSince('bulk')>=14){
+    const r = investigateBulk(); if(r.severity){ invRaise(r,'auto'); raised=true; }
+    st.lastAuto.bulk = todayKey();
+  }
+  save(false);
+  invUpdateBadge();
+  return raised;
+}
+
+/* -------------------- BANNER + BADGE -------------------- */
+function invBannerHTML(){
+  const flags = invActiveFlags().filter(f=>f.status==='active');
+  if(!flags.length) return '';
+  const worst = flags.reduce((a,f)=>INV_SEV_RANK[f.severity]>INV_SEV_RANK[a.severity]?f:a, flags[0]);
+  if(worst.severity==='yellow') return ''; // yellow lives in the tab only
+  const col = INV_SEV_COLOR[worst.severity];
+  const cats = [...new Set(flags.filter(f=>f.severity===worst.severity).map(f=>INV_CAT_LABEL[f.cat]))].join(' \u00b7 ');
+  return '<div class="inv-banner" style="border-color:'+col+'" onclick="setMode(\'review\');showReviewTab(\'invest\')">'+
+    '<span class="inv-banner-tag" style="background:'+col+'">'+(worst.severity==='red'?'ALERT':'WATCH')+'</span>'+
+    '<span class="inv-banner-txt">'+esc(cats)+' \u2014 '+esc(worst.title)+'. Tap to review.</span>'+
+    '<span style="margin-left:auto;color:'+col+';font-family:var(--mono)">\u2192</span></div>';
+}
+function invUpdateBadge(){
+  const btn = document.querySelector('#rnav button[data-t="invest"]');
+  if(!btn) return;
+  const flags = invActiveFlags().filter(f=>f.status==='active');
+  const worst = flags.length ? flags.reduce((a,f)=>INV_SEV_RANK[f.severity]>INV_SEV_RANK[a.severity]?f:a, flags[0]) : null;
+  btn.innerHTML = 'Investigate' + (worst ? ' <span class="inv-dot" style="background:'+INV_SEV_COLOR[worst.severity]+'"></span>' : '');
+}
+
+/* -------------------- INVESTIGATION TAB UI -------------------- */
+let _invManualResult = null;
+function invFlagCardHTML(f){
+  const col = INV_SEV_COLOR[f.severity];
+  let h = '<div class="card inv-card" style="border-left:3px solid '+col+'">';
+  h += '<div class="inv-head"><span class="pill" style="border-color:'+col+';color:'+col+'">'+f.severity.toUpperCase()+'</span>'+
+       '<span class="pill" style="border-color:var(--line2);color:var(--muted)">'+INV_CAT_LABEL[f.cat]+'</span>'+
+       '<b class="inv-title">'+esc(f.title)+'</b>'+
+       '<span class="inv-date">'+(f.source==='manual'?'manual \u00b7 ':'')+fmtDate(f.updated||f.created)+'</span></div>';
+  h += '<div class="inv-findings">'+f.findings.map(x=>'<div class="inv-finding">\u25b8 '+esc(x)+'</div>').join('')+'</div>';
+  if(f.status==='applied'){
+    h += '<div class="inv-applied">\u2713 Fix applied '+fmtDate(f.appliedAt)+' \u2014 monitoring for resolution. '+
+      (f.cat==='lift'?'Clears after 2 consecutive e1RM improvements.':f.cat==='bulk'?'Clears when your rate is back in the 0.4\u20131.2 lb/wk band.':'Clears when volume gaps close and nothing is stale.')+'</div>';
+    h += '<div class="inv-acts"><button class="btn ghost sm" onclick="invDismiss(\''+f.id+'\')">Dismiss anyway</button></div>';
+  } else if(f.fix){
+    h += '<div class="inv-fix"><div class="inv-fix-h">RECOMMENDED FIX</div><b>'+esc(f.fix.label)+'</b><div class="small" style="margin-top:3px">'+esc(f.fix.desc)+'</div></div>';
+    h += '<div class="inv-acts"><button class="btn sm" onclick="invApplyFix(\''+f.id+'\')">Apply fix</button>'+
+         '<button class="btn ghost sm" onclick="invDismiss(\''+f.id+'\')">Dismiss</button></div>';
+  } else {
+    h += '<div class="inv-fix"><div class="small">No forced fix \u2014 this one is informational. The progression engine is already handling it correctly; address the inputs (food, sleep) and it should self-correct.</div></div>';
+    h += '<div class="inv-acts"><button class="btn ghost sm" onclick="invDismiss(\''+f.id+'\')">Dismiss</button></div>';
+  }
+  h += '</div>';
+  return h;
+}
+function invRunManual(kind, liftName){
+  let r;
+  if(kind==='bulk') r = investigateBulk();
+  else if(kind==='split') r = investigateSplit();
+  else if(kind==='lift'){ if(!liftName) return; r = investigateLift(liftName); }
+  else return;
+  if(r.severity){
+    const f = invRaise(r,'manual');
+    _invManualResult = {clear:false, flagId:f.id};
+  } else {
+    _invManualResult = {clear:true, title:r.title, findings:r.findings, when:todayKey()};
+    // manual all-clear also logged to history (lightweight)
+    const st = invState();
+    st.history.unshift({id:invUid(), cat:kind==='lift'?'lift':kind, key:r.key, severity:null, title:r.title,
+      findings:r.findings, status:'clear', source:'manual', created:todayKey(), closed:todayKey()});
+    if(st.history.length>25) st.history.length=25;
+    save(false);
+  }
+  invCheckResolutions();
+  renderInvestigation(); invUpdateBadge();
+}
+function renderInvestigation(){
+  const el = document.getElementById('invest'); if(!el) return;
+  invClearExpiredOverrides();
+  const flags = invActiveFlags().sort((a,b)=>INV_SEV_RANK[b.severity]-INV_SEV_RANK[a.severity]);
+  let h = '';
+  // manual trigger card
+  const liftNames = [...invAllSplitNames()];
+  h += '<div class="card"><div class="chart-h" style="margin-bottom:8px">Run an investigation</div>'+
+    '<p class="small" style="margin-bottom:10px">Deep-dive one area on demand. Automatic checks also run in the background \u2014 split and lifts weekly, bulk every two weeks.</p>'+
+    '<div class="inv-trigger-row">'+
+    '<button class="btn sm" onclick="invRunManual(\'bulk\')">Investigate bulk</button>'+
+    '<button class="btn sm" onclick="invRunManual(\'split\')">Investigate split</button>'+
+    '</div>'+
+    '<div class="inv-trigger-row" style="margin-top:8px">'+
+    '<select id="invLiftSel" style="flex:1">'+liftNames.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join('')+'</select>'+
+    '<button class="btn sm" onclick="invRunManual(\'lift\', document.getElementById(\'invLiftSel\').value)">Investigate lift</button>'+
+    '</div></div>';
+  // manual all-clear result
+  if(_invManualResult && _invManualResult.clear){
+    h += '<div class="card" style="border-left:3px solid var(--cyan)"><div class="inv-head"><span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">CLEAR</span><b class="inv-title">'+esc(_invManualResult.title)+'</b></div>'+
+      '<div class="inv-findings">'+_invManualResult.findings.map(x=>'<div class="inv-finding">\u25b8 '+esc(x)+'</div>').join('')+'</div>'+
+      '<div class="inv-acts"><button class="btn ghost sm" onclick="_invManualResult=null;renderInvestigation()">Ok</button></div></div>';
+  }
+  // active flags
+  if(flags.length){
+    h += '<h2 style="margin-top:18px">Active flags</h2>';
+    flags.forEach(f=>{ h += invFlagCardHTML(f); });
+  } else {
+    h += '<div class="card" style="border-left:3px solid var(--cyan)"><p class="small" style="margin:0">\u2713 No active flags. Bulk, lifts, and split all look healthy \u2014 or haven\u2019t hit their next scheduled check yet.</p></div>';
+  }
+  // active lift overrides
+  const ov = invState().overrides; const ovKeys = Object.keys(ov);
+  if(ovKeys.length){
+    h += '<h2 style="margin-top:18px">Active target overrides</h2><div class="card">';
+    ovKeys.forEach(k=>{ h += '<div class="inv-finding" style="display:flex;gap:8px;align-items:center"><span>\u25b8 <b>'+esc(k)+'</b> \u2014 '+ov[k].w+' lb until '+fmtDate(ov[k].until)+'</span><button class="del" style="margin-left:auto" onclick="delete invState().overrides[\''+esc(k).replace(/'/g,"\\'")+'\'];save();renderInvestigation()">clear</button></div>'; });
+    h += '</div>';
+  }
+  // history
+  const hist = invState().history;
+  if(hist.length){
+    const histRows = hist.map(f=>{
+      const col = f.severity?INV_SEV_COLOR[f.severity]:'var(--cyan)';
+      const outcome = f.status==='clear'?'all clear':f.status+(f.resolveNote?' \u00b7 '+f.resolveNote:'');
+      return '<div class="inv-hist-row"><span class="inv-dot" style="background:'+col+';position:static"></span>'+
+        '<span class="inv-hist-t">'+esc(f.title)+'</span>'+
+        '<span class="inv-hist-o">'+esc(outcome)+'</span>'+
+        '<span class="inv-hist-d">'+fmtDate(f.closed||f.created)+'</span></div>';
+    }).join('');
+    h += subSection('Investigation history ('+hist.length+')', histRows, false);
+  }
+  el.innerHTML = h;
+}
+
 /* ===================== BOOT ===================== */
 setAccent();
 setupPWA();
@@ -4098,6 +4570,7 @@ buildBotNav();
 // resume an in-progress session if one exists for today
 const _draft = loadLiveDraft();
 if(_draft){ live=_draft; liveActiveIdx = live.exercises.findIndex(e=>!e.done); if(liveActiveIdx<0) liveActiveIdx=0; }
+try{ invAutoRun(); }catch(e){ console.warn('invAutoRun failed', e); }
 renderLive();
 // session clock ticker
 setInterval(()=>{ if(live && MODE==='live') updateSessionBar(); }, 1000);
