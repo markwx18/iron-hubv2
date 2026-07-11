@@ -389,7 +389,28 @@
   .inv-hist-t{color:var(--text); font-weight:600;}
   .inv-hist-o{color:var(--muted); font-family:var(--mono); font-size:10.5px;}
   .inv-hist-d{margin-left:auto; color:var(--dim); font-family:var(--mono); font-size:10px; flex:none;}
+
+  /* ===== COACH ACTIONS ===== */
+  .cprop-wrap{display:flex; flex-direction:column; gap:8px; margin:2px 0 10px; padding:0 2px;}
+  .cprop{background:var(--panel2); border:1px solid var(--line2); border-left:2px solid var(--violet); border-radius:0 4px 4px 0; padding:11px 13px;}
+  .cprop.done{opacity:.85;}
+  .cprop-top{display:flex; align-items:center; gap:8px; margin-bottom:5px; flex-wrap:wrap;}
+  .cprop-verb{font-family:var(--disp); font-size:14px; font-weight:600; letter-spacing:.01em; color:var(--violet);}
+  .cprop-scope{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; color:var(--dim); border:1px solid var(--line2); padding:2px 7px; border-radius:2px; text-transform:uppercase;}
+  .cprop-detail{font-size:12.5px; color:var(--muted); line-height:1.5; margin-bottom:9px;}
+  .cprop-acts{display:flex; gap:8px;}
+  .cprop-done{font-size:12px; color:var(--cyan); display:flex; align-items:center; gap:6px;}
+  .cprop-done span{font-weight:700;}
+  .cprop-dismissed{font-size:12px; color:var(--dim);}
+  .cprop-failed{font-size:12px; color:var(--red); display:flex; align-items:center; gap:6px;}
+  .cprop-failed span{font-weight:700;}
+  .coach-plan-banner{display:flex; align-items:center; gap:9px; margin:10px 0 4px; padding:9px 11px; background:var(--panel); border:1px solid var(--violet-dim); border-radius:4px;}
+  .cpb-tag{font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:.1em; color:var(--violet); border:1px solid var(--violet-dim); padding:3px 7px; border-radius:2px; flex:none;}
+  .cpb-txt{font-size:12.5px; color:var(--text); line-height:1.4;}
+  .cpb-x{margin-left:auto; background:none; border:none; color:var(--dim); font-size:20px; line-height:1; cursor:pointer; padding:0 2px; flex:none;}
+  .cpb-x:hover{color:var(--red);}
 </style>
+
 
 
 
@@ -1905,10 +1926,18 @@ async function sendChat(){
       'Be direct and concrete: give specific weights, reps, set counts, and food amounts when relevant. '+
       'No fluff, no over-hedging. Keep answers tight (under ~250 words unless asked for a program). '+
       'Never recommend steroids, SARMs, or other PEDs; if asked, explain briefly why not at his age and move on. '+
-      'Encourage adequate recovery and realistic rate-of-gain (~0.5-1 lb/week on a lean bulk).\n\n'+trainingContext();
+      'Encourage adequate recovery and realistic rate-of-gain (~0.5-1 lb/week on a lean bulk).\n\n'+
+      'You can propose changes to the app using the provided tools: adding/removing/swapping exercises in the split (permanent), '+
+      'setting a today-only workout override, adjusting fuel targets, or starting a deload. '+
+      'When the user clearly asks you to change something, call the appropriate tool. The user must tap Apply before anything '+
+      'actually changes, so propose confidently but still briefly explain what you\'re proposing in your text. '+
+      'Prefer set_today_workout for one-off "just for today" requests and the permanent tools for lasting changes. '+
+      'Only call a tool when the user is asking for a change \u2014 for pure questions or advice, just answer.\n\n'+trainingContext();
     const msgs = S.chat.slice(-16).map(m=>({role:m.role, content:m.content}));
-    const reply = await callClaude(msgs, system, 1000);
-    S.chat.push({role:'assistant', content:reply}); save(); renderCoach();
+    const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs(), 1200);
+    const msg = {role:'assistant', content:text || (actions.length?'Here\u2019s what I\u2019d change \u2014 review and apply below:':'')};
+    if(actions.length) msg.proposals = coachStageProposals(actions);
+    S.chat.push(msg); save(); renderCoach();
   }catch(e){
     const t=$('#thinking'); if(t) t.textContent='Coach unavailable: '+e.message+' — check your API key in Settings.';
   }
@@ -2660,6 +2689,14 @@ function streakDays(){
   }
   return n;
 }
+function coachPlanBannerHTML(){
+  clearExpiredCoachDayPlan();
+  const p = S.coachDayPlan;
+  if(!p || p.date!==todayKey()) return '';
+  return '<div class="coach-plan-banner"><span class="cpb-tag">COACH · TODAY</span>'+
+    '<span class="cpb-txt">'+esc(p.day)+' is set to a custom plan: '+esc(p.exercises.join(', '))+'</span>'+
+    '<button class="cpb-x" onclick="S.coachDayPlan=null;save();renderLive()" title="Cancel today-only plan">&times;</button></div>';
+}
 function welcomeHTML(){
   const dk = currentDayKey();
   const name = 'Mark';
@@ -2679,7 +2716,7 @@ function welcomeHTML(){
           '<button class="btn ghost sm" onclick="setMode(\'review\')">Review stats</button>';
   }
   return '<div class="welcome"><div class="greet">'+greetWord()+', <span class="accent">'+esc(name)+'</span></div>'+
-    '<div class="submsg">'+sub+'</div><div class="wcta">'+cta+'</div></div>';
+    '<div class="submsg">'+sub+'</div>'+coachPlanBannerHTML()+'<div class="wcta">'+cta+'</div></div>';
 }
 
 /* ===================== LIVE SESSION ENGINE ===================== */
@@ -2724,7 +2761,13 @@ function buildOneLiveExercise(nm){
   };
 }
 function buildLiveExercises(dk){
-  return dayExNames(dk).map(nm=>buildOneLiveExercise(nm));
+  clearExpiredCoachDayPlan();
+  const plan = coachDayPlanFor(dk);
+  const names = plan ? plan.exercises.slice() : dayExNames(dk);
+  const built = names.map(nm=>buildOneLiveExercise(nm));
+  // a today-only plan is consumed once the session is built for that day
+  if(plan){ S.coachDayPlan = null; save(false); }
+  return built;
 }
 function liveStartSession(){
   const dk = currentDayKey()==='REST' ? null : currentDayKey();
@@ -3200,7 +3243,10 @@ function renderCoach(){
   if(!S.chat.length) html += '<div class="msg sys">Coach is loaded with your full training log, bodyweight trend, and split. Ask anything.</div>';
   S.chat.forEach(m=>{
     const body = m.role==='user' ? esc(m.content) : renderMarkdown(m.content);
-    html += '<div class="msg '+(m.role==='user'?'me':'ai')+'">'+body+'</div>';
+    if(m.content) html += '<div class="msg '+(m.role==='user'?'me':'ai')+'">'+body+'</div>';
+    if(m.proposals && m.proposals.length){
+      html += '<div class="cprop-wrap">'+m.proposals.map(p=>coachProposalHTML(p)).join('')+'</div>';
+    }
   });
   html += '</div><div class="chat-in">'+
     '<textarea id="chatIn" placeholder="Ask your coach\u2026" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>'+
@@ -4569,6 +4615,224 @@ function renderInvestigation(){
     h += subSection('Investigation history ('+hist.length+')', histRows, false);
   }
   el.innerHTML = h;
+}
+
+
+/* ============================================================
+   COACH ACTIONS — tool-calling write layer (tap-to-apply)
+   Coach proposes structured actions; user taps Apply to execute.
+   Separate from the Investigation flag system.
+   ============================================================ */
+
+/* Today-only day override: staged plan consumed when the matching
+   day's LIVE session next starts, then cleared. */
+function coachDayPlanFor(dk){
+  const t = todayKey();
+  if(S.coachDayPlan && S.coachDayPlan.date===t && S.coachDayPlan.day===dk) return S.coachDayPlan;
+  return null;
+}
+function clearExpiredCoachDayPlan(){
+  if(S.coachDayPlan && S.coachDayPlan.date !== todayKey()) S.coachDayPlan = null;
+}
+
+/* The tool schema advertised to the model. */
+function coachToolDefs(){
+  const dayList = Object.keys(S.split).join(', ');
+  return [
+    {name:'add_exercise_permanent', description:'Permanently add an exercise to a training day in the split (applies to all future sessions on that day).',
+      input_schema:{type:'object', properties:{
+        day:{type:'string', description:'Day key, one of: '+dayList},
+        exercise:{type:'string', description:'Exercise name'},
+        position:{type:'string', enum:['end','start'], description:'Where in the day to add it. Default end.'}
+      }, required:['day','exercise']}},
+    {name:'remove_exercise_permanent', description:'Permanently remove an exercise from a training day in the split.',
+      input_schema:{type:'object', properties:{
+        day:{type:'string', description:'Day key, one of: '+dayList},
+        exercise:{type:'string', description:'Exercise name to remove (must currently exist on that day)'}
+      }, required:['day','exercise']}},
+    {name:'swap_exercise_permanent', description:'Permanently replace one exercise with another on a training day (keeps position).',
+      input_schema:{type:'object', properties:{
+        day:{type:'string', description:'Day key, one of: '+dayList},
+        from:{type:'string', description:'Existing exercise name to replace'},
+        to:{type:'string', description:'New exercise name'}
+      }, required:['day','from','to']}},
+    {name:'set_today_workout', description:'Stage a today-only workout override for a given day. Does NOT change the permanent split. Consumed when that day\'s LIVE session next starts today, then discarded. Use for one-off requests like "make today ab-focused".',
+      input_schema:{type:'object', properties:{
+        day:{type:'string', description:'Day key the override applies to, one of: '+dayList},
+        exercises:{type:'array', items:{type:'string'}, description:'Full ordered list of exercise names for today\'s session'}
+      }, required:['day','exercises']}},
+    {name:'adjust_fuel', description:'Adjust the daily calorie and/or protein target.',
+      input_schema:{type:'object', properties:{
+        calories:{type:'number', description:'New daily calorie target (optional)'},
+        protein:{type:'number', description:'New daily protein target in grams (optional)'}
+      }}},
+    {name:'start_deload', description:'Start a deload week (auto-loads ~60% weights for light sets, excluded from progression). Use only when fatigue/overreach is clearly indicated.',
+      input_schema:{type:'object', properties:{}}}
+  ];
+}
+
+/* Turn a tool_use block into a human-readable proposal for the apply-card. */
+function coachDescribeAction(name, inp){
+  switch(name){
+    case 'add_exercise_permanent':
+      return {verb:'Add exercise', scope:'Permanent · '+inp.day, detail:'Add '+inp.exercise+' to '+inp.day+' ('+(inp.position==='start'?'first':'last')+' in the day), every session going forward.'};
+    case 'remove_exercise_permanent':
+      return {verb:'Remove exercise', scope:'Permanent · '+inp.day, detail:'Remove '+inp.exercise+' from '+inp.day+', every session going forward.'};
+    case 'swap_exercise_permanent':
+      return {verb:'Swap exercise', scope:'Permanent · '+inp.day, detail:'Replace '+inp.from+' with '+inp.to+' on '+inp.day+', keeping its slot. '+inp.from+'\u2019s history stays saved.'};
+    case 'set_today_workout':
+      return {verb:'Set today\u2019s workout', scope:'Today only · '+inp.day, detail:'For today\u2019s '+inp.day+' session only: '+(inp.exercises||[]).join(', ')+'. Your saved split is untouched.'};
+    case 'adjust_fuel':{
+      const parts=[]; if(inp.calories!=null) parts.push('calories \u2192 '+inp.calories); if(inp.protein!=null) parts.push('protein \u2192 '+inp.protein+'g');
+      return {verb:'Adjust fuel targets', scope:'Nutrition', detail:'Set '+(parts.join(' and ')||'(no change)')+'.'};
+    }
+    case 'start_deload':
+      return {verb:'Start deload week', scope:'Recovery', detail:'Begin a 7-day deload \u2014 ~60% loads, light sets, excluded from progression and trend charts.'};
+    default:
+      return {verb:name, scope:'', detail:JSON.stringify(inp)};
+  }
+}
+
+/* Validate an action against current state; return {ok, error}. */
+function coachValidateAction(name, inp){
+  const dayOk = d => !!S.split[d];
+  if(['add_exercise_permanent','remove_exercise_permanent','swap_exercise_permanent','set_today_workout'].includes(name)){
+    if(!dayOk(inp.day)) return {ok:false, error:'No day "'+inp.day+'" exists in your split.'};
+  }
+  if(name==='remove_exercise_permanent' || name==='swap_exercise_permanent'){
+    const key = name==='swap_exercise_permanent' ? inp.from : inp.exercise;
+    const exists = (S.split[inp.day].exercises||[]).some(x=>exName(x).toLowerCase()===String(key).toLowerCase());
+    if(!exists) return {ok:false, error:key+' isn\u2019t currently on '+inp.day+'.'};
+  }
+  if(name==='set_today_workout' && (!Array.isArray(inp.exercises) || !inp.exercises.length)){
+    return {ok:false, error:'No exercises given for the today-only plan.'};
+  }
+  if(name==='adjust_fuel' && inp.calories==null && inp.protein==null){
+    return {ok:false, error:'No calorie or protein value given.'};
+  }
+  return {ok:true};
+}
+
+/* Execute a validated action against S. Returns a short confirmation string. */
+function coachExecuteAction(name, inp){
+  if(name==='add_exercise_permanent'){
+    const item = {name:inp.exercise, inc:incFor(inp.exercise)};
+    const arr = S.split[inp.day].exercises = S.split[inp.day].exercises||[];
+    if(inp.position==='start') arr.unshift(item); else arr.push(item);
+    save(); setAccent();
+    return inp.exercise+' added to '+inp.day+'.';
+  }
+  if(name==='remove_exercise_permanent'){
+    const arr = S.split[inp.day].exercises||[];
+    S.split[inp.day].exercises = arr.filter(x=>exName(x).toLowerCase()!==inp.exercise.toLowerCase());
+    save(); setAccent();
+    return inp.exercise+' removed from '+inp.day+'.';
+  }
+  if(name==='swap_exercise_permanent'){
+    const arr = S.split[inp.day].exercises||[];
+    const i = arr.findIndex(x=>exName(x).toLowerCase()===inp.from.toLowerCase());
+    if(i>=0) arr[i] = {name:inp.to, inc:incFor(inp.to)};
+    save(); setAccent();
+    return inp.from+' \u2192 '+inp.to+' on '+inp.day+'.';
+  }
+  if(name==='set_today_workout'){
+    S.coachDayPlan = {date:todayKey(), day:inp.day, exercises:inp.exercises.slice()};
+    // if the schedule's today isn't already this day, also set an overrideDay so LIVE opens to it
+    if(currentDayKey()!==inp.day) S.overrideDay = {date:todayKey(), day:inp.day};
+    save(); setAccent();
+    return 'Today\u2019s '+inp.day+' is set to your custom plan.';
+  }
+  if(name==='adjust_fuel'){
+    S.fuel = S.fuel||{};
+    if(inp.calories!=null) S.fuel.calTarget = Math.round(inp.calories);
+    if(inp.protein!=null) S.fuel.proTarget = Math.round(inp.protein);
+    save();
+    return 'Fuel targets updated.';
+  }
+  if(name==='start_deload'){
+    startDeloadWeek();
+    return 'Deload week started.';
+  }
+  return 'Done.';
+}
+
+/* ---- tool-enabled Claude call: returns {text, actions:[{id,name,input}]} ---- */
+async function callClaudeWithTools(messages, system, tools, maxTokens){
+  const headers = {'Content-Type':'application/json'};
+  if(S.settings.apiKey){
+    headers['x-api-key'] = S.settings.apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
+  }
+  const body = {model:'claude-sonnet-4-6', max_tokens:maxTokens||1200, messages};
+  if(system) body.system = system;
+  if(tools && tools.length) body.tools = tools;
+  const res = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers,body:JSON.stringify(body)});
+  if(!res.ok){ const t=await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
+  const data = await res.json();
+  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+  const actions = (data.content||[]).filter(b=>b.type==='tool_use').map(b=>({id:b.id, name:b.name, input:b.input||{}}));
+  return {text, actions};
+}
+
+/* ---- proposal lifecycle: proposals live on the chat message they came with ---- */
+function coachStageProposals(actions){
+  // returns array of proposal objects with validation state
+  return actions.map(a=>{
+    const v = coachValidateAction(a.name, a.input);
+    return {id:'p_'+Math.random().toString(36).slice(2,9), name:a.name, input:a.input,
+      desc:coachDescribeAction(a.name, a.input), valid:v.ok, error:v.error||null, status:'pending'};
+  });
+}
+function coachFindProposal(pid){
+  for(const m of S.chat){ if(m.proposals){ const p=m.proposals.find(x=>x.id===pid); if(p) return {msg:m, p}; } }
+  return null;
+}
+function coachApplyProposal(pid){
+  const found = coachFindProposal(pid); if(!found) return;
+  const {p} = found;
+  if(!p.valid || p.status!=='pending') return;
+  // re-validate at apply time (state may have changed since proposed)
+  const v = coachValidateAction(p.name, p.input);
+  if(!v.ok){ p.status='failed'; p.error=v.error; save(); renderCoach(); return; }
+  try{
+    const conf = coachExecuteAction(p.name, p.input);
+    p.status='applied'; p.confirm=conf;
+  }catch(e){ p.status='failed'; p.error=e.message; }
+  save(); renderCoach();
+  // reflect downstream UI that may have changed
+  try{ if(typeof renderSettings==='function' && document.getElementById('settings')) renderSettings(); }catch(e){}
+  try{ invUpdateBadge(); }catch(e){}
+}
+function coachDismissProposal(pid){
+  const found = coachFindProposal(pid); if(!found) return;
+  if(found.p.status==='pending'){ found.p.status='dismissed'; save(); renderCoach(); }
+}
+
+/* ---- proposal card renderer (in-chat) ---- */
+function coachProposalHTML(p){
+  const statusRow = {
+    applied:'<div class="cprop-done"><span>\u2713</span>'+esc(p.confirm||'Applied')+'</div>',
+    dismissed:'<div class="cprop-dismissed">Dismissed</div>',
+    failed:'<div class="cprop-failed"><span>\u2717</span>'+esc(p.error||'Could not apply')+'</div>'
+  }[p.status];
+  let h = '<div class="cprop '+(p.status!=='pending'?'done':'')+'">';
+  h += '<div class="cprop-top"><span class="cprop-verb">'+esc(p.desc.verb)+'</span>'+
+       (p.desc.scope?'<span class="cprop-scope">'+esc(p.desc.scope)+'</span>':'')+'</div>';
+  h += '<div class="cprop-detail">'+esc(p.desc.detail)+'</div>';
+  if(p.status==='pending'){
+    if(p.valid){
+      h += '<div class="cprop-acts">'+
+        '<button class="btn sm" onclick="coachApplyProposal(\''+p.id+'\')">Apply</button>'+
+        '<button class="btn ghost sm" onclick="coachDismissProposal(\''+p.id+'\')">Dismiss</button></div>';
+    } else {
+      h += '<div class="cprop-failed"><span>\u2717</span>'+esc(p.error||'Invalid')+'</div>';
+    }
+  } else {
+    h += statusRow||'';
+  }
+  h += '</div>';
+  return h;
 }
 
 /* ===================== BOOT ===================== */
