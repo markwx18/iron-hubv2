@@ -2160,7 +2160,7 @@ function lastCompletedWeekRange(){
 }
 function weeklyVolumeByGroup(startKey, endKey){
   const vol = {}; MUSCLE_GROUPS.forEach(g=>vol[g]=0);
-  S.logs.filter(l=>l.date>=startKey && l.date<=endKey).forEach(l=>l.entries.forEach(e=>{
+  S.logs.filter(l=>l.date>=startKey && l.date<=endKey && !l.deload).forEach(l=>l.entries.forEach(e=>{
     const m = musclesFor(e.exercise); const n = e.sets.length;
     m.p.forEach(g=>{ if(vol[g]!=null) vol[g]+=n; });
     m.s.forEach(g=>{ if(vol[g]!=null) vol[g]+=n*0.5; });
@@ -4446,7 +4446,8 @@ function invCheckResolutions(){
         }
       } else if(f.cat==='bulk'){
         const sm = bodyweightSeriesSmoothed();
-        if(sm.length>=3){
+        const newestWeight = S.weights.length ? [...S.weights].sort((a,b)=>b.date.localeCompare(a.date))[0].date : null;
+        if(sm.length>=3 && newestWeight && newestWeight>f.created){
           const reg = linreg(sm.slice(-3));
           const rate = reg? reg.slope*7 : 0;
           if(rate>=0.4 && rate<=1.2){ resolved=true; note='rate back in the 0.4\u20131.2 lb/wk band'; }
@@ -4457,7 +4458,8 @@ function invCheckResolutions(){
         const gaps = MUSCLE_GROUPS.filter(g=>g!=='Abs').filter(g=>vol[g]<10);
         const stale = staleExercises();
         const trained = S.logs.some(l=>l.date>=start&&l.date<=end);
-        if(trained && !gaps.length && !stale.length){ resolved=true; note='volume gaps closed and nothing stale'; }
+        const hasNewSession = S.logs.some(l=>l.date>f.created);
+        if(hasNewSession && trained && !gaps.length && !stale.length){ resolved=true; note='volume gaps closed and nothing stale'; }
       }
       if(resolved){ f.resolveNote=note; invArchive(f,'resolved'); }
     }catch(e){ console.warn('invCheckResolutions: skipped one flag due to error', f.key, e); }
