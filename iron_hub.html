@@ -409,7 +409,68 @@
   .cpb-txt{font-size:12.5px; color:var(--text); line-height:1.4;}
   .cpb-x{margin-left:auto; background:none; border:none; color:var(--dim); font-size:20px; line-height:1; cursor:pointer; padding:0 2px; flex:none;}
   .cpb-x:hover{color:var(--red);}
+
+  /* ===== PERIODIZATION ===== */
+  .meso-phases{display:flex; flex-direction:column; gap:10px;}
+  .meso-prow{background:var(--panel2); border:1px solid var(--line); border-left:2px solid var(--cyan); border-radius:0 4px 4px 0; padding:11px 12px;}
+  .meso-prow-top{display:flex; gap:8px; align-items:center; margin-bottom:9px;}
+  .meso-prow-top select{flex:none; width:auto; min-width:118px;}
+  .meso-prow-top .meso-name{flex:1; min-width:0;}
+  .meso-prow-grid{display:grid; grid-template-columns:auto 1fr 1fr; gap:10px;}
+  .meso-prow-grid .field{margin:0;}
+  .meso-prow-grid input{width:100%;}
+  .meso-pair{display:flex; align-items:center; gap:5px;}
+  .meso-pair span{color:var(--dim); font-family:var(--mono); font-size:12px;}
+  .meso-x{background:none; border:none; color:var(--dim); font-size:19px; line-height:1; cursor:pointer; padding:0 3px; flex:none;}
+  .meso-x:hover{color:var(--red);}
+  .meso-check{display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--text); cursor:pointer;}
+  .meso-check input{width:auto; margin:0;}
+
+  .meso-now-top{display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:4px;}
+  .meso-now-name{font-family:var(--disp); font-size:19px; font-weight:700; letter-spacing:.02em;}
+  .meso-now-sub{font-family:var(--mono); font-size:11px; color:var(--dim); margin-bottom:10px;}
+  .meso-now-meta{font-size:12.5px; color:var(--muted); margin-top:6px; line-height:1.5;}
+  .meso-bar{height:6px; background:var(--base2); border:1px solid var(--line); border-radius:3px; overflow:hidden;}
+  .meso-bar-fill{height:100%;}
+
+  .meso-cal{display:grid; grid-template-columns:repeat(auto-fill,minmax(158px,1fr)); gap:9px;}
+  .meso-wk{background:var(--panel2); border:1px solid var(--line); border-left:3px solid var(--cyan); border-radius:0 4px 4px 0; padding:9px 10px; cursor:pointer; transition:.12s;}
+  .meso-wk:hover{border-color:var(--line2); transform:translateY(-1px);}
+  .meso-wk.past{opacity:.45;}
+  .meso-wk.now{background:var(--panel); box-shadow:0 0 0 1px var(--line2);}
+  .meso-wk-top{display:flex; align-items:center; gap:6px; margin-bottom:3px; flex-wrap:wrap;}
+  .meso-wk-n{font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:.06em;}
+  .meso-wk-now{font-family:var(--mono); font-size:8.5px; font-weight:600; letter-spacing:.1em; background:var(--amber); color:#1a0e02; padding:1px 5px; border-radius:2px;}
+  .meso-wk-name{font-family:var(--disp); font-size:13.5px; font-weight:600; letter-spacing:.02em;}
+  .meso-wk-date{font-family:var(--mono); font-size:9.5px; color:var(--dim); margin-bottom:5px;}
+  .meso-wk-meta{font-size:11.5px; color:var(--muted); margin-bottom:6px; line-height:1.4;}
+  .meso-wk-bar{height:3px; background:var(--base2); border-radius:2px; overflow:hidden; margin-bottom:3px;}
+  .meso-wk-bar div{height:100%;}
+  .meso-wk-blk{font-family:var(--mono); font-size:9px; color:var(--dim); letter-spacing:.04em;}
+
+  .meso-prop{background:var(--panel2); border:1px solid var(--line); border-left:2px solid var(--amber); border-radius:0 4px 4px 0; padding:12px 13px; margin-bottom:11px;}
+  .meso-prop.ok{border-left-color:var(--cyan);}
+  .meso-prop-top{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:9px;}
+  .meso-prop-t{font-family:var(--disp); font-size:14.5px; font-weight:600;}
+  .meso-prop-split{display:flex; flex-direction:column; gap:6px; margin-bottom:9px;}
+  .meso-prop-day{display:flex; gap:8px; align-items:flex-start;}
+  .meso-prop-dk{font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:.08em; padding-top:4px; flex:none; width:26px;}
+  .meso-prop-exs{display:flex; flex-wrap:wrap; gap:4px;}
+  .meso-ex{font-size:11.5px; color:var(--muted); background:var(--base2); border:1px solid var(--line); border-radius:2px; padding:2px 7px;}
+  .meso-ex.heavy{color:var(--amber-soft); border-color:var(--amber-dim);}
+  .meso-ex b{font-family:var(--mono); font-size:9.5px;}
+  .meso-why{border-top:1px solid var(--line); padding-top:8px; margin-bottom:9px; font-size:11.5px; color:var(--dim); line-height:1.6;}
+  .meso-warn{font-size:11.5px; color:var(--amber); background:rgba(246,134,47,.07); border:1px solid var(--amber-dim); border-radius:3px; padding:7px 9px; margin-bottom:9px; line-height:1.45;}
+  .meso-prop-acts{display:flex; gap:7px; flex-wrap:wrap;}
+
+  .meso-ed-day{border:1px solid var(--line); border-radius:4px; padding:9px 10px; margin-bottom:9px; text-align:left;}
+  .meso-ed-dk{font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:.08em; margin-bottom:7px;}
+  .meso-ed-ex{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0; font-size:13px; border-bottom:1px solid var(--line);}
+  .meso-ed-ex:last-of-type{border-bottom:none;}
+  .meso-ed-add{display:flex; gap:6px; margin-top:7px;}
+  .meso-ed-add input{flex:1; min-width:0;}
 </style>
+
 
 
 
@@ -444,6 +505,7 @@
         <button data-t="library">Library</button>
         <button data-t="coach">Coach</button>
         <button data-t="invest">Investigate</button>
+        <button data-t="meso">Plan</button>
         <button data-t="log">Log</button>
         <button data-t="settings">Settings</button>
       </div>
@@ -455,6 +517,7 @@
         <section id="library"></section>
         <section id="coach"></section>
         <section id="invest"></section>
+        <section id="meso"></section>
         <section id="log"></section>
         <section id="settings"></section>
         <section id="today" style="display:none"></section>
@@ -465,6 +528,12 @@
   <div class="botnav" id="botnav"></div>
 </div>
 
+<div class="overlay" id="mesoOverlay" onclick="if(event.target===this)closeMesoOv()">
+  <div class="exinfo-modal" style="max-width:520px">
+    <div class="exinfo-top"><span class="exinfo-title" id="mesoOvTitle">Week</span><button onclick="closeMesoOv()" class="exinfo-x">&times;</button></div>
+    <div id="mesoOvBody" style="padding:16px"></div>
+  </div>
+</div>
 <div class="overlay" id="liveEditOverlay" onclick="if(event.target===this)closeLiveExEdit()">
   <div class="exinfo-modal" style="max-width:460px">
     <div class="exinfo-top"><span class="exinfo-title" id="liveEditTitle">Edit exercise</span><button onclick="closeLiveExEdit()" class="exinfo-x">&times;</button></div>
@@ -577,19 +646,21 @@ function exInc(x){
   return incFor(exName(x)); // fall back to smart default
 }
 function dayExNames(dk){
-  const d = S.split[dk]; if(!d) return [];
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  const d = src[dk] || S.split[dk]; if(!d) return [];
   return (d.exercises||[]).map(exName);
 }
 /* Rep-mode helpers — per-exercise override of the global rep range. */
 function exRepMode(ex){
-  for(const dk in S.split)
-    for(const x of (S.split[dk].exercises||[]))
-      if(exName(x)===ex && typeof x==='object' && x.repMode==='str') return {lo:3, hi:6};
+  if(isStrMode(ex)) return {lo:3, hi:6};   // explicit per-exercise strength mode always wins
+  const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
+  if(mw && mw.repLo>0 && mw.repHi>0) return {lo:mw.repLo, hi:mw.repHi};  // then the active phase
   return {lo:S.settings.repLow, hi:S.settings.repHigh};
 }
 function isStrMode(ex){
-  for(const dk in S.split)
-    for(const x of (S.split[dk].exercises||[]))
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  for(const dk in src)
+    for(const x of (src[dk].exercises||[]))
       if(exName(x)===ex && typeof x==='object' && x.repMode==='str') return true;
   return false;
 }
@@ -1897,6 +1968,7 @@ function trainingContext(){
     'NUTRITION LOG: '+(nut||'none yet')+'\n'+
     'READINESS CHECK-INS: '+(rdHist||'none yet')+'\n'+
     'NOTE: set notation may carry effort tags — \u1d49=easy, \u1d4d=grind, \u02e3=failed.\n\n'+
+    mesoCoachContext()+
     'RECENT SESSIONS (newest first):\n'+(logTxt||'No sessions logged yet.');
 }
 
@@ -3668,6 +3740,7 @@ REVIEW_RENDER.bulk = renderBulkV2;
 REVIEW_RENDER.library = renderLibrary;
 REVIEW_RENDER.settings = function(){ renderSettings(); enableSplitDrag(); };
 REVIEW_RENDER.invest = renderInvestigation;
+REVIEW_RENDER.meso = renderMeso;
 
 /* ===================== 1RM LIVE MODE ===================== */
 function rampRestSecs(step){
@@ -3925,7 +3998,11 @@ function retroDecision(log, exercise){
 }
 
 /* ===================== DELOAD WEEK ===================== */
-function deloadActive(){ return !!(S.deload && S.deload.until && todayKey() <= S.deload.until); }
+function deloadActive(){
+  if(S.deload && S.deload.until && todayKey() <= S.deload.until) return true;
+  const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
+  return !!(mw && mw.type==='deload' && !mw.deloadEnded);
+}
 function startDeloadWeek(){
   const end = new Date(Date.now()+6*86400000);
   const until = end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')+'-'+String(end.getDate()).padStart(2,'0');
@@ -3935,16 +4012,23 @@ function startDeloadWeek(){
   if(document.getElementById('progress') && document.getElementById('progress').innerHTML.length>50) renderProgressV2();
 }
 function endDeloadWeek(){
-  S.deload = null; save();
+  S.deload = null;
+  const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
+  if(mw && mw.type==='deload') mw.deloadEnded = true;   // scoped to this week only
+  save();
   if(typeof renderLive==='function') renderLive();
   if(document.getElementById('progress') && document.getElementById('progress').innerHTML.length>50) renderProgressV2();
 }
 function deloadBannerHTML(){
   if(!deloadActive()) return '';
+  const _mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
+  const _sched = !S.deload && _mw && _mw.type==='deload';
+  const _until = S.deload ? S.deload.until : (_mw ? _mw.endKey : todayKey());
   return '<div class="card" style="border-left:3px solid var(--violet);background:rgba(183,155,255,0.06)">'+
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">'+
     '<div><b style="color:var(--violet);letter-spacing:.04em">DELOAD WEEK ACTIVE</b>'+
-    '<div class="small" style="margin-top:3px">Through '+fmtDate(S.deload.until)+' \u00b7 loads auto-reduced to ~60%, 2 sets, well shy of failure. These sessions won\u2019t count toward progression or your trend charts.</div></div>'+
+    (_sched ? '<span class="pill" style="margin-left:8px;border-color:var(--violet);color:var(--violet)">Scheduled \u00b7 week '+_mw.n+'</span>' : '')+
+    '<div class="small" style="margin-top:3px">Through '+fmtDate(_until)+' \u00b7 loads auto-reduced to ~60%, 2 sets, well shy of failure. These sessions won\u2019t count toward progression or your trend charts.</div></div>'+
     '<button class="btn ghost sm" onclick="endDeloadWeek()">End early</button></div></div>';
 }
 /* build deload version of an exercise: 60% of last real working weight, 2 sets */
@@ -4278,6 +4362,12 @@ function investigateLift(nm){
       fix={label:'Light reset at ~92%', desc:'Take next sessions at ~'+resetW+' lb and rebuild rep quality. (Auto-expires after 10 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:10}};
     }
   } else if(Math.abs(slope) <= 0.3 && spanWks >= 3){
+    const _mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
+    if(_mw && _mw.type==='hyp'){
+      // flat e1RM during a hypertrophy block is the expected outcome, not a problem
+      findings.push('Flat, but you\u2019re in a hypertrophy block (week '+_mw.blockWeek+' of '+_mw.blockLen+') \u2014 holding e1RM while adding volume is expected here. Not flagged.');
+      return {severity:null, key:'lift:'+nm, title:nm+' flat (expected in hypertrophy block)', findings, fix:null};
+    }
     severity='yellow'; title=nm+' flat';
     findings.push('No meaningful movement in either direction for '+Math.round(spanWks)+'+ weeks.');
     if(hardPct!=null && hardPct>=50){
@@ -4473,24 +4563,34 @@ function invDaysSince(key){
   if(!la) return Infinity;
   return (new Date(todayKey()) - new Date(la))/86400000;
 }
+function invRecentlyDismissed(key, days){
+  const st = invState();
+  const cutoff = new Date(todayKey()); cutoff.setDate(cutoff.getDate()-days);
+  return (st.history||[]).some(f=>f.key===key && f.status==='dismissed' && f.closed && new Date(f.closed) > cutoff);
+}
 function invAutoRun(){
   const st = invState();
   invClearExpiredOverrides();
   invCheckResolutions();
   let raised=false;
   if(invDaysSince('split')>=7){
-    const r = investigateSplit(); if(r.severity){ invRaise(r,'auto'); raised=true; }
+    // the split check reads the last completed week - if that week was intentionally
+    // low-volume by plan (strength/deload/rest), reduced volume is the plan, not a problem
+    const _lw = (typeof mesoWeekAt==='function') ? mesoWeekAt(lastCompletedWeekRange().start) : null;
+    const _planned = _lw && (_lw.type==='str' || _lw.type==='deload' || _lw.type==='rest');
+    const r = investigateSplit();
+    if(r.severity && !_planned && !invRecentlyDismissed(r.key,14)){ invRaise(r,'auto'); raised=true; }
     st.lastAuto.split = todayKey();
   }
   if(invDaysSince('lift')>=7){
     const names = [...invAllSplitNames()];
-    const results = names.map(n=>investigateLift(n)).filter(r=>r.severity);
+    const results = names.map(n=>investigateLift(n)).filter(r=>r.severity && !invRecentlyDismissed(r.key,14));
     results.sort((a,b)=>INV_SEV_RANK[b.severity]-INV_SEV_RANK[a.severity]);
     results.slice(0,3).forEach(r=>{ invRaise(r,'auto'); raised=true; }); // cap at 3 to avoid spam
     st.lastAuto.lift = todayKey();
   }
   if(invDaysSince('bulk')>=14){
-    const r = investigateBulk(); if(r.severity){ invRaise(r,'auto'); raised=true; }
+    const r = investigateBulk(); if(r.severity && !invRecentlyDismissed(r.key,14)){ invRaise(r,'auto'); raised=true; }
     st.lastAuto.bulk = todayKey();
   }
   save(false);
@@ -4835,6 +4935,582 @@ function coachProposalHTML(p){
   }
   h += '</div>';
   return h;
+}
+
+
+/* ============================================================
+   PERIODIZATION — mesocycle planning
+   Template -> materialized week calendar -> phase-aware behavior.
+   ============================================================ */
+const MESO_TYPES = {
+  hyp:    {label:'Hypertrophy',   repLo:8, repHi:12, rpeLo:7, rpeHi:8, accent:'var(--cyan)',   dim:'var(--cyan-dim)',   minW:2, maxW:12, defW:8},
+  str:    {label:'Strength',      repLo:3, repHi:5,  rpeLo:8, rpeHi:9, accent:'var(--amber)',  dim:'var(--amber-dim)',  minW:1, maxW:6,  defW:3},
+  deload: {label:'Deload',        repLo:8, repHi:12, rpeLo:5, rpeHi:6, accent:'var(--violet)', dim:'var(--violet-dim)', minW:1, maxW:2,  defW:1},
+  rest:   {label:'Rest / Travel', repLo:0, repHi:0,  rpeLo:0, rpeHi:0, accent:'var(--dim)',    dim:'var(--line2)',      minW:1, maxW:4,  defW:1},
+  custom: {label:'Custom',        repLo:6, repHi:10, rpeLo:7, rpeHi:8, accent:'var(--cyan)',   dim:'var(--cyan-dim)',   minW:1, maxW:12, defW:4}
+};
+const MESO_TYPE_ORDER = ['hyp','str','deload','rest','custom'];
+
+function mesoState(){
+  if(!S.meso) S.meso = {template:null, active:null};
+  if(!S.meso.active) S.meso.active = null;
+  if(S.meso.active && !S.meso.active.splits) S.meso.active.splits = {};
+  return S.meso;
+}
+function mesoUid(){ return 'b'+Math.random().toString(36).slice(2,9); }
+function mesoDefaultTemplate(){
+  return {phases:[
+    {id:mesoUid(), type:'hyp',    name:'Hypertrophy', weeks:8, repLo:8, repHi:12, rpeLo:7, rpeHi:8},
+    {id:mesoUid(), type:'str',    name:'Strength',    weeks:3, repLo:3, repHi:5,  rpeLo:8, rpeHi:9},
+    {id:mesoUid(), type:'deload', name:'Deload',      weeks:1, repLo:8, repHi:12, rpeLo:5, rpeHi:6}
+  ], repeat:true, cycles:2};
+}
+
+/* ---- date helpers (Monday-anchored weeks) ---- */
+function mesoMondayOf(key){
+  const d = new Date(key+'T00:00:00');
+  const dow = d.getDay();               // 0=Sun .. 6=Sat
+  d.setDate(d.getDate() + (dow===0 ? -6 : 1-dow));
+  return dateKeyOf(d);
+}
+function mesoAddDays(key, n){
+  const d = new Date(key+'T00:00:00'); d.setDate(d.getDate()+n); return dateKeyOf(d);
+}
+
+/* ---- materialization: expand a template into explicit week objects ---- */
+function mesoMaterialize(tpl, startKey){
+  const weeks = [];
+  const cycles = tpl.repeat ? Math.max(1, Math.min(6, tpl.cycles||2)) : 1;
+  for(let c=0; c<cycles; c++){
+    (tpl.phases||[]).forEach(ph=>{
+      const blockId = mesoUid();
+      const n = Math.max(1, ph.weeks||1);
+      for(let w=0; w<n; w++){
+        weeks.push({type:ph.type, name:ph.name, blockId,
+          repLo:ph.repLo, repHi:ph.repHi, rpeLo:ph.rpeLo, rpeHi:ph.rpeHi, cycle:c+1});
+      }
+    });
+  }
+  return mesoResequence(weeks, startKey);
+}
+/* Recompute week numbers, dates, and block position. Safe to call after any edit. */
+function mesoResequence(weeks, startKey){
+  const counts = {}; weeks.forEach(w=>{ counts[w.blockId]=(counts[w.blockId]||0)+1; });
+  const seen = {};
+  weeks.forEach((w,i)=>{
+    w.n = i+1;
+    w.startKey = mesoAddDays(startKey, i*7);
+    w.endKey   = mesoAddDays(startKey, i*7+6);
+    seen[w.blockId] = (seen[w.blockId]||0)+1;
+    w.blockWeek = seen[w.blockId];
+    w.blockLen  = counts[w.blockId];
+  });
+  return weeks;
+}
+
+/* ---- lifecycle ---- */
+function mesoStart(tpl, startKey){
+  const st = mesoState();
+  const start = mesoMondayOf(startKey || todayKey());
+  st.template = JSON.parse(JSON.stringify(tpl));
+  st.active = {startedAt:todayKey(), startKey:start, weeks:mesoMaterialize(tpl, start), splits:{}};
+  save();
+  return st.active;
+}
+function mesoStop(){ const st=mesoState(); st.active=null; save(); }
+
+/* ---- queries ---- */
+function mesoActive(){ return mesoState().active; }
+function mesoWeekAt(key){
+  const a = mesoState().active; if(!a) return null;
+  return a.weeks.find(w=>key>=w.startKey && key<=w.endKey) || null;
+}
+function mesoCurrentWeek(){ return mesoWeekAt(todayKey()); }
+function mesoNextDeload(){
+  const a = mesoState().active; if(!a) return null;
+  const t = todayKey();
+  return a.weeks.find(w=>w.type==='deload' && w.endKey>=t) || null;
+}
+function mesoWeeksUntil(w){
+  if(!w) return null;
+  const cur = mesoCurrentWeek();
+  if(!cur) return null;
+  return w.n - cur.n;
+}
+
+/* ---- the split that is actually in force right now ----
+   During an approved strength block, the generated split takes over.
+   Everything else falls through to the permanent S.split. */
+function mesoApprovedSplitFor(w){
+  const a = mesoState().active;
+  if(!a || !w || w.type!=='str') return null;
+  const rec = (a.splits||{})[w.blockId];
+  return (rec && rec.status==='approved' && rec.split) ? rec.split : null;
+}
+function mesoActiveSplit(){ return mesoApprovedSplitFor(mesoCurrentWeek()); }
+function activeSplitObj(){
+  const ms = (typeof mesoActiveSplit==='function') ? mesoActiveSplit() : null;
+  return ms || S.split;
+}
+
+/* ---- strength-block split auto-generation ----
+   Consolidates heavy compounds, trims accessory volume to make room for intensity,
+   and reports what it cut and why. Proposal only — nothing applies without approval. */
+function mesoIsCompound(nm){
+  const n = String(nm).toLowerCase();
+  if(/curl|pushdown|extension|fly|lateral|raise|rear delt|crunch|abdominal|pec deck|shrug/.test(n)) return false;
+  return /bench|squat|deadlift|trap bar|overhead press|ohp|press|dip|row|pulldown|pull-up|pullup|chin|hip thrust|lunge|hack/.test(n);
+}
+function mesoLiftScore(nm){
+  let score = mesoIsCompound(nm) ? 100 : 0;
+  const pts = e1rmSeries(nm);
+  if(pts.length >= 3){
+    score += Math.min(pts.length, 12);                      // data confidence
+    const reg = linreg(pts.slice(-6));
+    if(reg) score += Math.max(-20, Math.min(20, reg.slope*7*10)); // trend
+    score += Math.min(30, pts[pts.length-1].v/10);          // absolute load contribution
+  }
+  return score;
+}
+function mesoGenerateStrengthSplit(){
+  const src = S.split;
+  const out = {}, rationale = [];
+  Object.keys(src).forEach(dk=>{
+    const day = src[dk];
+    const scored = (day.exercises||[]).map(x=>{
+      const nm = exName(x);
+      return {x, nm, sc:mesoLiftScore(nm), comp:mesoIsCompound(nm)};
+    }).sort((a,b)=>b.sc-a.sc);
+    if(!scored.length){ out[dk] = JSON.parse(JSON.stringify(day)); return; }
+    const comps = scored.filter(s=>s.comp);
+    const accs  = scored.filter(s=>!s.comp);
+    const keepC = comps.slice(0,2);
+    const keepA = accs.slice(0, Math.max(1, 4 - keepC.length));
+    const kept  = [...keepC, ...keepA];
+    const cut   = scored.filter(s=>kept.indexOf(s)<0);
+    out[dk] = Object.assign({}, day, {exercises: kept.map(s=>{
+      const o = (typeof s.x==='object') ? JSON.parse(JSON.stringify(s.x)) : {name:s.nm, inc:incFor(s.nm)};
+      if(s.comp) o.repMode = 'str';   // heavy compounds run 3-6
+      return o;
+    })});
+    if(keepC.length) rationale.push(dk+': '+keepC.map(s=>s.nm).join(' + ')+' anchor'+(keepC.length>1?'':'s')+' the day \u2014 heaviest loads and best recent trend.');
+    if(cut.length)   rationale.push(dk+': cut '+cut.map(s=>s.nm).join(', ')+' to make room for intensity.');
+  });
+  // coverage sanity check against the permanent split
+  const cov = {}; MUSCLE_GROUPS.forEach(g=>cov[g]=0);
+  Object.values(out).forEach(d=>(d.exercises||[]).forEach(x=>{
+    const m = musclesFor(exName(x));
+    m.p.forEach(g=>{ if(cov[g]!=null) cov[g]++; });
+    m.s.forEach(g=>{ if(cov[g]!=null) cov[g]+=0.5; });
+  }));
+  const covBefore = {}; MUSCLE_GROUPS.forEach(g=>covBefore[g]=0);
+  Object.values(src).forEach(d=>(d.exercises||[]).forEach(x=>{
+    const m = musclesFor(exName(x));
+    m.p.forEach(g=>{ if(covBefore[g]!=null) covBefore[g]++; });
+    m.s.forEach(g=>{ if(covBefore[g]!=null) covBefore[g]+=0.5; });
+  }));
+  const dropped = MUSCLE_GROUPS.filter(g=>g!=='Abs' && covBefore[g]>0 && cov[g]===0);
+  return {split:out, rationale, dropped};
+}
+
+/* ---- proposal lifecycle per strength block ---- */
+function mesoProposeSplit(blockId){
+  const a = mesoState().active; if(!a) return null;
+  const gen = mesoGenerateStrengthSplit();
+  a.splits[blockId] = {status:'proposed', split:gen.split, rationale:gen.rationale,
+                       dropped:gen.dropped, generatedAt:todayKey()};
+  save();
+  return a.splits[blockId];
+}
+function mesoApproveSplit(blockId){
+  const a = mesoState().active; if(!a || !a.splits[blockId]) return;
+  a.splits[blockId].status = 'approved';
+  a.splits[blockId].approvedAt = todayKey();
+  save(); renderMeso();
+  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+}
+function mesoRegenerateSplit(blockId){
+  mesoProposeSplit(blockId); renderMeso();
+}
+function mesoUnapproveSplit(blockId){
+  const a = mesoState().active; if(!a || !a.splits[blockId]) return;
+  a.splits[blockId].status = 'proposed';
+  save(); renderMeso();
+  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+}
+/* Ensure every strength block in the calendar has a proposal ready to review. */
+function mesoEnsureProposals(){
+  const a = mesoState().active; if(!a) return;
+  const seen = {};
+  a.weeks.forEach(w=>{
+    if(w.type==='str' && !seen[w.blockId]){
+      seen[w.blockId] = true;
+      if(!a.splits[w.blockId]) mesoProposeSplit(w.blockId);
+    }
+  });
+}
+
+/* ---- context handed to Coach so its advice matches the phase ---- */
+function mesoCoachContext(){
+  const w = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
+  if(!w) return 'PERIODIZATION: no active mesocycle \u2014 training is unstructured/day-to-day.\n\n';
+  const nd = mesoNextDeload(); const ndIn = mesoWeeksUntil(nd);
+  let s = 'PERIODIZATION: week '+w.n+' of the plan \u2014 '+w.name+' block (week '+w.blockWeek+' of '+w.blockLen+').\n';
+  if(w.repLo>0) s += '- Phase rep target: '+w.repLo+'\u2013'+w.repHi+(w.rpeLo>0?', RPE '+w.rpeLo+'\u2013'+w.rpeHi:'')+'.\n';
+  if(w.type==='hyp')    s += '- Goal this block is volume and size. e1RM holding flat here is normal and NOT a problem.\n';
+  if(w.type==='str')    s += '- Goal this block is absolute strength. e1RM should climb; accessories are intentionally trimmed.\n';
+  if(w.type==='deload') s += '- Deload week: loads ~60%, well shy of failure. Do not push intensity.\n';
+  if(w.type==='rest')   s += '- Rest/travel week: nothing scheduled. Do not prescribe training.\n';
+  if(nd && ndIn!=null) s += '- Next deload: '+(ndIn===0?'this week':'in '+ndIn+' week'+(ndIn===1?'':'s'))+'.\n';
+  const ms = (typeof mesoActiveSplit==='function') ? mesoActiveSplit() : null;
+  if(ms) s += '- A generated strength split is ACTIVE this block (differs from the permanent split).\n';
+  return s+'\n';
+}
+
+/* ================= PERIODIZATION UI ================= */
+let _mesoDraft = null;
+function mesoDraft(){
+  if(!_mesoDraft){
+    const t = mesoState().template;
+    _mesoDraft = t ? JSON.parse(JSON.stringify(t)) : mesoDefaultTemplate();
+  }
+  return _mesoDraft;
+}
+function mesoDraftReset(){ _mesoDraft = null; renderMeso(); }
+function mesoTotalWeeks(tpl){
+  const cy = tpl.repeat ? Math.max(1, Math.min(6, tpl.cycles||2)) : 1;
+  return (tpl.phases||[]).reduce((s,p)=>s+Math.max(1,p.weeks||1),0) * cy;
+}
+
+/* ---- template builder ---- */
+function mesoBuilderHTML(){
+  const t = mesoDraft();
+  let h = '<div class="card"><div class="k">Build a mesocycle</div>'+
+    '<p class="small" style="margin-bottom:12px">Define the pattern once \u2014 Iron Hub expands it into a full calendar, schedules your deloads, and proposes a split for each strength block.</p>';
+  h += '<div class="meso-phases">';
+  (t.phases||[]).forEach((p,i)=>{ h += mesoPhaseRowHTML(p,i); });
+  h += '</div>';
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+
+       '<button class="btn sm" onclick="mesoAddPhase()">+ Add phase</button>'+
+       '<button class="btn sm ghost" onclick="mesoDraftReset()">Reset to default</button></div>';
+  h += '</div>';
+
+  h += '<div class="card"><div class="k">Repeat</div>'+
+    '<label class="meso-check"><input type="checkbox" id="mesoRepeat" '+(t.repeat?'checked':'')+' onchange="mesoSetRepeat(this.checked)"> Repeat this pattern</label>';
+  if(t.repeat){
+    h += '<div class="field" style="margin-top:10px;max-width:160px"><label>How many cycles</label>'+
+         '<input type="number" min="1" max="6" value="'+(t.cycles||2)+'" onchange="mesoSetCycles(this.value)"></div>';
+  }
+  h += '<p class="small" style="margin-top:10px">Total plan length: <b style="color:var(--text)">'+mesoTotalWeeks(t)+' weeks</b></p>';
+  h += '</div>';
+
+  h += '<div class="card"><div class="k">Start</div>'+
+    '<p class="small" style="margin-bottom:10px">Weeks run Monday\u2013Sunday. Starting today anchors week 1 to this week\u2019s Monday ('+fmtDate(mesoMondayOf(todayKey()))+').</p>'+
+    '<div class="field" style="max-width:220px;margin-bottom:12px"><label>First week begins</label>'+
+    '<input type="date" id="mesoStartDate" value="'+todayKey()+'"></div>'+
+    '<button class="btn primary" onclick="mesoStartFromBuilder()">Start this plan</button></div>';
+  return h;
+}
+function mesoPhaseRowHTML(p,i){
+  const ty = MESO_TYPES[p.type] || MESO_TYPES.custom;
+  let h = '<div class="meso-prow" style="border-left-color:'+ty.accent+'">';
+  h += '<div class="meso-prow-top">'+
+       '<select onchange="mesoSetPhaseType('+i+',this.value)">'+
+         MESO_TYPE_ORDER.map(k=>'<option value="'+k+'"'+(k===p.type?' selected':'')+'>'+MESO_TYPES[k].label+'</option>').join('')+
+       '</select>'+
+       '<input class="meso-name" value="'+esc(p.name)+'" onchange="mesoSetPhaseField('+i+',\'name\',this.value)" placeholder="Phase name">'+
+       '<button class="meso-x" onclick="mesoRemovePhase('+i+')" title="Remove phase">&times;</button>'+
+       '</div>';
+  h += '<div class="meso-prow-grid">'+
+       '<div class="field"><label>Weeks</label><input type="number" min="'+ty.minW+'" max="'+ty.maxW+'" value="'+p.weeks+'" onchange="mesoSetPhaseNum('+i+',\'weeks\',this.value,'+ty.minW+','+ty.maxW+')"></div>'+
+       '<div class="field"><label>Reps</label><div class="meso-pair"><input type="number" min="1" max="30" value="'+p.repLo+'" onchange="mesoSetPhaseNum('+i+',\'repLo\',this.value,0,30)"><span>\u2013</span><input type="number" min="1" max="30" value="'+p.repHi+'" onchange="mesoSetPhaseNum('+i+',\'repHi\',this.value,0,30)"></div></div>'+
+       '<div class="field"><label>RPE</label><div class="meso-pair"><input type="number" min="0" max="10" step="0.5" value="'+p.rpeLo+'" onchange="mesoSetPhaseNum('+i+',\'rpeLo\',this.value,0,10)"><span>\u2013</span><input type="number" min="0" max="10" step="0.5" value="'+p.rpeHi+'" onchange="mesoSetPhaseNum('+i+',\'rpeHi\',this.value,0,10)"></div></div>'+
+       '</div>';
+  if(p.type==='rest') h += '<p class="small" style="margin-top:6px;color:var(--dim)">Rest weeks carry no rep target \u2014 nothing is scheduled and nothing counts toward progression.</p>';
+  if(p.type==='deload') h += '<p class="small" style="margin-top:6px;color:var(--violet)">Deload weeks auto-lighten loads to ~60% and are excluded from progression and trend charts.</p>';
+  h += '</div>';
+  return h;
+}
+/* builder mutations */
+function mesoAddPhase(){
+  const t = mesoDraft();
+  const ty = MESO_TYPES.hyp;
+  t.phases.push({id:mesoUid(), type:'hyp', name:ty.label, weeks:ty.defW, repLo:ty.repLo, repHi:ty.repHi, rpeLo:ty.rpeLo, rpeHi:ty.rpeHi});
+  renderMeso();
+}
+function mesoRemovePhase(i){
+  const t = mesoDraft();
+  if(t.phases.length<=1){ alert('A plan needs at least one phase.'); return; }
+  t.phases.splice(i,1); renderMeso();
+}
+function mesoSetPhaseType(i, type){
+  const t = mesoDraft(); const p = t.phases[i]; const ty = MESO_TYPES[type];
+  p.type = type; p.name = ty.label;
+  p.repLo = ty.repLo; p.repHi = ty.repHi; p.rpeLo = ty.rpeLo; p.rpeHi = ty.rpeHi;
+  p.weeks = Math.max(ty.minW, Math.min(ty.maxW, p.weeks||ty.defW));
+  renderMeso();
+}
+function mesoSetPhaseField(i, k, v){ mesoDraft().phases[i][k] = v; }
+function mesoSetPhaseNum(i, k, v, lo, hi){
+  const n = Math.max(lo, Math.min(hi, Math.round(+v||0)));
+  mesoDraft().phases[i][k] = n; renderMeso();
+}
+function mesoSetRepeat(on){ mesoDraft().repeat = !!on; renderMeso(); }
+function mesoSetCycles(v){ mesoDraft().cycles = Math.max(1, Math.min(6, Math.round(+v||1))); renderMeso(); }
+function mesoStartFromBuilder(){
+  const t = mesoDraft();
+  if(!t.phases || !t.phases.length){ alert('Add at least one phase first.'); return; }
+  const el = document.getElementById('mesoStartDate');
+  const sd = (el && el.value) ? el.value : todayKey();
+  mesoStart(t, sd);
+  mesoEnsureProposals();
+  _mesoDraft = null;
+  renderMeso(); invUpdateBadge();
+  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+}
+
+/* ---- active plan: current phase card ---- */
+function mesoCurrentCardHTML(){
+  const a = mesoActive(); const w = mesoCurrentWeek();
+  if(!w){
+    const first = a.weeks[0], last = a.weeks[a.weeks.length-1];
+    const done = todayKey() > last.endKey;
+    return '<div class="card" style="border-left:3px solid var(--dim)">'+
+      '<div class="k">'+(done?'Plan complete':'Plan not started yet')+'</div>'+
+      '<p class="small">'+(done
+        ? 'This mesocycle ran '+fmtDate(first.startKey)+' \u2013 '+fmtDate(last.endKey)+'. Build a new one below or stop the plan to clear it.'
+        : 'Week 1 begins '+fmtDate(first.startKey)+'. Your normal split runs until then.')+'</p></div>';
+  }
+  const ty = MESO_TYPES[w.type] || MESO_TYPES.custom;
+  const pct = Math.round(100*w.blockWeek/w.blockLen);
+  const nd = mesoNextDeload(); const ndIn = mesoWeeksUntil(nd);
+  let h = '<div class="card meso-now" style="border-left:3px solid '+ty.accent+'">';
+  h += '<div class="meso-now-top"><span class="pill" style="border-color:'+ty.accent+';color:'+ty.accent+'">Week '+w.n+' \u00b7 Now</span>'+
+       '<span class="meso-now-name" style="color:'+ty.accent+'">'+esc(w.name)+'</span></div>';
+  h += '<div class="meso-now-sub">'+fmtDate(w.startKey)+' \u2013 '+fmtDate(w.endKey)+'</div>';
+  h += '<div class="meso-bar"><div class="meso-bar-fill" style="width:'+pct+'%;background:'+ty.accent+'"></div></div>';
+  h += '<div class="meso-now-meta">Week '+w.blockWeek+' of '+w.blockLen+' in this block'+
+       (w.repLo>0 ? ' \u00b7 '+w.repLo+'\u2013'+w.repHi+' reps' : ' \u00b7 no rep target')+
+       (w.rpeLo>0 ? ' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi : '')+'</div>';
+  if(nd && ndIn!=null){
+    h += '<div class="meso-now-meta" style="color:var(--violet)">'+
+      (ndIn===0 ? 'Deload is this week.' : 'Next deload in '+ndIn+' week'+(ndIn===1?'':'s')+' ('+fmtDate(nd.startKey)+').')+'</div>';
+  }
+  if(w.type==='str'){
+    const rec = (a.splits||{})[w.blockId];
+    if(rec && rec.status==='approved') h += '<div class="meso-now-meta" style="color:var(--cyan)">\u2713 Strength split active for this block.</div>';
+    else h += '<div class="meso-now-meta" style="color:var(--amber)">\u26a0 Strength split proposed but not approved \u2014 your normal split is running. Review it below.</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+/* ---- calendar grid ---- */
+function mesoCalendarHTML(){
+  const a = mesoActive(); const cur = mesoCurrentWeek();
+  let h = '<div class="card"><div class="k">Calendar</div>'+
+    '<p class="small" style="margin-bottom:12px">Tap any week to change its phase, insert a week, or delete it.</p>'+
+    '<div class="meso-cal">';
+  a.weeks.forEach(w=>{
+    const ty = MESO_TYPES[w.type] || MESO_TYPES.custom;
+    const isNow = cur && w.n===cur.n;
+    const past = todayKey() > w.endKey;
+    h += '<div class="meso-wk'+(isNow?' now':'')+(past?' past':'')+'" style="border-left-color:'+ty.accent+'" onclick="mesoOpenWeek('+w.n+')">'+
+      '<div class="meso-wk-top"><span class="meso-wk-n">W'+w.n+'</span>'+
+        (isNow?'<span class="meso-wk-now">NOW</span>':'')+
+        '<span class="meso-wk-name" style="color:'+ty.accent+'">'+esc(w.name)+'</span></div>'+
+      '<div class="meso-wk-date">'+fmtDate(w.startKey)+' \u2013 '+fmtDate(w.endKey)+'</div>'+
+      '<div class="meso-wk-meta">'+(w.repLo>0 ? w.repLo+'\u2013'+w.repHi+' reps'+(w.rpeLo>0?' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi:'') : 'no training target')+'</div>'+
+      '<div class="meso-wk-bar"><div style="width:'+Math.round(100*w.blockWeek/w.blockLen)+'%;background:'+ty.accent+'"></div></div>'+
+      '<div class="meso-wk-blk">wk '+w.blockWeek+' of '+w.blockLen+'</div>'+
+      '</div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+/* ---- strength split proposals ---- */
+function mesoProposalsHTML(){
+  const a = mesoActive();
+  const blocks = []; const seen = {};
+  a.weeks.forEach(w=>{ if(w.type==='str' && !seen[w.blockId]){ seen[w.blockId]=true; blocks.push(w); } });
+  if(!blocks.length) return '';
+  let h = '<div class="card"><div class="k">Strength block splits</div>'+
+    '<p class="small" style="margin-bottom:12px">Auto-built from your e1RM trends \u2014 heavy compounds anchor each day, accessories trimmed for intensity. Nothing applies until you approve it.</p>';
+  blocks.forEach(w=>{
+    const rec = (a.splits||{})[w.blockId];
+    if(!rec){ h += '<p class="small">No proposal yet for the block starting '+fmtDate(w.startKey)+'.</p>'; return; }
+    const approved = rec.status==='approved';
+    h += '<div class="meso-prop'+(approved?' ok':'')+'">';
+    h += '<div class="meso-prop-top"><span class="meso-prop-t">Weeks '+w.n+'\u2013'+(w.n+w.blockLen-1)+' \u00b7 '+esc(w.name)+'</span>'+
+         '<span class="pill" style="'+(approved?'border-color:var(--cyan);color:var(--cyan)':'border-color:var(--amber);color:var(--amber)')+'">'+(approved?'Approved':'Proposed')+'</span></div>';
+    h += '<div class="meso-prop-split">';
+    Object.keys(rec.split).forEach(dk=>{
+      const d = rec.split[dk];
+      const names = (d.exercises||[]).map(x=>{
+        const nm = exName(x);
+        const heavy = (typeof x==='object' && x.repMode==='str');
+        return '<span class="meso-ex'+(heavy?' heavy':'')+'">'+esc(nm)+(heavy?' <b>3\u20136</b>':'')+'</span>';
+      }).join('');
+      h += '<div class="meso-prop-day"><span class="meso-prop-dk">'+esc(dk)+'</span><div class="meso-prop-exs">'+(names||'<span class="small">empty</span>')+'</div></div>';
+    });
+    h += '</div>';
+    if(rec.rationale && rec.rationale.length){
+      h += '<div class="meso-why">'+rec.rationale.map(r=>'<div>\u25b8 '+esc(r)+'</div>').join('')+'</div>';
+    }
+    if(rec.dropped && rec.dropped.length){
+      h += '<div class="meso-warn">\u26a0 This drops all direct work for: '+rec.dropped.join(', ')+'. Fine for a short block, worth adding back if it runs long.</div>';
+    }
+    h += '<div class="meso-prop-acts">';
+    if(approved){
+      h += '<button class="btn sm ghost" onclick="mesoUnapproveSplit(\''+w.blockId+'\')">Unapprove</button>'+
+           '<button class="btn sm ghost" onclick="mesoOpenSplitEdit(\''+w.blockId+'\')">Edit</button>';
+    } else {
+      h += '<button class="btn sm cyan" onclick="mesoApproveSplit(\''+w.blockId+'\')">Use this</button>'+
+           '<button class="btn sm ghost" onclick="mesoOpenSplitEdit(\''+w.blockId+'\')">Edit</button>'+
+           '<button class="btn sm ghost" onclick="mesoRegenerateSplit(\''+w.blockId+'\')">Regenerate</button>';
+    }
+    h += '</div></div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+/* ---- plan controls ---- */
+function mesoControlsHTML(){
+  return '<div class="card"><div class="k">Plan</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn sm ghost" onclick="mesoEditTemplate()">Edit template &amp; restart</button>'+
+    '<button class="btn sm ghost" style="color:var(--red)" onclick="mesoConfirmStop()">Stop plan</button>'+
+    '</div><p class="small" style="margin-top:10px">Stopping clears the calendar and returns everything to your normal split. Your logs and history are untouched.</p></div>';
+}
+function mesoEditTemplate(){
+  if(!confirm('Edit the template? This clears the current calendar and any approved strength splits, then lets you rebuild and restart.')) return;
+  _mesoDraft = mesoState().template ? JSON.parse(JSON.stringify(mesoState().template)) : mesoDefaultTemplate();
+  mesoStop(); renderMeso();
+}
+function mesoConfirmStop(){
+  if(!confirm('Stop this plan? The calendar clears and your normal split resumes. Logs and history are untouched.')) return;
+  mesoStop(); _mesoDraft = null; renderMeso();
+  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+}
+
+function renderMeso(){
+  const el = document.getElementById('meso'); if(!el) return;
+  const a = mesoActive();
+  if(!a){ el.innerHTML = mesoBuilderHTML(); return; }
+  mesoEnsureProposals();
+  el.innerHTML = mesoCurrentCardHTML() + mesoCalendarHTML() + mesoProposalsHTML() + mesoControlsHTML();
+}
+
+/* ---- week edit overlay ---- */
+function mesoPruneSplits(){
+  const a = mesoActive(); if(!a) return;
+  const ids = {}; a.weeks.forEach(w=>ids[w.blockId]=true);
+  Object.keys(a.splits||{}).forEach(k=>{ if(!ids[k]) delete a.splits[k]; });
+}
+function closeMesoOv(){ const el=document.getElementById('mesoOverlay'); if(el) el.classList.remove('show'); }
+function mesoOpenWeek(n){
+  const a = mesoActive(); if(!a) return;
+  const w = a.weeks.find(x=>x.n===n); if(!w) return;
+  const ty = MESO_TYPES[w.type] || MESO_TYPES.custom;
+  document.getElementById('mesoOvTitle').textContent = 'Week '+w.n;
+  let h = '<p class="small" style="margin-bottom:4px">'+fmtDate(w.startKey)+' \u2013 '+fmtDate(w.endKey)+'</p>';
+  h += '<p class="small" style="margin-bottom:12px;color:'+ty.accent+'"><b>'+esc(w.name)+'</b> \u00b7 week '+w.blockWeek+' of '+w.blockLen+
+       (w.repLo>0 ? ' \u00b7 '+w.repLo+'\u2013'+w.repHi+' reps' : '')+(w.rpeLo>0?' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi:'')+'</p>';
+  h += '<div class="field" style="margin-bottom:12px"><label>Change this week\u2019s phase</label>'+
+       '<select onchange="mesoSetWeekType('+n+',this.value)">'+
+       MESO_TYPE_ORDER.map(k=>'<option value="'+k+'"'+(k===w.type?' selected':'')+'>'+MESO_TYPES[k].label+'</option>').join('')+
+       '</select></div>';
+  h += '<p class="small" style="margin-bottom:8px;color:var(--dim)">Changing a phase splits it out as its own block \u2014 later weeks shift, dates recalculate automatically.</p>';
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+       '<button class="btn sm" onclick="mesoInsertWeek('+n+',\'deload\')">Insert deload here</button>'+
+       '<button class="btn sm" onclick="mesoInsertWeek('+n+',\'rest\')">Insert rest week here</button>'+
+       '<button class="btn sm ghost" style="color:var(--red)" onclick="mesoDeleteWeek('+n+')">Delete week</button>'+
+       '<button class="btn sm ghost" onclick="closeMesoOv()">Close</button></div>';
+  document.getElementById('mesoOvBody').innerHTML = h;
+  document.getElementById('mesoOverlay').classList.add('show');
+}
+function mesoSetWeekType(n, type){
+  const a = mesoActive(); if(!a) return;
+  const w = a.weeks.find(x=>x.n===n); if(!w) return;
+  const ty = MESO_TYPES[type]; if(!ty) return;
+  w.type=type; w.name=ty.label;
+  w.repLo=ty.repLo; w.repHi=ty.repHi; w.rpeLo=ty.rpeLo; w.rpeHi=ty.rpeHi;
+  w.blockId = mesoUid();          // this week is now its own block
+  delete w.deloadEnded;
+  mesoResequence(a.weeks, a.startKey);
+  mesoPruneSplits(); mesoEnsureProposals();
+  save(); renderMeso(); closeMesoOv();
+  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+}
+function mesoInsertWeek(n, type){
+  const a = mesoActive(); if(!a) return;
+  const ty = MESO_TYPES[type] || MESO_TYPES.deload;
+  a.weeks.splice(Math.max(0,n-1), 0, {type:type, name:ty.label, blockId:mesoUid(),
+    repLo:ty.repLo, repHi:ty.repHi, rpeLo:ty.rpeLo, rpeHi:ty.rpeHi, cycle:0});
+  mesoResequence(a.weeks, a.startKey);
+  mesoPruneSplits(); mesoEnsureProposals();
+  save(); renderMeso(); closeMesoOv();
+  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+}
+function mesoDeleteWeek(n){
+  const a = mesoActive(); if(!a) return;
+  if(a.weeks.length<=1){ alert('A plan needs at least one week. Use "Stop plan" to clear it entirely.'); return; }
+  a.weeks.splice(n-1,1);
+  mesoResequence(a.weeks, a.startKey);
+  mesoPruneSplits(); mesoEnsureProposals();
+  save(); renderMeso(); closeMesoOv();
+  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+}
+
+/* ---- strength split edit overlay ---- */
+let _mesoEditBlock = null;
+function mesoOpenSplitEdit(blockId){
+  const a = mesoActive(); if(!a || !a.splits[blockId]) return;
+  _mesoEditBlock = blockId;
+  const rec = a.splits[blockId];
+  document.getElementById('mesoOvTitle').textContent = 'Edit strength split';
+  let h = '<datalist id="mesoExList">'+liveExOptionsHTML()+'</datalist>';
+  h += '<p class="small" style="margin-bottom:12px">Applies to this strength block only. Your permanent split is never touched.</p>';
+  Object.keys(rec.split).forEach(dk=>{
+    const d = rec.split[dk];
+    h += '<div class="meso-ed-day"><div class="meso-ed-dk">'+esc(dk)+' \u00b7 '+esc(d.name||'')+'</div>';
+    (d.exercises||[]).forEach((x,i)=>{
+      const nm = exName(x); const heavy = (typeof x==='object' && x.repMode==='str');
+      h += '<div class="meso-ed-ex"><span>'+esc(nm)+(heavy?' <b style="color:var(--amber)">3\u20136</b>':'')+'</span>'+
+           '<button class="meso-x" onclick="mesoEdRemove(\''+dk+'\','+i+')" title="Remove">&times;</button></div>';
+    });
+    h += '<div class="meso-ed-add"><input list="mesoExList" id="mesoAdd_'+dk+'" placeholder="Add exercise\u2026">'+
+         '<button class="btn sm" onclick="mesoEdAdd(\''+dk+'\')">Add</button></div>';
+    h += '</div>';
+  });
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+
+       '<button class="btn sm cyan" onclick="mesoEdDone()">Done</button>'+
+       '<button class="btn sm ghost" onclick="mesoRegenerateSplit(\''+blockId+'\');closeMesoOv()">Reset to auto</button></div>';
+  document.getElementById('mesoOvBody').innerHTML = h;
+  document.getElementById('mesoOverlay').classList.add('show');
+}
+function mesoEdRemove(dk, i){
+  const a = mesoActive(); const rec = a.splits[_mesoEditBlock]; if(!rec) return;
+  (rec.split[dk].exercises||[]).splice(i,1);
+  save(); mesoOpenSplitEdit(_mesoEditBlock);
+}
+function mesoEdAdd(dk){
+  const el = document.getElementById('mesoAdd_'+dk); if(!el) return;
+  const nm = (el.value||'').trim(); if(!nm) return;
+  const a = mesoActive(); const rec = a.splits[_mesoEditBlock]; if(!rec) return;
+  rec.split[dk].exercises = rec.split[dk].exercises || [];
+  const o = {name:nm, inc:incFor(nm)};
+  if(mesoIsCompound(nm)) o.repMode='str';
+  rec.split[dk].exercises.push(o);
+  save(); mesoOpenSplitEdit(_mesoEditBlock);
+}
+function mesoEdDone(){
+  const a = mesoActive(); const rec = a.splits[_mesoEditBlock];
+  if(rec) rec.rationale = (rec.rationale||[]).concat(['Manually edited '+fmtDate(todayKey())+'.']).slice(-8);
+  save(); closeMesoOv(); renderMeso();
+  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
 }
 
 /* ===================== BOOT ===================== */
