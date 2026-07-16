@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
+<meta name="ironhub-build" content="2026-07-16-a">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -469,7 +470,19 @@
   .meso-ed-ex:last-of-type{border-bottom:none;}
   .meso-ed-add{display:flex; gap:6px; margin-top:7px;}
   .meso-ed-add input{flex:1; min-width:0;}
+
+  /* ===== UPDATE BANNER ===== */
+  .upd-bar{position:fixed; left:0; right:0; bottom:0; z-index:60; display:none; align-items:center; gap:9px;
+    padding:10px 14px calc(env(safe-area-inset-bottom) + 10px);
+    background:var(--panel); border-top:1px solid var(--cyan-dim); box-shadow:0 -6px 22px rgba(0,0,0,.5);}
+  .upd-bar.show{display:flex; animation:fade .3s ease;}
+  .upd-dot{width:7px; height:7px; border-radius:50%; background:var(--cyan); flex:none; animation:updpulse 2s ease-in-out infinite;}
+  @keyframes updpulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .upd-txt{flex:1; min-width:0; font-size:13px; color:var(--text);}
+  .upd-x{background:none; border:none; color:var(--dim); font-size:19px; line-height:1; padding:0 4px; flex:none;}
+  .upd-x:hover{color:var(--text);}
 </style>
+
 
 
 
@@ -525,6 +538,12 @@
     </div>
   </div>
 
+  <div class="upd-bar" id="updBar">
+    <span class="upd-dot"></span>
+    <span class="upd-txt">New version available</span>
+    <button class="btn sm cyan" onclick="applyUpdate()">Reload</button>
+    <button class="upd-x" onclick="dismissUpdate()" title="Dismiss">&times;</button>
+  </div>
   <div class="botnav" id="botnav"></div>
 </div>
 
@@ -2541,6 +2560,16 @@ function renderSettings(){
   html += '<h2>Exercise &amp; Split Editor</h2><div class="card">'+
     '<p class="small">Tap a day to expand. Rename or reorder exercises, set each one\u2019s weight increment (what the engine adds when you progress), add or remove exercises.</p>'+
     '<div id="sdWrap" style="margin-top:10px">'+splitEditorHTML()+'</div></div>';
+
+  html += '<h2>App Version</h2><div class="card">'+
+    '<p class="small">Build <span class="mono" style="color:var(--text)">'+esc(appBuild())+'</span>'+
+    (_updLastCheck ? ' \u00b7 last checked '+new Date(_updLastCheck).toLocaleTimeString() : '')+'</p>'+
+    (_updRemote ? '<p class="small" style="color:var(--cyan);margin-top:4px">Update available: <span class="mono">'+esc(_updRemote)+'</span></p>' : '')+
+    '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn sm" onclick="checkForUpdate(true).then(renderSettings)">Check for updates</button>'+
+    (_updRemote ? '<button class="btn sm cyan" onclick="applyUpdate()">Reload now</button>' : '')+
+    ' <span class="ok small" id="updMsg"></span></div>'+
+    '<p class="small" style="margin-top:8px">Checks automatically on open, every 15 minutes, and whenever you return to the app. Updating only reloads the page \u2014 your data is never touched.</p></div>';
 
   html += '<h2>Cloud Sync \u2014 GitHub Gist</h2><div class="card">';
   if(syncReady()){
@@ -5513,6 +5542,97 @@ function mesoEdDone(){
   try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
 }
 
+
+/* ============================================================
+   AUTO-UPDATE — polls the deployed file for a new build marker.
+   No service worker: no second file, no extra cache layer to
+   confuse cache-vs-code debugging, no stale-worker failure mode.
+   ============================================================ */
+const UPD_INTERVAL_MS = 15*60*1000;
+let _updRemote = null;      // build id found on the server
+let _updDismissed = null;   // build id the user dismissed this session
+let _updChecking = false;
+let _updLastCheck = 0;
+
+function appBuild(){
+  const m = document.querySelector('meta[name="ironhub-build"]');
+  return m ? m.content : 'dev';
+}
+function appURL(){ return location.href.split('#')[0].split('?')[0]; }
+
+/* Returns: 'update' | 'current' | 'offline' | 'unknown' */
+async function checkForUpdate(manual){
+  if(_updChecking) return 'unknown';
+  if(typeof navigator!=='undefined' && navigator.onLine===false){
+    if(manual) setUpdMsg('You\u2019re offline \u2014 can\u2019t check right now.', true);
+    return 'offline';
+  }
+  _updChecking = true;
+  try{
+    // cache:'reload' bypasses the HTTP cache for this request AND refreshes it,
+    // so a later location.reload() picks up the new file rather than the stale one.
+    const res = await fetch(appURL(), {cache:'reload'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const txt = await res.text();
+    const m = txt.match(/<meta name="ironhub-build" content="([^"]+)">/);
+    if(!m){
+      // not our file (captive portal, error page, proxy) — never act on it
+      if(manual) setUpdMsg('Couldn\u2019t read a version from the server \u2014 skipped.', true);
+      return 'unknown';
+    }
+    _updLastCheck = Date.now();
+    if(m[1] === appBuild()){
+      _updRemote = null; hideUpdateBar();
+      if(manual) setUpdMsg('\u2713 You\u2019re on the latest build ('+appBuild()+').');
+      return 'current';
+    }
+    _updRemote = m[1];
+    if(_updDismissed !== m[1]) showUpdateBar();
+    if(manual) setUpdMsg('\u2713 Update found: '+m[1]+'.');
+    return 'update';
+  }catch(e){
+    if(manual) setUpdMsg('Check failed: '+e.message, true);
+    return 'offline';
+  }finally{ _updChecking = false; }
+}
+function showUpdateBar(){
+  const el = document.getElementById('updBar'); if(!el) return;
+  const t = el.querySelector('.upd-txt');
+  if(t) t.textContent = liveSessionRunning()
+    ? 'New version ready \u2014 reload after your session'
+    : 'New version available';
+  el.classList.add('show');
+}
+function hideUpdateBar(){
+  const el = document.getElementById('updBar'); if(el) el.classList.remove('show');
+}
+function dismissUpdate(){
+  _updDismissed = _updRemote; hideUpdateBar();
+}
+function liveSessionRunning(){
+  try{ return !!(typeof live!=='undefined' && live && live.exercises && live.exercises.length); }
+  catch(e){ return false; }
+}
+async function applyUpdate(){
+  if(liveSessionRunning()){
+    if(!confirm('You have a workout session in progress. Your sets are saved and will be restored after reloading \u2014 reload now?')) return;
+  }
+  try{ await fetch(appURL(), {cache:'reload'}); }catch(e){}
+  location.reload();
+}
+function setUpdMsg(t, err){
+  const el = document.getElementById('updMsg');
+  if(el){ el.textContent = t; el.className = err ? 'err' : 'small ok'; }
+}
+function startUpdateWatcher(){
+  setTimeout(()=>checkForUpdate(false), 5000);          // shortly after load
+  setInterval(()=>checkForUpdate(false), UPD_INTERVAL_MS);
+  document.addEventListener('visibilitychange', ()=>{   // and whenever you come back to it
+    if(document.visibilityState==='visible' && Date.now()-_updLastCheck > 60000) checkForUpdate(false);
+  });
+  window.addEventListener('online', ()=>checkForUpdate(false));
+}
+
 /* ===================== BOOT ===================== */
 setAccent();
 setupPWA();
@@ -5528,6 +5648,7 @@ setInterval(()=>{ if(live && MODE==='live') updateSessionBar(); }, 1000);
 document.querySelectorAll('#rnav button').forEach(b=>b.addEventListener('click',()=>showReviewTab(b.dataset.t)));
 // background sync + weekly audit (no-ops gracefully in sandbox)
 try{ autoPullOnLoad(); }catch(e){}
+try{ startUpdateWatcher(); }catch(e){}
 try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
 </script>
 </body>
