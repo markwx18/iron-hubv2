@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-17-v3c">
+<meta name="ironhub-build" content="2026-07-17-v3d">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -697,7 +697,32 @@
     .inv-left{position:static;}
     .inv-right{margin-top:6px;}
   }
+
+  /* ============================================================
+     Untyped inputs were never themed: the base rule is
+     input[type=text],input[type=number],... which is an ATTRIBUTE
+     selector, so <input inputmode="decimal"> (no type=) never matched.
+     Those inputs fell back to white browser defaults at their intrinsic
+     width, which overflowed the viewport on phones.
+     :where() holds specificity at 0 so every existing override
+     (.setrow input, .dockrow input, .lv3-in, inline styles) still wins.
+     ============================================================ */
+  input:where(:not([type])){
+    width:100%; background:var(--base); border:1px solid var(--line2); border-radius:3px;
+    color:var(--text); padding:10px 11px; font-size:14px; font-family:var(--mono);}
+  input:where(:not([type]))::placeholder{color:var(--dim);}
+
+  /* Narrow phones (SE-class, 320px): the brand + mode switch together exceeded
+     the viewport by a few px, giving the whole app a horizontal jiggle. */
+  @media(max-width:360px){
+    .topbar{gap:8px; padding-left:12px; padding-right:12px;}
+    .brand-txt{font-size:17px; min-width:0;}
+    .brand-txt small{letter-spacing:.1em;}
+    .modeswitch button{padding:8px 10px; font-size:13px;}
+  }
 </style>
+
+
 
 
 
