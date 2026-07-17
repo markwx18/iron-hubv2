@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-16-a">
+<meta name="ironhub-build" content="2026-07-17-v3c">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -481,7 +481,231 @@
   .upd-txt{flex:1; min-width:0; font-size:13px; color:var(--text);}
   .upd-x{background:none; border:none; color:var(--dim); font-size:19px; line-height:1; padding:0 4px; flex:none;}
   .upd-x:hover{color:var(--text);}
+
+  /* ===== V3 NAVIGATION ===== */
+  .sidenav{display:none;}
+  .subnav{display:none;}
+  .subnav.has{display:flex; gap:6px; overflow-x:auto; padding:12px 0 10px; position:sticky; top:54px; z-index:30;
+    background:linear-gradient(180deg,var(--base2) 70%,transparent); -ms-overflow-style:none; scrollbar-width:none;}
+  .subnav::-webkit-scrollbar{display:none;}
+  .subnav button{font-family:var(--disp); font-weight:600; font-size:13.5px; letter-spacing:.05em; text-transform:uppercase;
+    padding:8px 14px; border:1px solid var(--line); border-radius:3px; background:var(--panel); color:var(--muted);
+    white-space:nowrap; flex:none; transition:border-color .12s, color .12s, transform .12s;}
+  .subnav button:active{transform:scale(.97);}
+  .subnav button.on{background:var(--cyan); color:var(--base); border-color:var(--cyan);}
+  .ni{position:relative;}
+  .ni-badge{position:absolute; top:-2px; right:-5px; width:7px; height:7px; border-radius:50%; opacity:0; transition:.2s;}
+
+  @media(min-width:900px){
+    .sidenav{display:flex; flex-direction:column; gap:2px; position:fixed; left:0; top:0; bottom:0; width:212px;
+      background:var(--base); border-right:1px solid var(--line); padding:18px 12px calc(env(safe-area-inset-bottom) + 14px);
+      overflow-y:auto; z-index:70;}
+    .sn-brand{font-family:var(--disp); font-weight:700; font-size:19px; letter-spacing:.12em; color:var(--text);
+      padding:2px 10px 14px;}
+    .sn-brand span{color:var(--amber);}
+    .sn-item{display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:none; border:none;
+      border-left:3px solid transparent; border-radius:0 4px 4px 0; padding:10px 12px; font-family:var(--disp);
+      font-weight:600; font-size:14.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+      cursor:pointer; transition:color .12s, background .12s, border-color .12s; position:relative;}
+    .sn-item:hover{color:var(--text); background:var(--panel);}
+    .sn-item.on{color:var(--cyan); background:var(--panel); border-left-color:var(--cyan);}
+    .sn-item.sn-live{color:var(--amber);}
+    .sn-item.sn-live:hover{background:rgba(246,134,47,.08);}
+    .sn-item.sn-live.on{background:rgba(246,134,47,.10); border-left-color:var(--amber); color:var(--amber);}
+    .sn-ic{font-size:16px; width:20px; text-align:center; flex:none;}
+    .sn-sep{height:1px; background:var(--line); margin:8px 10px;}
+    .sn-badge{width:7px; height:7px; border-radius:50%; margin-left:auto; opacity:0; transition:.2s;}
+    .sn-subs{display:flex; flex-direction:column; gap:1px; margin:2px 0 6px; animation:fade .18s ease;}
+    .sn-sub{display:block; width:100%; text-align:left; background:none; border:none; border-left:1px solid var(--line);
+      margin-left:22px; padding:7px 12px; font-size:12.5px; letter-spacing:.03em; color:var(--dim); cursor:pointer;
+      transition:color .12s, border-color .12s;}
+    .sn-sub:hover{color:var(--muted);}
+    .sn-sub.on{color:var(--cyan); border-left-color:var(--cyan);}
+    /* the shell stops being a 780px phone column and becomes a real desktop layout:
+       sidebar owns the left rail, everything else lives in the remaining space. */
+    .app-shell{max-width:none; margin:0; padding:0 0 40px 212px;}
+    .topbar{padding-left:26px; padding-right:26px;}
+    .live-body, .review-body{max-width:1180px; margin:0 auto; padding:0 26px;}
+    .botnav{display:none !important;}
+    .subnav.has{top:0; padding-top:16px;}
+  }
+  @media(max-width:899px){
+    .botnav .ni{padding:4px 4px; min-width:0; flex:1;}
+    .botnav .ni .ic{font-size:17px;}
+    .botnav{padding:8px 2px calc(env(safe-area-inset-bottom) + 10px);}
+    .botnav .ni{font-size:8px; letter-spacing:.05em;}
+  }
+
+  /* ===== ANALYTICS ===== */
+  .an-stats{display:grid; grid-template-columns:repeat(4,1fr); gap:8px;}
+  .an-stat{background:var(--panel2); border:1px solid var(--line); border-radius:4px; padding:12px 6px; text-align:center;}
+  .an-stat-n{display:block; font-family:var(--disp); font-size:26px; font-weight:700; color:var(--text); line-height:1.1;}
+  .an-stat-l{display:block; font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin-top:3px;}
+  .an-brow{margin-bottom:11px;}
+  .an-brow:last-child{margin-bottom:0;}
+  .an-brow-top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px; gap:10px;}
+  .an-brow-top span:first-child{font-size:13px; color:var(--text);}
+  .an-brow-top .mono{font-size:11px; color:var(--muted); text-align:right;}
+  .an-bar{height:7px; background:var(--base2); border:1px solid var(--line); border-radius:3px; overflow:hidden;}
+  .an-bar div{height:100%; transition:width .4s ease;}
+  .an-eta{display:flex; align-items:baseline; gap:12px; padding:7px 0; border-top:1px solid var(--line);}
+  .an-eta:first-of-type{border-top:none;}
+  .an-pr{display:flex; align-items:baseline; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px;}
+  .an-pr:last-child{border-bottom:none;}
+  .an-pr .mono{flex:none; font-size:12px; min-width:56px;}
+
+  /* ===== LIVE V3 ===== */
+  .liveex.lv3{opacity:1; border-color:var(--line2);}
+  .lv3-head{padding:13px 15px 10px;}
+  .lv3-eyebrow{display:flex; justify-content:space-between; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin-bottom:7px;}
+  .lv3-hero{display:flex; align-items:center; gap:10px; padding:6px 15px 10px;}
+  .lv3-hero-cell{display:flex; flex-direction:column; align-items:center; background:var(--base); border:1px solid var(--line); border-radius:5px; padding:10px 14px; flex:1;}
+  .lv3-hero-n{font-family:var(--disp); font-size:30px; font-weight:700; color:var(--text); line-height:1;}
+  .lv3-hero-l{font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin-top:4px;}
+  .lv3-hero-x{color:var(--dim); font-size:18px; flex:none;}
+  .lv3-hero-set{display:flex; flex-direction:column; align-items:center; border-left:1px solid var(--line); padding-left:12px; flex:none;}
+  .lv3-set-big{font-family:var(--disp); font-size:19px; font-weight:700; color:var(--amber); line-height:1.1;}
+  .lv3-presc{padding:0 15px 8px; font-size:12.5px; color:var(--muted); line-height:1.5;}
+  .lset.ghost{opacity:.45; border-style:dashed;}
+  .lset.lv3-next{border-color:var(--amber-dim); background:rgba(246,134,47,.04);}
+  .lset.lv3-tap{cursor:pointer; transition:border-color .12s;}
+  .lset.lv3-tap:active{border-color:var(--cyan);}
+  .lv3-edithint{color:var(--dim); font-size:11px; margin-left:4px; flex:none;}
+  .lset.lv3-edit{display:block; border-color:var(--cyan-dim); background:var(--panel2); padding:10px;}
+  .lv3-edit-row{display:flex; align-items:center; gap:8px;}
+  .lv3-edit-in{width:74px; font-family:var(--mono); font-size:17px; text-align:center; padding:9px 6px; background:var(--base); border:1px solid var(--line2); border-radius:4px; color:var(--text);}
+  .lv3-dock{padding-top:10px;}
+  .lv3-in{font-family:var(--mono); font-size:19px !important; padding:13px 12px !important; text-align:center;}
+  .lv3-eff button{padding:12px 4px; font-size:12px;}
+  .lv3-btns{display:flex; gap:9px; margin-top:10px;}
+  .lv3-log{flex:2; padding:15px; font-size:15px;}
+  .lv3-done{flex:1; padding:15px; font-size:15px;}
+  .lv3-restnote{font-family:var(--mono); font-size:10px; letter-spacing:.05em; color:var(--dim); margin-top:8px; text-transform:uppercase;}
+  .liveex.lv3-row{opacity:.62; cursor:pointer; transition:opacity .15s, border-color .15s;}
+  .liveex.lv3-row:active{opacity:1; border-color:var(--line2);}
+  .liveex.done.lv3-row{opacity:.72;}
+  .lv3-row-in{display:flex; align-items:center; gap:12px; padding:12px 14px;}
+  .lv3-row-n{font-family:var(--mono); font-size:13px; color:var(--dim); flex:none; width:18px; text-align:center;}
+  .lv3-row-mid{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;}
+  .lv3-row-mid b{font-family:var(--disp); font-size:16px; font-weight:600; letter-spacing:.02em; text-transform:uppercase;}
+  .lv3-row-tag{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); flex:none;}
+
+  /* ===== READINESS V3 ===== */
+  .rd3-group{margin-bottom:13px;}
+  .rd3-gl{display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin-bottom:6px;}
+  .rd3-pills{display:flex; gap:6px; flex-wrap:wrap;}
+  .rd3-pill{flex:1; min-width:60px; padding:11px 6px; background:var(--panel2); border:1px solid var(--line); border-radius:4px; color:var(--muted); font-size:12.5px; transition:.12s; cursor:pointer;}
+  .rd3-pill:active{transform:scale(.97);}
+  .rd3-pill.on{border-color:var(--cyan); color:var(--cyan); background:rgba(70,205,186,.07);}
+
+  /* ===== COACH MEMORY + BUBBLES ===== */
+  .cmem-card{margin:0 0 12px; padding:12px 14px; background:var(--panel); border:1px solid var(--line);
+    border-left:3px solid var(--violet); border-radius:4px;}
+  .cmem-top{display:flex; align-items:center; gap:8px; margin-bottom:8px;}
+  .cmem-title{font-family:var(--disp); font-weight:700; font-size:13px; letter-spacing:.09em; text-transform:uppercase; color:var(--violet);}
+  .cmem-count{font-family:var(--mono); font-size:10px; color:var(--dim);}
+  .cmem-clear{margin-left:auto; background:none; border:none; font-family:var(--mono); font-size:10px;
+    letter-spacing:.06em; color:var(--dim); cursor:pointer; text-transform:uppercase; transition:color .12s;}
+  .cmem-clear:hover{color:var(--red);}
+  .cmem-list{display:flex; flex-direction:column; gap:6px;}
+  .cmem-item{display:flex; align-items:flex-start; gap:8px; padding:7px 9px; background:var(--base);
+    border:1px solid var(--line); border-radius:3px;}
+  .cmem-tag{font-family:var(--mono); font-size:8.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--violet); border:1px solid var(--violet-dim); border-radius:2px; padding:2px 5px; flex:none; margin-top:1px;}
+  .cmem-note{flex:1; min-width:0; font-size:12.5px; line-height:1.45; color:var(--text);}
+  .cmem-x{background:none; border:none; color:var(--dim); font-size:15px; line-height:1; cursor:pointer;
+    padding:0 2px; flex:none; transition:color .12s;}
+  .cmem-x:hover{color:var(--red);}
+
+  .msg{animation:msgIn .22s ease both;}
+  @keyframes msgIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;}}
+  .msg.me{border-radius:12px 12px 3px 12px;}
+  .msg.ai{border-radius:12px 12px 12px 3px;}
+  .chat-in textarea{border-radius:8px; transition:border-color .12s;}
+  .chat-in textarea:focus{border-color:var(--cyan); outline:none;}
+
+  /* ============================================================
+     V3 VISUAL REFRESH — type scale, card structure, interactions.
+     Appended last so it layers over the base sheet.
+     ============================================================ */
+
+  /* card header kicker — .k was used throughout Plan/Analytics but never defined */
+  .card .k{font-family:var(--disp); font-weight:700; font-size:14px; letter-spacing:.09em;
+    text-transform:uppercase; margin:0 0 9px; display:flex; align-items:center; gap:8px;}
+  .card .k::before{content:""; width:5px; height:5px; background:currentColor; border-radius:1px; flex:none; opacity:.85;}
+  .card .k{color:var(--amber);}
+
+  /* consistent structure: every card carries a steel left edge unless it declares its own */
+  .card{border-left:3px solid var(--line2); padding:15px 16px;}
+  .card.flat{border-left:none;}
+
+  /* bigger, louder stat numbers */
+  .stat{padding:12px 13px;}
+  .stat .v{font-size:25px; line-height:1.05; letter-spacing:-.01em;}
+  .stat .l{font-size:9px; margin-top:5px;}
+  .stats{gap:10px;}
+
+  /* button micro-interactions */
+  .btn{transition:border-color .12s, background .12s, filter .12s, transform .12s;}
+  .btn:active{transform:scale(.975);}
+  .btn.primary:active, .btn.cyan:active{filter:brightness(.95);}
+
+  /* focus states — cyan means "you're editing this" app-wide */
+  input:focus,select:focus,textarea:focus{border-color:var(--cyan); box-shadow:0 0 0 2px rgba(70,205,186,.13);}
+
+  /* pills and rows settle into the same rhythm */
+  .pill{padding:3px 9px;}
+  .an-stat{transition:border-color .12s;}
+  .an-stat:hover{border-color:var(--line2);}
+
+  /* ============================================================
+     WIDE DESKTOP — card-list views flow into two columns instead of
+     one tall ribbon, so the screen fills horizontally and you scroll less.
+     ============================================================ */
+  @media(min-width:1240px){
+    #an_over.on, #an_dev.on, #an_recovery.on, #an_pred.on{
+      column-count:2; column-gap:16px;}
+    #an_over .card, #an_dev .card, #an_recovery .card, #an_pred .card{
+      break-inside:avoid; -webkit-column-break-inside:avoid; page-break-inside:avoid;
+      margin-top:0; margin-bottom:16px; display:inline-block; width:100%;}
+    /* Investigate is a control rail + findings feed, not a text flow — a naive
+       column split orphans the "Active flags" heading away from its own cards. */
+    #invest.on{display:grid; grid-template-columns:330px minmax(0,1fr); gap:18px; align-items:start;}
+    .inv-left{position:sticky; top:14px;}
+    .inv-left .card{margin-top:0;}
+    .inv-right > .card:first-child, .inv-right > .sub:first-child{margin-top:0;}
+    /* the fatigue readout stays one column — it reads as a single instrument panel */
+    #an_fatigue .an-stats{grid-template-columns:repeat(4,1fr);}
+  }
+  @media(min-width:900px){
+    /* LIVE welcome breathes instead of stretching edge to edge */
+    .welcome{padding:22px 24px;}
+    .an-stats{gap:12px;}
+    /* the rail and the topbar were both showing the brand side by side; topbar keeps it */
+    .sn-brand{display:none;}
+    .sidenav{padding-top:14px;}
+    /* the pill strip duplicates the sidebar's sub-items on desktop — reclaim the 59px */
+    .subnav, .subnav.has{display:none;}
+    main{padding-top:14px;}
+  }
+
+  /* Investigate: the section heading must never separate from the cards it labels */
+  .inv-h2{margin:0 2px 9px; font-family:var(--disp); font-weight:600; font-size:15px;
+    letter-spacing:.05em; text-transform:uppercase; color:var(--muted);}
+  .inv-right > .inv-h2 ~ .inv-h2{margin-top:20px;}
+  @media(max-width:1239px){
+    .inv-left{position:static;}
+    .inv-right{margin-top:6px;}
+  }
 </style>
+
+
+
+
+
+
+
+
 
 
 
@@ -492,6 +716,8 @@
 <body>
 
 <div class="app-shell">
+
+  <nav class="sidenav" id="sidenav"></nav>
 
   <div class="topbar">
     <span class="logo-mark"></span>
@@ -510,19 +736,8 @@
 
   <div id="reviewMode" class="hidden">
     <div class="review-body">
-      <div class="rnav" id="rnav">
-        <button data-t="progress" class="on">Progress</button>
-        <button data-t="road">Road</button>
-        <button data-t="bulk">Bulk</button>
-        <button data-t="fuel">Fuel</button>
-        <button data-t="library">Library</button>
-        <button data-t="coach">Coach</button>
-        <button data-t="invest">Investigate</button>
-        <button data-t="meso">Plan</button>
-        <button data-t="log">Log</button>
-        <button data-t="settings">Settings</button>
-      </div>
       <main>
+        <div class="subnav" id="subnav"></div>
         <section id="progress" class="on"></section>
         <section id="road"></section>
         <section id="bulk"></section>
@@ -533,6 +748,12 @@
         <section id="meso"></section>
         <section id="log"></section>
         <section id="settings"></section>
+        <section id="an_over"></section>
+        <section id="an_strength"></section>
+        <section id="an_fatigue"></section>
+        <section id="an_recovery"></section>
+        <section id="an_dev"></section>
+        <section id="an_pred"></section>
         <section id="today" style="display:none"></section>
       </main>
     </div>
@@ -547,6 +768,12 @@
   <div class="botnav" id="botnav"></div>
 </div>
 
+<div class="overlay" id="readyOverlay">
+  <div class="exinfo-modal" style="max-width:440px">
+    <div class="exinfo-top"><span class="exinfo-title">Pre-session check-in</span><button onclick="rd3Skip()" class="exinfo-x">&times;</button></div>
+    <div id="readyBody" style="padding:16px"></div>
+  </div>
+</div>
 <div class="overlay" id="mesoOverlay" onclick="if(event.target===this)closeMesoOv()">
   <div class="exinfo-modal" style="max-width:520px">
     <div class="exinfo-top"><span class="exinfo-title" id="mesoOvTitle">Week</span><button onclick="closeMesoOv()" class="exinfo-x">&times;</button></div>
@@ -1977,7 +2204,12 @@ function trainingContext(){
   const wts = S.weights.slice(-10).map(w=>w.date+': '+w.lbs+' lb').join(', ');
   const nut = S.nutrition.slice(-7).map(n=>n.date+': '+n.cals+' cal / '+n.protein+'g protein').join(', ');
   const bench = e1rmSeries('Barbell Bench Press'); const squat = e1rmSeries('Barbell Back Squat');
-  const rdHist = [...S.readiness].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(r=>r.date+': '+r.tier+' ('+r.sleep+'h, '+r.sore+', '+r.energy+' energy)').join('; ');
+  const rdHist = [...S.readiness].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(r=>r.date+': '+r.tier+' ('+r.sleep+'h, '+r.sore+', '+r.energy+' energy'+(r.stress?', '+r.stress:'')+(r.motiv?', '+r.motiv+' motivation':'')+')').join('; ');
+  let fatLine = 'not enough history yet';
+  try{
+    const _fi = fatigueIndex();
+    if(_fi.ok) fatLine = _fi.status+' (ratio '+_fi.ratio+' \u2014 this week '+_fi.acute+' effort-weighted sets vs a 4-week norm of '+_fi.chronic+'/wk)';
+  }catch(e){}
   return 'ATHLETE PROFILE:\n- Mark, 18, male, ~150 lb, goal: gain size and strength (bulk), accelerate bench/squat PRs.\n'+
     '- Trains 5-6x/week at a commercial gym, 6-day split (D1 Chest+Tri, D2 Back+Bi, D3 Legs squat-focus, D4 Shoulders+Arms, D5 Chest+Back accessory, D6 Legs press-focus).\n'+
     '- Nutrition target: 3000+ cal, 130g+ protein daily, tracked via Cal AI.\n\n'+
@@ -1986,6 +2218,7 @@ function trainingContext(){
     'BODYWEIGHT LOG: '+(wts||'none yet')+'\n'+
     'NUTRITION LOG: '+(nut||'none yet')+'\n'+
     'READINESS CHECK-INS: '+(rdHist||'none yet')+'\n'+
+    'FATIGUE MODEL: '+fatLine+'\n'+
     'NOTE: set notation may carry effort tags — \u1d49=easy, \u1d4d=grind, \u02e3=failed.\n\n'+
     mesoCoachContext()+
     'RECENT SESSIONS (newest first):\n'+(logTxt||'No sessions logged yet.');
@@ -2023,7 +2256,12 @@ async function sendChat(){
       'When the user clearly asks you to change something, call the appropriate tool. The user must tap Apply before anything '+
       'actually changes, so propose confidently but still briefly explain what you\'re proposing in your text. '+
       'Prefer set_today_workout for one-off "just for today" requests and the permanent tools for lasting changes. '+
-      'Only call a tool when the user is asking for a change \u2014 for pure questions or advice, just answer.\n\n'+trainingContext();
+      'Only call a tool when the user is asking for a change \u2014 for pure questions or advice, just answer.\n\n'+
+      'You have a durable memory. When he tells you something lasting about himself that you would want in future conversations '+
+      '(an injury, a limitation, a preference, a deadline, a gym equipment quirk), call remember_note \u2014 he taps to confirm before it saves. '+
+      'Don\'t remember things already in the training data below, and don\'t narrate your memory unprompted. '+
+      'Everything under WHAT YOU REMEMBER is something he previously confirmed \u2014 treat it as fact and factor it into your advice.\n\n'+
+      coachMemContext()+'\n'+trainingContext();
     const msgs = S.chat.slice(-16).map(m=>({role:m.role, content:m.content}));
     const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs(), 1200);
     const msg = {role:'assistant', content:text || (actions.length?'Here\u2019s what I\u2019d change \u2014 review and apply below:':'')};
@@ -2736,28 +2974,121 @@ function setMode(m){
   document.getElementById('mLive').classList.toggle('on', m==='live');
   document.getElementById('mReview').classList.toggle('on', m==='review');
   buildBotNav();
-  if(m==='live'){ renderLive(); }
-  else { showReviewTab(activeReviewTab); }
+  if(m==='live'){ renderLive(); try{ renderSidenav(); }catch(e){} }
+  else { showMainTab(activeMainTab, navMemory[activeMainTab]); }
   try{ invUpdateBadge(); }catch(e){}
   window.scrollTo({top:0, behavior:'instant'});
 }
-function buildBotNav(){
-  const nav = document.getElementById('botnav');
-  nav.innerHTML =
-    '<button class="ni '+(MODE==='live'?'on':'')+'" onclick="setMode(\'live\')"><span class="ic">⚡</span>Live</button>'+
-    '<button class="ni review-tint '+(MODE==='review'?'on':'')+'" onclick="setMode(\'review\')"><span class="ic">▤</span>Review</button>';
-}
-
 /* ===================== REVIEW NAV ===================== */
 let activeReviewTab = 'progress';
 const REVIEW_RENDER = {progress:renderProgressV2, road:renderRoad, bulk:renderBulk, fuel:renderFuel, coach:renderCoach, log:renderLog, settings:renderSettings};
-function showReviewTab(t){
-  activeReviewTab = t;
-  document.querySelectorAll('#rnav button').forEach(b=>b.classList.toggle('on', b.dataset.t===t));
-  document.querySelectorAll('#reviewMode main section').forEach(s=>s.classList.toggle('on', s.id===t));
-  (REVIEW_RENDER[t]||function(){})();
+
+/* ============================================================
+   V3 NAVIGATION — 7 main categories with embedded subcategories.
+   Desktop: left sidebar accordion. Mobile: bottom nav + pill strip.
+   Old tab ids keep working through the showReviewTab shim.
+   ============================================================ */
+const NAV_MODEL = [
+  {id:'progress',  label:'Progress',    ic:'\u25d4', subs:[
+    {id:'progress', label:'Overview'},
+    {id:'log',      label:'Log'}]},
+  {id:'plan',      label:'Plan',        ic:'\u25a6', subs:[
+    {id:'meso',     label:'Mesocycle'}]},
+  {id:'analytics', label:'Analytics',   ic:'\u223f', subs:[
+    {id:'an_over',     label:'Overview'},
+    {id:'road',        label:'Road'},
+    {id:'an_strength', label:'Strength curve'},
+    {id:'an_fatigue',  label:'Fatigue'},
+    {id:'an_recovery', label:'Recovery'},
+    {id:'an_dev',      label:'Development'},
+    {id:'an_pred',     label:'Predictions'}]},
+  {id:'bulk',      label:'Bulk',        ic:'\u25c6', subs:[
+    {id:'bulk',     label:'Bodyweight'},
+    {id:'fuel',     label:'Fuel'}]},
+  {id:'invest',    label:'Investigate', ic:'\u26a0', subs:[
+    {id:'invest',   label:'Flags'}]},
+  {id:'coach',     label:'Coach',       ic:'\u2726', subs:[
+    {id:'coach',    label:'Chat'}]},
+  {id:'settings',  label:'Settings',    ic:'\u2699', subs:[
+    {id:'settings', label:'General'},
+    {id:'library',  label:'Library'}]}
+];
+/* old flat tab id -> [mainId, sectionId] */
+const NAV_LEGACY = {
+  progress:['progress','progress'], log:['progress','log'],
+  meso:['plan','meso'],
+  road:['analytics','road'], an_over:['analytics','an_over'], an_strength:['analytics','an_strength'],
+  an_fatigue:['analytics','an_fatigue'], an_recovery:['analytics','an_recovery'],
+  an_dev:['analytics','an_dev'], an_pred:['analytics','an_pred'],
+  bulk:['bulk','bulk'], fuel:['bulk','fuel'],
+  invest:['invest','invest'], coach:['coach','coach'],
+  settings:['settings','settings'], library:['settings','library']
+};
+let activeMainTab = 'progress';
+let navMemory = {};   // remembers last sub per main tab, session-scoped
+
+function navMain(id){ return NAV_MODEL.find(n=>n.id===id); }
+function showMainTab(mainId, subId){
+  const m = navMain(mainId); if(!m) return;
+  activeMainTab = mainId;
+  const sub = subId || navMemory[mainId] || m.subs[0].id;
+  navMemory[mainId] = sub;
+  activeReviewTab = sub;   // keep the legacy pointer accurate for boot re-renders
+  document.querySelectorAll('#reviewMode main section').forEach(s=>s.classList.toggle('on', s.id===sub));
+  renderSidenav(); renderSubnav(); buildBotNav();
+  (REVIEW_RENDER[sub]||function(){})();
   try{ invUpdateBadge(); }catch(e){}
+  window.scrollTo({top:0, behavior:'instant'});
 }
+function renderSidenav(){
+  const el = document.getElementById('sidenav'); if(!el) return;
+  let h = '<div class="sn-brand">IRON<span>HUB</span></div>';
+  h += '<button class="sn-item sn-live '+(MODE==='live'?'on':'')+'" onclick="setMode(\'live\')"><span class="sn-ic">\u26a1</span>Live</button>';
+  h += '<div class="sn-sep"></div>';
+  NAV_MODEL.forEach(m=>{
+    const on = MODE==='review' && m.id===activeMainTab;
+    const badge = (m.id==='invest') ? '<span class="sn-badge" id="snInvBadge"></span>' : '';
+    h += '<button class="sn-item '+(on?'on':'')+'" onclick="setMode(\'review\');showMainTab(\''+m.id+'\')"><span class="sn-ic">'+m.ic+'</span>'+m.label+badge+'</button>';
+    if(on && m.subs.length>1){
+      h += '<div class="sn-subs">';
+      m.subs.forEach(s=>{
+        const son = navMemory[m.id]===s.id;
+        h += '<button class="sn-sub '+(son?'on':'')+'" onclick="showMainTab(\''+m.id+'\',\''+s.id+'\')">'+s.label+'</button>';
+      });
+      h += '</div>';
+    }
+  });
+  el.innerHTML = h;
+}
+function renderSubnav(){
+  const el = document.getElementById('subnav'); if(!el) return;
+  const m = navMain(activeMainTab);
+  if(!m || m.subs.length<2){ el.innerHTML=''; el.classList.remove('has'); return; }
+  el.classList.add('has');
+  el.innerHTML = m.subs.map(s=>{
+    const on = navMemory[m.id]===s.id;
+    return '<button class="'+(on?'on':'')+'" onclick="showMainTab(\''+m.id+'\',\''+s.id+'\')">'+s.label+'</button>';
+  }).join('');
+}
+
+/* mobile bottom nav: Live + all 7 categories */
+function buildBotNav(){
+  const nav = document.getElementById('botnav'); if(!nav) return;
+  let h = '<button class="ni '+(MODE==='live'?'on':'')+'" onclick="setMode(\x27live\x27)"><span class="ic">\u26a1</span>Live</button>';
+  NAV_MODEL.forEach(m=>{
+    const on = MODE==='review' && m.id===activeMainTab;
+    const badge = (m.id==='invest') ? '<span class="ni-badge" id="niInvBadge"></span>' : '';
+    h += '<button class="ni review-tint '+(on?'on':'')+'" onclick="setMode(\x27review\x27);showMainTab(\x27'+m.id+'\x27)"><span class="ic">'+m.ic+badge+'</span>'+m.label.slice(0,m.id==='invest'?6:9)+'</button>';
+  });
+  nav.innerHTML = h;
+}
+/* legacy shim: every old showReviewTab('x') call still lands in the right place */
+function showReviewTab(t){
+  const map = NAV_LEGACY[t];
+  if(map){ showMainTab(map[0], map[1]); return; }
+  showMainTab('progress');
+}
+
 /* Progress in V2 = ported V1 progress + a body heatmap card on top */
 function renderProgressV2(){
   renderProgress();
@@ -2851,11 +3182,13 @@ function buildOneLiveExercise(nm){
     rec.detail = _ov.note+'. Keep every rep clean \u2014 climbing back fast is the point.';
     decision = {code:'inv-override', moved:true, reason:'Investigation fix active: targets reset to '+_ov.w+' lb through '+fmtDate(_ov.until)+' to rebuild momentum.'};
   }
+  let planned = (rec.sets||[]).length||3;
+  if(liveTrimVol){ planned = Math.max(2, planned-1); rec.detail = (rec.detail||'')+' Volume trimmed for low readiness \u2014 quality over quantity today.'; }
   return {
     name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
     targetW:firstW, lo:lo, hi:hi,
     recTarget:rec.target, recDetail:rec.detail,
-    planned:(rec.sets||[]).length||3,
+    planned:planned,
     sets:[], done:false, _decision:decision,
     advW:firstW, advLo:lo, advHi:hi, advTag:'', advCls:'', advMsg:rec.detail,
     _swapped:false
@@ -2876,7 +3209,13 @@ function liveStartSession(){
   startLiveForDay(dk);
 }
 function startLiveForDay(dk){
-  live = { date:todayKey(), day:dk, startedAt:Date.now(), exercises:buildLiveExercises(dk), curIdx:0 };
+  if(!todayReadiness() && S.readySkipDate!==todayKey()){ openReadyCheck(dk); return; }
+  _startLiveNow(dk, false);
+}
+function _startLiveNow(dk, trim){
+  liveTrimVol = !!trim;
+  live = { date:todayKey(), day:dk, startedAt:Date.now(), exercises:buildLiveExercises(dk), curIdx:0, trimmed:!!trim };
+  liveTrimVol = false;
   liveActiveIdx = 0;
   saveLiveDraft();
   renderLive();
@@ -2922,12 +3261,14 @@ function renderLive(){
   try{ invUpdateBadge(); }catch(e){}
   const body = document.getElementById('liveBody');
   if(!live){
-    body.innerHTML = welcomeHTML() + deloadBannerHTML() + liveIdleHTML();
+    body.innerHTML = welcomeHTML() + deloadBannerHTML() + fatigueBannerHTML() + liveIdleHTML();
     initBodyMap('live');
     return;
   }
   let h = '';
-  h += '<div class="sessionbar"><span class="sb-day">'+esc(live.day)+' · '+esc(S.split[live.day].name)+'</span>'+
+  const _rd = todayReadiness();
+  const _rdChip = _rd ? '<span class="pill" style="font-size:9px;border-color:'+(_rd.tier==='high'?'var(--cyan-dim);color:var(--cyan)':_rd.tier==='low'?'var(--red-dim);color:var(--red)':'var(--line2);color:var(--muted)')+'">'+_rd.tier.toUpperCase()+(live.trimmed?' \u00b7 TRIMMED':'')+'</span>' : '';
+  h += '<div class="sessionbar"><span class="sb-day">'+esc(live.day)+' · '+esc((S.split[live.day]||{}).name||live.day)+'</span>'+_rdChip+
        '<span class="sb-prog" id="sbProg"></span><span class="sb-clock" id="sbClock">00:00</span></div>';
   live.exercises.forEach((ex,i)=>{ h += liveExHTML(ex,i); });
   h += '<div style="display:flex; gap:10px; margin:16px 0 8px">'+
@@ -2946,70 +3287,157 @@ function liveIdleHTML(){
       '<h2 style="margin-top:0">Today targets — '+esc(dk)+'</h2>'+ bodyMapInner('today') +
     '</div>';
 }
+/* ============================================================
+   LIVE V3 — hero layout for the active lift, editable history,
+   smart rest, pre-laid-out sets. One-handed iPhone-first.
+   ============================================================ */
+let liveEditSet = null;   // {ex:i, set:j} while a logged set is being edited
+
+/* Smart rest: exercise type + rep mode + how the last set actually went. */
+function smartRestSecs(ex){
+  if(ex._deload || deloadActive()) return {secs:75, why:'Deload \u2014 keep it moving'};
+  const comp = (typeof mesoIsCompound==='function') ? mesoIsCompound(ex.name) : true;
+  let secs = comp ? (ex.repMode==='str' ? 195 : 150) : 90;
+  let why = comp ? (ex.repMode==='str' ? 'Heavy compound' : 'Compound') : 'Isolation';
+  const last = ex.sets[ex.sets.length-1];
+  if(last){
+    if(last.e==='grind' || last.e==='fail'){ secs += 30; why += ' \u00b7 hard set'; }
+    else if(last.e==='easy' && !comp){ secs -= 15; why += ' \u00b7 easy set'; }
+    const best = bestE1RM(ex.name);
+    if(comp && best>0 && (+last.w||0) >= best*0.9){ secs += 30; why += ' \u00b7 near-max load'; }
+  }
+  return {secs:Math.max(45, secs), why};
+}
+
 function liveExHTML(ex,i){
   const active = i===liveActiveIdx && !ex.done;
   if(ex._1rm) return liveExHTML_1rm(ex, i, active);
+  if(ex.done)   return liveDoneRowHTML(ex,i);
+  if(!active)   return liveUpcomingRowHTML(ex,i);
+
   const adv = intraAdvice(ex);
   ex.advW=adv.w; ex.advLo=adv.lo; ex.advHi=adv.hi; ex.advTag=adv.tag; ex.advCls=adv.cls; ex.advMsg=adv.msg;
-  let h = '<div class="liveex '+(active?'active':'')+' '+(ex.done?'done':'')+'" id="liveex-'+i+'">';
-  h += '<div class="liveex-head" onclick="focusLiveEx('+i+')">';
-  h += '<div class="liveex-name">'+esc(ex.name)+'<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+esc(ex.name).replace(/'/g,"\\'")+'\')" title="Form cues">\u24d8</button></div>';
-  h += '<div class="liveex-chips">';
-  h += '<span class="pill" style="border-color:'+(ex.repMode==='str'?'var(--violet-dim);color:var(--violet)':'var(--line2)')+'">'+(ex.repMode==='str'?'STR · 3–6':'HYP · '+ex.lo+'–'+ex.hi)+'</span>';
-  if(ex.formFocus) h += '<span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">FORM</span>';
-  if(ex.done) h += '<span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">✓ Done</span>';
-  else if(active) h += '<span class="pill" style="border-color:var(--amber);color:var(--amber)">▸ Active</span>';
-  if(!ex.done) h += '<button class="ex-info-btn" onclick="event.stopPropagation();activate1RM('+i+')" title="Switch to 1RM test mode" style="color:var(--violet);font-size:11px;margin-left:4px">1RM</button>';
-  h += '<button class="ex-info-btn" onclick="openLiveExEdit('+i+')" title="Swap or remove (today only)" style="color:var(--muted);font-size:12px;margin-left:4px">\u270e</button>';
-  h += '</div></div>';
-  // logged sets
+  const planned = Math.max(ex.planned||3, ex.sets.length);
+  const setN = Math.min(ex.sets.length+1, planned);
+  const extraSet = ex.sets.length >= planned;
+
+  let h = '<div class="liveex active lv3" id="liveex-'+i+'">';
+  h += '<div class="lv3-head">'+
+       '<div class="lv3-eyebrow"><span style="color:var(--amber)">\u25b8 Current</span><span>Exercise '+(i+1)+' of '+live.exercises.length+'</span></div>'+
+       '<div class="liveex-name" style="font-size:24px">'+esc(ex.name)+
+         '<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+esc(ex.name).replace(/'/g,"\\'")+'\')" title="Form cues">\u24d8</button></div>'+
+       '<div class="liveex-chips">'+
+         '<span class="pill" style="border-color:'+(ex.repMode==='str'?'var(--violet-dim);color:var(--violet)':'var(--line2)')+'">'+(ex.repMode==='str'?'STR \u00b7 3\u20136':'HYP \u00b7 '+ex.lo+'\u2013'+ex.hi)+'</span>'+
+         (ex.formFocus?'<span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">FORM</span>':'')+
+         '<button class="ex-info-btn" onclick="activate1RM('+i+')" title="1RM test mode" style="color:var(--violet);font-size:11px">1RM</button>'+
+         '<button class="ex-info-btn" onclick="openLiveExEdit('+i+')" title="Swap or remove (today only)" style="color:var(--muted);font-size:12px">\u270e</button>'+
+       '</div></div>';
+
+  /* target hero */
+  h += '<div class="lv3-hero">'+
+       '<div class="lv3-hero-cell"><span class="lv3-hero-n">'+(adv.w||'\u2014')+'</span><span class="lv3-hero-l">lb target</span></div>'+
+       '<div class="lv3-hero-x">\u00d7</div>'+
+       '<div class="lv3-hero-cell"><span class="lv3-hero-n">'+adv.lo+'\u2013'+adv.hi+'</span><span class="lv3-hero-l">reps</span></div>'+
+       '<div class="lv3-hero-set"><span class="lv3-set-big">'+(extraSet?'+':'')+'Set '+(extraSet?(ex.sets.length+1):setN)+'</span><span class="lv3-hero-l">of '+planned+(extraSet?' planned':'')+'</span></div>'+
+       '</div>';
+  if(adv.tag || adv.msg){
+    h += '<div class="lv3-presc">'+(adv.tag?'<b style="color:'+(adv.cls==='up'?'var(--cyan)':adv.cls==='back'?'var(--red)':'var(--amber)')+'">'+esc(adv.tag)+'</b> \u00b7 ':'')+esc(adv.msg)+'</div>';
+  }
+  if(isPlateLift(ex.name) && adv.w){
+    const pc = plateCalc(+adv.w); if(pc) h += '<div class="lv3-presc" style="color:var(--dim)">Per side: '+esc(pc.txt)+' (45 lb bar)</div>';
+  }
+
+  /* logged sets (tap to edit) + ghost rows for the rest of the plan */
   h += '<div class="liveex-sets">';
-  ex.sets.forEach((s,j)=>{
-    h += '<div class="lset logged"><span class="lsn">Set '+(j+1)+'</span><span class="lchk">✓</span>'+
-         '<span class="lval">'+s.w+'<span class="x">×</span>'+s.r+'</span>'+
-         setDeltaChip(ex.name, j, +s.w, +s.r)+
-         (s.e?'<span class="leff e-'+s.e+'">'+s.e.toUpperCase()+'</span>':'<span class="leff">—</span>')+'</div>';
-  });
-  if(!ex.done){
-    const nextN = ex.sets.length+1;
-    h += '<div class="lset"><span class="lsn">Set '+nextN+'</span><span class="lchk">○</span>'+
-         '<span class="lval" style="color:var(--dim)">'+(adv.w||'—')+'<span class="x">×</span>'+adv.lo+'–'+adv.hi+'</span>'+
-         (active?'<span class="leff" style="color:var(--amber)">▸ now</span>':'<span class="leff">next</span>')+'</div>';
+  ex.sets.forEach((s,j)=>{ h += (liveEditSet && liveEditSet.ex===i && liveEditSet.set===j) ? liveSetEditHTML(i,j,s) : liveSetRowHTML(i,j,s,true); });
+  for(let g=ex.sets.length; g<planned; g++){
+    const now = g===ex.sets.length;
+    h += '<div class="lset '+(now?'lv3-next':'ghost')+'"><span class="lsn">Set '+(g+1)+'</span><span class="lchk">\u25cb</span>'+
+         '<span class="lval" style="color:var(--dim)">'+(adv.w||'\u2014')+'<span class="x">\u00d7</span>'+adv.lo+'\u2013'+adv.hi+'</span>'+
+         (now?'<span class="leff" style="color:var(--amber);border-color:var(--amber-dim)">\u25b8 now</span>':'<span class="leff">planned</span>')+'</div>';
   }
   h += '</div>';
-  // dock (only on active exercise)
-  if(active){
-    h += '<div class="livedock">';
-    h += lastSessionStrip(ex.name);
-    h += '<div class="dock-presc">'+(adv.tag?'<b style="color:'+(adv.cls==='up'?'var(--cyan)':adv.cls==='back'?'var(--red)':'var(--amber)')+'">'+esc(adv.tag)+'</b> · ':'')+esc(adv.msg)+'</div>';
-    if(isPlateLift(ex.name) && adv.w){
-      const pc = plateCalc(+adv.w); if(pc) h += '<div class="dock-presc" style="color:var(--muted)">Per side: '+esc(pc.txt)+' (45 lb bar)</div>';
-    }
-    h += '<div class="dockrow">'+
-         '<div class="field"><label>Weight (lb)</label><input id="dockW" inputmode="decimal" value="'+(adv.w||'')+'"></div>'+
-         '<div class="field"><label>Reps</label><input id="dockR" inputmode="numeric" placeholder="'+adv.lo+'–'+adv.hi+'"></div>'+
-         '</div>';
-    h += '<div class="efftog">'+
-         ['easy','solid','grind','fail'].map(e=>'<button class="'+(liveDockEff===e?'sel e-'+e:'')+'" onclick="pickEff(\''+e+'\')">'+e+'</button>').join('')+
-         '</div>';
-    h += '<div class="dockbtns">'+
-         '<button class="btn primary" onclick="logLiveSet('+i+')">Log set</button>'+
-         '<button class="btn" onclick="finishExercise('+i+')">Next exercise</button>'+
-         '</div>';
-    h += '</div>';
-    // rest timer slot
-    h += '<div id="restSlot"></div>';
-  }
-  h += '</div>';
+
+  /* dock */
+  h += '<div class="livedock lv3-dock">';
+  h += lastSessionStrip(ex.name);
+  h += '<div class="dockrow lv3-inrow">'+
+       '<div class="field"><label>Weight (lb)</label><input id="dockW" class="lv3-in" inputmode="decimal" value="'+(adv.w||'')+'"></div>'+
+       '<div class="field"><label>Reps</label><input id="dockR" class="lv3-in" inputmode="numeric" placeholder="'+adv.lo+'\u2013'+adv.hi+'"></div>'+
+       '</div>';
+  h += '<div class="efftog lv3-eff">'+
+       ['easy','solid','grind','fail'].map(e=>'<button class="'+(liveDockEff===e?'sel e-'+e:'')+'" onclick="pickEff(\''+e+'\')">'+e+'</button>').join('')+
+       '</div>';
+  const sr = smartRestSecs(ex);
+  h += '<div class="lv3-btns">'+
+       '<button class="btn primary lv3-log" onclick="logLiveSet('+i+')">Log set</button>'+
+       '<button class="btn cyan lv3-done" onclick="finishExercise('+i+')">Done \u2713</button>'+
+       '</div>';
+  h += '<div class="lv3-restnote">Rest after log: ~'+Math.round(sr.secs/60*10)/10+' min \u00b7 '+sr.why+'</div>';
+  h += '</div><div id="restSlot"></div></div>';
   return h;
 }
+function liveSetRowHTML(i,j,s,editable){
+  return '<div class="lset logged'+(editable?' lv3-tap':'')+'"'+(editable?' onclick="editLiveSet('+i+','+j+')"':'')+'>'+
+    '<span class="lsn">Set '+(j+1)+'</span><span class="lchk">\u2713</span>'+
+    '<span class="lval">'+s.w+'<span class="x">\u00d7</span>'+s.r+'</span>'+
+    setDeltaChip(live.exercises[i].name, j, +s.w, +s.r)+
+    (s.e?'<span class="leff e-'+s.e+'">'+s.e.toUpperCase()+'</span>':'<span class="leff">\u2014</span>')+
+    (editable?'<span class="lv3-edithint">\u270e</span>':'')+'</div>';
+}
+function liveSetEditHTML(i,j,s){
+  return '<div class="lset lv3-edit">'+
+    '<div class="lv3-edit-row"><span class="lsn">Set '+(j+1)+'</span>'+
+    '<input id="esW" class="lv3-edit-in" inputmode="decimal" value="'+s.w+'">'+
+    '<span class="x" style="color:var(--dim)">\u00d7</span>'+
+    '<input id="esR" class="lv3-edit-in" inputmode="numeric" value="'+s.r+'"></div>'+
+    '<div class="efftog lv3-eff" style="margin:8px 0">'+
+      ['easy','solid','grind','fail'].map(e=>'<button class="'+(s.e===e?'sel e-'+e:'')+'" onclick="liveEditEff('+i+','+j+',\''+e+'\')">'+e+'</button>').join('')+'</div>'+
+    '<div style="display:flex;gap:7px">'+
+    '<button class="btn sm cyan" onclick="saveLiveSetEdit('+i+','+j+')">Save</button>'+
+    '<button class="btn sm ghost" onclick="cancelLiveSetEdit()">Cancel</button>'+
+    '<button class="btn sm ghost" style="margin-left:auto;color:var(--red);border-color:var(--red-dim)" onclick="deleteLiveSet('+i+','+j+')">Delete set</button>'+
+    '</div></div>';
+}
+function liveUpcomingRowHTML(ex,i){
+  const planned = ex.planned||3;
+  return '<div class="liveex lv3-row" id="liveex-'+i+'" onclick="focusLiveEx('+i+')">'+
+    '<div class="lv3-row-in"><span class="lv3-row-n">'+(i+1)+'</span>'+
+    '<div class="lv3-row-mid"><b>'+esc(ex.name)+'</b>'+
+    '<span class="small" style="color:var(--dim)">'+(ex.targetW?ex.targetW+' lb \u00b7 ':'')+planned+' sets \u00b7 '+(ex.repMode==='str'?'3\u20136':ex.lo+'\u2013'+ex.hi)+' reps</span></div>'+
+    '<span class="lv3-row-tag">up next</span></div></div>';
+}
+function liveDoneRowHTML(ex,i){
+  const summ = ex.sets.map(s=>s.w+'\u00d7'+s.r).join(' \u00b7 ');
+  return '<div class="liveex done lv3-row" id="liveex-'+i+'" onclick="focusLiveEx('+i+')">'+
+    '<div class="lv3-row-in"><span class="lv3-row-n" style="color:var(--cyan)">\u2713</span>'+
+    '<div class="lv3-row-mid"><b>'+esc(ex.name)+'</b>'+
+    '<span class="small" style="color:var(--dim)">'+(summ||'no sets')+'</span></div>'+
+    '<span class="lv3-row-tag" style="color:var(--cyan)">tap to edit</span></div></div>';
+}
 function focusLiveEx(i){
-  if(live.exercises[i].done) return;
-  liveActiveIdx = i; renderLive();
-  document.getElementById('liveex-'+i).scrollIntoView({behavior:'smooth', block:'center'});
+  const ex = live.exercises[i];
+  if(ex.done){ ex.done = false; ex._reopened = true; }   // reopening a finished lift is a first-class move now
+  liveActiveIdx = i; liveEditSet = null;
+  saveLiveDraft(); renderLive();
+  const el = document.getElementById('liveex-'+i); if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
 }
 function pickEff(e){ liveDockEff = (liveDockEff===e?'':e); renderLive(); }
-
+function editLiveSet(i,j){ if(liveActiveIdx!==i) return; liveEditSet = {ex:i, set:j}; renderLive(); }
+function cancelLiveSetEdit(){ liveEditSet = null; renderLive(); }
+function liveEditEff(i,j,e){ const s=live.exercises[i].sets[j]; s.e = (s.e===e?undefined:e); saveLiveDraft(); renderLive(); if(liveEditSet) renderLive(); }
+function saveLiveSetEdit(i,j){
+  const w = parseFloat(document.getElementById('esW').value);
+  const r = parseInt(document.getElementById('esR').value);
+  if(!(w>0) || !(r>0)){ alert('Enter a valid weight and reps.'); return; }
+  const s = live.exercises[i].sets[j]; s.w=w; s.r=r;
+  liveEditSet = null; saveLiveDraft(); renderLive();
+}
+function deleteLiveSet(i,j){
+  if(!confirm('Delete this set?')) return;
+  live.exercises[i].sets.splice(j,1);
+  liveEditSet = null; saveLiveDraft(); renderLive();
+}
 function logLiveSet(i){
   const ex = live.exercises[i];
   const w = parseFloat(document.getElementById('dockW').value);
@@ -3018,20 +3446,19 @@ function logLiveSet(i){
   ex.sets.push({w:w, r:r, e:liveDockEff||undefined});
   liveDockEff = '';
   saveLiveDraft();
-  // auto-start rest with mode-appropriate duration
-  // rest: use ramp step timing in 1RM mode, else mode-based default
   if(ex._1rm && ex._1rmRamp){
-    const stepIdx = ex.sets.length - 1; // just logged
-    const step = ex._1rmRamp[stepIdx];
+    const step = ex._1rmRamp[ex.sets.length-1];
     startRest(step ? rampRestSecs(step) : 180, i);
   } else {
-    startRest(ex.repMode==='str' && !ex.formFocus ? 180 : 110, i);
+    startRest(smartRestSecs(ex).secs, i);
   }
   renderLive();
-  document.getElementById('liveex-'+i).scrollIntoView({behavior:'smooth', block:'center'});
+  const el = document.getElementById('liveex-'+i); if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
 }
+
 function finishExercise(i){
   live.exercises[i].done = true;
+  liveEditSet = null;
   // advance to next undone exercise
   const next = live.exercises.findIndex((e,idx)=>idx>i && !e.done);
   liveActiveIdx = next>=0 ? next : live.exercises.findIndex(e=>!e.done);
@@ -3340,8 +3767,9 @@ function renderMarkdown(raw){
 /* ===================== COACH OVERRIDE (markdown rendering) ===================== */
 function renderCoach(){
   const el = document.getElementById('coach');
-  let html = '<div class="card flat" style="padding:0;border:none"><div class="chat-box" id="chatBox">';
-  if(!S.chat.length) html += '<div class="msg sys">Coach is loaded with your full training log, bodyweight trend, and split. Ask anything.</div>';
+  let html = coachMemCardHTML();
+  html += '<div class="card flat" style="padding:0;border:none"><div class="chat-box" id="chatBox">';
+  if(!S.chat.length) html += '<div class="msg sys">Coach is loaded with your full training log, bodyweight trend, split, and everything it remembers about you. Ask anything.</div>';
   S.chat.forEach(m=>{
     const body = m.role==='user' ? esc(m.content) : renderMarkdown(m.content);
     if(m.content) html += '<div class="msg '+(m.role==='user'?'me':'ai')+'">'+body+'</div>';
@@ -3352,7 +3780,7 @@ function renderCoach(){
   html += '</div><div class="chat-in">'+
     '<textarea id="chatIn" placeholder="Ask your coach\u2026" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>'+
     '<button class="btn" onclick="sendChat()">Send</button></div>'+
-    '<div style="margin-top:6px"><button class="btn ghost sm" onclick="if(confirm(\'Clear chat history?\')){S.chat=[];save();renderCoach();}">Clear chat</button></div></div>';
+    '<div style="margin-top:6px"><button class="btn ghost sm" onclick="if(confirm(\'Clear chat history? Coach memory is kept separately and stays.\')){S.chat=[];save();renderCoach();}">Clear chat</button></div></div>';
   el.innerHTML = html;
   const box = document.getElementById('chatBox');
   if(box) box.scrollTop = box.scrollHeight;
@@ -3770,6 +4198,12 @@ REVIEW_RENDER.library = renderLibrary;
 REVIEW_RENDER.settings = function(){ renderSettings(); enableSplitDrag(); };
 REVIEW_RENDER.invest = renderInvestigation;
 REVIEW_RENDER.meso = renderMeso;
+REVIEW_RENDER.an_over = function(){ renderAnOverview(); };
+REVIEW_RENDER.an_strength = function(){ renderAnStrength(); };
+REVIEW_RENDER.an_fatigue = function(){ renderAnFatigue(); };
+REVIEW_RENDER.an_recovery = function(){ renderAnRecovery(); };
+REVIEW_RENDER.an_dev = function(){ renderAnDev(); };
+REVIEW_RENDER.an_pred = function(){ renderAnPred(); };
 
 /* ===================== 1RM LIVE MODE ===================== */
 function rampRestSecs(step){
@@ -4059,6 +4493,29 @@ function deloadBannerHTML(){
     (_sched ? '<span class="pill" style="margin-left:8px;border-color:var(--violet);color:var(--violet)">Scheduled \u00b7 week '+_mw.n+'</span>' : '')+
     '<div class="small" style="margin-top:3px">Through '+fmtDate(_until)+' \u00b7 loads auto-reduced to ~60%, 2 sets, well shy of failure. These sessions won\u2019t count toward progression or your trend charts.</div></div>'+
     '<button class="btn ghost sm" onclick="endDeloadWeek()">End early</button></div></div>';
+}
+
+/* Fatigue-driven deload suggestion — surfaced on the LIVE welcome screen.
+   Never auto-applies; Start deload / Not now, and "Not now" suppresses for 10 days. */
+function fatigueBannerHTML(){
+  let fi = null;
+  try{ fi = fatigueSuggestsDeload(); }catch(e){ return ''; }
+  if(!fi) return '';
+  const hard = fi.status==='overreached';
+  return '<div class="card fat-banner" style="border-left:3px solid '+(hard?'var(--red)':'var(--amber)')+';background:'+(hard?'rgba(225,88,66,.06)':'rgba(246,134,47,.05)')+'">'+
+    '<div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">'+
+    '<b style="color:'+(hard?'var(--red)':'var(--amber)')+';letter-spacing:.04em;font-family:var(--disp);font-size:15px">'+
+      (hard?'FATIGUE: OVERREACHED':'FATIGUE RUNNING HIGH')+'</b>'+
+    '<span class="mono" style="font-size:11px;color:var(--dim)">ratio '+fi.ratio.toFixed(2)+'</span></div>'+
+    '<p class="small" style="margin:6px 0 0">This week\u2019s load is '+Math.round((fi.ratio-1)*100)+'% above the norm your body is adapted to'+
+      (fi.lowDays>=2 ? ', and readiness has been low '+fi.lowDays+' days' : '')+'. '+
+      (hard ? 'A deload now costs you nothing and buys back performance \u2014 holding this another week is how injuries and stalls start.'
+            : 'Fine for a short push, but keep an eye on sleep and readiness.')+'</p>'+
+    '<div style="display:flex;gap:8px;margin-top:10px">'+
+    '<button class="btn sm" style="border-color:var(--violet);color:var(--violet)" onclick="startDeloadWeek()">Start deload week</button>'+
+    '<button class="btn sm ghost" onclick="fatigueDismiss()">Not now</button>'+
+    '<button class="btn sm ghost" style="margin-left:auto" onclick="setMode(\'review\');showMainTab(\'analytics\',\'an_fatigue\')">See the data</button>'+
+    '</div></div>';
 }
 /* build deload version of an exercise: 60% of last real working weight, 2 sets */
 function deloadExercise(nm){
@@ -4641,10 +5098,13 @@ function invBannerHTML(){
     '<span style="margin-left:auto;color:'+col+';font-family:var(--mono)">\u2192</span></div>';
 }
 function invUpdateBadge(){
-  const btn = document.querySelector('#rnav button[data-t="invest"]');
   const flags = invActiveFlags().filter(f=>f.status==='active');
   const worst = flags.length ? flags.reduce((a,f)=>INV_SEV_RANK[f.severity]>INV_SEV_RANK[a.severity]?f:a, flags[0]) : null;
-  if(btn) btn.innerHTML = 'Investigate' + (worst ? ' <span class="inv-dot" style="background:'+INV_SEV_COLOR[worst.severity]+'"></span>' : '');
+  const dot = worst ? INV_SEV_COLOR[worst.severity] : null;
+  ['snInvBadge','niInvBadge'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el){ el.style.background = dot||'transparent'; el.style.opacity = dot?1:0; }
+  });
   const banner = document.getElementById('globalInvBanner');
   if(banner) banner.innerHTML = invBannerHTML();
 }
@@ -4699,10 +5159,10 @@ function renderInvestigation(){
   const el = document.getElementById('invest'); if(!el) return;
   invClearExpiredOverrides();
   const flags = invActiveFlags().sort((a,b)=>INV_SEV_RANK[b.severity]-INV_SEV_RANK[a.severity]);
-  let h = '';
+  let hL = '', hR = '';
   // manual trigger card
   const liftNames = [...invAllSplitNames()];
-  h += '<div class="card"><div class="chart-h" style="margin-bottom:8px">Run an investigation</div>'+
+  hL += '<div class="card"><div class="chart-h" style="margin-bottom:8px">Run an investigation</div>'+
     '<p class="small" style="margin-bottom:10px">Deep-dive one area on demand. Automatic checks also run in the background \u2014 split and lifts weekly, bulk every two weeks.</p>'+
     '<div class="inv-trigger-row">'+
     '<button class="btn sm" onclick="invRunManual(\'bulk\')">Investigate bulk</button>'+
@@ -4714,23 +5174,23 @@ function renderInvestigation(){
     '</div></div>';
   // manual all-clear result
   if(_invManualResult && _invManualResult.clear){
-    h += '<div class="card" style="border-left:3px solid var(--cyan)"><div class="inv-head"><span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">CLEAR</span><b class="inv-title">'+esc(_invManualResult.title)+'</b></div>'+
+    hL += '<div class="card" style="border-left:3px solid var(--cyan)"><div class="inv-head"><span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">CLEAR</span><b class="inv-title">'+esc(_invManualResult.title)+'</b></div>'+
       '<div class="inv-findings">'+_invManualResult.findings.map(x=>'<div class="inv-finding">\u25b8 '+esc(x)+'</div>').join('')+'</div>'+
       '<div class="inv-acts"><button class="btn ghost sm" onclick="_invManualResult=null;renderInvestigation()">Ok</button></div></div>';
   }
   // active flags
   if(flags.length){
-    h += '<h2 style="margin-top:18px">Active flags</h2>';
-    flags.forEach(f=>{ h += invFlagCardHTML(f); });
+    hR += '<h2 class="inv-h2">Active flags</h2>';
+    flags.forEach(f=>{ hR += invFlagCardHTML(f); });
   } else {
-    h += '<div class="card" style="border-left:3px solid var(--cyan)"><p class="small" style="margin:0">\u2713 No active flags. Bulk, lifts, and split all look healthy \u2014 or haven\u2019t hit their next scheduled check yet.</p></div>';
+    hR += '<div class="card" style="border-left:3px solid var(--cyan)"><p class="small" style="margin:0">\u2713 No active flags. Bulk, lifts, and split all look healthy \u2014 or haven\u2019t hit their next scheduled check yet.</p></div>';
   }
   // active lift overrides
   const ov = invState().overrides; const ovKeys = Object.keys(ov);
   if(ovKeys.length){
-    h += '<h2 style="margin-top:18px">Active target overrides</h2><div class="card">';
-    ovKeys.forEach(k=>{ h += '<div class="inv-finding" style="display:flex;gap:8px;align-items:center"><span>\u25b8 <b>'+esc(k)+'</b> \u2014 '+ov[k].w+' lb until '+fmtDate(ov[k].until)+'</span><button class="del" style="margin-left:auto" onclick="delete invState().overrides[\''+esc(k).replace(/'/g,"\\'")+'\'];save();renderInvestigation()">clear</button></div>'; });
-    h += '</div>';
+    hR += '<h2 class="inv-h2">Active target overrides</h2><div class="card">';
+    ovKeys.forEach(k=>{ hR += '<div class="inv-finding" style="display:flex;gap:8px;align-items:center"><span>\u25b8 <b>'+esc(k)+'</b> \u2014 '+ov[k].w+' lb until '+fmtDate(ov[k].until)+'</span><button class="del" style="margin-left:auto" onclick="delete invState().overrides[\''+esc(k).replace(/'/g,"\\'")+'\'];save();renderInvestigation()">clear</button></div>'; });
+    hR += '</div>';
   }
   // history
   const hist = invState().history;
@@ -4743,9 +5203,9 @@ function renderInvestigation(){
         '<span class="inv-hist-o">'+esc(outcome)+'</span>'+
         '<span class="inv-hist-d">'+fmtDate(f.closed||f.created)+'</span></div>';
     }).join('');
-    h += subSection('Investigation history ('+hist.length+')', histRows, false);
+    hR += subSection('Investigation history ('+hist.length+')', histRows, false);
   }
-  el.innerHTML = h;
+  el.innerHTML = '<div class="inv-left">'+hL+'</div><div class="inv-right">'+hR+'</div>';
 }
 
 
@@ -4798,7 +5258,12 @@ function coachToolDefs(){
         protein:{type:'number', description:'New daily protein target in grams (optional)'}
       }}},
     {name:'start_deload', description:'Start a deload week (auto-loads ~60% weights for light sets, excluded from progression). Use only when fatigue/overreach is clearly indicated.',
-      input_schema:{type:'object', properties:{}}}
+      input_schema:{type:'object', properties:{}}},
+    {name:'remember_note', description:'Save a durable note about the user that you should recall in every future conversation. Use for lasting facts: injuries and limitations, equipment quirks at his gym, exercise preferences and dislikes, goals with deadlines, schedule constraints. Do NOT use for things already visible in the training data (his logs, split, bodyweight, fuel targets) or for passing details from one session.',
+      input_schema:{type:'object', properties:{
+        note:{type:'string', description:'The fact to remember, written concisely in the third person (e.g. "Left shoulder aggravated by barbell overhead press; dumbbells are fine"). Max ~240 chars.'},
+        tag:{type:'string', enum:['injury','preference','goal','schedule','equipment','general'], description:'Category for this note.'}
+      }, required:['note']}}
   ];
 }
 
@@ -4819,6 +5284,8 @@ function coachDescribeAction(name, inp){
     }
     case 'start_deload':
       return {verb:'Start deload week', scope:'Recovery', detail:'Begin a 7-day deload \u2014 ~60% loads, light sets, excluded from progression and trend charts.'};
+    case 'remember_note':
+      return {verb:'Remember this', scope:'Coach memory \u00b7 '+(inp.tag||'general'), detail:'\u201c'+inp.note+'\u201d \u2014 saved permanently and included in every future coach conversation. You can delete it any time from the memory card.'};
     default:
       return {verb:name, scope:'', detail:JSON.stringify(inp)};
   }
@@ -4840,6 +5307,11 @@ function coachValidateAction(name, inp){
   }
   if(name==='adjust_fuel' && inp.calories==null && inp.protein==null){
     return {ok:false, error:'No calorie or protein value given.'};
+  }
+  if(name==='remember_note'){
+    if(!inp.note || !String(inp.note).trim()) return {ok:false, error:'Empty note.'};
+    const dupe = coachMem().some(m=>m.note.toLowerCase()===String(inp.note).trim().toLowerCase());
+    if(dupe) return {ok:false, error:'Already remembered \u2014 that note is saved.'};
   }
   return {ok:true};
 }
@@ -4883,6 +5355,10 @@ function coachExecuteAction(name, inp){
   if(name==='start_deload'){
     startDeloadWeek();
     return 'Deload week started.';
+  }
+  if(name==='remember_note'){
+    const rec = coachMemAdd(inp.note, inp.tag);
+    return rec ? 'Saved to coach memory.' : 'Nothing to save.';
   }
   return 'Done.';
 }
@@ -5633,6 +6109,512 @@ function startUpdateWatcher(){
   window.addEventListener('online', ()=>checkForUpdate(false));
 }
 
+
+/* ============================================================
+   ANALYTICS — deep-dive engines. All honest-data: every view
+   degrades gracefully when history is thin, nothing is invented.
+   ============================================================ */
+function anEffMult(e){ return e==='easy' ? 0.85 : e==='grind' ? 1.25 : e==='fail' ? 1.45 : 1; }
+function anEpley(w,r){ w=+w||0; r=+r||0; if(w<=0||r<=0) return 0; return r===1 ? w : w*(1+r/30); }
+function anWeekStart(key){ return mesoMondayOf(key); }
+function anLastWeeks(n, includeCurrent){
+  const cur = anWeekStart(todayKey());
+  const out = [];
+  for(let i=(includeCurrent?0:1); out.length<n; i++) out.push(mesoAddDays(cur, -7*i));
+  return out.reverse();   // oldest first
+}
+function anSessionsFor(ex){
+  return [...S.logs].filter(l=>!l.deload && l.entries.some(e=>e.exercise===ex))
+    .sort((a,b)=>a.date.localeCompare(b.date));
+}
+function anBigLifts(minSessions){
+  const counts = {};
+  S.logs.forEach(l=>{ if(l.deload) return; l.entries.forEach(e=>{ counts[e.exercise]=(counts[e.exercise]||0)+1; }); });
+  return Object.keys(counts).filter(k=>counts[k]>=(minSessions||6)).sort((a,b)=>counts[b]-counts[a]);
+}
+function anR2(pts, reg){
+  if(!reg || pts.length<3) return 0;
+  const x0 = reg.x0;
+  const my = pts.reduce((a,p)=>a+p.v,0)/pts.length;
+  let ssRes=0, ssTot=0;
+  pts.forEach(p=>{
+    const x=(new Date(p.date).getTime()-x0)/86400000;
+    const yhat = reg.intercept + reg.slope*x;
+    ssRes += (p.v-yhat)**2; ssTot += (p.v-my)**2;
+  });
+  return ssTot===0 ? 0 : Math.max(0, 1 - ssRes/ssTot);
+}
+function anSpark(pts, w, h, color, opts){
+  opts = opts||{};
+  if(!pts || pts.length<2) return '<div class="small" style="color:var(--dim)">not enough points to chart</div>';
+  const vs = pts.map(p=>p.v);
+  let lo = Math.min(...vs), hi = Math.max(...vs);
+  if(hi===lo){ hi+=1; lo-=1; }
+  const pad = (hi-lo)*0.12; lo-=pad; hi+=pad;
+  const px = i => (i/(pts.length-1))*(w-8)+4;
+  const py = v => h-6 - ((v-lo)/(hi-lo))*(h-12);
+  const path = pts.map((p,i)=>(i?'L':'M')+px(i).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ');
+  let extra = '';
+  if(opts.band){ // reference band [lo,hi] in value space
+    const y1=py(opts.band[1]), y2=py(opts.band[0]);
+    extra += '<rect x="0" y="'+y1.toFixed(1)+'" width="'+w+'" height="'+(y2-y1).toFixed(1)+'" fill="'+(opts.bandColor||'rgba(70,205,186,.08)')+'"/>';
+  }
+  const last = pts[pts.length-1];
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block">'+extra+
+    '<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+
+    '<circle cx="'+px(pts.length-1).toFixed(1)+'" cy="'+py(last.v).toFixed(1)+'" r="3" fill="'+color+'"/></svg>';
+}
+function anBarRow(label, pct, valTxt, color){
+  const p = Math.max(0, Math.min(100, pct));
+  return '<div class="an-brow"><div class="an-brow-top"><span>'+esc(label)+'</span><span class="mono">'+valTxt+'</span></div>'+
+    '<div class="an-bar"><div style="width:'+p.toFixed(1)+'%;background:'+color+'"></div></div></div>';
+}
+function anEmpty(msg){
+  return '<div class="card"><p class="small" style="color:var(--dim)">'+msg+'</p></div>';
+}
+
+/* ---------------- FATIGUE MODEL ----------------
+   Strain = hard sets weighted by effort tags (the honest proxy that works
+   across lifts of very different absolute load). Deload sets count half.
+   Fatigue ratio = last-7-days strain vs the trailing 28-day weekly average. */
+function anStrainBetween(a, b){
+  let s = 0;
+  S.logs.filter(l=>l.date>=a && l.date<=b).forEach(l=>{
+    const mult = l.deload ? 0.5 : 1;
+    l.entries.forEach(e=>e.sets.forEach(st=>{ s += anEffMult(st.e)*mult; }));
+  });
+  return s;
+}
+function anStrainByWeek(n){
+  return anLastWeeks(n, true).map(ws=>({date:ws, v:anStrainBetween(ws, mesoAddDays(ws,6))}));
+}
+function fatigueIndex(){
+  const acute = anStrainBetween(mesoAddDays(todayKey(),-6), todayKey());
+  const chronic = anStrainBetween(mesoAddDays(todayKey(),-33), mesoAddDays(todayKey(),-6)) / 4; // prior 28d, weekly
+  if(chronic < 4) return {ok:false, reason:'Needs about a month of logged training to establish your baseline.'};
+  let ratio = acute/chronic;
+  // readiness modifier: a run of low-readiness days makes the same load cost more
+  const last7 = S.readiness.filter(r=>r.date>=mesoAddDays(todayKey(),-6));
+  const lows = last7.filter(r=>r.tier==='low').length;
+  if(lows>=2) ratio += 0.12;
+  const status = ratio<0.75 ? 'fresh' : ratio<=1.25 ? 'productive' : ratio<=1.5 ? 'high' : 'overreached';
+  return {ok:true, acute:Math.round(acute), chronic:Math.round(chronic*10)/10, ratio:Math.round(ratio*100)/100, status, lowDays:lows};
+}
+const FATIGUE_COLORS = {fresh:'var(--cyan)', productive:'var(--good)', high:'var(--amber)', overreached:'var(--red)'};
+const FATIGUE_LABELS = {
+  fresh:'Fresh — load is well below your recent norm. Fine after a deload; if unintentional, you have room to push.',
+  productive:'Productive — training load sits in the sweet spot relative to what your body is adapted to.',
+  high:'High — meaningfully above your recent norm. Sustainable briefly, but watch sleep and readiness.',
+  overreached:'Overreached — well above your adapted load. If this holds another week, a deload is the smart move.'};
+function fatigueSuggestsDeload(){
+  const fi = fatigueIndex();
+  if(!fi.ok || (fi.status!=='overreached' && !(fi.status==='high' && fi.lowDays>=2))) return null;
+  if(deloadActive()) return null;
+  const nd = (typeof mesoNextDeload==='function') ? mesoNextDeload() : null;
+  if(nd && typeof mesoWeeksUntil==='function'){ const w = mesoWeeksUntil(nd); if(w!=null && w<=1) return null; } // one is already imminent
+  const dis = S.fatigueDismissed;
+  if(dis && dis > mesoAddDays(todayKey(),-10)) return null;
+  return fi;
+}
+function fatigueDismiss(){ S.fatigueDismissed = todayKey(); save(false); renderLive(); try{ renderAnFatigue(); }catch(e){} }
+
+/* ---------------- STRENGTH CURVE ---------------- */
+const AN_REP_BUCKETS = [{k:'1\u20133',lo:1,hi:3},{k:'4\u20136',lo:4,hi:6},{k:'7\u20139',lo:7,hi:9},{k:'10\u201312',lo:10,hi:12},{k:'13+',lo:13,hi:99}];
+let anStrengthPick = null;
+function anStrengthCurve(ex){
+  const buckets = AN_REP_BUCKETS.map(b=>({...b, bestW:0, bestE1:0, sets:0}));
+  anSessionsFor(ex).forEach(l=>l.entries.forEach(e=>{
+    if(e.exercise!==ex) return;
+    e.sets.forEach(s=>{
+      const w=+s.w||0, r=+s.r||0; if(w<=0||r<=0) return;
+      const b = buckets.find(x=>r>=x.lo && r<=x.hi); if(!b) return;
+      b.sets++;
+      if(w>b.bestW) b.bestW=w;
+      const e1 = anEpley(w,r); if(e1>b.bestE1) b.bestE1=e1;
+    });
+  }));
+  return buckets;
+}
+function renderAnStrength(){
+  const el = document.getElementById('an_strength'); if(!el) return;
+  const lifts = anBigLifts(4);
+  if(!lifts.length){ el.innerHTML = anEmpty('Strength curves need at least 4 logged sessions of a lift. Keep training \u2014 this fills in on its own.'); return; }
+  if(!anStrengthPick || !lifts.includes(anStrengthPick)) anStrengthPick = lifts[0];
+  const buckets = anStrengthCurve(anStrengthPick).filter(b=>b.sets>0);
+  let h = '<div class="card"><div class="k">Strength curve</div>'+
+    '<p class="small" style="margin-bottom:10px">Where you\u2019re strongest across rep ranges \u2014 best estimated 1RM produced from sets in each bucket.</p>'+
+    '<div class="field" style="max-width:280px;margin-bottom:14px"><label>Lift</label><select onchange="anStrengthPick=this.value;renderAnStrength()">'+
+    lifts.map(l=>'<option'+(l===anStrengthPick?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div>';
+  if(!buckets.length){ h += '<p class="small" style="color:var(--dim)">No usable sets for this lift yet.</p></div>'; el.innerHTML=h; return; }
+  const maxE1 = Math.max(...buckets.map(b=>b.bestE1));
+  const best = buckets.reduce((a,b)=>b.bestE1>a.bestE1?b:a, buckets[0]);
+  buckets.forEach(b=>{
+    const isBest = b===best;
+    h += anBarRow(b.k+' reps'+(isBest?' \u2605':''), 100*b.bestE1/maxE1,
+      Math.round(b.bestE1)+' e1RM \u00b7 best '+b.bestW+' lb \u00b7 '+b.sets+' sets',
+      isBest?'var(--amber)':'var(--cyan)');
+  });
+  h += '<p class="small" style="margin-top:12px">Your strongest zone on '+esc(anStrengthPick)+' is <b style="color:var(--amber)">'+best.k+' reps</b>.'+
+       (buckets.length<3 ? ' Log sets across more rep ranges for a fuller picture.' : '')+'</p></div>';
+  el.innerHTML = h;
+}
+
+/* ---------------- RECOVERY ---------------- */
+const AN_GAP_BUCKETS = [{k:'1\u20132 days',lo:1,hi:2},{k:'3\u20134 days',lo:3,hi:4},{k:'5\u20137 days',lo:5,hi:7},{k:'8+ days',lo:8,hi:99}];
+function anSessionE1(ex, log){
+  let best=0;
+  log.entries.forEach(e=>{ if(e.exercise!==ex) return; e.sets.forEach(s=>{ const v=anEpley(s.w,s.r); if(v>best) best=v; }); });
+  return best;
+}
+function anRecoveryFor(ex){
+  const ses = anSessionsFor(ex);
+  if(ses.length<5) return null;
+  const gaps=[], buckets = AN_GAP_BUCKETS.map(b=>({...b, n:0, ok:0}));
+  for(let i=1;i<ses.length;i++){
+    const gap = Math.round((new Date(ses[i].date)-new Date(ses[i-1].date))/86400000);
+    if(gap<1) continue;
+    const prev = anSessionE1(ex, ses[i-1]), cur = anSessionE1(ex, ses[i]);
+    if(prev<=0 || cur<=0) continue;
+    gaps.push(gap);
+    const b = buckets.find(x=>gap>=x.lo && gap<=x.hi); if(!b) continue;
+    b.n++; if(cur >= prev*0.995) b.ok++;   // matched or beat (0.5% tolerance)
+  }
+  if(gaps.length<4) return null;
+  gaps.sort((a,b)=>a-b);
+  const median = gaps[Math.floor(gaps.length/2)];
+  const scored = buckets.filter(b=>b.n>=2).map(b=>({...b, rate:b.ok/b.n}));
+  const best = scored.length ? scored.reduce((a,b)=>b.rate>a.rate?b:a, scored[0]) : null;
+  return {median, buckets, best, n:gaps.length};
+}
+function renderAnRecovery(){
+  const el = document.getElementById('an_recovery'); if(!el) return;
+  const lifts = anBigLifts(5);
+  const rows = lifts.map(ex=>({ex, r:anRecoveryFor(ex)})).filter(x=>x.r);
+  let h = '<div class="card"><div class="k">Recovery</div>'+
+    '<p class="small" style="margin-bottom:4px">How your big lifts respond to different rest gaps between sessions \u2014 the share of sessions where you matched or beat your previous e1RM after each gap length.</p></div>';
+  if(!rows.length){ el.innerHTML = h + anEmpty('Needs roughly 5+ sessions per lift with varied spacing. This sharpens as your log grows.'); return; }
+  rows.slice(0,4).forEach(({ex, r})=>{
+    h += '<div class="card"><div class="k">'+esc(ex)+'</div>';
+    r.buckets.filter(b=>b.n>0).forEach(b=>{
+      const rate = b.n ? Math.round(100*b.ok/b.n) : 0;
+      const isBest = r.best && b.k===r.best.k;
+      h += anBarRow(b.k+(isBest?' \u2605':''), rate, rate+'% held/beat \u00b7 '+b.n+'\u00d7', isBest?'var(--amber)':'var(--cyan)');
+    });
+    h += '<p class="small" style="margin-top:10px">Typical gap: '+r.median+' days.'+
+      (r.best ? ' Best results so far after <b style="color:var(--amber)">'+r.best.k+'</b> of rest.' : '')+
+      (r.n<8 ? ' <span style="color:var(--dim)">(Small sample \u2014 treat as a hint, not a rule.)</span>' : '')+'</p></div>';
+  });
+  el.innerHTML = h;
+}
+
+/* ---------------- DEVELOPMENT (muscle group trends) ---------------- */
+function anGroupWeekly(nWeeks){
+  const weeks = anLastWeeks(nWeeks, false);   // completed weeks only
+  return weeks.map(ws=>{
+    const vol = weeklyVolumeByGroup(ws, mesoAddDays(ws,6));
+    return {date:ws, vol};
+  });
+}
+function renderAnDev(){
+  const el = document.getElementById('an_dev'); if(!el) return;
+  const data = anGroupWeekly(8);
+  const hasAny = data.some(w=>Object.values(w.vol).some(v=>v>0));
+  if(!hasAny){ el.innerHTML = anEmpty('Development tracking needs a few weeks of logged sessions.'); return; }
+  const rows = MUSCLE_GROUPS.filter(g=>g!=='Abs').map(g=>{
+    const pts = data.map(w=>({date:w.date, v:w.vol[g]||0}));
+    const recent = pts.slice(-4).reduce((a,p)=>a+p.v,0)/4;
+    const prior  = pts.slice(0,4).reduce((a,p)=>a+p.v,0)/4;
+    const delta = prior>0.5 ? (recent-prior)/prior : (recent>0.5 ? 1 : 0);
+    return {g, pts, recent, prior, delta};
+  }).filter(r=>r.recent>0.25 || r.prior>0.25);
+  rows.sort((a,b)=>b.delta-a.delta);
+  let h = '<div class="card"><div class="k">Development</div>'+
+    '<p class="small">Weekly hard sets per muscle group \u2014 last 4 completed weeks vs the 4 before. Rising groups are getting emphasis; falling ones are drifting.</p></div>';
+  rows.forEach(r=>{
+    const up = r.delta>0.12, down = r.delta<-0.12;
+    const col = up?'var(--cyan)':down?'var(--red)':'var(--muted)';
+    const arrow = up?'\u2191':down?'\u2193':'\u2192';
+    const pctTxt = (r.prior>0.5||r.recent>0.5) ? (r.delta>=0?'+':'')+Math.round(r.delta*100)+'%' : '\u2014';
+    h += '<div class="card" style="padding:12px 14px"><div style="display:flex;align-items:center;gap:12px">'+
+      '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">'+
+      '<b style="font-family:var(--disp);font-size:15px;letter-spacing:.03em">'+r.g+'</b>'+
+      '<span class="mono" style="font-size:12px;color:'+col+'">'+arrow+' '+pctTxt+' \u00b7 '+(Math.round(r.recent*10)/10)+' sets/wk</span></div>'+
+      anSpark(r.pts, 300, 34, col)+'</div></div></div>';
+  });
+  const lag = rows.filter(r=>r.delta<-0.25);
+  if(lag.length) h += '<div class="card"><p class="small" style="color:var(--amber)">\u26a0 Falling off: '+lag.map(r=>r.g).join(', ')+'. Intentional (e.g. a strength block) is fine \u2014 unintentional drift is how weak points form.</p></div>';
+  el.innerHTML = h;
+}
+
+/* ---------------- PREDICTIONS ---------------- */
+function anPredictFor(ex){
+  const pts = e1rmSeries(ex).slice(-10);
+  if(pts.length<5) return {ex, ok:false, why:'needs 5+ sessions'};
+  const spanDays = (new Date(pts[pts.length-1].date)-new Date(pts[0].date))/86400000;
+  if(spanDays<28) return {ex, ok:false, why:'needs a month of history'};
+  const reg = linreg(pts); if(!reg) return {ex, ok:false, why:'no trend'};
+  const r2 = anR2(pts, reg);
+  const perWeek = reg.slope*7;
+  const cur = Math.max(...pts.map(p=>p.v));
+  if(perWeek < 0.15) return {ex, ok:true, flat:true, cur, perWeek, r2};
+  // next two 5-lb milestones above current best
+  const targets = [];
+  let t = Math.ceil((cur+0.01)/5)*5;
+  while(targets.length<2){ targets.push(t); t+=5; }
+  const etas = targets.map(tv=>{
+    const days = (tv-cur)/reg.slope;
+    return {target:tv, days:Math.round(days), date:mesoAddDays(todayKey(), Math.round(days))};
+  }).filter(e=>e.days<=182);
+  return {ex, ok:true, flat:false, cur, perWeek, r2, etas};
+}
+function renderAnPred(){
+  const el = document.getElementById('an_pred'); if(!el) return;
+  const lifts = anBigLifts(5).slice(0,6);
+  if(!lifts.length){ el.innerHTML = anEmpty('Predictions need at least 5 sessions per lift spanning a month or more.'); return; }
+  let h = '<div class="card"><div class="k">Predictions</div>'+
+    '<p class="small">Straight-line projection of your recent e1RM trend. Useful as a target date, not a promise \u2014 progress is never actually linear, and anything past ~6 months is guesswork (so it isn\u2019t shown).</p></div>';
+  let shown = 0;
+  lifts.forEach(ex=>{
+    const p = anPredictFor(ex);
+    if(!p.ok){ return; }
+    shown++;
+    const conf = p.r2>0.7?'steady trend':p.r2>0.4?'noisy trend':'very noisy trend';
+    h += '<div class="card"><div class="k">'+esc(ex)+'</div>'+
+      '<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">'+
+      '<span style="font-family:var(--disp);font-size:30px;font-weight:700;color:var(--text)">'+Math.round(p.cur)+'</span>'+
+      '<span class="small">current e1RM</span>'+
+      '<span class="mono" style="margin-left:auto;font-size:12px;color:'+(p.flat?'var(--dim)':'var(--cyan)')+'">'+
+      (p.flat?'holding steady':'+'+(Math.round(p.perWeek*10)/10)+' lb/wk')+'</span></div>';
+    if(p.flat){
+      h += '<p class="small">Trend is flat right now \u2014 no ETA to give honestly.'+
+        ((typeof mesoCurrentWeek==='function' && (mesoCurrentWeek()||{}).type==='hyp') ? ' You\u2019re in a hypertrophy block, so that\u2019s the expected shape.' : '')+'</p>';
+    } else if(p.etas && p.etas.length){
+      p.etas.forEach(e=>{
+        h += '<div class="an-eta"><span class="mono" style="color:var(--amber);font-size:15px;font-weight:600">'+e.target+' lb</span>'+
+             '<span class="small">\u2248 '+fmtDate(e.date)+' <span style="color:var(--dim)">('+Math.round(e.days/7)+' wks \u00b7 '+conf+')</span></span></div>';
+      });
+    } else {
+      h += '<p class="small">Next milestone is more than ~6 months out at the current rate \u2014 too far to forecast honestly.</p>';
+    }
+    h += '</div>';
+  });
+  if(!shown) h += anEmpty('No lift has enough history for a projection yet \u2014 needs 5+ sessions across a month.');
+  el.innerHTML = h;
+}
+
+/* ---------------- FATIGUE TAB ---------------- */
+function renderAnFatigue(){
+  const el = document.getElementById('an_fatigue'); if(!el) return;
+  const fi = fatigueIndex();
+  let h = '';
+  if(!fi.ok){
+    h += '<div class="card"><div class="k">Fatigue model</div><p class="small" style="color:var(--dim)">'+fi.reason+'</p></div>';
+    el.innerHTML = h; return;
+  }
+  const col = FATIGUE_COLORS[fi.status];
+  h += '<div class="card" style="border-left:3px solid '+col+'"><div class="k">Fatigue model</div>'+
+    '<div style="display:flex;align-items:baseline;gap:12px;margin:4px 0 8px">'+
+    '<span style="font-family:var(--disp);font-size:34px;font-weight:700;color:'+col+'">'+fi.ratio.toFixed(2)+'</span>'+
+    '<span style="font-family:var(--disp);font-size:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:'+col+'">'+fi.status+'</span></div>'+
+    '<p class="small">'+FATIGUE_LABELS[fi.status]+'</p>'+
+    '<p class="small" style="margin-top:8px;color:var(--dim)">This week: '+fi.acute+' effort-weighted sets \u00b7 your 4-week norm: '+fi.chronic+'/wk'+
+    (fi.lowDays>=2 ? ' \u00b7 '+fi.lowDays+' low-readiness days this week (weighted in)' : '')+'</p></div>';
+  const weekly = anStrainByWeek(10);
+  if(weekly.filter(w=>w.v>0).length>=3){
+    h += '<div class="card"><div class="k">Weekly strain</div>'+
+      anSpark(weekly, 320, 64, col, {band:[fi.chronic*0.75, fi.chronic*1.25]})+
+      '<p class="small" style="margin-top:8px;color:var(--dim)">Shaded band = your productive zone (\u00b125% of your 4-week norm). Living above it for weeks at a time is how overreach builds.</p></div>';
+  }
+  const sug = fatigueSuggestsDeload();
+  if(sug){
+    h += '<div class="card" style="border-left:3px solid var(--red)">'+
+      '<div class="k" style="color:var(--red)">Deload suggested</div>'+
+      '<p class="small">Load has been running well above your adapted norm'+(sug.lowDays>=2?' and readiness is dipping':'')+'. A deload week now costs you nothing and buys back performance.</p>'+
+      '<div style="display:flex;gap:8px;margin-top:10px">'+
+      '<button class="btn sm" style="border-color:var(--violet);color:var(--violet)" onclick="startDeloadWeek();renderAnFatigue()">Start deload week</button>'+
+      '<button class="btn sm ghost" onclick="fatigueDismiss()">Not now</button></div></div>';
+  }
+  el.innerHTML = h;
+}
+
+/* ---------------- OVERVIEW (annual review + milestones) ---------------- */
+function renderAnOverview(){
+  const el = document.getElementById('an_over'); if(!el) return;
+  const year = todayKey().slice(0,4);
+  const logs = S.logs.filter(l=>l.date.startsWith(year));
+  if(!logs.length){ el.innerHTML = anEmpty('Nothing logged in '+year+' yet.'); return; }
+  let sets=0, vol=0; const exSet = new Set(); const monthCount = {};
+  logs.forEach(l=>{
+    monthCount[l.date.slice(0,7)] = (monthCount[l.date.slice(0,7)]||0)+1;
+    l.entries.forEach(e=>{ exSet.add(e.exercise); sets+=e.sets.length; e.sets.forEach(s=>{ vol += (+s.w||0)*(+s.r||0); }); });
+  });
+  const bigMonth = Object.entries(monthCount).sort((a,b)=>b[1]-a[1])[0];
+  const monthName = m => new Date(m+'-02T00:00:00').toLocaleString('en-US',{month:'long'});
+  // e1RM gains this year for top lifts
+  const gains = anBigLifts(4).slice(0,5).map(ex=>{
+    const pts = e1rmSeries(ex).filter(p=>p.date.startsWith(year));
+    if(pts.length<2) return null;
+    const first = pts[0].v, best = Math.max(...pts.map(p=>p.v));
+    return {ex, first, best, gain:best-first};
+  }).filter(g=>g && g.gain>0.5).sort((a,b)=>b.gain-a.gain);
+  // bodyweight change this year
+  const bw = [...S.weights].filter(w=>w.date.startsWith(year)).sort((a,b)=>a.date.localeCompare(b.date));
+  // actual-weight PRs set this year
+  const prs = [];
+  anBigLifts(3).forEach(ex=>{
+    const p = actualPR(ex);
+    if(p && p.date.startsWith(year)) prs.push({ex, w:p.w, r:p.r, date:p.date});
+  });
+  prs.sort((a,b)=>b.date.localeCompare(a.date));
+
+  let h = '<div class="card"><div class="k">'+year+' so far</div>'+
+    '<div class="an-stats">'+
+    '<div class="an-stat"><span class="an-stat-n">'+logs.length+'</span><span class="an-stat-l">sessions</span></div>'+
+    '<div class="an-stat"><span class="an-stat-n">'+sets+'</span><span class="an-stat-l">sets</span></div>'+
+    '<div class="an-stat"><span class="an-stat-n">'+(vol>=1000000 ? (vol/1000000).toFixed(1)+'M' : Math.round(vol/1000)+'k')+'</span><span class="an-stat-l">lb moved</span></div>'+
+    '<div class="an-stat"><span class="an-stat-n">'+exSet.size+'</span><span class="an-stat-l">exercises</span></div>'+
+    '</div>'+
+    (bigMonth ? '<p class="small" style="margin-top:10px;color:var(--dim)">Biggest month: '+monthName(bigMonth[0])+' ('+bigMonth[1]+' sessions)'+
+      (bw.length>=2 ? ' \u00b7 bodyweight '+bw[0].lbs+' \u2192 '+bw[bw.length-1].lbs+' lb' : '')+'</p>' : '')+
+    '</div>';
+  if(gains.length){
+    h += '<div class="card"><div class="k">Strength gained this year</div>';
+    const maxG = gains[0].gain;
+    gains.forEach(g=>{ h += anBarRow(g.ex, 100*g.gain/maxG, '+'+Math.round(g.gain)+' lb e1RM ('+Math.round(g.first)+' \u2192 '+Math.round(g.best)+')', 'var(--amber)'); });
+    h += '</div>';
+  }
+  if(prs.length){
+    h += '<div class="card"><div class="k">PRs set in '+year+'</div>';
+    prs.slice(0,8).forEach(p=>{
+      h += '<div class="an-pr"><span class="mono" style="color:var(--amber)">'+p.w+'\u00d7'+p.r+'</span>'+
+        '<span style="flex:1;min-width:0">'+esc(p.ex)+'</span>'+
+        '<span class="small" style="color:var(--dim)">'+fmtDate(p.date)+'</span></div>';
+    });
+    h += '</div>';
+  }
+  h += '<div class="card"><p class="small" style="color:var(--dim)">Dig deeper in the other Analytics views \u2014 strength curve, fatigue, recovery, development, and predictions each cut this data a different way.</p></div>';
+  el.innerHTML = h;
+}
+
+/* ============================================================
+   READINESS CHECK-IN V3 — runs at session start, five quick taps.
+   Low readiness triggers an ACTIVE choice (trim volume / keep plan),
+   never a silent change.
+   ============================================================ */
+const RD_STRESS_OPTS = ['calm','normal','wired'];
+const RD_MOTIV_OPTS  = ['meh','ready','fired up'];
+let _rdV3 = {};
+let _rdPendingDay = null;
+let liveTrimVol = false;
+
+function readinessTierV3(r){
+  let sc = (RD_SLEEP[r.sleep]||0)+(RD_SORE[r.sore]||0)+(RD_ENERGY[r.energy]||0);
+  if(r.stress==='wired') sc -= 1; else if(r.stress==='calm') sc += 0.5;
+  if(r.motiv==='meh')  sc -= 0.5; else if(r.motiv==='fired up') sc += 1;
+  return sc<=2 ? 'low' : sc<=5 ? 'ok' : 'high';
+}
+function openReadyCheck(dk){
+  _rdPendingDay = dk; _rdV3 = {};
+  const grp = (label,key,opts)=>'<div class="rd3-group"><span class="rd3-gl">'+label+'</span><div class="rd3-pills">'+
+    opts.map(o=>'<button class="rd3-pill" data-k="'+key+'" data-v="'+o+'" onclick="rd3Pick(this)">'+o+'</button>').join('')+'</div></div>';
+  document.getElementById('readyBody').innerHTML =
+    '<p class="small" style="margin-bottom:14px">Ten seconds \u2014 this tunes today\u2019s targets to how recovered you actually are.</p>'+
+    grp('Sleep','sleep',['<6','6-7','7-8','8+'])+
+    grp('Soreness','sore',['fresh','mild','beat up'])+
+    grp('Energy','energy',['low','ok','high'])+
+    grp('Stress','stress',RD_STRESS_OPTS)+
+    grp('Motivation','motiv',RD_MOTIV_OPTS)+
+    '<div style="display:flex;gap:8px;margin-top:16px;align-items:center">'+
+    '<button class="btn primary" style="flex:1;padding:13px" onclick="rd3Lock()">Start session</button>'+
+    '<button class="btn ghost sm" onclick="rd3Skip()">Skip</button></div>'+
+    '<p class="small err" id="rd3Msg" style="margin-top:8px"></p>';
+  document.getElementById('readyOverlay').classList.add('show');
+}
+function rd3Pick(btn){
+  const k = btn.dataset.k;
+  _rdV3[k] = btn.dataset.v;
+  document.querySelectorAll('.rd3-pill[data-k="'+k+'"]').forEach(b=>b.classList.toggle('on', b===btn));
+}
+function rd3Skip(){
+  S.readySkipDate = todayKey(); save(false);
+  closeReadyOverlay(); _startLiveNow(_rdPendingDay, false);
+}
+function closeReadyOverlay(){ const el=document.getElementById('readyOverlay'); if(el) el.classList.remove('show'); }
+function rd3Lock(){
+  if(!_rdV3.sleep || !_rdV3.sore || !_rdV3.energy || !_rdV3.stress || !_rdV3.motiv){
+    document.getElementById('rd3Msg').textContent = 'Tap one option in each row (or Skip).'; return;
+  }
+  const entry = {date:todayKey(), sleep:_rdV3.sleep, sore:_rdV3.sore, energy:_rdV3.energy, stress:_rdV3.stress, motiv:_rdV3.motiv};
+  entry.tier = readinessTierV3(entry);
+  S.readiness = S.readiness.filter(x=>x.date!==todayKey());
+  S.readiness.push(entry); save();
+  if(entry.tier==='low'){ rd3ShowTrimPrompt(entry); return; }   // active choice, never silent
+  closeReadyOverlay(); _startLiveNow(_rdPendingDay, false);
+}
+function rd3ShowTrimPrompt(entry){
+  document.getElementById('readyBody').innerHTML =
+    '<div style="border-left:3px solid var(--red);padding-left:12px;margin-bottom:14px">'+
+    '<b style="color:var(--red);text-transform:uppercase;letter-spacing:.08em;font-size:13px">Readiness: low</b>'+
+    '<p class="small" style="margin-top:5px">'+esc(entry.sleep)+'h sleep \u00b7 '+esc(entry.sore)+' \u00b7 '+esc(entry.energy)+' energy \u00b7 '+esc(entry.stress)+' \u00b7 '+esc(entry.motiv)+'</p></div>'+
+    '<p style="font-size:14px;line-height:1.55;margin-bottom:6px">Rough recovery day. Want to trim today\u2019s volume?</p>'+
+    '<p class="small" style="margin-bottom:14px;color:var(--dim)">Trim = one fewer working set per exercise, and weight targets soften automatically. Showing up beats skipping; trimming beats grinding through junk sets.</p>'+
+    '<div style="display:flex;flex-direction:column;gap:8px">'+
+    '<button class="btn primary" style="padding:13px" onclick="rd3Start(true)">Trim volume today</button>'+
+    '<button class="btn ghost" style="padding:12px" onclick="rd3Start(false)">Keep the full plan</button></div>';
+}
+function rd3Start(trim){
+  closeReadyOverlay(); _startLiveNow(_rdPendingDay, trim);
+}
+
+
+/* ============================================================
+   COACH MEMORY — durable notes the coach can propose to remember.
+   Written only through the normal tap-to-apply proposal flow;
+   the coach can never silently write to memory.
+   ============================================================ */
+const COACH_MEM_MAX = 40;
+function coachMem(){ if(!Array.isArray(S.coachMem)) S.coachMem = []; return S.coachMem; }
+function coachMemAdd(note, tag){
+  const arr = coachMem();
+  const clean = String(note||'').trim().slice(0,240);
+  if(!clean) return null;
+  const rec = {id:'m_'+Math.random().toString(36).slice(2,9), note:clean, tag:tag||'general', date:todayKey()};
+  arr.push(rec);
+  while(arr.length > COACH_MEM_MAX) arr.shift();   // oldest falls off
+  save();
+  return rec;
+}
+function coachMemDelete(id){
+  S.coachMem = coachMem().filter(m=>m.id!==id);
+  save(); renderCoach();
+}
+function coachMemClear(){
+  if(!confirm('Delete everything the coach remembers? This cannot be undone.')) return;
+  S.coachMem = []; save(); renderCoach();
+}
+function coachMemContext(){
+  const arr = coachMem();
+  if(!arr.length) return '';
+  return '\nWHAT YOU REMEMBER ABOUT HIM (things he told you to remember in past chats):\n'+
+    arr.map(m=>'- ['+m.tag+'] '+m.note+' (noted '+fmtDate(m.date)+')').join('\n')+'\n';
+}
+function coachMemCardHTML(){
+  const arr = coachMem();
+  let h = '<div class="cmem-card"><div class="cmem-top">'+
+    '<span class="cmem-title">Coach memory</span>'+
+    '<span class="cmem-count">'+arr.length+'/'+COACH_MEM_MAX+'</span>'+
+    (arr.length?'<button class="cmem-clear" onclick="coachMemClear()">clear all</button>':'')+'</div>';
+  if(!arr.length){
+    h += '<p class="small" style="color:var(--dim);margin:0">Nothing remembered yet. Tell the coach something like \u201cremember my left shoulder gets cranky on overhead press\u201d and it\u2019ll propose saving it \u2014 you tap to confirm.</p>';
+  } else {
+    h += '<div class="cmem-list">'+arr.map(m=>
+      '<div class="cmem-item"><span class="cmem-tag">'+esc(m.tag)+'</span>'+
+      '<span class="cmem-note">'+esc(m.note)+'</span>'+
+      '<button class="cmem-x" onclick="coachMemDelete(\''+m.id+'\')" title="Forget this">\u00d7</button></div>').join('')+'</div>';
+  }
+  return h + '</div>';
+}
+
 /* ===================== BOOT ===================== */
 setAccent();
 setupPWA();
@@ -5645,7 +6627,7 @@ renderLive();
 // session clock ticker
 setInterval(()=>{ if(live && MODE==='live') updateSessionBar(); }, 1000);
 // review nav wiring
-document.querySelectorAll('#rnav button').forEach(b=>b.addEventListener('click',()=>showReviewTab(b.dataset.t)));
+try{ renderSidenav(); }catch(e){}
 // background sync + weekly audit (no-ops gracefully in sandbox)
 try{ autoPullOnLoad(); }catch(e){}
 try{ startUpdateWatcher(); }catch(e){}
