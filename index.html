@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-20-v3g">
+<meta name="ironhub-build" content="2026-07-20-v3h">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -390,6 +390,12 @@
   .inv-hist-t{color:var(--text); font-weight:600;}
   .inv-hist-o{color:var(--muted); font-family:var(--mono); font-size:10.5px;}
   .inv-hist-d{margin-left:auto; color:var(--dim); font-family:var(--mono); font-size:10px; flex:none;}
+  .inv-hist-x{background:none; border:none; color:var(--dim); font-size:15px; line-height:1; cursor:pointer;
+    padding:0 2px; flex:none; transition:color .12s;}
+  .inv-hist-x:hover{color:var(--red);}
+  .inv-hist-clear{display:block; margin:0 0 8px auto; background:none; border:none; font-family:var(--mono);
+    font-size:10px; letter-spacing:.06em; color:var(--dim); cursor:pointer; text-transform:uppercase; transition:color .12s;}
+  .inv-hist-clear:hover{color:var(--red);}
 
   /* ===== COACH ACTIONS ===== */
   .cprop-wrap{display:flex; flex-direction:column; gap:8px; margin:2px 0 10px; padding:0 2px;}
@@ -5004,6 +5010,16 @@ function invArchive(flag, outcome){
   if(st.history.length>25) st.history.length = 25;
   save();   // dismiss/resolve is a real change too — protect it the same way
 }
+function invDeleteHistoryItem(id){
+  const st = invState();
+  st.history = st.history.filter(f=>f.id!==id);
+  save(); renderInvestigation();
+}
+function invClearHistory(){
+  if(!confirm('Clear all investigation history? This cannot be undone \u2014 active flags and overrides are untouched.')) return;
+  invState().history = [];
+  save(); renderInvestigation();
+}
 function invDismiss(id){
   const f = invActiveFlags().find(x=>x.id===id); if(!f) return;
   invArchive(f,'dismissed'); renderInvestigation(); invUpdateBadge();
@@ -5258,9 +5274,11 @@ function renderInvestigation(){
       return '<div class="inv-hist-row"><span class="inv-dot" style="background:'+col+';position:static"></span>'+
         '<span class="inv-hist-t">'+esc(f.title)+'</span>'+
         '<span class="inv-hist-o">'+esc(outcome)+'</span>'+
-        '<span class="inv-hist-d">'+fmtDate(f.closed||f.created)+'</span></div>';
+        '<span class="inv-hist-d">'+fmtDate(f.closed||f.created)+'</span>'+
+        '<button class="inv-hist-x" onclick="event.stopPropagation();invDeleteHistoryItem(\''+f.id+'\')" title="Delete this entry">\u00d7</button></div>';
     }).join('');
-    hR += subSection('Investigation history ('+hist.length+')', histRows, false);
+    const histBody = '<button class="inv-hist-clear" onclick="event.stopPropagation();invClearHistory()">clear all</button>'+histRows;
+    hR += subSection('Investigation history ('+hist.length+')', histBody, false);
   }
   el.innerHTML = '<div class="inv-left">'+hL+'</div><div class="inv-right">'+hR+'</div>';
 }
