@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-20-v3f">
+<meta name="ironhub-build" content="2026-07-20-v3g">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2431,7 +2431,13 @@ async function autoPullOnLoad(){
     const p = await fetchGistData();
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
       applyPulled(p.data);
-      setAccent(); renderHeader(); renderToday();
+      setAccent();
+      // repaint whatever is actually on screen — the old V1 calls here (renderHeader/
+      // renderToday) touch a header and a hidden #today section neither V2 nor V3 use,
+      // so a real pull was silently invisible until the next unrelated navigation.
+      try{ invUpdateBadge(); }catch(e){}
+      if(MODE==='live') renderLive();
+      else if(typeof REVIEW_RENDER!=='undefined') showMainTab(activeMainTab, navMemory[activeMainTab]);
     }
     markSynced();
   }catch(e){ const el=$('#hdrSync'); if(el){ el.textContent='\u25cb sync offline'; } }
@@ -4982,12 +4988,12 @@ function invRaise(result, source){
     // update severity/findings in place; don't duplicate
     existing.severity = result.severity; existing.title = result.title;
     existing.findings = result.findings; if(existing.status!=='applied') existing.fix = result.fix;
-    existing.updated = todayKey(); save(false); return existing;
+    existing.updated = todayKey(); save(); return existing;
   }
   const flag = {id:invUid(), cat:result.key.startsWith('lift:')?'lift':(result.key==='bulk'?'bulk':'split'),
     key:result.key, severity:result.severity, title:result.title, findings:result.findings,
     fix:result.fix, status:'active', source:source||'auto', created:todayKey(), updated:todayKey()};
-  st.flags.push(flag); save(false);
+  st.flags.push(flag); save();   // real data — must bump changedAt so a stale pull can't silently erase it
   return flag;
 }
 function invArchive(flag, outcome){
@@ -4996,7 +5002,7 @@ function invArchive(flag, outcome){
   st.flags = st.flags.filter(f=>f.id!==flag.id);
   st.history.unshift(flag);
   if(st.history.length>25) st.history.length = 25;
-  save(false);
+  save();   // dismiss/resolve is a real change too — protect it the same way
 }
 function invDismiss(id){
   const f = invActiveFlags().find(x=>x.id===id); if(!f) return;
@@ -6673,16 +6679,31 @@ buildBotNav();
 // resume an in-progress session if one exists for today
 const _draft = loadLiveDraft();
 if(_draft){ live=_draft; liveActiveIdx = live.exercises.findIndex(e=>!e.done); if(liveActiveIdx<0) liveActiveIdx=0; }
-try{ invAutoRun(); }catch(e){ console.warn('invAutoRun failed', e); }
+// First paint from whatever's on this device right now, so the app is never blank
+// while we wait on the network.
 renderLive();
+try{ renderSidenav(); }catch(e){}
 // session clock ticker
 setInterval(()=>{ if(live && MODE==='live') updateSessionBar(); }, 1000);
-// review nav wiring
-try{ renderSidenav(); }catch(e){}
-// background sync + weekly audit (no-ops gracefully in sandbox)
-try{ autoPullOnLoad(); }catch(e){}
 try{ startUpdateWatcher(); }catch(e){}
-try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
+
+// Pull MUST resolve before invAutoRun runs, and invAutoRun's render must reflect
+// whatever the pull settled on. The old order ran invAutoRun (and its first render)
+// immediately, then pulled afterward — so a routine boot-time pull could silently
+// replace the entire local state seconds later, discarding anything invAutoRun had
+// just raised, with no error and no trace in history. Chaining them fixes the race
+// at its root rather than papering over the symptom.
+function bootRunInvestigations(){
+  try{ invAutoRun(); }catch(e){ console.warn('invAutoRun failed', e); }
+  if(MODE==='live') renderLive();
+  else showMainTab(activeMainTab, navMemory[activeMainTab]);
+  try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
+}
+try{
+  const _pull = autoPullOnLoad();
+  if(_pull && typeof _pull.finally==='function') _pull.finally(bootRunInvestigations);
+  else bootRunInvestigations();
+}catch(e){ bootRunInvestigations(); }
 </script>
 </body>
 </html>
