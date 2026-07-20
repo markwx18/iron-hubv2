@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-17-v3d">
+<meta name="ironhub-build" content="2026-07-20-v3e">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3527,7 +3527,9 @@ function endLiveSession(){
   showSummary({exercises:entries.length, sets:totalSets, vol:totalVol, prs:newPRs, note});
   checkPRs(before);  // fires the e1RM-based PR overlay if applicable (after summary close it remains)
   live=null; clearLiveDraft(); stopRest();
-  try{ invCheckResolutions(); }catch(e){}
+  // resolving a flag here without refreshing the banner leaves stale WATCH/ALERT text on screen
+  // until the next unrelated tab click quietly swaps it out \u2014 refresh both together, always.
+  try{ invCheckResolutions(); invUpdateBadge(); }catch(e){}
 }
 function sessionNote(entries, dk){
   // compare to previous same-day session
@@ -5116,10 +5118,14 @@ function invBannerHTML(){
   const worst = flags.reduce((a,f)=>INV_SEV_RANK[f.severity]>INV_SEV_RANK[a.severity]?f:a, flags[0]);
   if(worst.severity==='yellow') return ''; // yellow lives in the tab only
   const col = INV_SEV_COLOR[worst.severity];
-  const cats = [...new Set(flags.filter(f=>f.severity===worst.severity).map(f=>INV_CAT_LABEL[f.cat]))].join(' \u00b7 ');
+  // Tag reflects ONLY the flag whose title is shown \u2014 never merge other flags' categories in here,
+  // that produced misleading combos like "STRENGTH \u00b7 BULK \u2014 Chest Fly Machine trending down" where
+  // the BULK tag belonged to a *different* flag entirely. If others share this severity, say so plainly.
+  const tiedOthers = flags.filter(f=>f.severity===worst.severity && f.id!==worst.id).length;
+  const tag = INV_CAT_LABEL[worst.cat] + (tiedOthers ? ' +'+tiedOthers+' more' : '');
   return '<div class="inv-banner" style="border-color:'+col+'" onclick="setMode(\'review\');showReviewTab(\'invest\')">'+
     '<span class="inv-banner-tag" style="background:'+col+'">'+(worst.severity==='red'?'ALERT':'WATCH')+'</span>'+
-    '<span class="inv-banner-txt">'+esc(cats)+' \u2014 '+esc(worst.title)+'. Tap to review.</span>'+
+    '<span class="inv-banner-txt">'+esc(tag)+' \u2014 '+esc(worst.title)+'. Tap to review.</span>'+
     '<span style="margin-left:auto;color:'+col+';font-family:var(--mono)">\u2192</span></div>';
 }
 function invUpdateBadge(){
