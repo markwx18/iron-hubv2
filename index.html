@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-20-v3h">
+<meta name="ironhub-build" content="2026-07-23-v3f">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -390,12 +390,6 @@
   .inv-hist-t{color:var(--text); font-weight:600;}
   .inv-hist-o{color:var(--muted); font-family:var(--mono); font-size:10.5px;}
   .inv-hist-d{margin-left:auto; color:var(--dim); font-family:var(--mono); font-size:10px; flex:none;}
-  .inv-hist-x{background:none; border:none; color:var(--dim); font-size:15px; line-height:1; cursor:pointer;
-    padding:0 2px; flex:none; transition:color .12s;}
-  .inv-hist-x:hover{color:var(--red);}
-  .inv-hist-clear{display:block; margin:0 0 8px auto; background:none; border:none; font-family:var(--mono);
-    font-size:10px; letter-spacing:.06em; color:var(--dim); cursor:pointer; text-transform:uppercase; transition:color .12s;}
-  .inv-hist-clear:hover{color:var(--red);}
 
   /* ===== COACH ACTIONS ===== */
   .cprop-wrap{display:flex; flex-direction:column; gap:8px; margin:2px 0 10px; padding:0 2px;}
@@ -2437,13 +2431,7 @@ async function autoPullOnLoad(){
     const p = await fetchGistData();
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
       applyPulled(p.data);
-      setAccent();
-      // repaint whatever is actually on screen — the old V1 calls here (renderHeader/
-      // renderToday) touch a header and a hidden #today section neither V2 nor V3 use,
-      // so a real pull was silently invisible until the next unrelated navigation.
-      try{ invUpdateBadge(); }catch(e){}
-      if(MODE==='live') renderLive();
-      else if(typeof REVIEW_RENDER!=='undefined') showMainTab(activeMainTab, navMemory[activeMainTab]);
+      setAccent(); renderHeader(); renderToday();
     }
     markSynced();
   }catch(e){ const el=$('#hdrSync'); if(el){ el.textContent='\u25cb sync offline'; } }
@@ -3011,12 +2999,8 @@ function setMode(m){
   document.getElementById('mLive').classList.toggle('on', m==='live');
   document.getElementById('mReview').classList.toggle('on', m==='review');
   buildBotNav();
-  if(m==='live'){
-    try{ renderLive(); }catch(e){ console.error('setMode: renderLive failed', e); }
-    try{ renderSidenav(); }catch(e){}
-  } else {
-    showMainTab(activeMainTab, navMemory[activeMainTab]);
-  }
+  if(m==='live'){ renderLive(); try{ renderSidenav(); }catch(e){} }
+  else { showMainTab(activeMainTab, navMemory[activeMainTab]); }
   try{ invUpdateBadge(); }catch(e){}
   window.scrollTo({top:0, behavior:'instant'});
 }
@@ -3077,27 +3061,9 @@ function showMainTab(mainId, subId){
   activeReviewTab = sub;   // keep the legacy pointer accurate for boot re-renders
   document.querySelectorAll('#reviewMode main section').forEach(s=>s.classList.toggle('on', s.id===sub));
   renderSidenav(); renderSubnav(); buildBotNav();
-  // a throwing renderer must never strand navigation or skip the badge/banner refresh below —
-  // without this guard, one bad render leaves MODE flipped but the screen showing stale content,
-  // with no visible error and the investigation banner frozen on whatever it last said.
-  try{ (REVIEW_RENDER[sub]||function(){})(); }
-  catch(e){ console.error('showMainTab: render failed for', sub, e); }
+  (REVIEW_RENDER[sub]||function(){})();
   try{ invUpdateBadge(); }catch(e){}
   window.scrollTo({top:0, behavior:'instant'});
-}
-/* Single, non-fragile entry point for "tap the investigation banner" — replaces the old
-   two-statement inline onclick (setMode(...);showReviewTab(...)), where if the first
-   statement threw, the second silently never ran and you'd land on the wrong tab with
-   no error. Also skips the wasted intermediate render of whatever tab was active before. */
-function invGoToTab(){
-  try{
-    MODE = 'review';
-    document.getElementById('liveMode').classList.add('hidden');
-    document.getElementById('reviewMode').classList.remove('hidden');
-    document.getElementById('mLive').classList.remove('on');
-    document.getElementById('mReview').classList.add('on');
-    showMainTab('invest','invest');
-  }catch(e){ console.error('invGoToTab failed', e); }
 }
 function renderSidenav(){
   const el = document.getElementById('sidenav'); if(!el) return;
@@ -3561,7 +3527,9 @@ function endLiveSession(){
   showSummary({exercises:entries.length, sets:totalSets, vol:totalVol, prs:newPRs, note});
   checkPRs(before);  // fires the e1RM-based PR overlay if applicable (after summary close it remains)
   live=null; clearLiveDraft(); stopRest();
-  try{ invCheckResolutions(); }catch(e){}
+  // resolving a flag here without refreshing the banner leaves stale WATCH/ALERT text on screen
+  // until the next unrelated tab click quietly swaps it out \u2014 refresh both together, always.
+  try{ invCheckResolutions(); invUpdateBadge(); }catch(e){}
 }
 function sessionNote(entries, dk){
   // compare to previous same-day session
@@ -4824,6 +4792,7 @@ function invState(){
 function invUid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 const INV_SEV_RANK = {yellow:1, orange:2, red:3};
 const INV_SEV_COLOR = {yellow:'#dfae36', orange:'var(--amber)', red:'var(--red)'};
+const INV_SEV_LABEL = {yellow:'ADVISORY', orange:'WATCH', red:'WARNING'}; // display text only \u2014 internal severity keys (yellow/orange/red) stay as-is everywhere else
 const INV_CAT_LABEL = {bulk:'BULK', lift:'STRENGTH', split:'SPLIT'};
 
 /* -------------------- INVESTIGATORS (pure analysis) -------------------- */
@@ -4994,12 +4963,12 @@ function invRaise(result, source){
     // update severity/findings in place; don't duplicate
     existing.severity = result.severity; existing.title = result.title;
     existing.findings = result.findings; if(existing.status!=='applied') existing.fix = result.fix;
-    existing.updated = todayKey(); save(); return existing;
+    existing.updated = todayKey(); save(false); return existing;
   }
   const flag = {id:invUid(), cat:result.key.startsWith('lift:')?'lift':(result.key==='bulk'?'bulk':'split'),
     key:result.key, severity:result.severity, title:result.title, findings:result.findings,
     fix:result.fix, status:'active', source:source||'auto', created:todayKey(), updated:todayKey()};
-  st.flags.push(flag); save();   // real data — must bump changedAt so a stale pull can't silently erase it
+  st.flags.push(flag); save(false);
   return flag;
 }
 function invArchive(flag, outcome){
@@ -5008,17 +4977,7 @@ function invArchive(flag, outcome){
   st.flags = st.flags.filter(f=>f.id!==flag.id);
   st.history.unshift(flag);
   if(st.history.length>25) st.history.length = 25;
-  save();   // dismiss/resolve is a real change too — protect it the same way
-}
-function invDeleteHistoryItem(id){
-  const st = invState();
-  st.history = st.history.filter(f=>f.id!==id);
-  save(); renderInvestigation();
-}
-function invClearHistory(){
-  if(!confirm('Clear all investigation history? This cannot be undone \u2014 active flags and overrides are untouched.')) return;
-  invState().history = [];
-  save(); renderInvestigation();
+  save(false);
 }
 function invDismiss(id){
   const f = invActiveFlags().find(x=>x.id===id); if(!f) return;
@@ -5160,13 +5119,13 @@ function invBannerHTML(){
   const worst = flags.reduce((a,f)=>INV_SEV_RANK[f.severity]>INV_SEV_RANK[a.severity]?f:a, flags[0]);
   if(worst.severity==='yellow') return ''; // yellow lives in the tab only
   const col = INV_SEV_COLOR[worst.severity];
-  // Tag reflects ONLY the flag whose title is shown — never merge other flags' categories in here,
-  // that produced misleading combos like "STRENGTH \u00b7 BULK — Chest Fly Machine trending down" where
+  // Tag reflects ONLY the flag whose title is shown \u2014 never merge other flags' categories in here,
+  // that produced misleading combos like "STRENGTH \u00b7 BULK \u2014 Chest Fly Machine trending down" where
   // the BULK tag belonged to a *different* flag entirely. If others share this severity, say so plainly.
   const tiedOthers = flags.filter(f=>f.severity===worst.severity && f.id!==worst.id).length;
   const tag = INV_CAT_LABEL[worst.cat] + (tiedOthers ? ' +'+tiedOthers+' more' : '');
-  return '<div class="inv-banner" style="border-color:'+col+'" onclick="invGoToTab()">'+
-    '<span class="inv-banner-tag" style="background:'+col+'">'+(worst.severity==='red'?'ALERT':'WATCH')+'</span>'+
+  return '<div class="inv-banner" style="border-color:'+col+'" onclick="setMode(\'review\');showReviewTab(\'invest\')">'+
+    '<span class="inv-banner-tag" style="background:'+col+'">'+INV_SEV_LABEL[worst.severity]+'</span>'+
     '<span class="inv-banner-txt">'+esc(tag)+' \u2014 '+esc(worst.title)+'. Tap to review.</span>'+
     '<span style="margin-left:auto;color:'+col+';font-family:var(--mono)">\u2192</span></div>';
 }
@@ -5187,7 +5146,7 @@ let _invManualResult = null;
 function invFlagCardHTML(f){
   const col = INV_SEV_COLOR[f.severity];
   let h = '<div class="card inv-card" style="border-left:3px solid '+col+'">';
-  h += '<div class="inv-head"><span class="pill" style="border-color:'+col+';color:'+col+'">'+f.severity.toUpperCase()+'</span>'+
+  h += '<div class="inv-head"><span class="pill" style="border-color:'+col+';color:'+col+'">'+INV_SEV_LABEL[f.severity]+'</span>'+
        '<span class="pill" style="border-color:var(--line2);color:var(--muted)">'+INV_CAT_LABEL[f.cat]+'</span>'+
        '<b class="inv-title">'+esc(f.title)+'</b>'+
        '<span class="inv-date">'+(f.source==='manual'?'manual \u00b7 ':'')+fmtDate(f.updated||f.created)+'</span></div>';
@@ -5274,11 +5233,9 @@ function renderInvestigation(){
       return '<div class="inv-hist-row"><span class="inv-dot" style="background:'+col+';position:static"></span>'+
         '<span class="inv-hist-t">'+esc(f.title)+'</span>'+
         '<span class="inv-hist-o">'+esc(outcome)+'</span>'+
-        '<span class="inv-hist-d">'+fmtDate(f.closed||f.created)+'</span>'+
-        '<button class="inv-hist-x" onclick="event.stopPropagation();invDeleteHistoryItem(\''+f.id+'\')" title="Delete this entry">\u00d7</button></div>';
+        '<span class="inv-hist-d">'+fmtDate(f.closed||f.created)+'</span></div>';
     }).join('');
-    const histBody = '<button class="inv-hist-clear" onclick="event.stopPropagation();invClearHistory()">clear all</button>'+histRows;
-    hR += subSection('Investigation history ('+hist.length+')', histBody, false);
+    hR += subSection('Investigation history ('+hist.length+')', histRows, false);
   }
   el.innerHTML = '<div class="inv-left">'+hL+'</div><div class="inv-right">'+hR+'</div>';
 }
@@ -6697,31 +6654,16 @@ buildBotNav();
 // resume an in-progress session if one exists for today
 const _draft = loadLiveDraft();
 if(_draft){ live=_draft; liveActiveIdx = live.exercises.findIndex(e=>!e.done); if(liveActiveIdx<0) liveActiveIdx=0; }
-// First paint from whatever's on this device right now, so the app is never blank
-// while we wait on the network.
+try{ invAutoRun(); }catch(e){ console.warn('invAutoRun failed', e); }
 renderLive();
-try{ renderSidenav(); }catch(e){}
 // session clock ticker
 setInterval(()=>{ if(live && MODE==='live') updateSessionBar(); }, 1000);
+// review nav wiring
+try{ renderSidenav(); }catch(e){}
+// background sync + weekly audit (no-ops gracefully in sandbox)
+try{ autoPullOnLoad(); }catch(e){}
 try{ startUpdateWatcher(); }catch(e){}
-
-// Pull MUST resolve before invAutoRun runs, and invAutoRun's render must reflect
-// whatever the pull settled on. The old order ran invAutoRun (and its first render)
-// immediately, then pulled afterward — so a routine boot-time pull could silently
-// replace the entire local state seconds later, discarding anything invAutoRun had
-// just raised, with no error and no trace in history. Chaining them fixes the race
-// at its root rather than papering over the symptom.
-function bootRunInvestigations(){
-  try{ invAutoRun(); }catch(e){ console.warn('invAutoRun failed', e); }
-  if(MODE==='live') renderLive();
-  else showMainTab(activeMainTab, navMemory[activeMainTab]);
-  try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
-}
-try{
-  const _pull = autoPullOnLoad();
-  if(_pull && typeof _pull.finally==='function') _pull.finally(bootRunInvestigations);
-  else bootRunInvestigations();
-}catch(e){ bootRunInvestigations(); }
+try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
 </script>
 </body>
 </html>
