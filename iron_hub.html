@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-23-v3f">
+<meta name="ironhub-build" content="2026-07-23-v3g">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4983,6 +4983,11 @@ function invDismiss(id){
   const f = invActiveFlags().find(x=>x.id===id); if(!f) return;
   invArchive(f,'dismissed'); renderInvestigation(); invUpdateBadge();
 }
+function invDeleteHistory(id){
+  const st = invState();
+  st.history = st.history.filter(f=>f.id!==id);
+  save(false); renderInvestigation();
+}
 function invApplyFix(id){
   const f = invActiveFlags().find(x=>x.id===id); if(!f || !f.fix) return;
   const fx = f.fix;
@@ -5233,7 +5238,8 @@ function renderInvestigation(){
       return '<div class="inv-hist-row"><span class="inv-dot" style="background:'+col+';position:static"></span>'+
         '<span class="inv-hist-t">'+esc(f.title)+'</span>'+
         '<span class="inv-hist-o">'+esc(outcome)+'</span>'+
-        '<span class="inv-hist-d">'+fmtDate(f.closed||f.created)+'</span></div>';
+        '<span class="inv-hist-d">'+fmtDate(f.closed||f.created)+'</span>'+
+        '<button class="del" style="margin-left:8px" onclick="invDeleteHistory(\''+esc(f.id)+'\')">clear</button></div>';
     }).join('');
     hR += subSection('Investigation history ('+hist.length+')', histRows, false);
   }
