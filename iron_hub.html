@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-23-v3g">
+<meta name="ironhub-build" content="2026-07-25-v3h">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2287,7 +2287,22 @@ async function sendChat(){
       'Don\'t remember things already in the training data below, and don\'t narrate your memory unprompted. '+
       'Everything under WHAT YOU REMEMBER is something he previously confirmed \u2014 treat it as fact and factor it into your advice.\n\n'+
       coachMemContext()+'\n'+trainingContext();
-    const msgs = S.chat.slice(-16).map(m=>({role:m.role, content:m.content}));
+    const msgs = S.chat.slice(-16).map(m=>{
+      let content = m.content;
+      // Proposal outcomes (applied/failed/dismissed) previously lived only in UI state and never
+      // reached the model, so it had no way to know a prior remember_note/etc had already resolved
+      // and would keep re-proposing it every turn regardless of what the user actually asked next.
+      if(m.proposals && m.proposals.length){
+        const notes = m.proposals.map(p=>{
+          if(p.status==='applied') return '[Action \u201c'+p.desc.verb+'\u201d was applied: '+(p.confirm||'done')+']';
+          if(p.status==='failed') return '[Action \u201c'+p.desc.verb+'\u201d failed: '+(p.error||'error')+' \u2014 do not retry unless the user asks again]';
+          if(p.status==='dismissed') return '[Action \u201c'+p.desc.verb+'\u201d was dismissed by the user \u2014 do not re-propose it]';
+          return '[Action \u201c'+p.desc.verb+'\u201d is still pending user confirmation]';
+        }).join(' ');
+        content = (content||'') + '\n' + notes;
+      }
+      return {role:m.role, content};
+    });
     const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs(), 1200);
     const msg = {role:'assistant', content:text || (actions.length?'Here\u2019s what I\u2019d change \u2014 review and apply below:':'')};
     if(actions.length) msg.proposals = coachStageProposals(actions);
