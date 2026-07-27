@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-27-v3i">
+<meta name="ironhub-build" content="2026-07-27-v3j">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4865,6 +4865,18 @@ function investigateBulk(){
   return {severity, key:'bulk', title, findings, fix};
 }
 
+/* Heaviest weight actually loaded in the most recent non-deload session of this lift.
+   Reset targets MUST be built from this, never from e1RM. e1RM is an Epley-estimated
+   one-rep max, so any fraction of it lands well above a real working set \u2014 a 225x10
+   working set estimates to ~300 e1RM, and 90% of that is 270, a weight never actually
+   lifted. deloadExercise() already anchors to real working weight; the investigation
+   resets were the odd one out. */
+function invLastWorkingWeight(nm){
+  const hist = historyFor(nm); // newest first, deloads already excluded
+  if(!hist.length) return 0;
+  return Math.max(0, ...hist[0].sets.map(s=>+s.w||0));
+}
+
 function investigateLift(nm){
   const pts = e1rmSeries(nm);
   const findings = [];
@@ -4891,16 +4903,18 @@ function investigateLift(nm){
   if(slope < -1.0 && cur < bestRecent*0.96){
     severity='red'; title=nm+' declining';
     findings.push('Clear downward trend \u2014 you\u2019re losing ground on this lift, not just plateauing.');
-    const resetW = Math.max(Math.round((cur*0.9)/5)*5, 45);
-    fix={label:'Reset & rebuild at ~90%', desc:'Set next targets to ~'+resetW+' lb for 2 weeks and climb back with clean reps. Momentum beats grinding a declining max. (Auto-expires after 14 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:14}};
+    const baseW = invLastWorkingWeight(nm);
+    const resetW = baseW ? Math.max(Math.round((baseW*0.9)/5)*5, 5) : 0;
+    fix = resetW ? {label:'Reset & rebuild at ~90%', desc:'Set next targets to ~'+resetW+' lb \u2014 about 90% of your last working weight ('+baseW+' lb) \u2014 for 2 weeks and climb back with clean reps. Momentum beats grinding a declining max. (Auto-expires after 14 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:14}} : null;
   } else if(slope < -0.3){
     severity='orange'; title=nm+' trending down';
     findings.push('Mild decline over recent sessions \u2014 could be fatigue, sleep, or accumulated grinding.');
     if(hardPct!=null && hardPct>=40){
       fix={label:'Start deload week', desc:'High grind density plus a downward trend is the classic overreach signature. A deload week ('+'~60% loads) usually restores the trend within 1\u20132 weeks after.', type:'deload', payload:{}};
     } else {
-      const resetW = Math.max(Math.round((cur*0.92)/5)*5, 45);
-      fix={label:'Light reset at ~92%', desc:'Take next sessions at ~'+resetW+' lb and rebuild rep quality. (Auto-expires after 10 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:10}};
+      const baseW = invLastWorkingWeight(nm);
+      const resetW = baseW ? Math.max(Math.round((baseW*0.92)/5)*5, 5) : 0;
+      fix = resetW ? {label:'Light reset at ~92%', desc:'Take next sessions at ~'+resetW+' lb \u2014 about 92% of your last working weight ('+baseW+' lb) \u2014 and rebuild rep quality. (Auto-expires after 10 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:10}} : null;
     }
   } else if(Math.abs(slope) <= 0.3 && spanWks >= 3){
     const _mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
