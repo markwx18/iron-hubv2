@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-25-v3h">
+<meta name="ironhub-build" content="2026-07-27-v3i">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2433,6 +2433,11 @@ function applyPulled(d){
   S.meta = S.meta || {changedAt:0,lastSync:0};
   S.meta.changedAt = d && d.meta ? (d.meta.changedAt||Date.now()) : Date.now();
   save(false);
+  // A pull replaces S wholesale \u2014 S.invest included. Any banner already painted from the
+  // pre-pull state is now advertising flags that no longer exist in state, and it would sit
+  // there stale until some unrelated navigation click happened to call invUpdateBadge().
+  // Repaint here so a state swap can never leave a ghost banner on screen.
+  try{ invUpdateBadge(); }catch(e){}
 }
 let _pushTimer = null;
 function schedulePush(){
@@ -2446,6 +2451,13 @@ async function autoPullOnLoad(){
     const p = await fetchGistData();
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
       applyPulled(p.data);
+      // BOOT ordering: invAutoRun() runs at line ~6678, this pull lands after it. Everything
+      // that run produced against the pre-pull state \u2014 raised flags AND the lastAuto cooldown
+      // stamp \u2014 was just discarded. Without re-running here the stamp never survives a load,
+      // so the weekly lift check fires again on every single launch and re-raises the same
+      // flags forever. Re-run against the real post-pull state; invDaysSince() will correctly
+      // no-op if the pulled copy already has a recent stamp.
+      try{ invAutoRun(); }catch(e){ console.warn('invAutoRun (post-pull) failed', e); }
       setAccent(); renderHeader(); renderToday();
     }
     markSynced();
