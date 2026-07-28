@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-27-v3j">
+<meta name="ironhub-build" content="2026-07-27-v4a">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -720,6 +720,49 @@
     .brand-txt small{letter-spacing:.1em;}
     .modeswitch button{padding:8px 10px; font-size:13px;}
   }
+  /* ===== OPERATIONS / AGENTS ===== */
+  .ag-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .ag-bar .ag-when{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .ag-lead{border:1px solid var(--line2);border-radius:12px;padding:12px;margin-bottom:12px;background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
+  .ag-card{border:1px solid var(--line);border-left:3px solid var(--line2);border-radius:10px;padding:11px 12px;margin-bottom:9px;background:var(--card)}
+  .ag-card.lead{border-left-width:4px}
+  .ag-kids{margin-left:14px;padding-left:12px;border-left:1px dashed var(--line2)}
+  .ag-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ag-nm{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.06em}
+  .ag-dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .ag-st{font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .ag-role{font-size:11.5px;color:var(--muted);margin:3px 0 0}
+  .ag-sum{font-size:12.5px;color:var(--text);margin:7px 0 0;line-height:1.5}
+  .ag-acts{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+  .ag-prop{border:1px solid var(--line2);border-radius:10px;padding:11px 12px;margin-bottom:9px}
+  .ag-prop-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+  .ag-prop-t{font-weight:700;font-size:13.5px}
+  .ag-prop-r{font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 9px}
+  .ag-prop-fx{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-bottom:9px}
+  .ag-tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;padding:2px 6px;border-radius:4px;border:1px solid}
+  .ag-log{max-height:420px;overflow-y:auto}
+  .ag-le{display:flex;gap:9px;padding:9px 0;border-top:1px solid var(--line)}
+  .ag-le:first-child{border-top:none}
+  .ag-le-b{flex:1;min-width:0}
+  .ag-le-h{font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:3px}
+  .ag-le-t{font-size:12.5px;line-height:1.5;color:var(--muted)}
+  .ag-chat{border:1px solid var(--line);border-radius:10px;margin-top:8px;overflow:hidden}
+  .ag-chat-box{max-height:340px;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:7px}
+  .ag-chat-in{display:flex;gap:6px;padding:8px;border-top:1px solid var(--line)}
+  .ag-chat-in textarea{flex:1;min-height:38px;max-height:110px;resize:vertical}
+  .ag-pill-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .ag-pill{font-family:var(--mono);font-size:11px;letter-spacing:.05em;padding:6px 11px;border-radius:999px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer}
+  .ag-pill.on{color:var(--bg);font-weight:700}
+  .ag-empty{font-size:12.5px;color:var(--dim);margin:0;padding:6px 0}
+  /* Nested cards stack four levels of padding at 320px (shell + lead + kids indent + card).
+     Collapse the indent on small phones so the innermost text still has usable width. */
+  @media(max-width:400px){
+    .ag-lead{padding:9px}
+    .ag-kids{margin-left:0;padding-left:8px}
+    .ag-card{padding:10px 9px}
+    .ag-prop{padding:10px 9px}
+    .ag-st{font-size:9.5px}
+  }
 </style>
 
 
@@ -769,6 +812,7 @@
         <section id="fuel"></section>
         <section id="library"></section>
         <section id="coach"></section>
+        <section id="ops"></section>
         <section id="invest"></section>
         <section id="meso"></section>
         <section id="log"></section>
@@ -3059,8 +3103,8 @@ const NAV_MODEL = [
     {id:'fuel',     label:'Fuel'}]},
   {id:'invest',    label:'Investigate', ic:'\u26a0', subs:[
     {id:'invest',   label:'Flags'}]},
-  {id:'coach',     label:'Coach',       ic:'\u2726', subs:[
-    {id:'coach',    label:'Chat'}]},
+  {id:'ops',       label:'Operations',  ic:'\u25c9', short:'Ops', subs:[
+    {id:'ops',      label:'Agents'}]},
   {id:'settings',  label:'Settings',    ic:'\u2699', subs:[
     {id:'settings', label:'General'},
     {id:'library',  label:'Library'}]}
@@ -3073,7 +3117,10 @@ const NAV_LEGACY = {
   an_fatigue:['analytics','an_fatigue'], an_recovery:['analytics','an_recovery'],
   an_dev:['analytics','an_dev'], an_pred:['analytics','an_pred'],
   bulk:['bulk','bulk'], fuel:['bulk','fuel'],
-  invest:['invest','invest'], coach:['coach','coach'],
+  invest:['invest','invest'],
+  // Coach was folded into ZULU inside OPERATIONS \u2014 keep the old id routing so any
+  // existing showReviewTab('coach') call still lands somewhere real instead of Progress.
+  coach:['ops','ops'], ops:['ops','ops'],
   settings:['settings','settings'], library:['settings','library']
 };
 let activeMainTab = 'progress';
@@ -3130,7 +3177,8 @@ function buildBotNav(){
   NAV_MODEL.forEach(m=>{
     const on = MODE==='review' && m.id===activeMainTab;
     const badge = (m.id==='invest') ? '<span class="ni-badge" id="niInvBadge"></span>' : '';
-    h += '<button class="ni review-tint '+(on?'on':'')+'" onclick="setMode(\x27review\x27);showMainTab(\x27'+m.id+'\x27)"><span class="ic">'+m.ic+badge+'</span>'+m.label.slice(0,m.id==='invest'?6:9)+'</button>';
+    const short = m.short || m.label.slice(0, m.id==='invest'?6:9);
+    h += '<button class="ni review-tint '+(on?'on':'')+'" onclick="setMode(\x27review\x27);showMainTab(\x27'+m.id+'\x27)"><span class="ic">'+m.ic+badge+'</span>'+short+'</button>';
   });
   nav.innerHTML = h;
 }
@@ -6694,6 +6742,407 @@ function coachMemCardHTML(){
   return h + '</div>';
 }
 
+/* ============================================================
+   OPERATIONS \u2014 multi-agent layer (CHARLIE / DELTA / ECHO / ZULU)
+   ------------------------------------------------------------
+   ZULU is the former Coach. It deliberately reuses S.chat and
+   S.coachMem rather than copying them into new keys: relabelling
+   in the UI is a zero-risk migration, whereas moving the data
+   risks losing notes on a half-completed write or a sync race.
+   ============================================================ */
+const AGENTS = {
+  zulu:    {name:'ZULU',    lead:true, col:'#dfae36',
+            role:'Lead \u2014 oversight, coaching and cross-domain synthesis'},
+  charlie: {name:'CHARLIE', col:'#46CDBA',
+            role:'App logistics, data health and workout schedule'},
+  delta:   {name:'DELTA',   col:'#F6862F',
+            role:'Workouts, splits and progressive overload'},
+  echo:    {name:'ECHO',    col:'#B79BFF',
+            role:'Bulk, fuel and bodyweight trend'}
+};
+const AG_ORDER = ['charlie','delta','echo'];
+const AG_PROP_TTL = 7; // days before a pending proposal auto-expires
+
+function agState(){
+  if(!S.agents) S.agents = {};
+  const a = S.agents;
+  if(!a.proposals) a.proposals = [];
+  if(!a.log) a.log = [];
+  if(!a.chats) a.chats = {};
+  AG_ORDER.forEach(k=>{ if(!a.chats[k]) a.chats[k] = []; });
+  if(!a.status) a.status = {};
+  if(a.autoRun===undefined) a.autoRun = true;
+  if(!a.lastRun) a.lastRun = '';
+  return a;
+}
+function agUid(){ return 'ag'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function agPending(){ return agState().proposals.filter(p=>p.status==='pending'); }
+function agPendingFor(id){ return agPending().filter(p=>p.agent===id); }
+
+function agLog(agent, text){
+  const a = agState();
+  a.log.unshift({id:agUid(), agent, text, at:new Date().toISOString()});
+  if(a.log.length > 120) a.log.length = 120; // bounded \u2014 this syncs to the gist
+}
+
+/* ---- expiry sweep: pending proposals die after 7 days ---- */
+function agSweepExpired(){
+  const a = agState(); let n=0;
+  const today = new Date(todayKey());
+  a.proposals.forEach(p=>{
+    if(p.status!=='pending') return;
+    if(new Date(p.expires) < today){ p.status='expired'; n++; }
+  });
+  return n;
+}
+
+/* ---- fix validation: never trust model output straight into state ---- */
+const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','schedule'];
+function agValidateFix(fx){
+  if(!fx || !fx.type) return null;
+  if(AG_FIX_TYPES.indexOf(fx.type) < 0) return null;
+  const p = fx.payload || {};
+  if(fx.type==='cal'){
+    const d = Math.round(+p.delta||0);
+    if(!d || Math.abs(d) > 500) return null;      // clamp: no wild swings
+    return {type:'cal', payload:{delta:d}};
+  }
+  if(fx.type==='pro'){
+    const to = Math.round(+p.to||0);
+    if(to < 80 || to > 300) return null;
+    return {type:'pro', payload:{to}};
+  }
+  if(fx.type==='liftReset'){
+    const w = Math.round(+p.w||0), days = Math.round(+p.days||0);
+    if(!p.name || w<=0 || days<1 || days>30) return null;
+    return {type:'liftReset', payload:{name:String(p.name), w, days}};
+  }
+  if(fx.type==='deload') return {type:'deload', payload:{}};
+  if(fx.type==='addEx'){
+    if(!p.name || !p.day || !S.split[p.day]) return null;
+    return {type:'addEx', payload:{name:String(p.name), day:String(p.day)}};
+  }
+  if(fx.type==='swapEx'){
+    if(!p.from || !p.to) return null;
+    return {type:'swapEx', payload:{from:String(p.from), to:String(p.to)}};
+  }
+  if(fx.type==='schedule'){
+    const m = p.map||{}; const out = {};
+    for(let d=0; d<7; d++){
+      const v = m[d] !== undefined ? m[d] : m[String(d)];
+      if(v===undefined) return null;             // must be a complete week
+      const s = String(v);
+      if(s!=='REST' && !S.split[s]) return null; // must reference a real day
+      out[d] = s;
+    }
+    return {type:'schedule', payload:{map:out}};
+  }
+  return null;
+}
+function agFixSummary(fx){
+  if(!fx) return 'Advisory only \u2014 nothing changes if you approve.';
+  const p = fx.payload||{};
+  if(fx.type==='cal')      return 'calories '+(p.delta>0?'+':'')+p.delta+'/day';
+  if(fx.type==='pro')      return 'protein target \u2192 '+p.to+'g/day';
+  if(fx.type==='liftReset')return p.name+' \u2192 '+p.w+' lb for '+p.days+'d';
+  if(fx.type==='deload')   return 'start a deload week';
+  if(fx.type==='addEx')    return 'add '+p.name+' to '+p.day;
+  if(fx.type==='swapEx')   return p.from+' \u2192 '+p.to;
+  if(fx.type==='schedule') return 'reschedule the training week';
+  return fx.type;
+}
+/* ---- the only place an agent proposal is allowed to touch state ---- */
+function agApplyFix(fx){
+  const p = fx.payload||{};
+  if(fx.type==='cal'){ S.fuel = S.fuel||{}; S.fuel.calTarget = (S.fuel.calTarget||3000) + p.delta; return true; }
+  if(fx.type==='pro'){ S.fuel = S.fuel||{}; S.fuel.proTarget = p.to; return true; }
+  if(fx.type==='liftReset'){
+    invState().overrides[p.name] = {w:p.w, until:dateKeyOf(new Date(Date.now()+p.days*86400000)),
+      note:'Agent reset \u2014 rebuild with clean reps, expires '+p.days+'d'};
+    return true;
+  }
+  if(fx.type==='deload'){ startDeloadWeek(); return true; }
+  if(fx.type==='addEx'){
+    if(!S.split[p.day]) return false;
+    S.split[p.day].exercises.push({name:p.name, inc:incFor(p.name)});
+    return true;
+  }
+  if(fx.type==='swapEx'){
+    for(const dk in S.split){
+      const arr = S.split[dk].exercises;
+      const i = arr.findIndex(x=>exName(x)===p.from);
+      if(i>=0){ arr[i] = {name:p.to, inc:incFor(p.to)}; return true; }
+    }
+    return false;
+  }
+  if(fx.type==='schedule'){ S.schedule = Object.assign({}, p.map); return true; }
+  return false;
+}
+function agApprove(pid){
+  const p = agState().proposals.find(x=>x.id===pid);
+  if(!p || p.status!=='pending') return;
+  let ok = true;
+  if(p.fix){ try{ ok = agApplyFix(p.fix); }catch(e){ ok = false; p.error = e.message; } }
+  p.status = ok ? 'approved' : 'failed';
+  p.closed = todayKey();
+  agLog(p.agent, ok ? 'You approved \u201c'+p.title+'\u201d. '+(p.fix?'Applied: '+agFixSummary(p.fix)+'.':'Noted.')
+                    : 'Tried to apply \u201c'+p.title+'\u201d but it did not land'+(p.error?' ('+p.error+')':'')+'. Nothing changed.');
+  save(); setAccent(); renderOps();
+}
+function agReject(pid){
+  const p = agState().proposals.find(x=>x.id===pid);
+  if(!p || p.status!=='pending') return;
+  p.status='rejected'; p.closed = todayKey();
+  agLog(p.agent, 'You turned down \u201c'+p.title+'\u201d. I won\u2019t raise it again unless the picture changes.');
+  save(); renderOps();
+}
+
+/* ---- context handed to the agents ---- */
+function agContext(){
+  const sc = Object.keys(S.schedule||{}).sort().map(d=>
+    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]+'='+S.schedule[d]).join(', ');
+  const splitTxt = Object.keys(S.split).map(k=>
+    k+' ('+S.split[k].name+'): '+(S.split[k].exercises||[]).map(exName).join(', ')).join('\n');
+  const ov = invState().overrides;
+  const ovTxt = Object.keys(ov).length
+    ? Object.keys(ov).map(k=>k+' capped at '+ov[k].w+' lb until '+ov[k].until).join('; ') : 'none';
+  const flags = invActiveFlags().map(f=>'['+f.severity+'] '+f.title+' ('+f.status+')').join('; ') || 'none';
+  const recentRejects = agState().proposals.filter(p=>p.status==='rejected').slice(-6)
+    .map(p=>p.agent.toUpperCase()+': '+p.title).join('; ') || 'none';
+  return '\nCURRENT SCHEDULE: '+sc+
+    '\n\nSPLIT:\n'+splitTxt+
+    '\n\nFUEL TARGETS: '+(S.fuel&&S.fuel.calTarget||'?')+' cal / '+(S.fuel&&S.fuel.proTarget||'?')+'g protein per day.'+
+    '\nAvoids: '+((S.fuel&&S.fuel.dislikes)||'\u2014')+
+    '\n\nACTIVE LIFT OVERRIDES: '+ovTxt+
+    '\nINVESTIGATION FLAGS: '+flags+
+    '\n\nPROPOSALS HE HAS ALREADY REJECTED (do not repeat these): '+recentRejects+'\n';
+}
+function agSharedBrief(){
+  return 'You are the agent team inside Iron Hub, a training app built by and for Mark (18, lean bulking, '+
+    'trains 5\u20136x/week, interested in a federal law-enforcement career). Four agents:\n'+
+    '- CHARLIE: app logistics, data hygiene and the weekly training SCHEDULE (which day falls on which weekday, rest-day placement).\n'+
+    '- DELTA: exercise selection, volume, rep ranges and progressive overload.\n'+
+    '- ECHO: bodyweight trend, rate of gain, calorie and protein targets.\n'+
+    '- ZULU: lead \u2014 oversight, coaching, and cross-domain synthesis.\n\n'+
+    'Be specific and numeric. Cite the actual figures from his data rather than generalities. '+
+    'Never invent data you were not given. If an agent has nothing worth saying this cycle, it says so plainly '+
+    'and proposes nothing \u2014 silence is better than filler. Do not propose anything he has already rejected. '+
+    'If two agents would pull in opposite directions, say so inside the proposal and give him the options.\n';
+}
+
+/* ---- the daily run: all four agents, one call ---- */
+async function agRunAll(manual){
+  const a = agState();
+  if(!S.settings.apiKey){
+    if(manual) alert('Add your API key in Settings first \u2014 the agents need it to run.');
+    return;
+  }
+  if(a._running) return;
+  a._running = true; renderOps();
+  const sys = agSharedBrief()+
+    '\nRespond with ONLY valid JSON \u2014 no markdown fences, no commentary outside the JSON:\n'+
+    '{"charlie":{"summary":"...","proposals":[]},"delta":{...},"echo":{...},"zulu":{...}}\n'+
+    'summary = 1\u20133 sentences, first person, addressed to Mark, describing what you found this cycle.\n'+
+    'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<fix or null>}\n'+
+    'Allowed fix shapes (anything else is discarded):\n'+
+    '  {"type":"cal","payload":{"delta":-500..500}}\n'+
+    '  {"type":"pro","payload":{"to":80..300}}\n'+
+    '  {"type":"liftReset","payload":{"name":"<exact exercise name>","w":<lb, a REAL working weight not an e1RM>,"days":1..30}}\n'+
+    '  {"type":"deload","payload":{}}\n'+
+    '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}\n'+
+    '  {"type":"swapEx","payload":{"from":"...","to":"..."}}\n'+
+    '  {"type":"schedule","payload":{"map":{"0":"REST","1":"D1","2":"D2","3":"D3","4":"D4","5":"D5","6":"REST"}}}\n'+
+    '  null  \u2014 for advisory-only proposals that change nothing\n'+
+    'ZULU should rarely propose a fix; its job is the brief and flagging conflicts between the others.\n'+
+    'Cap: at most 2 proposals per agent. Fewer is better.\n\n'+
+    coachMemContext()+trainingContext()+agContext();
+  try{
+    const {text} = await callClaudeWithTools(
+      [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
+      sys, null, 2000);
+    const parsed = parseLooseJSON(text);
+    let raised = 0;
+    ['zulu'].concat(AG_ORDER).forEach(id=>{
+      const blk = parsed && parsed[id]; if(!blk) return;
+      if(blk.summary){
+        a.status[id] = {summary:String(blk.summary), at:new Date().toISOString()};
+        agLog(id, String(blk.summary));
+      }
+      (blk.proposals||[]).slice(0,2).forEach(pr=>{
+        if(!pr || !pr.title) return;
+        const fix = agValidateFix(pr.fix);
+        if(pr.fix && !fix) return;  // model produced a malformed mutation \u2014 drop it, don't guess
+        a.proposals.unshift({
+          id:agUid(), agent:id, title:String(pr.title),
+          reasoning:String(pr.reasoning||''), fix,
+          created:todayKey(),
+          expires:dateKeyOf(new Date(Date.now()+AG_PROP_TTL*86400000)),
+          status:'pending'
+        });
+        raised++;
+      });
+    });
+    a.lastRun = todayKey(); a.lastRunAt = new Date().toISOString();
+    if(!raised) agLog('zulu','Cycle complete \u2014 nothing needed your attention today.');
+  }catch(e){
+    agLog('zulu','Cycle failed: '+e.message);
+  }
+  a._running = false; save(); renderOps();
+}
+
+/* ---- per-agent chat (ZULU routes to the existing coach engine) ---- */
+let agActiveChat = 'zulu';
+function agSelectChat(id){ agActiveChat = id; renderOps(); }
+async function agSendChat(id){
+  const el = document.getElementById('agChatIn'); if(!el) return;
+  const q = (el.value||'').trim(); if(!q) return;
+  el.value='';
+  const a = agState();
+  a.chats[id].push({role:'user', content:q});
+  save(); renderOps();
+  const think = document.getElementById('agThinking');
+  if(think) think.textContent = AGENTS[id].name+' is thinking\u2026';
+  try{
+    const sys = agSharedBrief()+
+      '\nYou are '+AGENTS[id].name+'. Answer only within your own domain ('+AGENTS[id].role+'). '+
+      'If the question belongs to another agent, say which one and give a short answer anyway if you can. '+
+      'You cannot change app state from this chat \u2014 structural changes come from the daily cycle or from ZULU. '+
+      'If you think something should change, say so and tell him to run a cycle.\n\n'+
+      coachMemContext()+trainingContext()+agContext();
+    const msgs = a.chats[id].slice(-14).map(m=>({role:m.role, content:m.content}));
+    const {text} = await callClaudeWithTools(msgs, sys, null, 1100);
+    a.chats[id].push({role:'assistant', content:text||'\u2014'});
+    save(); renderOps();
+  }catch(e){
+    if(think) think.textContent = AGENTS[id].name+' unavailable: '+e.message;
+  }
+}
+
+/* ---- rendering ---- */
+function agTimeAgo(iso){
+  if(!iso) return 'never';
+  const mins = Math.round((Date.now()-new Date(iso))/60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return mins+'m ago';
+  const h = Math.round(mins/60); if(h < 24) return h+'h ago';
+  return Math.round(h/24)+'d ago';
+}
+function agCardHTML(id){
+  const A = AGENTS[id], a = agState();
+  const st = a.status[id]||{};
+  const pend = agPendingFor(id).length;
+  const running = !!a._running;
+  const state = running ? 'analyzing' : (pend ? pend+' pending' : (st.summary?'healthy':'idle'));
+  let h = '<div class="ag-card'+(A.lead?' lead':'')+'" style="border-left-color:'+A.col+'">'+
+    '<div class="ag-top"><span class="ag-dot" style="background:'+(running?'var(--amber)':A.col)+'"></span>'+
+    '<span class="ag-nm" style="color:'+A.col+'">'+A.name+'</span>'+
+    (A.lead?'<span class="ag-tag" style="border-color:'+A.col+';color:'+A.col+'">LEAD</span>':'')+
+    '<span class="ag-st" style="margin-left:auto">'+state+' \u00b7 '+agTimeAgo(st.at)+'</span></div>'+
+    '<p class="ag-role">'+esc(A.role)+'</p>';
+  h += st.summary ? '<p class="ag-sum">'+esc(st.summary)+'</p>'
+                  : '<p class="ag-empty">No cycle run yet.</p>';
+  h += '<div class="ag-acts"><button class="btn ghost sm" onclick="agSelectChat(\''+id+'\')">Chat with '+A.name+'</button></div>';
+  return h+'</div>';
+}
+function agPropHTML(p){
+  const A = AGENTS[p.agent]||{name:p.agent, col:'var(--muted)'};
+  return '<div class="ag-prop" style="border-left:3px solid '+A.col+'">'+
+    '<div class="ag-prop-h"><span class="ag-tag" style="border-color:'+A.col+';color:'+A.col+'">'+A.name+'</span>'+
+    '<span class="ag-prop-t">'+esc(p.title)+'</span>'+
+    '<span class="ag-st" style="margin-left:auto">expires '+fmtDate(p.expires)+'</span></div>'+
+    (p.reasoning?'<p class="ag-prop-r">'+esc(p.reasoning)+'</p>':'')+
+    '<div class="ag-prop-fx">\u25b8 '+esc(agFixSummary(p.fix))+'</div>'+
+    '<div class="ag-acts">'+
+      '<button class="btn sm" onclick="agApprove(\''+p.id+'\')">Approve</button>'+
+      '<button class="btn ghost sm" onclick="agReject(\''+p.id+'\')">Reject</button>'+
+    '</div></div>';
+}
+function agChatHTML(){
+  const id = agActiveChat, A = AGENTS[id];
+  const isZulu = id==='zulu';
+  const msgs = isZulu ? S.chat : agState().chats[id];
+  let h = '<div class="ag-pill-row">';
+  ['zulu'].concat(AG_ORDER).forEach(k=>{
+    const on = k===id;
+    h += '<button class="ag-pill'+(on?' on':'')+'" style="'+(on?'background:'+AGENTS[k].col+';border-color:'+AGENTS[k].col:'')+'" onclick="agSelectChat(\''+k+'\')">'+AGENTS[k].name+'</button>';
+  });
+  h += '</div>';
+  if(isZulu) h += coachMemCardHTML();
+  h += '<div class="ag-chat"><div class="ag-chat-box" id="agChatBox">';
+  if(!msgs.length){
+    h += '<div class="msg sys">'+esc(A.name)+' \u2014 '+esc(A.role)+'. '+
+      (isZulu ? 'Carries everything Coach knew, including its memory and your full chat history.'
+              : 'Ask about its domain; it reads your full training data.')+'</div>';
+  }
+  msgs.forEach(m=>{
+    const body = m.role==='user' ? esc(m.content) : renderMarkdown(m.content);
+    if(m.content) h += '<div class="msg '+(m.role==='user'?'me':'ai')+'">'+body+'</div>';
+    if(isZulu && m.proposals && m.proposals.length){
+      h += '<div class="cprop-wrap">'+m.proposals.map(p=>coachProposalHTML(p)).join('')+'</div>';
+    }
+  });
+  h += '</div><div id="agThinking" class="small" style="color:var(--dim);padding:0 10px"></div>'+
+    '<div class="ag-chat-in">'+
+    '<textarea id="agChatIn" placeholder="Ask '+esc(A.name)+'\u2026" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();'+
+      (isZulu?'sendChat()':'agSendChat(\''+id+'\')')+';}"></textarea>'+
+    '<button class="btn" onclick="'+(isZulu?'sendChat()':'agSendChat(\''+id+'\')')+'">Send</button></div></div>';
+  return h;
+}
+function renderOps(){
+  const el = document.getElementById('ops'); if(!el) return;
+  const a = agState();
+  agSweepExpired();
+  const pend = agPending();
+  let h = '<h2>Operations</h2>';
+  h += '<div class="ag-bar">'+
+    '<button class="btn sm" onclick="agRunAll(true)"'+(a._running?' disabled':'')+'>'+(a._running?'Running\u2026':'Run cycle now')+'</button>'+
+    '<label class="ag-when" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
+      '<input type="checkbox" '+(a.autoRun?'checked':'')+' onchange="agState().autoRun=this.checked;save();renderOps()" style="width:auto"> auto-run daily at 9 PM</label>'+
+    '<span class="ag-when" style="margin-left:auto">last cycle: '+(a.lastRunAt?agTimeAgo(a.lastRunAt):'never')+'</span></div>';
+
+  // hierarchy: ZULU on top, the three reports nested beneath
+  h += '<div class="ag-lead">'+agCardHTML('zulu')+
+       '<div class="ag-kids">'+AG_ORDER.map(agCardHTML).join('')+'</div></div>';
+
+  h += '<h2>Pending proposals'+(pend.length?' ('+pend.length+')':'')+'</h2>';
+  h += pend.length ? pend.map(agPropHTML).join('')
+                   : '<div class="card"><p class="ag-empty">Nothing awaiting your approval.</p></div>';
+
+  h += '<h2>Agent chat</h2>'+agChatHTML();
+
+  h += '<h2>Activity log</h2><div class="card"><div class="ag-log">';
+  if(!a.log.length){
+    h += '<p class="ag-empty">No activity yet. Run a cycle to get started.</p>';
+  } else {
+    h += a.log.slice(0,40).map(e=>{
+      const A = AGENTS[e.agent]||{name:e.agent, col:'var(--muted)'};
+      return '<div class="ag-le"><span class="ag-dot" style="background:'+A.col+';margin-top:6px"></span>'+
+        '<div class="ag-le-b"><div class="ag-le-h" style="color:'+A.col+'">'+A.name+' \u00b7 '+
+        new Date(e.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</div>'+
+        '<div class="ag-le-t">'+esc(e.text)+'</div></div></div>';
+    }).join('');
+  }
+  h += '</div>'+(a.log.length?'<div style="margin-top:8px"><button class="btn ghost sm" onclick="if(confirm(\'Clear the activity log? Proposals and memory are kept.\')){agState().log=[];save();renderOps();}">Clear log</button></div>':'')+'</div>';
+
+  el.innerHTML = h;
+  const box = document.getElementById('agChatBox');
+  if(box) box.scrollTop = box.scrollHeight;
+}
+REVIEW_RENDER.ops = renderOps;
+/* Coach is gone as a tab; anything that still calls renderCoach now repaints OPERATIONS.
+   Declared last so hoisting makes this the live definition. */
+function renderCoach(){ renderOps(); }
+
+/* ---- 9 PM daily scheduler ---- */
+function agMaybeAutoRun(){
+  const a = agState();
+  if(!a.autoRun || a._running) return;
+  if(!S.settings.apiKey) return;
+  if(a.lastRun === todayKey()) return;
+  if(new Date().getHours() < 21) return;
+  agRunAll(false);
+}
+
 /* ===================== BOOT ===================== */
 setAccent();
 setupPWA();
@@ -6711,6 +7160,9 @@ try{ renderSidenav(); }catch(e){}
 try{ autoPullOnLoad(); }catch(e){}
 try{ startUpdateWatcher(); }catch(e){}
 try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
+// agents: expire stale proposals on load, then poll for the 9 PM window
+try{ if(agSweepExpired()) save(false); }catch(e){}
+try{ agMaybeAutoRun(); setInterval(agMaybeAutoRun, 15*60*1000); }catch(e){}
 </script>
 </body>
 </html>
