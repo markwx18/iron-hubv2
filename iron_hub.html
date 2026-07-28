@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-27-v4a">
+<meta name="ironhub-build" content="2026-07-27-v4b">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2472,10 +2472,40 @@ async function syncPull(force){
 }
 function applyPulled(d){
   const keep = {apiKey:S.settings.apiKey, ghToken:S.settings.ghToken, gistId:S.settings.gistId, autoSync:S.settings.autoSync};
+  // A daily gate (agents.lastRun) is far more fragile to a wholesale overwrite than a weekly
+  // one (invest.lastAuto): if the incoming snapshot predates today's local run \u2014 entirely
+  // possible, since a pull can race a push that hasn't landed on the gist yet \u2014 blindly
+  // taking it erases "already ran today" and the very next boot (PWA foreground reload) fires
+  // agents all over again. Snapshot the local scheduler state before the swap and merge the
+  // newer side back in, rather than re-running after the fact (which would just re-trigger).
+  const localAgents = S.agents ? JSON.parse(JSON.stringify(S.agents)) : null;
+  const localLastAuto = (S.invest && S.invest.lastAuto) ? JSON.parse(JSON.stringify(S.invest.lastAuto)) : null;
   S = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), d);
   S.settings = Object.assign({}, DEFAULT_STATE.settings, d.settings||{}, keep);
   S.meta = S.meta || {changedAt:0,lastSync:0};
   S.meta.changedAt = d && d.meta ? (d.meta.changedAt||Date.now()) : Date.now();
+  if(localAgents){
+    const a = agState();
+    if((localAgents.lastRun||'') > (a.lastRun||'')) a.lastRun = localAgents.lastRun;
+    if((localAgents.lastRunAt||'') > (a.lastRunAt||'')) a.lastRunAt = localAgents.lastRunAt;
+    // union proposals/log by id so neither side's history is lost, newest first, de-duped
+    const byId = (arr) => { const m={}; arr.forEach(x=>{ if(x && x.id) m[x.id]=x; }); return m; };
+    const pMerged = Object.assign(byId(localAgents.proposals||[]), byId(a.proposals||[]));
+    a.proposals = Object.values(pMerged).sort((x,y)=>(y.created||'').localeCompare(x.created||''));
+    const lMerged = Object.assign(byId(localAgents.log||[]), byId(a.log||[]));
+    a.log = Object.values(lMerged).sort((x,y)=>(y.at||'').localeCompare(x.at||'')).slice(0,120);
+    // per-agent status: keep whichever side observed the more recent cycle
+    Object.keys(localAgents.status||{}).forEach(k=>{
+      const loc = localAgents.status[k];
+      if(!a.status[k] || (loc.at||'') > (a.status[k].at||'')) a.status[k] = loc;
+    });
+  }
+  if(localLastAuto){
+    const iv = invState();
+    Object.keys(localLastAuto).forEach(k=>{
+      if((localLastAuto[k]||'') > (iv.lastAuto[k]||'')) iv.lastAuto[k] = localLastAuto[k];
+    });
+  }
   save(false);
   // A pull replaces S wholesale \u2014 S.invest included. Any banner already painted from the
   // pre-pull state is now advertising flags that no longer exist in state, and it would sit
@@ -2502,6 +2532,7 @@ async function autoPullOnLoad(){
       // flags forever. Re-run against the real post-pull state; invDaysSince() will correctly
       // no-op if the pulled copy already has a recent stamp.
       try{ invAutoRun(); }catch(e){ console.warn('invAutoRun (post-pull) failed', e); }
+      try{ if(MODE==='review' && activeMainTab==='ops') renderOps(); }catch(e){}
       setAccent(); renderHeader(); renderToday();
     }
     markSynced();
