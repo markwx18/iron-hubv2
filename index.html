@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-28-v4d">
+<meta name="ironhub-build" content="2026-07-28-v4e">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3457,7 +3457,8 @@ async function liveDeltaSend(){
       coachMemContext()+trainingContext()+agContext()+liveDeltaContext();
     const msgs = a.chats.delta.slice(-14).map(m=>({role:m.role, content:m.content}));
     const {text} = await callClaudeWithTools(msgs, sys, null, 500);
-    a.chats.delta.push({role:'assistant', content:text||'\u2014'});
+    // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
+    agState().chats.delta.push({role:'assistant', content:text||'\u2014'});
     save(); renderLive();
   }catch(e){
     if(think) think.textContent = 'DELTA unavailable: '+e.message;
@@ -7053,19 +7054,26 @@ async function agRunAll(manual){
     const {text} = await callClaudeWithTools(
       [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
       sys, null, 4000);
+    // CRITICAL: re-resolve state AFTER the await. applyPulled() replaces S wholesale, so if a
+    // background sync lands during the ~60s API call, any reference captured before the await
+    // now points at an orphaned object that save() will never serialize. That is exactly why
+    // log entries survived (agLog re-resolves on every call) while status/lastRun/lastRunAt
+    // silently vanished (they were written through the stale reference) \u2014 the cycle looked like
+    // it ran, but the day never got stamped, so the next boot ran it all over again.
+    const a2 = agState();
     const parsed = parseLooseJSON(text);
     let raised = 0;
     ['zulu'].concat(AG_ORDER).forEach(id=>{
       const blk = parsed && parsed[id]; if(!blk) return;
       if(blk.summary){
-        a.status[id] = {summary:String(blk.summary), at:new Date().toISOString()};
+        a2.status[id] = {summary:String(blk.summary), at:new Date().toISOString()};
         agLog(id, String(blk.summary));
       }
       (blk.proposals||[]).slice(0,2).forEach(pr=>{
         if(!pr || !pr.title) return;
         const fix = agValidateFix(pr.fix);
         if(pr.fix && !fix) return;  // model produced a malformed mutation \u2014 drop it, don't guess
-        a.proposals.unshift({
+        a2.proposals.unshift({
           id:agUid(), agent:id, title:String(pr.title),
           reasoning:String(pr.reasoning||''), fix,
           created:todayKey(),
@@ -7079,12 +7087,12 @@ async function agRunAll(manual){
   }catch(e){
     agLog('zulu','Cycle failed: '+e.message+' \u2014 no retry today; use Run cycle now if you want another attempt.');
   }finally{
-    // Stamp the day even on failure. Previously this lived at the end of the try, so a thrown
+    // Stamp the day even on failure, and again resolve fresh \u2014 the pull may have landed
+    // between the try body and here. Previously this lived at the end of the try, so a thrown
     // parse left lastRun untouched, the "already ran today" gate stayed open, and the next
-    // trigger (15-min tick, or a boot after the update-checker reloaded the page) fired a fresh
-    // cycle minutes later \u2014 the repeated 9:02 / 9:04 entries. A failed attempt still counts as
-    // today's attempt; the manual button deliberately ignores this gate.
-    a.lastRun = todayKey(); a.lastRunAt = new Date().toISOString();
+    // trigger fired a fresh cycle minutes later.
+    const a3 = agState();
+    a3.lastRun = todayKey(); a3.lastRunAt = new Date().toISOString();
     _agRunning = false; save(); renderOps();
   }
 }
@@ -7110,7 +7118,8 @@ async function agSendChat(id){
       coachMemContext()+trainingContext()+agContext();
     const msgs = a.chats[id].slice(-14).map(m=>({role:m.role, content:m.content}));
     const {text} = await callClaudeWithTools(msgs, sys, null, 1100);
-    a.chats[id].push({role:'assistant', content:text||'\u2014'});
+    // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
+    agState().chats[id].push({role:'assistant', content:text||'\u2014'});
     save(); renderOps();
   }catch(e){
     if(think) think.textContent = AGENTS[id].name+' unavailable: '+e.message;
@@ -7315,12 +7324,19 @@ setInterval(()=>{ if(live && MODE==='live') updateSessionBar(); }, 1000);
 // review nav wiring
 try{ renderSidenav(); }catch(e){}
 // background sync + weekly audit (no-ops gracefully in sandbox)
-try{ autoPullOnLoad(); }catch(e){}
+// The initial pull is awaited before the agent scheduler's first check on purpose: running the
+// cycle concurrently with a pull means the pull can swap S mid-flight. The stale-reference guards
+// inside agRunAll make that survivable, but not racing at all is better than surviving the race.
+// .catch keeps a failed/absent sync from blocking the agents entirely.
+const _bootPull = (async()=>{ try{ await autoPullOnLoad(); }catch(e){} })();
 try{ startUpdateWatcher(); }catch(e){}
 try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
 // agents: expire stale proposals on load, then poll for the 9 PM window
 try{ if(agSweepExpired()) save(false); }catch(e){}
-try{ agMaybeAutoRun(); setInterval(agMaybeAutoRun, 15*60*1000); }catch(e){}
+_bootPull.then(()=>{
+  try{ agMaybeAutoRun(); }catch(e){}
+  try{ setInterval(agMaybeAutoRun, 15*60*1000); }catch(e){}
+});
 try{ startLiveRefresh(); }catch(e){}
 </script>
 </body>
