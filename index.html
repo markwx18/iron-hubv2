@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-27-v4c">
+<meta name="ironhub-build" content="2026-07-28-v4d">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1002,6 +1002,27 @@ function parseLooseJSON(raw){
   else if(firstArr === -1) start = firstObj;
   else start = Math.min(firstObj, firstArr);
   if(start > 0) t = t.slice(start);
+  // Prefer the FIRST BALANCED object/array over "slice to the last brace". Slicing to the
+  // last brace silently swallows any prose the model appends after valid JSON if that prose
+  // happens to contain a brace \u2014 which produces the misleading
+  // "Unexpected non-whitespace character after JSON at position N" rather than a clean parse.
+  const bal = (()=>{
+    const openCh = t[0];
+    if(openCh!=='{' && openCh!=='[') return null;
+    const closeCh = openCh==='{' ? '}' : ']';
+    let depth=0, inStr=false, escd=false;
+    for(let i=0;i<t.length;i++){
+      const ch = t[i];
+      if(escd){ escd=false; continue; }
+      if(ch==='\\'){ escd=true; continue; }
+      if(ch==='"'){ inStr=!inStr; continue; }
+      if(inStr) continue;
+      if(ch===openCh) depth++;
+      else if(ch===closeCh){ depth--; if(depth===0) return t.slice(0, i+1); }
+    }
+    return null; // never balanced \u2014 likely truncated, fall through to the repair path
+  })();
+  if(bal){ try{ return JSON.parse(bal); }catch(e){} }
   const lastObj = t.lastIndexOf('}'), lastArr = t.lastIndexOf(']');
   const end = Math.max(lastObj, lastArr);
   if(end > -1) t = t.slice(0, end+1);
@@ -6837,6 +6858,9 @@ function agState(){
   if(!a.status) a.status = {};
   if(a.autoRun===undefined) a.autoRun = true;
   if(!a.lastRun) a.lastRun = '';
+  // v4c and earlier persisted the in-flight flag onto S. Nothing reads it now, but it would
+  // otherwise ride along in every gist push forever \u2014 drop it on first touch.
+  if('_running' in a) delete a._running;
   return a;
 }
 function agUid(){ return 'ag'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -6995,16 +7019,21 @@ function agSharedBrief(){
 }
 
 /* ---- the daily run: all four agents, one call ---- */
+let _agRunning = false;   // module-scoped ON PURPOSE: see note in agRunAll
 async function agRunAll(manual){
   const a = agState();
   if(!S.settings.apiKey){
     if(manual) alert('Add your API key in Settings first \u2014 the agents need it to run.');
     return;
   }
-  if(a._running) return;
-  a._running = true; renderOps();
+  // The in-flight guard must NOT live on S. S is replaced wholesale by applyPulled(), so a
+  // background sync landing mid-cycle would wipe the flag and let a second cycle start on top
+  // of the first; and because S persists, a crash mid-cycle would leave a stale `true` on disk
+  // that blocks every future run. A module-level flag has neither problem.
+  if(_agRunning) return;
+  _agRunning = true; renderOps();
   const sys = agSharedBrief()+
-    '\nRespond with ONLY valid JSON \u2014 no markdown fences, no commentary outside the JSON:\n'+
+    '\nRespond with ONLY valid JSON \u2014 no markdown fences, no commentary before or after the JSON:\n'+
     '{"charlie":{"summary":"...","proposals":[]},"delta":{...},"echo":{...},"zulu":{...}}\n'+
     'summary = 1\u20133 sentences, first person, addressed to Mark, describing what you found this cycle.\n'+
     'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<fix or null>}\n'+
@@ -7018,12 +7047,12 @@ async function agRunAll(manual){
     '  {"type":"schedule","payload":{"map":{"0":"REST","1":"D1","2":"D2","3":"D3","4":"D4","5":"D5","6":"REST"}}}\n'+
     '  null  \u2014 for advisory-only proposals that change nothing\n'+
     'ZULU should rarely propose a fix; its job is the brief and flagging conflicts between the others.\n'+
-    'Cap: at most 2 proposals per agent. Fewer is better.\n\n'+
+    'Cap: at most 2 proposals per agent. Fewer is better. Keep summaries tight so the JSON stays complete.\n\n'+
     coachMemContext()+trainingContext()+agContext();
   try{
     const {text} = await callClaudeWithTools(
       [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
-      sys, null, 2000);
+      sys, null, 4000);
     const parsed = parseLooseJSON(text);
     let raised = 0;
     ['zulu'].concat(AG_ORDER).forEach(id=>{
@@ -7046,12 +7075,18 @@ async function agRunAll(manual){
         raised++;
       });
     });
-    a.lastRun = todayKey(); a.lastRunAt = new Date().toISOString();
     if(!raised) agLog('zulu','Cycle complete \u2014 nothing needed your attention today.');
   }catch(e){
-    agLog('zulu','Cycle failed: '+e.message);
+    agLog('zulu','Cycle failed: '+e.message+' \u2014 no retry today; use Run cycle now if you want another attempt.');
+  }finally{
+    // Stamp the day even on failure. Previously this lived at the end of the try, so a thrown
+    // parse left lastRun untouched, the "already ran today" gate stayed open, and the next
+    // trigger (15-min tick, or a boot after the update-checker reloaded the page) fired a fresh
+    // cycle minutes later \u2014 the repeated 9:02 / 9:04 entries. A failed attempt still counts as
+    // today's attempt; the manual button deliberately ignores this gate.
+    a.lastRun = todayKey(); a.lastRunAt = new Date().toISOString();
+    _agRunning = false; save(); renderOps();
   }
-  a._running = false; save(); renderOps();
 }
 
 /* ---- per-agent chat (ZULU routes to the existing coach engine) ---- */
@@ -7095,7 +7130,7 @@ function agCardHTML(id){
   const A = AGENTS[id], a = agState();
   const st = a.status[id]||{};
   const pend = agPendingFor(id).length;
-  const running = !!a._running;
+  const running = _agRunning;
   const state = running ? 'analyzing' : (pend ? pend+' pending' : (st.summary?'healthy':'idle'));
   let h = '<div class="ag-card'+(A.lead?' lead':'')+'" style="border-left-color:'+A.col+'">'+
     '<div class="ag-top"><span class="ag-dot" style="background:'+(running?'var(--amber)':A.col)+'"></span>'+
@@ -7167,7 +7202,7 @@ function renderOps(){
   const pend = agPending();
   let h = '<h2>Operations</h2>';
   h += '<div class="ag-bar">'+
-    '<button class="btn sm" onclick="agRunAll(true)"'+(a._running?' disabled':'')+'>'+(a._running?'Running\u2026':'Run cycle now')+'</button>'+
+    '<button class="btn sm" onclick="agRunAll(true)"'+(_agRunning?' disabled':'')+'>'+(_agRunning?'Running\u2026':'Run cycle now')+'</button>'+
     '<label class="ag-when" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
       '<input type="checkbox" '+(a.autoRun?'checked':'')+' onchange="agState().autoRun=this.checked;save();renderOps()" style="width:auto"> auto-run daily at 9 PM</label>'+
     '<span class="ag-when" style="margin-left:auto">last cycle: '+(a.lastRunAt?agTimeAgo(a.lastRunAt):'never')+'</span></div>';
@@ -7208,11 +7243,62 @@ function renderCoach(){ renderOps(); }
 /* ---- 9 PM daily scheduler ---- */
 function agMaybeAutoRun(){
   const a = agState();
-  if(!a.autoRun || a._running) return;
+  if(!a.autoRun || _agRunning) return;
   if(!S.settings.apiKey) return;
   if(a.lastRun === todayKey()) return;
   if(new Date().getHours() < 21) return;
   agRunAll(false);
+}
+
+/* ============================================================
+   LIVE REFRESH \u2014 keep the open page current without a manual reload
+   ============================================================ */
+/* Repainting the DOM under someone's fingers is worse than slightly stale data, so this
+   deliberately refuses to redraw in two cases: while a field has focus (it would blow away
+   half-typed input), and during an active LIVE session (the dock can hold a weight/reps the
+   user has typed but not yet logged \u2014 losing that mid-workout is unacceptable). */
+function refreshBlocked(){
+  const el = document.activeElement;
+  if(el){
+    const tag = (el.tagName||'').toLowerCase();
+    if(tag==='input' || tag==='textarea' || tag==='select' || el.isContentEditable) return true;
+  }
+  if(MODE==='live' && live) return true;
+  return false;
+}
+function rerenderActive(){
+  try{ invUpdateBadge(); }catch(e){}   // badge is cheap and safe to update regardless
+  if(refreshBlocked()) return;
+  try{
+    if(MODE==='live'){ renderLive(); return; }
+    const sub = navMemory[activeMainTab] || activeReviewTab;
+    const fn = REVIEW_RENDER[sub];
+    if(typeof fn === 'function') fn();
+  }catch(e){ console.warn('rerenderActive failed', e); }
+}
+let _bgPulling = false;
+async function bgSyncTick(){
+  if(_bgPulling) return;
+  if(document.visibilityState !== 'visible') return;   // don't burn API calls in the background
+  if(!syncReady() || S.settings.autoSync === false) return;
+  _bgPulling = true;
+  try{
+    const p = await fetchGistData();
+    if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
+      applyPulled(p.data);
+      setAccent(); renderHeader();
+      rerenderActive();
+    }
+  }catch(e){ /* transient network/rate-limit \u2014 silent, next tick retries */ }
+  _bgPulling = false;
+}
+function startLiveRefresh(){
+  setInterval(bgSyncTick, 60000);          // pull other devices' changes while the tab is open
+  setInterval(rerenderActive, 30000);      // repaint so relative timestamps + local state stay current
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState==='visible'){ bgSyncTick(); rerenderActive(); }
+  });
+  window.addEventListener('online', bgSyncTick);
 }
 
 /* ===================== BOOT ===================== */
@@ -7235,6 +7321,7 @@ try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progres
 // agents: expire stale proposals on load, then poll for the 9 PM window
 try{ if(agSweepExpired()) save(false); }catch(e){}
 try{ agMaybeAutoRun(); setInterval(agMaybeAutoRun, 15*60*1000); }catch(e){}
+try{ startLiveRefresh(); }catch(e){}
 </script>
 </body>
 </html>
