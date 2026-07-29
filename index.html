@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-27-v4b">
+<meta name="ironhub-build" content="2026-07-27-v4c">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2293,20 +2293,10 @@ function trainingContext(){
     'RECENT SESSIONS (newest first):\n'+(logTxt||'No sessions logged yet.');
 }
 
-/* ================= COACH TAB ================= */
-function renderCoach(){
-  const el = $('#coach');
-  let html = '<div class="card flat" style="padding:0;border:none">'+
-    '<div class="chat-box" id="chatBox">';
-  if(!S.chat.length) html += '<div class="msg sys">Coach is loaded with your full training log, bodyweight trend, and split.\nAsk anything — "why is my incline stalling", "build me a deload week", "am I eating enough".</div>';
-  S.chat.forEach(m=>{ html += '<div class="msg '+(m.role==='user'?'me':'ai')+'">'+esc(m.content)+'</div>'; });
-  html += '</div><div class="chat-in">'+
-    '<textarea id="chatIn" placeholder="Ask your coach…" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>'+
-    '<button class="btn" onclick="sendChat()">Send</button></div>'+
-    '<div style="margin-top:6px"><button class="btn ghost sm" onclick="if(confirm(\'Clear chat history?\')){S.chat=[];save();renderCoach();}">Clear chat</button></div></div>';
-  el.innerHTML = html;
-  const box=$('#chatBox'); box.scrollTop=box.scrollHeight;
-}
+/* Coach's original tab render lived here targeting #coach, which no longer exists in
+   the DOM (Operations replaced it). It was already dead \u2014 shadowed by the renderCoach
+   override further down, and now by the OPERATIONS-repaint alias \u2014 removed rather than
+   left as inert clutter for a future reader to puzzle over. */
 async function sendChat(){
   const inp = $('#chatIn'); const txt = inp.value.trim();
   if(!txt) return;
@@ -3402,6 +3392,7 @@ function renderLive(){
   h += '<div class="sessionbar"><span class="sb-day">'+esc(live.day)+' · '+esc((S.split[live.day]||{}).name||live.day)+'</span>'+_rdChip+
        '<span class="sb-prog" id="sbProg"></span><span class="sb-clock" id="sbClock">00:00</span></div>';
   live.exercises.forEach((ex,i)=>{ h += liveExHTML(ex,i); });
+  h += liveDeltaPanelHTML();
   h += '<div style="display:flex; gap:10px; margin:16px 0 8px">'+
        '<button class="btn ghost" onclick="openLiveAddEx()" style="flex:none">+ Add exercise</button>'+
        '<button class="btn cyan block" onclick="endLiveSessionConfirm()">End &amp; save session</button></div>';
@@ -3409,6 +3400,67 @@ function renderLive(){
   updateSessionBar();
   // mount rest timer under the active exercise if running
   if(rest.running) mountRestTimer();
+  const dbox = document.getElementById('liveDeltaBox');
+  if(dbox) dbox.scrollTop = dbox.scrollHeight;
+}
+/* ---- DELTA, live in-session ---- */
+let liveDeltaOpen = false;
+function liveDeltaToggle(){ liveDeltaOpen = !liveDeltaOpen; renderLive(); }
+function liveDeltaContext(){
+  if(!live) return '';
+  const done = live.exercises.filter(e=>e.done);
+  const cur = live.exercises[liveActiveIdx];
+  const rd = todayReadiness();
+  let t = '\nLIVE SESSION IN PROGRESS \u2014 '+live.day+' ('+((S.split[live.day]||{}).name||'')+').\n';
+  if(rd) t += 'Today\u2019s readiness: '+rd.tier+' ('+rd.sleep+'h sleep, '+rd.sore+' soreness, '+rd.energy+' energy).\n';
+  t += 'Completed so far this session: '+(done.length?done.map(e=>e.name+' \u2014 '+summ(e.sets)).join('; '):'none yet')+'.\n';
+  if(cur && !cur.done) t += 'Currently on: '+cur.name+', logged this exercise so far: '+(cur.sets&&cur.sets.length?summ(cur.sets):'no sets yet')+'.\n';
+  t += 'He is mid-workout \u2014 answer fast and concretely (swap a set, adjust weight/reps right now, whether to push or stop). '+
+       'You cannot change the app from here; if a lasting change is warranted, tell him to review it in Operations after.\n';
+  return t;
+}
+async function liveDeltaSend(){
+  const el = document.getElementById('liveDeltaIn'); if(!el) return;
+  const q = (el.value||'').trim(); if(!q) return;
+  el.value='';
+  const a = agState();
+  a.chats.delta.push({role:'user', content:q});
+  save(); renderLive();
+  const think = document.getElementById('liveDeltaThinking');
+  if(think) think.textContent = 'DELTA is thinking\u2026';
+  try{
+    const sys = agSharedBrief()+
+      '\nYou are DELTA, currently being consulted mid-workout through the LIVE session quick-chat. '+
+      'Keep answers short \u2014 he is standing at the rack. '+
+      'You cannot change app state from here.\n\n'+
+      coachMemContext()+trainingContext()+agContext()+liveDeltaContext();
+    const msgs = a.chats.delta.slice(-14).map(m=>({role:m.role, content:m.content}));
+    const {text} = await callClaudeWithTools(msgs, sys, null, 500);
+    a.chats.delta.push({role:'assistant', content:text||'\u2014'});
+    save(); renderLive();
+  }catch(e){
+    if(think) think.textContent = 'DELTA unavailable: '+e.message;
+  }
+}
+function liveDeltaPanelHTML(){
+  if(!S.settings.apiKey) return '';
+  const a = agState(); const msgs = a.chats.delta;
+  let h = '<div class="card flat" style="padding:0;border:1px solid var(--line2);margin:14px 0">'+
+    '<div class="sub-head" onclick="liveDeltaToggle()" style="cursor:pointer">'+
+    '<span style="color:'+AGENTS.delta.col+'">\u25cf DELTA \u2014 ask mid-workout</span><span class="chev">'+(liveDeltaOpen?'\u25b4':'\u25be')+'</span></div>';
+  if(liveDeltaOpen){
+    h += '<div class="chat-box" id="liveDeltaBox" style="max-height:260px">';
+    if(!msgs.length) h += '<div class="msg sys">Ask DELTA about swaps, weight/rep calls, or whether to push or stop \u2014 it can see this session live.</div>';
+    msgs.slice(-12).forEach(m=>{
+      const body = m.role==='user' ? esc(m.content) : renderMarkdown(m.content);
+      h += '<div class="msg '+(m.role==='user'?'me':'ai')+'">'+body+'</div>';
+    });
+    h += '</div><div id="liveDeltaThinking" class="small" style="color:var(--dim);padding:0 10px"></div>'+
+      '<div class="chat-in"><textarea id="liveDeltaIn" placeholder="Ask DELTA\u2026" style="height:38px" '+
+      'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();liveDeltaSend();}"></textarea>'+
+      '<button class="btn sm" onclick="liveDeltaSend()">Send</button></div></div>';
+  }
+  return h+'</div>';
 }
 function liveIdleHTML(){
   const dk = currentDayKey();
@@ -3897,27 +3949,8 @@ function renderMarkdown(raw){
   return s;
 }
 
-/* ===================== COACH OVERRIDE (markdown rendering) ===================== */
-function renderCoach(){
-  const el = document.getElementById('coach');
-  let html = coachMemCardHTML();
-  html += '<div class="card flat" style="padding:0;border:none"><div class="chat-box" id="chatBox">';
-  if(!S.chat.length) html += '<div class="msg sys">Coach is loaded with your full training log, bodyweight trend, split, and everything it remembers about you. Ask anything.</div>';
-  S.chat.forEach(m=>{
-    const body = m.role==='user' ? esc(m.content) : renderMarkdown(m.content);
-    if(m.content) html += '<div class="msg '+(m.role==='user'?'me':'ai')+'">'+body+'</div>';
-    if(m.proposals && m.proposals.length){
-      html += '<div class="cprop-wrap">'+m.proposals.map(p=>coachProposalHTML(p)).join('')+'</div>';
-    }
-  });
-  html += '</div><div class="chat-in">'+
-    '<textarea id="chatIn" placeholder="Ask your coach\u2026" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>'+
-    '<button class="btn" onclick="sendChat()">Send</button></div>'+
-    '<div style="margin-top:6px"><button class="btn ghost sm" onclick="if(confirm(\'Clear chat history? Coach memory is kept separately and stays.\')){S.chat=[];save();renderCoach();}">Clear chat</button></div></div>';
-  el.innerHTML = html;
-  const box = document.getElementById('chatBox');
-  if(box) box.scrollTop = box.scrollHeight;
-}
+/* The COACH OVERRIDE (markdown rendering) render also targeted #coach and is dead for the
+   same reason \u2014 the OPERATIONS alias near the end of the file is the one that actually runs. */
 
 
 
@@ -7117,7 +7150,15 @@ function agChatHTML(){
     '<textarea id="agChatIn" placeholder="Ask '+esc(A.name)+'\u2026" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();'+
       (isZulu?'sendChat()':'agSendChat(\''+id+'\')')+';}"></textarea>'+
     '<button class="btn" onclick="'+(isZulu?'sendChat()':'agSendChat(\''+id+'\')')+'">Send</button></div></div>';
+  if(msgs.length){
+    h += '<div style="margin-top:6px"><button class="btn ghost sm" onclick="agClearChat(\''+id+'\')">Clear '+esc(A.name)+' chat</button></div>';
+  }
   return h;
+}
+function agClearChat(id){
+  if(!confirm('Clear '+AGENTS[id].name+'\u2019s chat history? '+(id==='zulu'?'Its memory is kept separately and stays.':'')+' This only clears the conversation, not proposals or the activity log.')) return;
+  if(id==='zulu'){ S.chat = []; } else { agState().chats[id] = []; }
+  save(); renderOps();
 }
 function renderOps(){
   const el = document.getElementById('ops'); if(!el) return;
