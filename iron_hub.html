@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-28-v4e">
+<meta name="ironhub-build" content="2026-07-29-v4f">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -6580,12 +6580,138 @@ function anPredictFor(ex){
   }).filter(e=>e.days<=182);
   return {ex, ok:true, flat:false, cur, perWeek, r2, etas};
 }
+/* ---- ensemble model: percentile bands built from YOUR OWN residual noise ----
+   The center line is the same least-squares trend used above (median case). The spread
+   isn't invented \u2014 it's the actual scatter of your historical e1RM points around that
+   trend line (residual std dev), fanned out with sqrt(time) the way a real random-walk
+   confidence interval grows, then scaled per percentile via a standard-normal quantile
+   approximation. Faster/slower percentiles are read as "if your week-to-week variance
+   keeps looking like it has so far, this is roughly where the fast/slow edge of that
+   variance would land you" \u2014 not a claim about training methodology. */
+const AN_ENS_PCTS = [
+  {p:10, z:-1.2816, label:'Slower (p10)',  col:'var(--dim)'},
+  {p:50, z:0,        label:'Expected (p50)', col:'var(--amber)'},
+  {p:90, z:1.2816,   label:'Faster (p90)',  col:'var(--cyan)'}
+];
+function anResidualStd(pts, reg){
+  if(!reg || pts.length<3) return 0;
+  const x0 = reg.x0;
+  const resid = pts.map(p=>{
+    const x = (new Date(p.date).getTime()-x0)/86400000;
+    const fit = reg.intercept + reg.slope*x;
+    return p.v - fit;
+  });
+  const mean = resid.reduce((a,b)=>a+b,0)/resid.length;
+  const variance = resid.reduce((a,b)=>a+(b-mean)**2,0)/Math.max(1,resid.length-1);
+  return Math.sqrt(variance);
+}
+function anEnsembleFor(ex, horizonDays){
+  const pts = e1rmSeries(ex);
+  if(pts.length<5) return {ok:false, why:'Needs 5+ logged sessions on '+ex+' to build a trend.'};
+  const spanDays = (new Date(pts[pts.length-1].date)-new Date(pts[0].date))/86400000;
+  if(spanDays<28) return {ok:false, why:'Needs about a month of history on '+ex+' \u2014 keep logging it.'};
+  const reg = linreg(pts); if(!reg) return {ok:false, why:'No usable trend yet.'};
+  const r2 = anR2(pts, reg);
+  const sd = anResidualStd(pts, reg);
+  const cur = Math.max(...pts.map(p=>p.v));
+  const todayX = (new Date(todayKey()+'T00:00:00').getTime()-reg.x0)/86400000;
+  const startDay = Math.round(todayX);
+  const steps = 14; // sample points across the horizon for a smooth-ish path
+  const series = {};
+  AN_ENS_PCTS.forEach(pc=>{ series[pc.p] = []; });
+  for(let i=0;i<=steps;i++){
+    const day = startDay + Math.round((horizonDays/steps)*i);
+    const fit = reg.intercept + reg.slope*day;
+    // uncertainty grows with sqrt(elapsed) beyond "now" \u2014 a standard random-walk property,
+    // and is anchored so every band passes through the actual current e1RM at day 0.
+    const daysOut = Math.max(0, day - startDay);
+    const spread = sd * Math.sqrt(1 + daysOut/14);
+    AN_ENS_PCTS.forEach(pc=>{
+      const v = pc.p===50 ? fit : fit + pc.z*spread;
+      series[pc.p].push({date: mesoAddDays(todayKey(), day-startDay), v: Math.max(0, Math.round(v*10)/10)});
+    });
+  }
+  // re-anchor every band's first point to the real current e1RM so lines visibly start together
+  AN_ENS_PCTS.forEach(pc=>{ if(series[pc.p].length) series[pc.p][0].v = cur; });
+  return {ok:true, ex, cur, r2, sd, perWeek:reg.slope*7, series,
+    conf: r2>0.7?'steady trend':r2>0.4?'noisy trend':'very noisy trend'};
+}
+const AN_ENS_RANGES = [
+  {days:28,  label:'4 weeks'},
+  {days:84,  label:'12 weeks'},
+  {days:182, label:'6 months'},
+  {days:365, label:'1 year'}
+];
+let anEnsembleEx = null, anEnsembleRange = 84;
+function anEnsembleChangeEx(v){ anEnsembleEx = v||null; renderAnPred(); }
+function anEnsembleChangeRange(v){ anEnsembleRange = +v||84; renderAnPred(); }
+function anEnsembleChartSVG(res, w, h){
+  const all = res.series[10].concat(res.series[50], res.series[90]);
+  const vs = all.map(p=>p.v);
+  let lo = Math.min(...vs), hi = Math.max(...vs);
+  if(hi===lo){ hi+=1; lo-=1; }
+  const pad = (hi-lo)*0.10; lo = Math.max(0, lo-pad); hi += pad;
+  const n = res.series[50].length;
+  const px = i => (i/(n-1))*(w-44)+38;
+  const py = v => h-24 - ((v-lo)/(hi-lo))*(h-40);
+  const pathFor = arr => arr.map((p,i)=>(i?'L':'M')+px(i).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ');
+  const bandTop = res.series[90].map((p,i)=>px(i).toFixed(1)+','+py(p.v).toFixed(1)).join(' ');
+  const bandBot = res.series[10].slice().reverse().map((p,i)=>px(n-1-i).toFixed(1)+','+py(res.series[10][n-1-i].v).toFixed(1)).join(' ');
+  let s = '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block">';
+  // shaded p10\u2013p90 envelope
+  s += '<polygon points="'+bandTop+' '+bandBot+'" fill="rgba(246,134,47,.08)"/>';
+  // y gridlines at lo/hi
+  s += '<text x="4" y="'+(py(hi)+4).toFixed(1)+'" class="mono" font-size="10" fill="var(--dim)">'+Math.round(hi)+'</text>';
+  s += '<text x="4" y="'+(py(lo)+4).toFixed(1)+'" class="mono" font-size="10" fill="var(--dim)">'+Math.round(lo)+'</text>';
+  AN_ENS_PCTS.forEach(pc=>{
+    const dash = pc.p===50 ? '' : ' stroke-dasharray="4 3"';
+    s += '<path d="'+pathFor(res.series[pc.p])+'" fill="none" stroke="'+pc.col+'" stroke-width="'+(pc.p===50?2.5:1.5)+'" stroke-linejoin="round" stroke-linecap="round"'+dash+'/>';
+    const last = res.series[pc.p][n-1];
+    s += '<circle cx="'+px(n-1).toFixed(1)+'" cy="'+py(last.v).toFixed(1)+'" r="'+(pc.p===50?3.5:2.5)+'" fill="'+pc.col+'"/>';
+  });
+  // x-axis start/end date labels
+  s += '<text x="'+px(0).toFixed(1)+'" y="'+(h-6)+'" text-anchor="start" class="mono" font-size="10" fill="var(--dim)">'+fmtDate(res.series[50][0].date)+'</text>';
+  s += '<text x="'+px(n-1).toFixed(1)+'" y="'+(h-6)+'" text-anchor="end" class="mono" font-size="10" fill="var(--dim)">'+fmtDate(res.series[50][n-1].date)+'</text>';
+  s += '</svg>';
+  return s;
+}
+function anEnsembleCardHTML(){
+  const lifts = anBigLifts(5);
+  if(!lifts.length) return anEmpty('Ensemble projection needs at least 5 sessions on a lift.');
+  if(!anEnsembleEx || lifts.indexOf(anEnsembleEx)<0) anEnsembleEx = lifts[0];
+  let h = '<div class="card">';
+  h += '<div class="k">Ensemble projection</div>';
+  h += '<p class="small">Percentile range built from the actual noise in your own e1RM history \u2014 p50 is the straight-line trend, p10/p90 fan out from how much your real data has bounced around that trend so far. Wider = less consistent lift.</p>';
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">';
+  h += '<select onchange="anEnsembleChangeEx(this.value)" style="flex:1;min-width:160px">'+
+    lifts.map(l=>'<option value="'+esc(l)+'"'+(l===anEnsembleEx?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select>';
+  h += '<select onchange="anEnsembleChangeRange(this.value)" style="flex:none;width:auto">'+
+    AN_ENS_RANGES.map(r=>'<option value="'+r.days+'"'+(r.days===anEnsembleRange?' selected':'')+'>'+r.label+'</option>').join('')+'</select>';
+  h += '</div>';
+  const res = anEnsembleFor(anEnsembleEx, anEnsembleRange);
+  if(!res.ok){ h += '<p class="small" style="color:var(--dim)">'+esc(res.why)+'</p></div>'; return h; }
+  h += anEnsembleChartSVG(res, 640, 220);
+  h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
+  AN_ENS_PCTS.forEach(pc=>{
+    const last = res.series[pc.p][res.series[pc.p].length-1];
+    h += '<div style="display:flex;align-items:center;gap:6px">'+
+      '<span style="width:9px;height:9px;border-radius:50%;background:'+pc.col+';display:inline-block"></span>'+
+      '<span class="small">'+pc.label+': <span class="mono" style="color:'+pc.col+'">'+Math.round(last.v)+' lb</span></span></div>';
+  });
+  h += '</div>';
+  h += '<p class="small" style="margin-top:10px;color:var(--dim)">Trend confidence: '+res.conf+' \u00b7 currently '+
+    (res.perWeek<0.15?'holding flat':('+'+(Math.round(res.perWeek*10)/10)+' lb/wk on the median line'))+
+    '. Bands widen the further out you look \u2014 that\u2019s honest, not a bug: nobody\u2019s lifts are actually a straight line for a full year.</p>';
+  h += '</div>';
+  return h;
+}
 function renderAnPred(){
   const el = document.getElementById('an_pred'); if(!el) return;
   const lifts = anBigLifts(5).slice(0,6);
   if(!lifts.length){ el.innerHTML = anEmpty('Predictions need at least 5 sessions per lift spanning a month or more.'); return; }
   let h = '<div class="card"><div class="k">Predictions</div>'+
     '<p class="small">Straight-line projection of your recent e1RM trend. Useful as a target date, not a promise \u2014 progress is never actually linear, and anything past ~6 months is guesswork (so it isn\u2019t shown).</p></div>';
+  h += anEnsembleCardHTML();
   let shown = 0;
   lifts.forEach(ex=>{
     const p = anPredictFor(ex);
