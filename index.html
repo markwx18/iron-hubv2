@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-29-v4f">
+<meta name="ironhub-build" content="2026-07-29-v4g">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2319,14 +2319,27 @@ function trainingContext(){
    override further down, and now by the OPERATIONS-repaint alias \u2014 removed rather than
    left as inert clutter for a future reader to puzzle over. */
 async function sendChat(){
-  const inp = $('#chatIn'); const txt = inp.value.trim();
+  // ZULU is rendered by agChatHTML(), which uses agChatIn/agChatBox. This function predates
+  // Operations and still looked up the old Coach IDs (#chatIn/#chatBox) \u2014 those elements no
+  // longer exist, so `inp.value` threw a TypeError on every send and the button looked dead.
+  // Fall back to the legacy IDs so this stays correct if the markup is ever reused.
+  const inp = document.getElementById('agChatIn') || document.getElementById('chatIn');
+  if(!inp) return;
+  const txt = (inp.value||'').trim();
   if(!txt) return;
+  inp.value = '';
   S.chat.push({role:'user', content:txt}); save(); renderCoach();
-  const box=$('#chatBox');
-  box.insertAdjacentHTML('beforeend','<div class="msg sys" id="thinking">coach is thinking…</div>');
-  box.scrollTop=box.scrollHeight;
+  const box = document.getElementById('agChatBox') || document.getElementById('chatBox');
+  if(box){
+    box.insertAdjacentHTML('beforeend','<div class="msg sys" id="thinking">ZULU is thinking\u2026</div>');
+    box.scrollTop = box.scrollHeight;
+  }
   try{
-    const system = 'You are an evidence-based strength coach for a motivated 18-year-old natural lifter on a bulk. '+
+    const system = 'You are ZULU, the lead agent in Mark\u2019s Iron Hub app and an evidence-based strength coach '+
+      'for a motivated 18-year-old natural lifter on a bulk. You oversee three specialist agents \u2014 CHARLIE '+
+      '(app logistics, data health, training schedule), DELTA (workouts, splits, progressive overload) and '+
+      'ECHO (bulk, fuel, bodyweight trend). Speak as ZULU. If a question sits squarely in one of their domains '+
+      'you can note that, but still answer it yourself \u2014 don\u2019t deflect. '+
       'Be direct and concrete: give specific weights, reps, set counts, and food amounts when relevant. '+
       'No fluff, no over-hedging. Keep answers tight (under ~250 words unless asked for a program). '+
       'Never recommend steroids, SARMs, or other PEDs; if asked, explain briefly why not at his age and move on. '+
@@ -2363,7 +2376,7 @@ async function sendChat(){
     if(actions.length) msg.proposals = coachStageProposals(actions);
     S.chat.push(msg); save(); renderCoach();
   }catch(e){
-    const t=$('#thinking'); if(t) t.textContent='Coach unavailable: '+e.message+' — check your API key in Settings.';
+    const t=$('#thinking'); if(t) t.textContent='ZULU unavailable: '+e.message+' \u2014 check your API key in Settings.';
   }
 }
 
