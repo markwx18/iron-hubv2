@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-29-v4g">
+<meta name="ironhub-build" content="2026-08-01-v4i">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -754,6 +754,21 @@
   .ag-pill{font-family:var(--mono);font-size:11px;letter-spacing:.05em;padding:6px 11px;border-radius:999px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer}
   .ag-pill.on{color:var(--bg);font-weight:700}
   .ag-empty{font-size:12.5px;color:var(--dim);margin:0;padding:6px 0}
+  /* ---- chat polish ---- */
+  @keyframes agMsgIn{ from{opacity:0; transform:translateY(7px)} to{opacity:1; transform:none} }
+  .ag-chat-box .msg.ag-new{animation:agMsgIn .28s cubic-bezier(.2,.7,.3,1) both}
+  .ag-chat-box .msg{max-width:88%; line-height:1.55; word-break:break-word; overflow-wrap:anywhere}
+  .ag-chat-box .msg.me{align-self:flex-end}
+  .ag-chat-box .msg.ai,.ag-chat-box .msg.sys{align-self:flex-start}
+  .ag-chat-box.tall{max-height:min(72vh,720px)}
+  .ag-chat-head{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line)}
+  .ag-chat-head .t{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+  /* typing indicator */
+  .ag-typing{display:inline-flex;align-items:center;gap:4px}
+  .ag-typing i{width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block;animation:agBlink 1.25s infinite ease-in-out}
+  .ag-typing i:nth-child(2){animation-delay:.18s}
+  .ag-typing i:nth-child(3){animation-delay:.36s}
+  @keyframes agBlink{0%,60%,100%{opacity:.25;transform:translateY(0)} 30%{opacity:1;transform:translateY(-2px)}}
   /* Nested cards stack four levels of padding at 320px (shell + lead + kids indent + card).
      Collapse the indent on small phones so the innermost text still has usable width. */
   @media(max-width:400px){
@@ -2328,12 +2343,9 @@ async function sendChat(){
   const txt = (inp.value||'').trim();
   if(!txt) return;
   inp.value = '';
-  S.chat.push({role:'user', content:txt}); save(); renderCoach();
-  const box = document.getElementById('agChatBox') || document.getElementById('chatBox');
-  if(box){
-    box.insertAdjacentHTML('beforeend','<div class="msg sys" id="thinking">ZULU is thinking\u2026</div>');
-    box.scrollTop = box.scrollHeight;
-  }
+  agChatErr = null;
+  S.chat.push({role:'user', content:txt}); save();
+  agThinkingFor = 'zulu'; renderCoach();
   try{
     const system = 'You are ZULU, the lead agent in Mark\u2019s Iron Hub app and an evidence-based strength coach '+
       'for a motivated 18-year-old natural lifter on a bulk. You oversee three specialist agents \u2014 CHARLIE '+
@@ -2374,9 +2386,11 @@ async function sendChat(){
     const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs(), 1200);
     const msg = {role:'assistant', content:text || (actions.length?'Here\u2019s what I\u2019d change \u2014 review and apply below:':'')};
     if(actions.length) msg.proposals = coachStageProposals(actions);
-    S.chat.push(msg); save(); renderCoach();
+    S.chat.push(msg); save(); agThinkingFor = null; renderCoach();
   }catch(e){
-    const t=$('#thinking'); if(t) t.textContent='ZULU unavailable: '+e.message+' \u2014 check your API key in Settings.';
+    agThinkingFor = null;
+    agChatErr = {id:'zulu', msg:'ZULU unavailable: '+e.message+' \u2014 check your API key in Settings.'};
+    renderCoach();
   }
 }
 
@@ -7004,6 +7018,21 @@ function agState(){
   return a;
 }
 function agUid(){ return 'ag'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+/* Cheap fingerprint of everything OPERATIONS renders. Used to skip pointless timer repaints.
+   The trailing 5-minute bucket lets relative timestamps refresh without repainting every tick. */
+let _opsSig = '';
+function opsSignature(){
+  const a = agState();
+  return [
+    a.proposals.length, a.log.length, a.lastRunAt||'',
+    (S.chat||[]).length,
+    AG_ORDER.map(k=>(a.chats[k]||[]).length).join(','),
+    Object.keys(a.status||{}).map(k=>k+':'+(a.status[k].at||'')).join(','),
+    _agRunning?1:0, a.autoRun?1:0,
+    agActiveChat, agChatTall?1:0, agThinkingFor||'', agChatErr?agChatErr.id:'',
+    Math.floor(Date.now()/300000)
+  ].join('|');
+}
 function agPending(){ return agState().proposals.filter(p=>p.status==='pending'); }
 function agPendingFor(id){ return agPending().filter(p=>p.agent===id); }
 
@@ -7175,9 +7204,14 @@ async function agRunAll(manual){
   const sys = agSharedBrief()+
     '\nRespond with ONLY valid JSON \u2014 no markdown fences, no commentary before or after the JSON:\n'+
     '{"charlie":{"summary":"...","proposals":[]},"delta":{...},"echo":{...},"zulu":{...}}\n'+
-    'summary = 1\u20133 sentences, first person, addressed to Mark, describing what you found this cycle.\n'+
-    'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<fix or null>}\n'+
-    'Allowed fix shapes (anything else is discarded):\n'+
+    'summary = 1\u20133 sentences, first person, addressed to Mark, describing what you found this cycle. '+
+    'This is where observations, things worth watching, and "no action needed but here\u2019s why" belong.\n'+
+    'proposals = ONLY things with a concrete fix attached. If you have nothing worth actually applying, '+
+    'return an empty array \u2014 do not add a proposal just to have said something; say it in summary instead. '+
+    'A proposal with fix:null is a contradiction: if there is nothing to apply, it is not a proposal, it is '+
+    'part of your summary. Every entry in proposals MUST have a non-null fix from the list below.\n'+
+    'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<one of the shapes below>}\n'+
+    'Allowed fix shapes (anything else, including null, is discarded \u2014 so don\u2019t submit it as a proposal):\n'+
     '  {"type":"cal","payload":{"delta":-500..500}}\n'+
     '  {"type":"pro","payload":{"to":80..300}}\n'+
     '  {"type":"liftReset","payload":{"name":"<exact exercise name>","w":<lb, a REAL working weight not an e1RM>,"days":1..30}}\n'+
@@ -7185,9 +7219,10 @@ async function agRunAll(manual){
     '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}\n'+
     '  {"type":"swapEx","payload":{"from":"...","to":"..."}}\n'+
     '  {"type":"schedule","payload":{"map":{"0":"REST","1":"D1","2":"D2","3":"D3","4":"D4","5":"D5","6":"REST"}}}\n'+
-    '  null  \u2014 for advisory-only proposals that change nothing\n'+
-    'ZULU should rarely propose a fix; its job is the brief and flagging conflicts between the others.\n'+
-    'Cap: at most 2 proposals per agent. Fewer is better. Keep summaries tight so the JSON stays complete.\n\n'+
+    'ZULU should rarely have a fix of its own; its job is the brief and flagging conflicts between the others, '+
+    'almost always via summary rather than proposals.\n'+
+    'Cap: at most 2 proposals per agent. Fewer is better \u2014 most nights, most agents should have zero. '+
+    'Keep summaries tight so the JSON stays complete.\n\n'+
     coachMemContext()+trainingContext()+agContext();
   try{
     const {text} = await callClaudeWithTools(
@@ -7211,7 +7246,14 @@ async function agRunAll(manual){
       (blk.proposals||[]).slice(0,2).forEach(pr=>{
         if(!pr || !pr.title) return;
         const fix = agValidateFix(pr.fix);
-        if(pr.fix && !fix) return;  // model produced a malformed mutation \u2014 drop it, don't guess
+        // Advisory-only entries (no fix, or one that failed validation) don't belong in the
+        // approval queue \u2014 there's nothing for Approve to actually apply, so it was just a
+        // no-op button next to text you'd already read in the summary above. Fold whatever the
+        // model wanted to say into the log instead of silently dropping it, but never queue it.
+        if(!fix){
+          if(!pr.fix) agLog(id, pr.title+(pr.reasoning?' \u2014 '+pr.reasoning:''));
+          return;
+        }
         a2.proposals.unshift({
           id:agUid(), agent:id, title:String(pr.title),
           reasoning:String(pr.reasoning||''), fix,
@@ -7244,10 +7286,9 @@ async function agSendChat(id){
   const q = (el.value||'').trim(); if(!q) return;
   el.value='';
   const a = agState();
+  agChatErr = null;
   a.chats[id].push({role:'user', content:q});
-  save(); renderOps();
-  const think = document.getElementById('agThinking');
-  if(think) think.textContent = AGENTS[id].name+' is thinking\u2026';
+  save(); agThinkingFor = id; renderOps();
   try{
     const sys = agSharedBrief()+
       '\nYou are '+AGENTS[id].name+'. Answer only within your own domain ('+AGENTS[id].role+'). '+
@@ -7259,9 +7300,11 @@ async function agSendChat(id){
     const {text} = await callClaudeWithTools(msgs, sys, null, 1100);
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
     agState().chats[id].push({role:'assistant', content:text||'\u2014'});
-    save(); renderOps();
+    save(); agThinkingFor = null; renderOps();
   }catch(e){
-    if(think) think.textContent = AGENTS[id].name+' unavailable: '+e.message;
+    agThinkingFor = null;
+    agChatErr = {id, msg:AGENTS[id].name+' unavailable: '+e.message};
+    renderOps();
   }
 }
 
@@ -7304,6 +7347,14 @@ function agPropHTML(p){
       '<button class="btn ghost sm" onclick="agReject(\''+p.id+'\')">Reject</button>'+
     '</div></div>';
 }
+/* Animation bookkeeping: only messages the user hasn't seen rendered before get the entrance
+   animation. Without this, every live-refresh repaint would re-animate the whole transcript.
+   A chat opened for the first time is treated as fully seen so history doesn't cascade in. */
+const agSeen = {};
+let agChatTall = false;
+let agThinkingFor = null;   // agent id currently awaiting a reply
+let agChatErr = null;       // {id, msg} \u2014 surfaced in-box instead of via DOM poking
+function agChatToggleTall(){ agChatTall = !agChatTall; renderOps(); }
 function agChatHTML(){
   const id = agActiveChat, A = AGENTS[id];
   const isZulu = id==='zulu';
@@ -7315,20 +7366,37 @@ function agChatHTML(){
   });
   h += '</div>';
   if(isZulu) h += coachMemCardHTML();
-  h += '<div class="ag-chat"><div class="ag-chat-box" id="agChatBox">';
+  // first time this chat is shown, treat existing history as already seen
+  if(agSeen[id] === undefined) agSeen[id] = msgs.length;
+  const firstNew = agSeen[id];
+  h += '<div class="ag-chat">';
+  h += '<div class="ag-chat-head"><span class="ag-dot" style="background:'+A.col+'"></span>'+
+    '<span class="t" style="color:'+A.col+'">'+esc(A.name)+'</span>'+
+    '<button class="btn ghost sm" style="margin-left:auto" onclick="agChatToggleTall()">'+
+    (agChatTall?'Shrink':'Expand')+'</button></div>';
+  h += '<div class="ag-chat-box'+(agChatTall?' tall':'')+'" id="agChatBox">';
   if(!msgs.length){
     h += '<div class="msg sys">'+esc(A.name)+' \u2014 '+esc(A.role)+'. '+
       (isZulu ? 'Carries everything Coach knew, including its memory and your full chat history.'
               : 'Ask about its domain; it reads your full training data.')+'</div>';
   }
-  msgs.forEach(m=>{
+  msgs.forEach((m,i)=>{
+    const isNew = i >= firstNew;
     const body = m.role==='user' ? esc(m.content) : renderMarkdown(m.content);
-    if(m.content) h += '<div class="msg '+(m.role==='user'?'me':'ai')+'">'+body+'</div>';
+    if(m.content) h += '<div class="msg '+(m.role==='user'?'me':'ai')+(isNew?' ag-new':'')+'">'+body+'</div>';
     if(isZulu && m.proposals && m.proposals.length){
-      h += '<div class="cprop-wrap">'+m.proposals.map(p=>coachProposalHTML(p)).join('')+'</div>';
+      h += '<div class="cprop-wrap'+(isNew?' ag-new':'')+'">'+m.proposals.map(p=>coachProposalHTML(p)).join('')+'</div>';
     }
   });
-  h += '</div><div id="agThinking" class="small" style="color:var(--dim);padding:0 10px"></div>'+
+  if(agThinkingFor === id){
+    h += '<div class="msg ai ag-new" style="color:'+A.col+'"><span class="ag-typing">'+
+      '<i></i><i></i><i></i></span></div>';
+  }
+  if(agChatErr && agChatErr.id === id){
+    h += '<div class="msg sys" style="color:var(--amber)">'+esc(agChatErr.msg)+'</div>';
+  }
+  agSeen[id] = msgs.length;
+  h += '</div>'+
     '<div class="ag-chat-in">'+
     '<textarea id="agChatIn" placeholder="Ask '+esc(A.name)+'\u2026" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();'+
       (isZulu?'sendChat()':'agSendChat(\''+id+'\')')+';}"></textarea>'+
@@ -7345,7 +7413,18 @@ function agClearChat(id){
 }
 function renderOps(){
   const el = document.getElementById('ops'); if(!el) return;
+  // Capture chat scroll BEFORE the repaint. Previously this function unconditionally slammed
+  // scrollTop to the bottom on every render \u2014 fine when you'd just sent a message, but the
+  // 30s live-refresh repaint then yanked you back down mid-read if you'd scrolled up. Now the
+  // jump to bottom only happens when you were already near the bottom (or a message arrived).
+  const oldBox = document.getElementById('agChatBox');
+  let prevTop = null, wasAtBottom = true;
+  if(oldBox){
+    prevTop = oldBox.scrollTop;
+    wasAtBottom = (oldBox.scrollHeight - oldBox.scrollTop - oldBox.clientHeight) < 60;
+  }
   const a = agState();
+  const msgCountBefore = agSeen[agActiveChat];
   agSweepExpired();
   const pend = agPending();
   let h = '<h2>Operations</h2>';
@@ -7381,7 +7460,12 @@ function renderOps(){
 
   el.innerHTML = h;
   const box = document.getElementById('agChatBox');
-  if(box) box.scrollTop = box.scrollHeight;
+  if(box){
+    const grew = msgCountBefore !== undefined && agSeen[agActiveChat] > msgCountBefore;
+    if(wasAtBottom || grew || agThinkingFor) box.scrollTop = box.scrollHeight;
+    else if(prevTop != null) box.scrollTop = prevTop;
+  }
+  _opsSig = opsSignature();
 }
 REVIEW_RENDER.ops = renderOps;
 /* Coach is gone as a tab; anything that still calls renderCoach now repaints OPERATIONS.
@@ -7421,6 +7505,11 @@ function rerenderActive(){
     if(MODE==='live'){ renderLive(); return; }
     const sub = navMemory[activeMainTab] || activeReviewTab;
     const fn = REVIEW_RENDER[sub];
+    // Operations holds a live chat transcript. Repainting it on a timer when nothing has
+    // actually changed destroys text selection and is visible churn for no benefit, so skip
+    // unless the signature moved. The signature includes a 5-minute bucket so relative
+    // timestamps ("2m ago") still refresh periodically without thrashing the chat every 30s.
+    if(fn === renderOps && opsSignature() === _opsSig) return;
     if(typeof fn === 'function') fn();
   }catch(e){ console.warn('rerenderActive failed', e); }
 }
