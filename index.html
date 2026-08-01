@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-07-29-v4g">
+<meta name="ironhub-build" content="2026-08-01-v4h">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -7175,9 +7175,14 @@ async function agRunAll(manual){
   const sys = agSharedBrief()+
     '\nRespond with ONLY valid JSON \u2014 no markdown fences, no commentary before or after the JSON:\n'+
     '{"charlie":{"summary":"...","proposals":[]},"delta":{...},"echo":{...},"zulu":{...}}\n'+
-    'summary = 1\u20133 sentences, first person, addressed to Mark, describing what you found this cycle.\n'+
-    'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<fix or null>}\n'+
-    'Allowed fix shapes (anything else is discarded):\n'+
+    'summary = 1\u20133 sentences, first person, addressed to Mark, describing what you found this cycle. '+
+    'This is where observations, things worth watching, and "no action needed but here\u2019s why" belong.\n'+
+    'proposals = ONLY things with a concrete fix attached. If you have nothing worth actually applying, '+
+    'return an empty array \u2014 do not add a proposal just to have said something; say it in summary instead. '+
+    'A proposal with fix:null is a contradiction: if there is nothing to apply, it is not a proposal, it is '+
+    'part of your summary. Every entry in proposals MUST have a non-null fix from the list below.\n'+
+    'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<one of the shapes below>}\n'+
+    'Allowed fix shapes (anything else, including null, is discarded \u2014 so don\u2019t submit it as a proposal):\n'+
     '  {"type":"cal","payload":{"delta":-500..500}}\n'+
     '  {"type":"pro","payload":{"to":80..300}}\n'+
     '  {"type":"liftReset","payload":{"name":"<exact exercise name>","w":<lb, a REAL working weight not an e1RM>,"days":1..30}}\n'+
@@ -7185,9 +7190,10 @@ async function agRunAll(manual){
     '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}\n'+
     '  {"type":"swapEx","payload":{"from":"...","to":"..."}}\n'+
     '  {"type":"schedule","payload":{"map":{"0":"REST","1":"D1","2":"D2","3":"D3","4":"D4","5":"D5","6":"REST"}}}\n'+
-    '  null  \u2014 for advisory-only proposals that change nothing\n'+
-    'ZULU should rarely propose a fix; its job is the brief and flagging conflicts between the others.\n'+
-    'Cap: at most 2 proposals per agent. Fewer is better. Keep summaries tight so the JSON stays complete.\n\n'+
+    'ZULU should rarely have a fix of its own; its job is the brief and flagging conflicts between the others, '+
+    'almost always via summary rather than proposals.\n'+
+    'Cap: at most 2 proposals per agent. Fewer is better \u2014 most nights, most agents should have zero. '+
+    'Keep summaries tight so the JSON stays complete.\n\n'+
     coachMemContext()+trainingContext()+agContext();
   try{
     const {text} = await callClaudeWithTools(
@@ -7211,7 +7217,14 @@ async function agRunAll(manual){
       (blk.proposals||[]).slice(0,2).forEach(pr=>{
         if(!pr || !pr.title) return;
         const fix = agValidateFix(pr.fix);
-        if(pr.fix && !fix) return;  // model produced a malformed mutation \u2014 drop it, don't guess
+        // Advisory-only entries (no fix, or one that failed validation) don't belong in the
+        // approval queue \u2014 there's nothing for Approve to actually apply, so it was just a
+        // no-op button next to text you'd already read in the summary above. Fold whatever the
+        // model wanted to say into the log instead of silently dropping it, but never queue it.
+        if(!fix){
+          if(!pr.fix) agLog(id, pr.title+(pr.reasoning?' \u2014 '+pr.reasoning:''));
+          return;
+        }
         a2.proposals.unshift({
           id:agUid(), agent:id, title:String(pr.title),
           reasoning:String(pr.reasoning||''), fix,
