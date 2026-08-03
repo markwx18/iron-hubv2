@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-01-v4i">
+<meta name="ironhub-build" content="2026-08-03-v4k">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1108,6 +1108,87 @@ function isFormFocus(name){
     }
   }
   return false;
+}
+/* MAXED: the machine has no heavier pin/plate left. This is a property of the equipment, not
+   a training decision, so a flat or declining load trend on a maxed lift is expected rather
+   than a problem \u2014 progression has to come from reps, sets or tempo instead. Everything that
+   would otherwise nag about stalled weight checks this first. */
+function isMaxed(name){
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  for(const dk in src){
+    for(const x of (src[dk].exercises||[])){
+      if(typeof x === 'object' && exName(x) === name && x.maxed) return true;
+    }
+  }
+  return false;
+}
+function maxedList(){
+  const out = [];
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  for(const dk in src){
+    for(const x of (src[dk].exercises||[])){
+      if(typeof x === 'object' && x.maxed){ const n = exName(x); if(out.indexOf(n)<0) out.push(n); }
+    }
+  }
+  return out;
+}
+/* Top-set + backoff. Applied automatically to strength-mode lifts: the first set is the heavy
+   working set, the rest run ~10% lighter so volume accrues without every set being a max-effort
+   grind. This lives in the progression engine rather than in a DELTA proposal on purpose \u2014 it
+   prescribes today's targets and saves nothing, exactly like the existing weight suggestions,
+   so it needs no approval gate. Per-exercise opt-out via the NOBK toggle. */
+const BACKOFF_PCT = 0.90;
+function isNoBackoff(name){
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  for(const dk in src){
+    for(const x of (src[dk].exercises||[])){
+      if(typeof x === 'object' && exName(x) === name && x.noBackoff) return true;
+    }
+  }
+  return false;
+}
+function backoffWeightFor(nm, topW){
+  if(!topW || topW<=0) return null;
+  if(!isStrMode(nm)) return null;          // strength lifts only
+  if(isNoBackoff(nm)) return null;         // user opted this lift out
+  if(isBodyweight(nm)) return null;
+  const inc = incForExercise(nm) || 5;
+  let bw = Math.round((topW*BACKOFF_PCT)/inc)*inc;
+  if(bw >= topW) bw = topW - inc;          // rounding collapsed it \u2014 force at least one step down
+  return bw > 0 ? bw : null;
+}
+function toggleNoBackoff(dk,i){
+  const list = S.split[dk].exercises;
+  if(typeof list[i] !== 'object') list[i] = {name:String(list[i]), inc:incFor(String(list[i]))};
+  const o = list[i];
+  o.noBackoff = !o.noBackoff;
+  const nm = exName(o);
+  for(const d in S.split){
+    (S.split[d].exercises||[]).forEach((x,j)=>{
+      if(typeof x === 'object' && exName(x)===nm) x.noBackoff = o.noBackoff;
+      else if(typeof x !== 'object' && String(x)===nm){
+        S.split[d].exercises[j] = {name:nm, inc:incFor(nm), noBackoff:o.noBackoff};
+      }
+    });
+  }
+  save(); refreshSplitEditor();
+}
+function toggleMaxed(dk,i){
+  const list = S.split[dk].exercises;
+  if(typeof list[i] !== 'object') list[i] = {name:String(list[i]), inc:incFor(String(list[i]))};
+  const o = list[i];
+  o.maxed = !o.maxed;
+  // the same machine can appear on several days \u2014 keep the flag consistent everywhere
+  const nm = exName(o);
+  for(const d in S.split){
+    (S.split[d].exercises||[]).forEach((x,j)=>{
+      if(typeof x === 'object' && exName(x)===nm) x.maxed = o.maxed;
+      else if(typeof x !== 'object' && String(x)===nm){
+        S.split[d].exercises[j] = {name:nm, inc:incFor(nm), maxed:o.maxed};
+      }
+    });
+  }
+  save(); refreshSplitEditor();
 }
 function sessionAllEasy(session){
   return session.sets.length>0 && session.sets.every(s=>s.e==='easy');
@@ -3356,6 +3437,7 @@ function buildOneLiveExercise(nm){
   return {
     name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
     targetW:firstW, lo:lo, hi:hi,
+    backoffW: backoffWeightFor(nm, +firstW||0),
     recTarget:rec.target, recDetail:rec.detail,
     planned:planned,
     sets:[], done:false, _decision:decision,
@@ -3413,6 +3495,15 @@ function intraAdvice(ex){
   if(e==='fail' || (r>0 && r<lo)){
     const dw=Math.max(w-inc,inc);
     return {w:dw, lo:lo, hi:hi, tag:'Back off', cls:'back', msg:'That set fell short — drop to '+dw+' lb and keep the reps clean.'};
+  }
+  // Top set is done \u2014 drop to the backoff load for the remaining sets. Deliberately placed
+  // AFTER the fail branch: if the top set actually fell short, that safety response wins and
+  // we never suggest a weight higher than the autoregulated one.
+  if(ex.backoffW && ex.backoffW < w){
+    const bw = ex.backoffW;
+    const grindNote = e==='grind' ? ' That one was a grind, so the lighter sets should feel right.' : '';
+    return {w:bw, lo:lo, hi:hi, tag:'Backoff', cls:'hold',
+      msg:'Top set logged at '+w+' lb. Backoff sets run '+bw+' lb \u2014 same rep target, more speed on the bar.'+grindNote};
   }
   if(r>=hi && (e==='easy'||!e)){
     return {w:w, lo:lo, hi:hi, tag:'Strong', cls:'up', msg:'Top of the range — hold '+w+'. Keep this up and you earn a jump next session.'};
@@ -3636,7 +3727,7 @@ function liveUpcomingRowHTML(ex,i){
   return '<div class="liveex lv3-row" id="liveex-'+i+'" onclick="focusLiveEx('+i+')">'+
     '<div class="lv3-row-in"><span class="lv3-row-n">'+(i+1)+'</span>'+
     '<div class="lv3-row-mid"><b>'+esc(ex.name)+'</b>'+
-    '<span class="small" style="color:var(--dim)">'+(ex.targetW?ex.targetW+' lb \u00b7 ':'')+planned+' sets \u00b7 '+(ex.repMode==='str'?'3\u20136':ex.lo+'\u2013'+ex.hi)+' reps</span></div>'+
+    '<span class="small" style="color:var(--dim)">'+(ex.targetW?ex.targetW+' lb'+(ex.backoffW?' \u2192 '+ex.backoffW+' lb backoff':'')+' \u00b7 ':'')+planned+' sets \u00b7 '+(ex.repMode==='str'?'3\u20136':ex.lo+'\u2013'+ex.hi)+' reps</span></div>'+
     '<span class="lv3-row-tag">up next</span></div></div>';
 }
 function liveDoneRowHTML(ex,i){
@@ -4351,6 +4442,8 @@ function splitEditorHTML(){
       const nm=exName(x), inc=exInc(x);
       const ff=typeof x==='object' && !!x.formFocus;
       const str=typeof x==='object' && x.repMode==='str';
+      const mx=typeof x==='object' && !!x.maxed;
+      const nb=typeof x==='object' && !!x.noBackoff;
       h+='<div class="sd-ex" data-dk="'+dk+'" data-i="'+i+'">'+
         '<span class="drag-h" title="Drag to reorder">\u2630</span>'+
         '<input class="nm" value="'+esc(nm)+'" onchange="renameEx(\''+dk+'\','+i+',this.value)">'+
@@ -4359,6 +4452,8 @@ function splitEditorHTML(){
         '</div>'+
         '<button class="ord ff-toggle" style="'+(ff?'color:var(--cyan);border-color:var(--cyan);font-weight:800':'')+'" onclick="toggleFormFocus(\''+dk+'\','+i+')">FORM</button>'+
         '<button class="ord ff-toggle" style="'+(str?'color:var(--violet);border-color:var(--violet);font-weight:800':'')+'" onclick="toggleRepMode(\''+dk+'\','+i+')">'+(str?'STR':'HYP')+'</button>'+
+        '<button class="ord ff-toggle" title="Maxed out: no heavier setting on this machine. Progression switches to reps instead of load, and stalled-weight warnings are suppressed." style="'+(mx?'color:var(--amber);border-color:var(--amber);font-weight:800':'')+'" onclick="toggleMaxed(\''+dk+'\','+i+')">MAX</button>'+
+        (str ? '<button class="ord ff-toggle" title="Backoff sets: strength lifts run the first set heavy, then ~10% lighter for the rest. Toggle this on to keep every set at the same weight instead." style="'+(nb?'color:var(--red);border-color:var(--red);font-weight:800':'')+'" onclick="toggleNoBackoff(\''+dk+'\','+i+')">'+(nb?'NOBK':'BACK')+'</button>' : '')+
         '<button class="ord" title="Move up" onclick="moveEx(\''+dk+'\','+i+',-1)">\u2191</button>'+
         '<button class="ord" title="Move down" onclick="moveEx(\''+dk+'\','+i+',1)">\u2193</button>'+
         '<button class="xx" title="Delete" onclick="delEx(\''+dk+'\','+i+')">\u00d7</button>'+
@@ -4638,6 +4733,12 @@ function classifyDecision(ex, ready){
     }
   }
   if(ceilReps>=hi){
+    if(isMaxed(nm)){
+      // Earned a jump, but there's no heavier setting to jump to. Keep the load and let the
+      // rep ceiling drift up rather than telling him to add weight that doesn't exist.
+      return {code:'maxed-ceiling', from:topW, to:topW, moved:false,
+        reason:'Hit the '+hi+'-rep ceiling at '+topW+' lb, but this machine is MAXED \u2014 no heavier setting. Add a rep beyond '+hi+', add a set, or slow the eccentric instead of adding load.'};
+    }
     if(ready==='low') return {code:'defer', from:topW, to:topW, moved:false,
       reason:'Earned the jump (hit '+hi+' reps), but readiness was low \u2014 deferred, repeated '+topW+' lb to take the jump fresh.'};
     if(allEasy){ const nw=topW+inc*2; return {code:'double', from:topW, to:nw, moved:true,
@@ -4645,6 +4746,8 @@ function classifyDecision(ex, ready){
     const nw=topW+inc; return {code:'increase', from:topW, to:nw, moved:true,
       reason:'Hit the '+hi+'-rep ceiling ('+(str?'top set':'every top set')+') \u2014 weight up '+topW+'\u2192'+nw+' lb, reps reset to '+lo+'.'+(hadGrind?' (last was a grind \u2014 expect heavy.)':'')};
   }
+  if(stall && isMaxed(nm)) return {code:'maxed-hold', from:topW, to:topW, moved:false,
+    reason:'Holding at '+topW+' lb \u2014 this machine is MAXED, so a flat weight here is the ceiling, not a stall. Chase reps or an extra set.'};
   if(stall) return {code:'stall', from:topW, to:topW, moved:false,
     reason:'3 sessions at '+topW+' lb with no rep progress \u2014 held to break the stall (tighten rest or drop 10% to rebuild).'};
   if(minReps>=lo){
@@ -5078,6 +5181,12 @@ function investigateLift(nm){
       fix = resetW ? {label:'Light reset at ~92%', desc:'Take next sessions at ~'+resetW+' lb \u2014 about 92% of your last working weight ('+baseW+' lb) \u2014 and rebuild rep quality. (Auto-expires after 10 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:10}} : null;
     }
   } else if(Math.abs(slope) <= 0.3 && spanWks >= 3){
+    if(isMaxed(nm)){
+      // No heavier setting exists on this machine, so a flat LOAD trend isn't a stall \u2014 it's
+      // the equipment ceiling. e1RM is load-derived, so it will read flat by definition here.
+      findings.push('Flat, but this lift is marked MAXED \u2014 there\u2019s no heavier setting on the machine, so load can\u2019t climb. Progress here shows up as more reps or sets at the same weight, not a higher e1RM. Not flagged.');
+      return {severity:null, key:'lift:'+nm, title:nm+' flat (at machine ceiling)', findings, fix:null};
+    }
     const _mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
     if(_mw && _mw.type==='hyp'){
       // flat e1RM during a hypertrophy block is the expected outcome, not a problem
@@ -6596,6 +6705,7 @@ function anPredictFor(ex){
   const r2 = anR2(pts, reg);
   const perWeek = reg.slope*7;
   const cur = Math.max(...pts.map(p=>p.v));
+  if(isMaxed(ex)) return {ex, ok:true, maxed:true, cur, perWeek, r2};
   if(perWeek < 0.15) return {ex, ok:true, flat:true, cur, perWeek, r2};
   // next two 5-lb milestones above current best
   const targets = [];
@@ -6749,9 +6859,11 @@ function renderAnPred(){
       '<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">'+
       '<span style="font-family:var(--disp);font-size:30px;font-weight:700;color:var(--text)">'+Math.round(p.cur)+'</span>'+
       '<span class="small">current e1RM</span>'+
-      '<span class="mono" style="margin-left:auto;font-size:12px;color:'+(p.flat?'var(--dim)':'var(--cyan)')+'">'+
-      (p.flat?'holding steady':'+'+(Math.round(p.perWeek*10)/10)+' lb/wk')+'</span></div>';
-    if(p.flat){
+      '<span class="mono" style="margin-left:auto;font-size:12px;color:'+(p.maxed?'var(--amber)':(p.flat?'var(--dim)':'var(--cyan)'))+'">'+
+      (p.maxed?'at machine ceiling':(p.flat?'holding steady':'+'+(Math.round(p.perWeek*10)/10)+' lb/wk'))+'</span></div>';
+    if(p.maxed){
+      h += '<p class="small">Marked MAXED \u2014 there\u2019s no heavier setting on this machine, so there\u2019s no weight ETA to project. Progress here is more reps or sets at '+Math.round(p.cur)+' lb.</p>';
+    } else if(p.flat){
       h += '<p class="small">Trend is flat right now \u2014 no ETA to give honestly.'+
         ((typeof mesoCurrentWeek==='function' && (mesoCurrentWeek()||{}).type==='hyp') ? ' You\u2019re in a hypertrophy block, so that\u2019s the expected shape.' : '')+'</p>';
     } else if(p.etas && p.etas.length){
@@ -7164,6 +7276,11 @@ function agContext(){
   const ovTxt = Object.keys(ov).length
     ? Object.keys(ov).map(k=>k+' capped at '+ov[k].w+' lb until '+ov[k].until).join('; ') : 'none';
   const flags = invActiveFlags().map(f=>'['+f.severity+'] '+f.title+' ('+f.status+')').join('; ') || 'none';
+  const mx = maxedList();
+  const mxTxt = mx.length
+    ? mx.join('; ')+' \u2014 these machines are at their heaviest setting. NEVER propose adding load to '+
+      'these; progression must come from reps, sets or tempo. A flat weight trend on these is expected, not a stall.'
+    : 'none';
   const recentRejects = agState().proposals.filter(p=>p.status==='rejected').slice(-6)
     .map(p=>p.agent.toUpperCase()+': '+p.title).join('; ') || 'none';
   return '\nCURRENT SCHEDULE: '+sc+
@@ -7171,6 +7288,7 @@ function agContext(){
     '\n\nFUEL TARGETS: '+(S.fuel&&S.fuel.calTarget||'?')+' cal / '+(S.fuel&&S.fuel.proTarget||'?')+'g protein per day.'+
     '\nAvoids: '+((S.fuel&&S.fuel.dislikes)||'\u2014')+
     '\n\nACTIVE LIFT OVERRIDES: '+ovTxt+
+    '\nMAXED OUT (at machine ceiling): '+mxTxt+
     '\nINVESTIGATION FLAGS: '+flags+
     '\n\nPROPOSALS HE HAS ALREADY REJECTED (do not repeat these): '+recentRejects+'\n';
 }
