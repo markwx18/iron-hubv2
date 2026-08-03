@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-03-v4k">
+<meta name="ironhub-build" content="2026-08-03-v4l">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2905,10 +2905,153 @@ function dismissAllProposals(){ S.audit.proposals=[]; S.audit.status='done'; sav
 const MEAL_SLOTS = ['Breakfast','Midday Snack','Lunch','Afternoon Snack','Dinner'];
 function fuelInit(){
   if(!S.fuel) S.fuel = {likes:'',dislikes:'',limits:'',calTarget:3000,proTarget:150,meals:null};
+  if(S.fuel.workoutTime === undefined) S.fuel.workoutTime = '';
+  if(!S.fuel.sessionLen) S.fuel.sessionLen = 60;
   // migrate old flat format [{slot,name,cal,protein,how}] -> [{slot,options:[...]}]
   if(Array.isArray(S.fuel.meals) && S.fuel.meals.length && S.fuel.meals[0] && S.fuel.meals[0].name && !S.fuel.meals[0].options){
     S.fuel.meals = null; // old single-pick data; clear so user regenerates as lists
   }
+}
+/* ============================================================
+   WORKOUT FUEL TIMING
+   Computed locally rather than via the API: the timing windows are settled sports-nutrition
+   practice, so hard-coding them means instant results, no cost, and it works offline mid-gym.
+   Every food is tagged so the user's exclusion list can filter it out reliably \u2014 matching on
+   tags AND name, erring toward over-filtering, since suggesting a food he won't eat is worse
+   than showing one option fewer.
+   ============================================================ */
+const FUEL_WINDOWS = [
+  {key:'pre_main', off:-165, span:'2\u20133 h before', title:'Main pre-workout meal',
+   why:'The real fuel. Carbs top off muscle glycogen and protein gets amino acids circulating. Keep fat and fiber moderate here \u2014 both slow stomach emptying, and food still sitting in your gut when you start lifting is a common cause of mid- and post-session nausea.'},
+  {key:'pre_top', off:-75, span:'60\u201390 min before', title:'Light top-up',
+   why:'Only if the main meal landed early or felt small. Low fat, low fiber, easy to digest.'},
+  {key:'pre_quick', off:-25, span:'15\u201330 min before', title:'Quick carbs + fluid',
+   why:'Fast-acting carbs and 350\u2013500 ml of water. Small on purpose \u2014 this tops off blood glucose without leaving weight in your stomach.'},
+  {key:'during', off:20, span:'during the session', title:'During',
+   why:'Fluid is the priority. Carbs during only matter once you pass roughly 75 minutes of hard work.'},
+  {key:'post_fast', off:35, span:'within 60 min after', title:'Post-workout, fast',
+   why:'Protein to start repair plus carbs to restock glycogen. This is the window that matters most for how you feel two hours later \u2014 skipping it is what turns an underfueled session into a blood-sugar crash.'},
+  {key:'post_meal', off:120, span:'1.5\u20132 h after', title:'Full meal',
+   why:'The bigger meal. Now fat and fiber are fine \u2014 you\u2019re done training, so slower digestion is an advantage.'}
+];
+const FUEL_TIMING_FOODS = {
+  pre_main: [
+    {n:'Chicken breast + white potato + veg', cal:600, p:45, t:['chicken','potato']},
+    {n:'Turkey sandwich on white bread + fruit', cal:550, p:35, t:['turkey','bread']},
+    {n:'Lean ground beef + pasta + light sauce', cal:700, p:45, t:['beef','pasta']},
+    {n:'Oatmeal + banana + whey + honey', cal:600, p:40, t:['oats','banana','whey']},
+    {n:'Bagel + turkey + light cream cheese', cal:520, p:30, t:['bagel','turkey','dairy']},
+    {n:'Salmon + white potato + green beans', cal:620, p:42, t:['salmon','fish','potato']},
+    {n:'Chicken burrito, light on beans', cal:700, p:40, t:['chicken','tortilla']}
+  ],
+  pre_top: [
+    {n:'Banana + 1 tbsp peanut butter', cal:200, p:5, t:['banana','peanut']},
+    {n:'White toast + honey', cal:180, p:4, t:['bread','honey']},
+    {n:'Granola bar', cal:200, p:6, t:['granola','oats']},
+    {n:'Apple + small whey shake', cal:230, p:25, t:['apple','whey']},
+    {n:'Pretzels + sports drink', cal:250, p:3, t:['pretzel']},
+    {n:'Rice cakes + jam', cal:180, p:2, t:['ricecake']}
+  ],
+  pre_quick: [
+    {n:'Banana', cal:105, p:1, t:['banana']},
+    {n:'2\u20133 medjool dates', cal:180, p:1, t:['dates']},
+    {n:'Sports drink (16 oz)', cal:120, p:0, t:['sportsdrink']},
+    {n:'White bread + jam', cal:150, p:3, t:['bread']},
+    {n:'Applesauce pouch', cal:90, p:0, t:['apple']},
+    {n:'Honey packet + water', cal:60, p:0, t:['honey']}
+  ],
+  during: [
+    {n:'Water \u2014 500\u2013750 ml across the session', cal:0, p:0, t:['water']},
+    {n:'Electrolyte tablet or pinch of salt in water', cal:5, p:0, t:['electrolyte']},
+    {n:'Sports drink, sipped (sessions past 75 min)', cal:120, p:0, t:['sportsdrink']},
+    {n:'Half a banana mid-session (long sessions only)', cal:50, p:1, t:['banana']}
+  ],
+  post_fast: [
+    {n:'Whey shake + banana', cal:350, p:30, t:['whey','banana']},
+    {n:'Chocolate milk (16 oz)', cal:320, p:16, t:['milk','dairy']},
+    {n:'Turkey wrap + fruit', cal:450, p:30, t:['turkey','tortilla']},
+    {n:'Whey shake + white bagel', cal:450, p:32, t:['whey','bagel']},
+    {n:'Tuna + crackers', cal:350, p:30, t:['tuna','fish','crackers']}
+  ],
+  post_meal: [
+    {n:'Chicken + potatoes + vegetables', cal:700, p:50, t:['chicken','potato']},
+    {n:'Lean beef + pasta + parmesan', cal:800, p:50, t:['beef','pasta','dairy']},
+    {n:'Salmon + sweet potato + broccoli', cal:700, p:45, t:['salmon','fish','potato']},
+    {n:'Chicken quesadilla + avocado', cal:850, p:45, t:['chicken','tortilla','dairy']},
+    {n:'Ground turkey pasta bake', cal:780, p:48, t:['turkey','pasta']}
+  ]
+};
+/* Split the exclusion text into tokens and drop any food whose name or tags contain one.
+   Deliberately greedy: a false filter costs one option, a false pass costs a wasted meal. */
+function fuelExclusionTokens(){
+  const raw = ((S.fuel&&S.fuel.dislikes)||'')+', '+((S.fuel&&S.fuel.limits)||'');
+  return raw.split(/[,;\n]+/).map(s=>s.trim().toLowerCase()).filter(s=>s.length>2);
+}
+function fuelFoodAllowed(food, tokens){
+  const hay = (food.n+' '+food.t.join(' ')).toLowerCase();
+  return !tokens.some(tok=>hay.indexOf(tok)>=0);
+}
+function fuelClockFrom(hhmm, offsetMin){
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm||'');
+  if(!m) return null;
+  let mins = (+m[1])*60 + (+m[2]) + offsetMin;
+  mins = ((mins % 1440) + 1440) % 1440;
+  let h = Math.floor(mins/60), mm = mins%60;
+  const ap = h>=12 ? 'PM' : 'AM';
+  let h12 = h%12; if(h12===0) h12 = 12;
+  return h12+':'+String(mm).padStart(2,'0')+' '+ap;
+}
+function setFuelWorkoutTime(v){ fuelInit(); S.fuel.workoutTime = v; save(); renderFuel(); }
+function setFuelSessionLen(v){ fuelInit(); S.fuel.sessionLen = +v||60; save(); renderFuel(); }
+function fuelTimingHTML(){
+  fuelInit();
+  const t = S.fuel.workoutTime || '';
+  const len = S.fuel.sessionLen || 60;
+  let h = '<h2>Workout Fuel Timing</h2><div class="card">';
+  h += '<p class="small" style="margin-bottom:10px">Set roughly when you\u2019re training and this lays out what to eat and drink around it \u2014 filtered against your exclusions above.</p>';
+  h += '<div class="row"><div><label>Planned workout start</label>'+
+    '<input type="time" id="fWorkTime" value="'+esc(t)+'" onchange="setFuelWorkoutTime(this.value)"></div>'+
+    '<div><label>Expected length</label><select onchange="setFuelSessionLen(this.value)">'+
+    [45,60,75,90,120].map(v=>'<option value="'+v+'"'+(v===len?' selected':'')+'>'+v+' min</option>').join('')+
+    '</select></div></div>';
+  if(!t){
+    h += '<p class="small" style="color:var(--dim);margin-top:10px">Pick a time to see the plan.</p></div>';
+    return h;
+  }
+  h += '</div>';
+  const tokens = fuelExclusionTokens();
+  let filtered = 0;
+  FUEL_WINDOWS.forEach(win=>{
+    // during-session carbs are only relevant on longer sessions
+    const longOnly = win.key==='during' && len < 75;
+    const all = FUEL_TIMING_FOODS[win.key] || [];
+    let opts = all.filter(f=>fuelFoodAllowed(f, tokens));
+    filtered += (all.length - opts.length);
+    if(longOnly) opts = opts.filter(f=>f.t.indexOf('sportsdrink')<0 && f.t.indexOf('banana')<0);
+    const clock = fuelClockFrom(t, win.off);
+    h += '<div class="fuel-slot"><div class="fuel-shead">'+
+      '<span class="sn">'+esc(win.title)+'</span>'+
+      '<span class="small mono" style="color:var(--amber)">'+(clock||'')+'</span>'+
+      '<span class="small mono" style="margin-left:auto;color:var(--muted)">'+esc(win.span)+'</span></div>';
+    h += '<div class="fopt" style="display:block"><span class="small" style="color:var(--muted);line-height:1.5">'+esc(win.why)+'</span></div>';
+    if(!opts.length){
+      h += '<div class="fopt"><span class="small">Everything here matched your exclusion list \u2014 loosen it above or pick something similar.</span></div>';
+    } else {
+      opts.forEach((o,j)=>{
+        h += '<div class="fopt"><span class="rank">'+(j+1)+'</span>'+
+          '<span class="fn">'+esc(o.n)+'</span>'+
+          '<span class="fm">'+o.cal+' cal \u00b7 '+o.p+'g P</span></div>';
+      });
+    }
+    h += '</div>';
+  });
+  h += '<div class="card" style="border-color:var(--amber)"><div class="k" style="color:var(--amber)">If you get nauseous after training</div>'+
+    '<p class="small" style="line-height:1.6">The usual causes are training on too little food, being behind on fluid, or eating a large high-fat meal too close to the session. The pattern that avoids all three: a real meal 2\u20133 hours out, something small and low-fat close to it, fluid throughout, and protein plus carbs within an hour after rather than one huge meal later. '+
+    'If nausea keeps happening even when you\u2019ve eaten and hydrated properly, or comes with dizziness, vomiting, or a bad headache, get it checked by a doctor rather than tuning your meals around it.</p></div>';
+  if(filtered>0){
+    h += '<p class="small" style="color:var(--dim)">'+filtered+' option'+(filtered!==1?'s':'')+' hidden by your exclusion list. Matching is deliberately broad \u2014 edit the list above if something useful got caught.</p>';
+  }
+  return h;
 }
 function renderFuel(){
   fuelInit();
@@ -2922,6 +3065,8 @@ function renderFuel(){
     '<label>Allergies / hard limits (optional)</label>'+
     '<input type="text" id="fLimits" value="'+esc(f.limits||'')+'" placeholder="e.g. lactose, no shellfish">'+
     '<div style="margin-top:10px"><button class="btn sm" onclick="saveFuelPrefs()">Save Preferences</button> <span class="small ok" id="fMsg"></span></div></div>';
+
+  html += fuelTimingHTML();
 
   html += '<h2>Today\u2019s Fuel Options</h2>';
   if(!S.settings.apiKey && !window._inClaude){
