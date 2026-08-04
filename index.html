@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-04-v4m">
+<meta name="ironhub-build" content="2026-08-04-v4n">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -7411,7 +7411,7 @@ function agSweepExpired(){
 }
 
 /* ---- fix validation: never trust model output straight into state ---- */
-const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','schedule'];
+const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','schedule','cycleSchedule'];
 function agValidateFix(fx){
   if(!fx || !fx.type) return null;
   if(AG_FIX_TYPES.indexOf(fx.type) < 0) return null;
@@ -7444,7 +7444,7 @@ function agValidateFix(fx){
     // A day-of-week map is meaningless once a rotating cycle is active \u2014 currentDayKey()
     // ignores S.schedule entirely in cycle mode, so silently accepting this would let an
     // agent "successfully" apply a change that has zero effect. Reject it outright instead
-    // of applying something inert; cycle-mode schedule edits are manual, via Settings.
+    // of applying something inert; cycle-mode schedule edits go through cycleSchedule below.
     if(scheduleMode()==='cycle') return null;
     const m = p.map||{}; const out = {};
     for(let d=0; d<7; d++){
@@ -7455,6 +7455,25 @@ function agValidateFix(fx){
       out[d] = s;
     }
     return {type:'schedule', payload:{map:out}};
+  }
+  if(fx.type==='cycleSchedule'){
+    // Mirror image of the check above: this fix is only meaningful while cycle mode is
+    // active, since dow mode never reads S.cycleSchedule at all.
+    if(scheduleMode()!=='cycle') return null;
+    const arr = p.pattern;
+    if(!Array.isArray(arr) || arr.length<1 || arr.length>14) return null; // sane cycle length
+    const out = [];
+    for(const v of arr){
+      const s = String(v);
+      if(s!=='REST' && !S.split[s]) return null; // must reference a real split day
+      out.push(s);
+    }
+    if(!out.some(d=>d!=='REST')) return null; // an all-rest cycle is never a legitimate proposal
+    // Deliberately NOT letting the agent touch the anchor date: shifting it silently changes
+    // what TODAY resolves to (today could flip from a lifting day to REST with no visible
+    // cause). That's a bigger, more confusing change than reordering the pattern and stays
+    // manual-only, via Settings.
+    return {type:'cycleSchedule', payload:{pattern: out}};
   }
   return null;
 }
@@ -7468,6 +7487,7 @@ function agFixSummary(fx){
   if(fx.type==='addEx')    return 'add '+p.name+' to '+p.day;
   if(fx.type==='swapEx')   return p.from+' \u2192 '+p.to;
   if(fx.type==='schedule') return 'reschedule the training week';
+  if(fx.type==='cycleSchedule') return 'rotating cycle \u2192 '+p.pattern.join(' \u2192 ');
   return fx.type;
 }
 /* ---- the only place an agent proposal is allowed to touch state ---- */
@@ -7495,6 +7515,7 @@ function agApplyFix(fx){
     return false;
   }
   if(fx.type==='schedule'){ S.schedule = Object.assign({}, p.map); return true; }
+  if(fx.type==='cycleSchedule'){ scheduleInit(); S.cycleSchedule.pattern = p.pattern.slice(); return true; }
   return false;
 }
 function agApprove(pid){
@@ -7521,8 +7542,9 @@ function agContext(){
   const sc = scheduleMode()==='cycle'
     ? 'ROTATING CYCLE (repeats every '+cyclePattern().length+' days, independent of the calendar day \u2014 do NOT describe this in terms of weekdays): '+
       cyclePattern().map((d,i)=>'day '+(i+1)+'='+d).join(', ')+
-      '. Anchor date '+S.cycleSchedule.anchor+'. Today is day '+(cyclePosition(todayKey())+1)+' of the cycle ('+currentDayKey()+'). '+
-      'You cannot propose a schedule fix while cycle mode is active \u2014 changes here are manual, via Settings.'
+      '. Anchor date '+S.cycleSchedule.anchor+' (fixed \u2014 not editable by proposal). Today is day '+(cyclePosition(todayKey())+1)+' of the cycle ('+currentDayKey()+'). '+
+      'You may propose a cycleSchedule fix to reorder days, swap a day, or change which/how many days are REST. '+
+      'Use it sparingly \u2014 this is Mark\u2019s standing schedule, not something to tweak reactively from a single rough session.'
     : Object.keys(S.schedule||{}).sort().map(d=>
         ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]+'='+S.schedule[d]).join(', ');
   const splitTxt = Object.keys(S.split).map(k=>
@@ -7592,6 +7614,7 @@ async function agRunAll(manual){
     '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}\n'+
     '  {"type":"swapEx","payload":{"from":"...","to":"..."}}\n'+
     '  {"type":"schedule","payload":{"map":{"0":"REST","1":"D1","2":"D2","3":"D3","4":"D4","5":"D5","6":"REST"}}}  \u2014 ONLY valid if CURRENT SCHEDULE below is day-of-week mode; discarded otherwise\n'+
+    '  {"type":"cycleSchedule","payload":{"pattern":["D1","D2","D3","REST","D4","D5","D6","REST"]}}  \u2014 ONLY valid if CURRENT SCHEDULE below is a rotating cycle; discarded otherwise. Full replacement pattern, 1\u201314 entries, at least one non-REST day. The anchor date cannot be changed this way \u2014 only day content/order/count.\n'+
     'ZULU should rarely have a fix of its own; its job is the brief and flagging conflicts between the others, '+
     'almost always via summary rather than proposals.\n'+
     'Cap: at most 2 proposals per agent. Fewer is better \u2014 most nights, most agents should have zero. '+
