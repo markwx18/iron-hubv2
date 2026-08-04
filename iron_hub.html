@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-03-v4l">
+<meta name="ironhub-build" content="2026-08-04-v4m">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1063,6 +1063,34 @@ function parseLooseJSON(raw){
   while(depthC-->0) r += '}';
   return JSON.parse(r); // if this still throws, caller handles it
 }
+/* ============================================================
+   SCHEDULE MODE: 'dow' (classic Sun\u2013Sat map) or 'cycle' (rotating N-day pattern
+   that repeats independent of the calendar, e.g. D1-D2-D3-REST-D4-D5-D6-REST).
+   A day-of-week map fundamentally can't express a rotation whose length isn't 7 \u2014
+   the same weekday would need a different split every pass \u2014 so cycle mode is a
+   separate resolution path, not a variant of the dow map.
+   ============================================================ */
+function scheduleInit(){
+  if(!S.scheduleMode) S.scheduleMode = 'dow';
+  if(!S.cycleSchedule) S.cycleSchedule = {anchor: todayKey(), pattern: ['D1','D2','D3','REST','D4','D5','D6','REST']};
+}
+function scheduleMode(){ scheduleInit(); return S.scheduleMode; }
+function cyclePattern(){ scheduleInit(); return S.cycleSchedule.pattern; }
+/* Position within the pattern for a given date, 0-based, wrapping both directions so dates
+   before the anchor still resolve sanely instead of going negative. */
+function cyclePosition(dateKey){
+  scheduleInit();
+  const len = S.cycleSchedule.pattern.length || 1;
+  const diff = daysBetween(S.cycleSchedule.anchor, dateKey);
+  return ((diff % len) + len) % len;
+}
+function scheduledDayFor(dateKey){
+  if(scheduleMode()==='cycle'){
+    const pat = cyclePattern();
+    return pat[cyclePosition(dateKey)] || 'REST';
+  }
+  return S.schedule[new Date(dateKey+'T00:00:00').getDay()] || 'REST';
+}
 function todayKey(){
   const d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -1076,7 +1104,7 @@ function epley(w,r){ return r<=1 ? w : w*(1+r/30); }
 function currentDayKey(){
   const t = todayKey();
   if(S.overrideDay && S.overrideDay.date===t) return S.overrideDay.day;
-  return S.schedule[new Date().getDay()] || 'REST';
+  return scheduledDayFor(t);
 }
 function dayColor(d){ return (S.split[d] && S.split[d].hex) || '#8d909a'; }
 function setAccent(){
@@ -1369,6 +1397,15 @@ function musclesFor(ex){
 const MUSCLE_GROUPS = ['Chest','Back','Shoulders','Biceps','Triceps','Quads','Hamstrings','Glutes','Abs'];
 function dateKeyOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function weekStartKey(){
+  if(scheduleMode()==='cycle'){
+    // The "training week" boundary is the start of the current pass through the pattern
+    // (position 0), not each individual rest day. With two rest days in an 8-day cycle,
+    // resetting on every rest day would split one pass through the split across two
+    // partial windows and misrepresent per-muscle-group coverage. Position 0 is exactly
+    // "the day after the LAST rest day in the pattern" \u2014 the second one in D1-D2-D3-
+    // REST-D4-D5-D6-REST \u2014 which is what actually marks a full rotation.
+    return mesoAddDays(todayKey(), -cyclePosition(todayKey()));
+  }
   // Training week starts the day AFTER the most recent scheduled rest day.
   const restDays = Object.keys(S.schedule).filter(k=>S.schedule[k]==='REST').map(Number);
   if(restDays.length){
@@ -1393,7 +1430,8 @@ function heatmapHTML(){
     m.p.forEach(g=>{ if(vol[g]!=null) vol[g]+=n; });
     m.s.forEach(g=>{ if(vol[g]!=null) vol[g]+=n*0.5; });
   }));
-  let html = '<h2>Weekly Volume Heatmap <span style="font-weight:400;letter-spacing:0;text-transform:none">(this training week \u00b7 since '+fmtDate(cutKey)+' \u00b7 resets after rest day \u00b7 secondary muscles count half)</span></h2><div class="hm">';
+  const resetLabel = scheduleMode()==='cycle' ? 'resets after full cycle' : 'resets after rest day';
+  let html = '<h2>Weekly Volume Heatmap <span style="font-weight:400;letter-spacing:0;text-transform:none">(this training week \u00b7 since '+fmtDate(cutKey)+' \u00b7 '+resetLabel+' \u00b7 secondary muscles count half)</span></h2><div class="hm">';
   MUSCLE_GROUPS.forEach(g=>{
     const v = Math.round(vol[g]*10)/10;
     let col, tag;
@@ -2729,8 +2767,9 @@ function addNutrition(){
 function lastCompletedWeekRange(){
   // The training week that just ended, i.e. the one before the current weekStart.
   const curStart = weekStartKey();
+  const winLen = scheduleMode()==='cycle' ? cyclePattern().length : 7;
   const end = new Date(curStart+'T00:00:00'); end.setDate(end.getDate()-1);
-  const start = new Date(end); start.setDate(start.getDate()-6);
+  const start = new Date(end); start.setDate(start.getDate()-(winLen-1));
   return {start:dateKeyOf(start), end:dateKeyOf(end), curStart};
 }
 function weeklyVolumeByGroup(startKey, endKey){
@@ -3176,9 +3215,18 @@ function renderSettings(){
     '<p class="small" style="margin-top:6px">Stored only in this browser\'s localStorage. Powers the Coach and screenshot import. Leave blank if running inside Claude.ai preview.</p>'+
     '<div style="margin-top:10px"><button class="btn sm" onclick="saveSettings()">Save</button> <span class="ok small" id="setMsg"></span></div></div>';
 
-  html += '<h2>Weekly Schedule</h2><div class="card">';
-  for(let i=1;i<=6;i++){ html += scheduleRow(i, dayNames[i]); }
-  html += scheduleRow(0, dayNames[0]);
+  html += '<h2>Training Schedule</h2><div class="card">';
+  html += '<div class="row" style="margin-bottom:10px"><div><label>Schedule type</label>'+
+    '<select onchange="setScheduleMode(this.value)">'+
+    '<option value="dow"'+(scheduleMode()==='dow'?' selected':'')+'>Weekly (day-of-week)</option>'+
+    '<option value="cycle"'+(scheduleMode()==='cycle'?' selected':'')+'>Rotating cycle</option>'+
+    '</select></div></div>';
+  if(scheduleMode()==='cycle'){
+    html += cycleScheduleEditorHTML();
+  } else {
+    for(let i=1;i<=6;i++){ html += scheduleRow(i, dayNames[i]); }
+    html += scheduleRow(0, dayNames[0]);
+  }
   html += '<p class="small" style="margin-top:8px">Changes apply immediately to the Today tab.</p></div>';
 
   html += '<h2>Rep Range</h2><div class="card"><div class="row">'+
@@ -3225,6 +3273,59 @@ function renderSettings(){
     '<div style="flex:none"><button class="btn sm ghost" onclick="resetAll()" style="color:var(--bad);border-color:var(--bad)">Reset Everything</button></div></div>'+
     '<p class="small" style="margin-top:8px">Export regularly — localStorage can be wiped by browser cleanup. The JSON file is your backup.</p></div>';
   el.innerHTML = html;
+}
+function setScheduleMode(v){
+  scheduleInit();
+  S.scheduleMode = (v==='cycle') ? 'cycle' : 'dow';
+  save(); setAccent(); renderHeader(); renderToday(); renderSettings();
+}
+function cycleScheduleEditorHTML(){
+  scheduleInit();
+  const cs = S.cycleSchedule;
+  const pat = cs.pattern;
+  const todayPos = cyclePosition(todayKey());
+  let h = '<div class="row" style="margin-bottom:10px"><div><label>Cycle start date</label>'+
+    '<input type="date" value="'+esc(cs.anchor)+'" onchange="cycleSetAnchor(this.value)"></div>'+
+    '<div><label>Cycle length</label><span class="small mono" style="display:block;padding:9px 0">'+pat.length+' days</span></div></div>';
+  h += '<div style="display:flex;flex-direction:column;gap:6px">';
+  pat.forEach((day,i)=>{
+    const isToday = i===todayPos;
+    let opts = '<option value="REST"'+(day==='REST'?' selected':'')+'>Rest</option>';
+    Object.keys(S.split).forEach(k=>{ opts += '<option value="'+k+'"'+(day===k?' selected':'')+'>'+k+' \u2014 '+esc(S.split[k].name)+'</option>'; });
+    h += '<div class="row" style="align-items:center'+(isToday?';background:rgba(246,134,47,.08);border-radius:8px;padding:4px 6px':'')+'">'+
+      '<div style="flex:0 0 80px" class="small"><b>Day '+(i+1)+'</b>'+(isToday?' <span style="color:var(--amber)">\u2190 today</span>':'')+'</div>'+
+      '<div style="flex:0 0 auto"><select onchange="cycleSetDay('+i+',this.value)">'+opts+'</select></div>'+
+      '<div style="margin-left:auto;display:flex;gap:4px">'+
+      (i>0?'<button class="btn ghost sm" title="Move earlier" onclick="cycleMoveDay('+i+',-1)">\u2191</button>':'')+
+      (i<pat.length-1?'<button class="btn ghost sm" title="Move later" onclick="cycleMoveDay('+i+',1)">\u2193</button>':'')+
+      '<button class="btn ghost sm" title="Remove this day" onclick="cycleRemoveDay('+i+')">\u2715</button></div></div>';
+  });
+  h += '</div><div style="margin-top:10px"><button class="btn sm ghost" onclick="cycleAddDay()">+ Add day to cycle</button></div>';
+  h += '<p class="small" style="margin-top:8px;color:var(--dim)">The cycle repeats independent of the calendar, so training days drift across weekdays over time \u2014 that\u2019s expected. \u201cWeekly\u201d volume and the heatmap reset at the start of each full pass through this list, not after every rest day.</p>';
+  return h;
+}
+function cycleSetAnchor(v){
+  if(!v) return;
+  scheduleInit(); S.cycleSchedule.anchor = v; save(); renderSettings(); renderToday(); setAccent(); renderHeader();
+}
+function cycleSetDay(i,v){
+  scheduleInit(); S.cycleSchedule.pattern[i] = v; save(); renderSettings(); renderToday(); setAccent(); renderHeader();
+}
+function cycleMoveDay(i,dir){
+  scheduleInit();
+  const pat = S.cycleSchedule.pattern;
+  const j = i+dir; if(j<0||j>=pat.length) return;
+  const tmp = pat[i]; pat[i]=pat[j]; pat[j]=tmp;
+  save(); renderSettings(); renderToday(); setAccent(); renderHeader();
+}
+function cycleAddDay(){
+  scheduleInit(); S.cycleSchedule.pattern.push('REST'); save(); renderSettings();
+}
+function cycleRemoveDay(i){
+  scheduleInit();
+  const pat = S.cycleSchedule.pattern;
+  if(pat.length<=1) return; // never allow an empty cycle
+  pat.splice(i,1); save(); renderSettings(); renderToday(); setAccent(); renderHeader();
 }
 function scheduleRow(i, name){
   let opts = '<option value="REST"'+(S.schedule[i]==='REST'?' selected':'')+'>Rest</option>';
@@ -3509,8 +3610,7 @@ function streakDays(){
   let n=0; const d=new Date();
   for(let i=0;i<60;i++){
     const k = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    const dow = d.getDay();
-    if(S.schedule[dow]==='REST'){ d.setDate(d.getDate()-1); continue; } // rest days don't break streak
+    if(scheduledDayFor(k)==='REST'){ d.setDate(d.getDate()-1); continue; } // rest days don't break streak
     if(have.has(k)) n++; else if(i>0) break; // allow today to be not-yet-done
     d.setDate(d.getDate()-1);
   }
@@ -7341,6 +7441,11 @@ function agValidateFix(fx){
     return {type:'swapEx', payload:{from:String(p.from), to:String(p.to)}};
   }
   if(fx.type==='schedule'){
+    // A day-of-week map is meaningless once a rotating cycle is active \u2014 currentDayKey()
+    // ignores S.schedule entirely in cycle mode, so silently accepting this would let an
+    // agent "successfully" apply a change that has zero effect. Reject it outright instead
+    // of applying something inert; cycle-mode schedule edits are manual, via Settings.
+    if(scheduleMode()==='cycle') return null;
     const m = p.map||{}; const out = {};
     for(let d=0; d<7; d++){
       const v = m[d] !== undefined ? m[d] : m[String(d)];
@@ -7413,8 +7518,13 @@ function agReject(pid){
 
 /* ---- context handed to the agents ---- */
 function agContext(){
-  const sc = Object.keys(S.schedule||{}).sort().map(d=>
-    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]+'='+S.schedule[d]).join(', ');
+  const sc = scheduleMode()==='cycle'
+    ? 'ROTATING CYCLE (repeats every '+cyclePattern().length+' days, independent of the calendar day \u2014 do NOT describe this in terms of weekdays): '+
+      cyclePattern().map((d,i)=>'day '+(i+1)+'='+d).join(', ')+
+      '. Anchor date '+S.cycleSchedule.anchor+'. Today is day '+(cyclePosition(todayKey())+1)+' of the cycle ('+currentDayKey()+'). '+
+      'You cannot propose a schedule fix while cycle mode is active \u2014 changes here are manual, via Settings.'
+    : Object.keys(S.schedule||{}).sort().map(d=>
+        ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]+'='+S.schedule[d]).join(', ');
   const splitTxt = Object.keys(S.split).map(k=>
     k+' ('+S.split[k].name+'): '+(S.split[k].exercises||[]).map(exName).join(', ')).join('\n');
   const ov = invState().overrides;
@@ -7481,7 +7591,7 @@ async function agRunAll(manual){
     '  {"type":"deload","payload":{}}\n'+
     '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}\n'+
     '  {"type":"swapEx","payload":{"from":"...","to":"..."}}\n'+
-    '  {"type":"schedule","payload":{"map":{"0":"REST","1":"D1","2":"D2","3":"D3","4":"D4","5":"D5","6":"REST"}}}\n'+
+    '  {"type":"schedule","payload":{"map":{"0":"REST","1":"D1","2":"D2","3":"D3","4":"D4","5":"D5","6":"REST"}}}  \u2014 ONLY valid if CURRENT SCHEDULE below is day-of-week mode; discarded otherwise\n'+
     'ZULU should rarely have a fix of its own; its job is the brief and flagging conflicts between the others, '+
     'almost always via summary rather than proposals.\n'+
     'Cap: at most 2 proposals per agent. Fewer is better \u2014 most nights, most agents should have zero. '+
