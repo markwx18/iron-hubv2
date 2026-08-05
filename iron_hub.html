@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-05-v5a">
+<meta name="ironhub-build" content="2026-08-05-v5b">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -49,8 +49,7 @@
     padding:calc(env(safe-area-inset-top) + 10px) 16px 10px; display:flex; align-items:center; gap:12px;}
   .logo-mark{width:18px; height:18px; border:2px solid var(--amber); border-radius:4px; position:relative; transform:rotate(45deg); flex:none;}
   .logo-mark::after{content:""; position:absolute; inset:3.5px; background:var(--amber); border-radius:1px;}
-  .brand-txt{font-family:var(--disp); font-weight:700; font-size:19px; letter-spacing:.03em; text-transform:uppercase; line-height:1;}
-  .brand-txt small{display:block; font-family:var(--mono); font-size:9px; letter-spacing:.18em; color:var(--dim); margin-top:2px; text-transform:uppercase; font-weight:400;}
+  .brand-txt{font-family:var(--disp); font-weight:700; font-size:19px; letter-spacing:.03em; text-transform:uppercase; line-height:1; position:relative; top:1px;}
   .topbar .spacer{flex:1;}
 
   .modeswitch{display:flex; gap:0; background:var(--base); border:1px solid var(--line2); border-radius:4px; overflow:hidden; flex:none;}
@@ -721,7 +720,6 @@
   @media(max-width:360px){
     .topbar{gap:8px; padding-left:12px; padding-right:12px;}
     .brand-txt{font-size:17px; min-width:0;}
-    .brand-txt small{letter-spacing:.1em;}
     .modeswitch button{padding:8px 10px; font-size:13px;}
   }
   /* ===== OPERATIONS / AGENTS ===== */
@@ -808,7 +806,7 @@
 
   <div class="topbar">
     <span class="logo-mark"></span>
-    <div class="brand-txt">Iron Hub<small>Vanguard · Newburyport</small></div>
+    <div class="brand-txt">Iron Hub</div>
     <div class="spacer"></div>
     <div class="modeswitch">
       <button id="mLive" class="live on" onclick="setMode('live')"><span class="pdot"></span>Live</button>
