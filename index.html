@@ -49,8 +49,7 @@
     padding:calc(env(safe-area-inset-top) + 10px) 16px 10px; display:flex; align-items:center; gap:12px;}
   .logo-mark{width:18px; height:18px; border:2px solid var(--amber); border-radius:4px; position:relative; transform:rotate(45deg); flex:none;}
   .logo-mark::after{content:""; position:absolute; inset:3.5px; background:var(--amber); border-radius:1px;}
-  .brand-txt{font-family:var(--disp); font-weight:700; font-size:19px; letter-spacing:.03em; text-transform:uppercase; line-height:1;}
-  .brand-txt small{display:block; font-family:var(--mono); font-size:9px; letter-spacing:.18em; color:var(--dim); margin-top:2px; text-transform:uppercase; font-weight:400;}
+  .brand-txt{font-family:var(--disp); font-weight:700; font-size:19px; letter-spacing:.03em; text-transform:uppercase; line-height:1; position:relative; top:1px;}
   .topbar .spacer{flex:1;}
 
   .modeswitch{display:flex; gap:0; background:var(--base); border:1px solid var(--line2); border-radius:4px; overflow:hidden; flex:none;}
@@ -141,6 +140,10 @@
   .sd-ex .nm{flex:1; min-width:120px;}
   .inc-presets{display:flex; gap:3px;} .inc-presets button{font-family:var(--mono); font-size:10px; padding:4px 7px; border:1px solid var(--line2); background:var(--base); color:var(--muted); border-radius:2px;}
   .inc-presets button.sel{border-color:var(--amber); color:var(--amber);}
+  .sd-ex-home{display:none; gap:6px; padding:0 0 8px 22px; flex-wrap:wrap;}
+  .sd-ex-home.open{display:flex;}
+  .sd-ex-home select,.sd-ex-home input{font-family:var(--mono); font-size:11px; padding:4px 7px; border:1px solid var(--line2); background:var(--base); color:var(--text); border-radius:2px;}
+  .sd-ex-home input{flex:1; min-width:120px;}
   .ord{background:none; border:1px solid var(--line2); color:var(--muted); border-radius:2px; padding:4px 8px; font-size:11px; font-family:var(--mono);}
 
   .hist{border:1px solid var(--line); border-radius:4px; margin:8px 0; overflow:hidden;}
@@ -717,7 +720,6 @@
   @media(max-width:360px){
     .topbar{gap:8px; padding-left:12px; padding-right:12px;}
     .brand-txt{font-size:17px; min-width:0;}
-    .brand-txt small{letter-spacing:.1em;}
     .modeswitch button{padding:8px 10px; font-size:13px;}
   }
   /* ===== OPERATIONS / AGENTS ===== */
@@ -804,7 +806,7 @@
 
   <div class="topbar">
     <span class="logo-mark"></span>
-    <div class="brand-txt">Iron Hub<small>Vanguard · Newburyport</small></div>
+    <div class="brand-txt">Iron Hub</div>
     <div class="spacer"></div>
     <div class="modeswitch">
       <button id="mLive" class="live on" onclick="setMode('live')"><span class="pdot"></span>Live</button>
@@ -927,6 +929,8 @@ const DEFAULT_STATE = {
   split: JSON.parse(JSON.stringify(DEFAULT_SPLIT)),
   schedule: {1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6',0:'REST'}, // JS getDay(): 0=Sun
   overrideDay: null,           // {date:'YYYY-MM-DD', day:'D2'}
+  homeToday: null,             // {date:'YYYY-MM-DD'} — auto-expires, same pattern as overrideDay
+  homeEquipment: {dumbbells:[2,5,8,12,15,20,30,40,50], kettlebells:[18,26,35,44,53], hasBarbellRackBench:true, hasRower:true, hasBike:true},
   logs: [],                    // {id, date, day, entries:[{exercise, sets:[{w,r}]}]}
   weights: [],                 // {date, lbs}
   nutrition: [],               // {date, cals, protein}
@@ -1106,6 +1110,16 @@ function currentDayKey(){
   if(S.overrideDay && S.overrideDay.date===t) return S.overrideDay.day;
   return scheduledDayFor(t);
 }
+/* HOME mode: a same-day-only toggle, same expiry pattern as overrideDay. Does not
+   pick a different day — it just changes how whatever day was already going to
+   run gets built (substitutions/skips/equipment rounding). */
+function homeActiveToday(){
+  return !!(S.homeToday && S.homeToday.date===todayKey());
+}
+function toggleHomeToday(){
+  S.homeToday = homeActiveToday() ? null : {date:todayKey()};
+  save(); renderLive();
+}
 function dayColor(d){ return (S.split[d] && S.split[d].hex) || '#8d909a'; }
 function setAccent(){
   const d = currentDayKey();
@@ -1175,6 +1189,43 @@ function isNoBackoff(name){
   }
   return false;
 }
+/* HOME mode: per-exercise skip/substitute, same lookup shape as isMaxed/isNoBackoff.
+   Manual, not auto-guessed — exercise names are free text (his own split), so
+   pattern-matching a substitute reliably isn't realistic. */
+function homeSkipFor(name){
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  for(const dk in src){
+    for(const x of (src[dk].exercises||[])){
+      if(typeof x === 'object' && exName(x) === name && x.homeSkip) return true;
+    }
+  }
+  return false;
+}
+function homeSubFor(name){
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  for(const dk in src){
+    for(const x of (src[dk].exercises||[])){
+      if(typeof x === 'object' && exName(x) === name && x.homeSub) return x.homeSub;
+    }
+  }
+  return null;
+}
+/* Snap a target weight to the nearest value actually available in an equipment
+   list (dumbbells/kettlebells come in fixed increments, not 5-lb plate math).
+   Ties round up; out-of-range targets clamp to the nearest end rather than
+   being left un-rounded. */
+function roundToEquipList(target, list){
+  if(!list || !list.length) return target;
+  const sorted = [...list].sort((a,b)=>a-b);
+  if(target <= sorted[0]) return sorted[0];
+  if(target >= sorted[sorted.length-1]) return sorted[sorted.length-1];
+  let best = sorted[0], bestDiff = Math.abs(target-best);
+  for(const v of sorted){
+    const diff = Math.abs(target-v);
+    if(diff < bestDiff || (diff === bestDiff && v > best)){ best = v; bestDiff = diff; }
+  }
+  return best;
+}
 function backoffWeightFor(nm, topW){
   if(!topW || topW<=0) return null;
   if(!isStrMode(nm)) return null;          // strength lifts only
@@ -1217,6 +1268,58 @@ function toggleMaxed(dk,i){
     });
   }
   save(); refreshSplitEditor();
+}
+/* HOME mode per-exercise control: unchanged (already home-compatible, e.g. barbell/
+   rack/bench work) / skip at home (shorter session, not a forced awkward substitute) /
+   substitute (name + equipment type, rounded to the equipment list at build time).
+   homeSkip and homeSub are mutually exclusive on the same exercise. Same cross-day
+   propagation shape as toggleMaxed/toggleNoBackoff — the same exercise can appear
+   on multiple split days and the mapping should stay consistent everywhere. */
+function setHomeMode(dk,i,mode){
+  const list = S.split[dk].exercises;
+  if(typeof list[i] !== 'object') list[i] = {name:String(list[i]), inc:incFor(String(list[i]))};
+  const o = list[i];
+  if(mode==='skip'){ o.homeSkip = true; o.homeSub = null; }
+  else if(mode==='sub'){ o.homeSkip = false; o.homeSub = o.homeSub || {name:'', equip:'db'}; }
+  else { o.homeSkip = false; o.homeSub = null; }
+  const nm = exName(o);
+  for(const d in S.split){
+    (S.split[d].exercises||[]).forEach((x,j)=>{
+      if(typeof x === 'object' && exName(x)===nm){ x.homeSkip = o.homeSkip; x.homeSub = o.homeSub ? Object.assign({}, o.homeSub) : null; }
+      else if(typeof x !== 'object' && String(x)===nm){
+        S.split[d].exercises[j] = {name:nm, inc:incFor(nm), homeSkip:o.homeSkip, homeSub: o.homeSub ? Object.assign({}, o.homeSub) : null};
+      }
+    });
+  }
+  save(); refreshSplitEditor();
+}
+function setHomeSubName(dk,i,name){
+  const o = ensureObj(dk,i);
+  if(!o.homeSub) o.homeSub = {name:'', equip:'db'};
+  o.homeSub.name = name.trim();
+  const nm = exName(o);
+  for(const d in S.split){
+    (S.split[d].exercises||[]).forEach(x=>{
+      if(typeof x === 'object' && exName(x)===nm && x.homeSub) x.homeSub.name = o.homeSub.name;
+    });
+  }
+  save();
+}
+function setHomeSubEquip(dk,i,equip){
+  const o = ensureObj(dk,i);
+  if(!o.homeSub) o.homeSub = {name:'', equip:'db'};
+  o.homeSub.equip = equip;
+  const nm = exName(o);
+  for(const d in S.split){
+    (S.split[d].exercises||[]).forEach(x=>{
+      if(typeof x === 'object' && exName(x)===nm && x.homeSub) x.homeSub.equip = o.homeSub.equip;
+    });
+  }
+  save();
+}
+function toggleSdExHome(dk,i){
+  const el = document.getElementById('sdhome-'+dk+'-'+i);
+  if(el) el.classList.toggle('open');
 }
 function sessionAllEasy(session){
   return session.sets.length>0 && session.sets.every(s=>s.e==='easy');
@@ -1829,10 +1932,12 @@ const PR_LIFTS = {
   'Barbell Bench Press': {milestones:[95,115,135,155,185,205,225,245], capPerWeek:1.75},
   'Barbell Back Squat':  {milestones:[135,185,225,275,315,365], capPerWeek:2.5}
 };
-function e1rmSeries(ex){
+function e1rmSeries(ex, opts){
+  const excludeHome = opts && opts.excludeHome;
   const pts = [];
   [...S.logs].sort((a,b)=>a.date.localeCompare(b.date)).forEach(l=>{
     if(l.deload) return; // exclude deload weeks from strength trend
+    if(excludeHome && l.home) return; // HOME sessions run lighter/shorter by design — opt-in exclusion for Investigation
     const e = l.entries.find(en=>en.exercise===ex);
     if(!e) return;
     let best = 0;
@@ -2423,7 +2528,7 @@ async function callClaude(messages, system, maxTokens){
 }
 function trainingContext(){
   const recent = [...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
-  const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+((S.split[l.day]||{}).name||'')+']\n'+
+  const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+((S.split[l.day]||{}).name||'')+(l.home?' · HOME':'')+']\n'+
     l.entries.map(e=>'  '+e.exercise+': '+summ(e.sets)).join('\n')).join('\n');
   const wts = S.weights.slice(-10).map(w=>w.date+': '+w.lbs+' lb').join(', ');
   const nut = S.nutrition.slice(-7).map(n=>n.date+': '+n.cals+' cal / '+n.protein+'g protein').join(', ');
@@ -3238,6 +3343,8 @@ function renderSettings(){
     '<p class="small">Tap a day to expand. Rename or reorder exercises, set each one\u2019s weight increment (what the engine adds when you progress), add or remove exercises.</p>'+
     '<div id="sdWrap" style="margin-top:10px">'+splitEditorHTML()+'</div></div>';
 
+  html += homeEquipmentCardHTML();
+
   html += '<h2>App Version</h2><div class="card">'+
     '<p class="small">Build <span class="mono" style="color:var(--text)">'+esc(appBuild())+'</span>'+
     (_updLastCheck ? ' \u00b7 last checked '+new Date(_updLastCheck).toLocaleTimeString() : '')+'</p>'+
@@ -3332,6 +3439,40 @@ function scheduleRow(i, name){
   Object.keys(S.split).forEach(k=>{ opts += '<option value="'+k+'"'+(S.schedule[i]===k?' selected':'')+'>'+k+' — '+esc(S.split[k].name)+'</option>'; });
   return '<div class="row" style="margin-bottom:6px;align-items:center"><div style="flex:0 0 110px" class="small"><b>'+name+'</b></div>'+
     '<div><select onchange="S.schedule['+i+']=this.value;save();setAccent();renderHeader();renderToday();">'+opts+'</select></div></div>';
+}
+function homeEquipInit(){
+  if(!S.homeEquipment) S.homeEquipment = {dumbbells:[2,5,8,12,15,20,30,40,50], kettlebells:[18,26,35,44,53], hasBarbellRackBench:true, hasRower:true, hasBike:true};
+  return S.homeEquipment;
+}
+function homeEquipmentCardHTML(){
+  const he = homeEquipInit();
+  return '<h2>Home Equipment</h2><div class="card">'+
+    '<p class="small">Used when “Train at home today” is on — substituted exercises round their suggested weight to the nearest value in these lists instead of normal plate increments.</p>'+
+    '<div style="margin-top:8px"><label>Dumbbells (lb, comma-separated)</label>'+
+    '<input type="text" id="heDb" value="'+esc((he.dumbbells||[]).join(', '))+'"></div>'+
+    '<div style="margin-top:8px"><label>Kettlebells (lb, comma-separated)</label>'+
+    '<input type="text" id="heKb" value="'+esc((he.kettlebells||[]).join(', '))+'"></div>'+
+    '<label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
+    '<input type="checkbox" style="width:auto" id="heRack" '+(he.hasBarbellRackBench?'checked':'')+'> Have barbell + rack + bench at home</label>'+
+    '<label style="margin-top:6px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
+    '<input type="checkbox" style="width:auto" id="heRower" '+(he.hasRower?'checked':'')+'> Have a rower at home</label>'+
+    '<label style="margin-top:6px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
+    '<input type="checkbox" style="width:auto" id="heBike" '+(he.hasBike?'checked':'')+'> Have a bike at home</label>'+
+    '<div style="margin-top:10px"><button class="btn sm" onclick="saveHomeEquipment()">Save</button> <span class="ok small" id="heMsg"></span></div></div>';
+}
+function parseWeightList(str){
+  return (str||'').split(',').map(s=>parseFloat(s.trim())).filter(n=>!isNaN(n)&&n>0)
+    .filter((n,i,arr)=>arr.indexOf(n)===i).sort((a,b)=>a-b);
+}
+function saveHomeEquipment(){
+  const he = homeEquipInit();
+  he.dumbbells = parseWeightList($('#heDb').value);
+  he.kettlebells = parseWeightList($('#heKb').value);
+  he.hasBarbellRackBench = $('#heRack').checked;
+  he.hasRower = $('#heRower').checked;
+  he.hasBike = $('#heBike').checked;
+  save(); renderSettings();
+  const m=$('#heMsg'); if(m){ m.textContent='✓ saved'; setTimeout(()=>{const m2=$('#heMsg'); if(m2) m2.textContent='';},1500); }
 }
 function saveSettings(){
   S.settings.apiKey = $('#apiKey').value.trim();
@@ -3642,8 +3783,11 @@ function welcomeHTML(){
     cta = '<button class="btn primary sm" onclick="liveStartSession()">'+(already?'Log again':'Start session')+'</button>'+
           '<button class="btn ghost sm" onclick="setMode(\'review\')">Review stats</button>';
   }
+  const homeOn = homeActiveToday();
+  const homeToggle = '<button class="btn ghost sm" style="margin-top:8px'+(homeOn?';color:var(--good);border-color:var(--good);font-weight:800':'')+'" onclick="toggleHomeToday()" title="Substitutes/skips per exercise from the split editor, rounds weights to your home dumbbells/kettlebells, and keeps Investigation from misreading a lighter session as a decline.">'+
+    (homeOn?'✓ Training at home today':'Train at home today')+'</button>';
   return '<div class="welcome"><div class="greet">'+greetWord()+', <span class="accent">'+esc(name)+'</span></div>'+
-    '<div class="submsg">'+sub+'</div>'+coachPlanBannerHTML()+'<div class="wcta">'+cta+'</div></div>';
+    '<div class="submsg">'+sub+'</div>'+coachPlanBannerHTML()+'<div class="wcta">'+cta+'</div>'+homeToggle+'</div>';
 }
 
 /* ===================== LIVE SESSION ENGINE ===================== */
@@ -3658,7 +3802,7 @@ function loadLiveDraft(){
 function saveLiveDraft(){ if(live) localStorage.setItem(LIVE_KEY, JSON.stringify(live)); }
 function clearLiveDraft(){ localStorage.removeItem(LIVE_KEY); }
 
-function buildOneLiveExercise(nm){
+function buildOneLiveExercise(nm, homeEquipList){
   const tier = currentReadinessTier();
   if(deloadActive()){
     const dex = deloadExercise(nm);
@@ -3679,22 +3823,47 @@ function buildOneLiveExercise(nm){
   }
   let planned = (rec.sets||[]).length||3;
   if(liveTrimVol){ planned = Math.max(2, planned-1); rec.detail = (rec.detail||'')+' Volume trimmed for low readiness \u2014 quality over quantity today.'; }
+  let backoffW = backoffWeightFor(nm, +firstW||0);
+  // HOME mode: the normal progression engine above still computes a suggested weight
+  // (and backoff) \u2014 it just gets snapped to what's actually on hand (dumbbells/
+  // kettlebells come in fixed increments, not 5-lb plate math) instead of the
+  // exercise's usual increment.
+  if(homeEquipList && homeEquipList.length){
+    if(firstW!=='' && firstW!=null) firstW = roundToEquipList(+firstW, homeEquipList);
+    if(backoffW) backoffW = roundToEquipList(backoffW, homeEquipList);
+  }
   return {
     name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
     targetW:firstW, lo:lo, hi:hi,
-    backoffW: backoffWeightFor(nm, +firstW||0),
+    backoffW: backoffW,
     recTarget:rec.target, recDetail:rec.detail,
     planned:planned,
     sets:[], done:false, _decision:decision,
     advW:firstW, advLo:lo, advHi:hi, advTag:'', advCls:'', advMsg:rec.detail,
-    _swapped:false
+    _swapped:false,
+    _homeEquipList: (homeEquipList && homeEquipList.length) ? homeEquipList : null
   };
 }
 function buildLiveExercises(dk){
   clearExpiredCoachDayPlan();
   const plan = coachDayPlanFor(dk);
-  const names = plan ? plan.exercises.slice() : dayExNames(dk);
-  const built = names.map(nm=>buildOneLiveExercise(nm));
+  let names = plan ? plan.exercises.slice() : dayExNames(dk);
+  const homeEquipByName = {};
+  if(homeActiveToday()){
+    const mapped = [];
+    names.forEach(nm=>{
+      if(homeSkipFor(nm)) return; // omitted from a HOME session, shorter workout not a forced substitute
+      const sub = homeSubFor(nm);
+      if(sub && sub.name){
+        mapped.push(sub.name);
+        homeEquipByName[sub.name] = (homeEquipInit()[sub.equip==='kb'?'kettlebells':'dumbbells']) || [];
+      } else {
+        mapped.push(nm); // unchanged, already home-compatible (barbell/rack/bench work)
+      }
+    });
+    names = mapped;
+  }
+  const built = names.map(nm=>buildOneLiveExercise(nm, homeEquipByName[nm]));
   // a today-only plan is consumed once the session is built for that day
   if(plan){ S.coachDayPlan = null; save(false); }
   return built;
@@ -3710,7 +3879,7 @@ function startLiveForDay(dk){
 }
 function _startLiveNow(dk, trim){
   liveTrimVol = !!trim;
-  live = { date:todayKey(), day:dk, startedAt:Date.now(), exercises:buildLiveExercises(dk), curIdx:0, trimmed:!!trim };
+  live = { date:todayKey(), day:dk, startedAt:Date.now(), exercises:buildLiveExercises(dk), curIdx:0, trimmed:!!trim, home:homeActiveToday() };
   liveTrimVol = false;
   liveActiveIdx = 0;
   saveLiveDraft();
@@ -3738,7 +3907,8 @@ function intraAdvice(ex){
   const r=+last.r||0, e=last.e, w=+last.w||0;
   const lo=ex.lo, hi=ex.hi, inc=incForExercise(ex.name);
   if(e==='fail' || (r>0 && r<lo)){
-    const dw=Math.max(w-inc,inc);
+    let dw=Math.max(w-inc,inc);
+    if(ex._homeEquipList) dw = roundToEquipList(dw, ex._homeEquipList);
     return {w:dw, lo:lo, hi:hi, tag:'Back off', cls:'back', msg:'That set fell short — drop to '+dw+' lb and keep the reps clean.'};
   }
   // Top set is done \u2014 drop to the backoff load for the remaining sets. Deliberately placed
@@ -4055,6 +4225,7 @@ function endLiveSession(){
   const isDeload = deloadActive() || live.exercises.some(e=>e._deload);
   const logRec = {id:Date.now(), date:todayKey(), day:live.day, entries, decisions};
   if(isDeload) logRec.deload = true;
+  if(live.home) logRec.home = true;
   S.logs.push(logRec);
   save();
   // compute summary
@@ -4689,6 +4860,10 @@ function splitEditorHTML(){
       const str=typeof x==='object' && x.repMode==='str';
       const mx=typeof x==='object' && !!x.maxed;
       const nb=typeof x==='object' && !!x.noBackoff;
+      const hSkip=typeof x==='object' && !!x.homeSkip;
+      const hSub=typeof x==='object' ? x.homeSub : null;
+      const hActive = hSkip || !!hSub;
+      const hMode = hSkip ? 'skip' : (hSub ? 'sub' : 'unchanged');
       h+='<div class="sd-ex" data-dk="'+dk+'" data-i="'+i+'">'+
         '<span class="drag-h" title="Drag to reorder">\u2630</span>'+
         '<input class="nm" value="'+esc(nm)+'" onchange="renameEx(\''+dk+'\','+i+',this.value)">'+
@@ -4699,9 +4874,24 @@ function splitEditorHTML(){
         '<button class="ord ff-toggle" style="'+(str?'color:var(--violet);border-color:var(--violet);font-weight:800':'')+'" onclick="toggleRepMode(\''+dk+'\','+i+')">'+(str?'STR':'HYP')+'</button>'+
         '<button class="ord ff-toggle" title="Maxed out: no heavier setting on this machine. Progression switches to reps instead of load, and stalled-weight warnings are suppressed." style="'+(mx?'color:var(--amber);border-color:var(--amber);font-weight:800':'')+'" onclick="toggleMaxed(\''+dk+'\','+i+')">MAX</button>'+
         (str ? '<button class="ord ff-toggle" title="Backoff sets: strength lifts run the first set heavy, then ~10% lighter for the rest. Toggle this on to keep every set at the same weight instead." style="'+(nb?'color:var(--red);border-color:var(--red);font-weight:800':'')+'" onclick="toggleNoBackoff(\''+dk+'\','+i+')">'+(nb?'NOBK':'BACK')+'</button>' : '')+
+        '<button class="ord ff-toggle" title="Home mode: what this exercise becomes on a home session \u2014 unchanged, skipped, or substituted with a rounded dumbbell/kettlebell weight." style="'+(hActive?'color:var(--good);border-color:var(--good);font-weight:800':'')+'" onclick="toggleSdExHome(\''+dk+'\','+i+')">HOME</button>'+
         '<button class="ord" title="Move up" onclick="moveEx(\''+dk+'\','+i+',-1)">\u2191</button>'+
         '<button class="ord" title="Move down" onclick="moveEx(\''+dk+'\','+i+',1)">\u2193</button>'+
         '<button class="xx" title="Delete" onclick="delEx(\''+dk+'\','+i+')">\u00d7</button>'+
+      '</div>'+
+      '<div class="sd-ex-home" id="sdhome-'+dk+'-'+i+'">'+
+        '<select onchange="setHomeMode(\''+dk+'\','+i+',this.value)">'+
+          '<option value="unchanged"'+(hMode==='unchanged'?' selected':'')+'>Unchanged (already home-compatible)</option>'+
+          '<option value="skip"'+(hMode==='skip'?' selected':'')+'>Skip at home</option>'+
+          '<option value="sub"'+(hMode==='sub'?' selected':'')+'>Substitute\u2026</option>'+
+        '</select>'+
+        (hMode==='sub' ? (
+          '<input type="text" placeholder="Substitute name" value="'+esc(hSub&&hSub.name||'')+'" onchange="setHomeSubName(\''+dk+'\','+i+',this.value)">'+
+          '<select onchange="setHomeSubEquip(\''+dk+'\','+i+',this.value)">'+
+            '<option value="db"'+((!hSub||hSub.equip!=='kb')?' selected':'')+'>Dumbbell</option>'+
+            '<option value="kb"'+(hSub&&hSub.equip==='kb'?' selected':'')+'>Kettlebell</option>'+
+          '</select>'
+        ) : '')+
       '</div>';
     });
     h+='<div style="padding:8px 0 2px"><button class="btn ghost sm" onclick="addEx(\''+dk+'\')">+ add exercise</button></div>';
@@ -5387,7 +5577,7 @@ function invLastWorkingWeight(nm){
 }
 
 function investigateLift(nm){
-  const pts = e1rmSeries(nm);
+  const pts = e1rmSeries(nm, {excludeHome:true});
   const findings = [];
   if(pts.length < 4){
     return {severity:null, key:'lift:'+nm, title:nm, findings:['Only '+pts.length+' logged session'+(pts.length===1?'':'s')+' \u2014 not enough history to judge a trend.'], fix:null};
