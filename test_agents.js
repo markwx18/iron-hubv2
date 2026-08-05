@@ -972,6 +972,149 @@ setTimeout(async () => {
   ok('never runs without an API key', ran === false);
   w.agRunAll = realRun;
 
+  console.log('=== HOME MODE ===');
+  ok('roundToEquipList exists', ev('typeof roundToEquipList') === 'function');
+  ok('homeActiveToday exists', ev('typeof homeActiveToday') === 'function');
+  ok('toggleHomeToday exists', ev('typeof toggleHomeToday') === 'function');
+  ok('homeSkipFor exists', ev('typeof homeSkipFor') === 'function');
+  ok('homeSubFor exists', ev('typeof homeSubFor') === 'function');
+  ok('setHomeMode exists', ev('typeof setHomeMode') === 'function');
+
+  // --- roundToEquipList: boundary values ---
+  ok('rounds down to nearer neighbor', ev('roundToEquipList(23, [10,20,30])') === 20);
+  ok('rounds up to nearer neighbor', ev('roundToEquipList(27, [10,20,30])') === 30);
+  ok('tie rounds up rather than left un-rounded', ev('roundToEquipList(25, [20,30])') === 30);
+  ok('exact match returns itself', ev('roundToEquipList(20, [10,20,30])') === 20);
+  ok('clamps below the list minimum', ev('roundToEquipList(1, [10,20,30])') === 10);
+  ok('clamps above the list maximum', ev('roundToEquipList(999, [10,20,30])') === 30);
+  ok('empty list leaves target un-rounded (no equipment configured)', ev('roundToEquipList(23, [])') === 23);
+
+  // --- S.homeToday: auto-expiry, same pattern as overrideDay ---
+  ev("S.homeToday = {date:'2020-01-01'};");
+  ok('a past date does not count as active today', ev('homeActiveToday()') === false);
+  ev("S.homeToday = {date: todayKey()};");
+  ok('a current date counts as active', ev('homeActiveToday()') === true);
+  ev("S.homeToday = null;");
+  ok('cleared toggle is inactive', ev('homeActiveToday()') === false);
+
+  // --- split editor round-trip: homeSkip/homeSub alongside MAXED/FORM/BACK on the same exercise ---
+  ev("S.deload = null;"); // neutralize any deload state left by earlier sections
+  const hDay = ev("Object.keys(S.split)[0]");
+  ev("S.split['" + hDay + "'].exercises.push({name:'Home Test Squat', inc:10, maxed:true, formFocus:true});");
+  const hIdx = ev("S.split['" + hDay + "'].exercises.length - 1");
+
+  ev("setHomeMode('" + hDay + "'," + hIdx + ",'sub')");
+  ev("setHomeSubName('" + hDay + "'," + hIdx + ",'Home Test DB Squat')");
+  ev("setHomeSubEquip('" + hDay + "'," + hIdx + ",'db')");
+  let hEx = ev("S.split['" + hDay + "'].exercises[" + hIdx + "]");
+  ok('homeSub name round-trips', hEx.homeSub && hEx.homeSub.name === 'Home Test DB Squat', JSON.stringify(hEx));
+  ok('homeSub equip round-trips', hEx.homeSub && hEx.homeSub.equip === 'db', JSON.stringify(hEx));
+  ok('homeSkip stays false while substituting', hEx.homeSkip === false);
+  ok('MAXED survives the HOME edit', hEx.maxed === true);
+  ok('FORM survives the HOME edit', hEx.formFocus === true);
+
+  ev("setHomeMode('" + hDay + "'," + hIdx + ",'skip')");
+  hEx = ev("S.split['" + hDay + "'].exercises[" + hIdx + "]");
+  ok('switching to skip sets homeSkip', hEx.homeSkip === true);
+  ok('switching to skip clears homeSub (mutually exclusive)', !hEx.homeSub);
+  ok('MAXED still intact after switching to skip', hEx.maxed === true);
+  ok('FORM still intact after switching to skip', hEx.formFocus === true);
+  ok('homeSkipFor reflects the split state', ev("homeSkipFor('Home Test Squat')") === true);
+
+  // cross-day propagation, same shape as toggleMaxed/toggleNoBackoff (and promotes a legacy string entry)
+  const hDay2 = ev("Object.keys(S.split)[1]");
+  ev("S.split['" + hDay2 + "'].exercises.push('Home Test Squat');");
+  ev("setHomeMode('" + hDay + "'," + hIdx + ",'sub')");
+  ev("setHomeSubName('" + hDay + "'," + hIdx + ",'Home Test DB Squat')");
+  ev("setHomeSubEquip('" + hDay + "'," + hIdx + ",'db')");
+  const propCount = ev(`(function(){
+    var n=0; for(var d in S.split){ (S.split[d].exercises||[]).forEach(function(x){
+      if(typeof x==='object' && x.name==='Home Test Squat' && x.homeSub && x.homeSub.name==='Home Test DB Squat') n++; }); } return n; })()`);
+  ok('homeSub propagates across every day the exercise appears on', propCount === 2, 'count=' + propCount);
+
+  // register the substitute itself as a real strength-mode exercise on a different day,
+  // so recommend()/classifyDecision()/backoffWeightFor() have real history + flags to read
+  ev("S.split['" + hDay2 + "'].exercises.push({name:'Home Test DB Squat', inc:5, repMode:'str'});");
+  ev("S.split['" + hDay + "'].exercises.push({name:'Home Test Skip Ex', inc:5, homeSkip:true});");
+
+  // one prior session at a non-equipment weight so recommend() holds it unchanged
+  // (reps within the 3–6 str range, below the ceiling — target stays at topW)
+  ev(`(function(){
+    S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='Home Test DB Squat'; }); });
+    S.logs.push({id:1, date:'2026-01-01', day:'${hDay2}', entries:[{exercise:'Home Test DB Squat', sets:[{w:37, r:4}]}]});
+  })();`);
+
+  ok('sanity: not in a deload week', ev('deloadActive()') === false);
+  ev("S.homeToday = {date: todayKey()};");
+
+  const builtHomeRes = ev(`(function(){
+    try{ return {ok:true, list: buildLiveExercises('${hDay}')}; }
+    catch(e){ return {ok:false, err:e.message}; }
+  })()`);
+  ok('HOME session builds without throwing', builtHomeRes.ok, builtHomeRes.err);
+  const builtHomeNames = builtHomeRes.ok ? builtHomeRes.list.map(e => e.name) : [];
+  ok('homeSkip exercise is omitted, not present-but-broken', builtHomeNames.indexOf('Home Test Skip Ex') === -1, JSON.stringify(builtHomeNames));
+  ok('other real exercises on the day still build', builtHomeNames.length > 0);
+  ok('substituted slot shows the substitute name, not the original', builtHomeNames.indexOf('Home Test Squat') === -1 && builtHomeNames.indexOf('Home Test DB Squat') >= 0, JSON.stringify(builtHomeNames));
+
+  const dbList = ev('S.homeEquipment.dumbbells');
+  const builtSub = builtHomeRes.ok ? builtHomeRes.list.find(e => e.name === 'Home Test DB Squat') : null;
+  ok('substitute exercise found in the built session', !!builtSub, JSON.stringify(builtHomeNames));
+  if (builtSub) {
+    ok('suggested weight is snapped to the dumbbell list, not left at the raw computed value',
+       dbList.indexOf(+builtSub.targetW) >= 0 && +builtSub.targetW !== 37, 'targetW=' + builtSub.targetW);
+    ok('backoff weight is also snapped to the dumbbell list, not the normal 5 lb increment',
+       dbList.indexOf(+builtSub.backoffW) >= 0 && +builtSub.backoffW !== 35, 'backoffW=' + builtSub.backoffW);
+  }
+
+  // a non-HOME build of the same day must NOT skip/substitute/round anything
+  ev("S.homeToday = null;");
+  const builtGymNames = ev(`buildLiveExercises('${hDay}').map(function(e){ return e.name; })`);
+  ok('outside HOME mode, the skip-flagged exercise still builds normally', builtGymNames.indexOf('Home Test Skip Ex') >= 0, JSON.stringify(builtGymNames));
+  ok('outside HOME mode, the substitute-flagged exercise keeps its own name', builtGymNames.indexOf('Home Test Squat') >= 0 && builtGymNames.indexOf('Home Test DB Squat') === -1, JSON.stringify(builtGymNames));
+
+  // --- endLiveSession log tagging + Investigation carve-out ---
+  ok('e1rmSeries accepts an excludeHome option', ev('typeof e1rmSeries') === 'function');
+  ev(`(function(){
+    S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='Home Decline Test'; }); });
+    var start = new Date('2026-04-01T00:00:00');
+    var weights = [220,210,200,190,180,170];
+    for(var i=0;i<weights.length;i++){
+      var d = new Date(start.getTime() + i*7*86400000);
+      S.logs.push({date:d.toISOString().slice(0,10), home:true, entries:[{exercise:'Home Decline Test', sets:[{w:weights[i],r:8}]}]});
+    }
+  })();`);
+  const hDecline = ev("investigateLift('Home Decline Test')");
+  ok('a home-tagged decline is not flagged', hDecline.severity === null, 'severity=' + hDecline.severity + ' findings=' + JSON.stringify(hDecline.findings));
+
+  // same data, NOT tagged home, must flag as a real decline — proves suppression, not coincidence
+  ev("S.logs.forEach(function(l){ l.entries.forEach(function(e){ if(e.exercise==='Home Decline Test') l.home=false; }); });");
+  const hDecline2 = ev("investigateLift('Home Decline Test')");
+  ok('the same declining data DOES flag when not tagged home', hDecline2.severity === 'red', 'severity=' + hDecline2.severity);
+
+  // endLiveSession itself tags the log record from the live session's own home flag
+  ev(`(function(){
+    live = { date: todayKey(), day:'${hDay2}', startedAt: Date.now(), curIdx:0, trimmed:false, home:true,
+      exercises:[{ name:'Home Session Tag Test', sets:[{w:20,r:8}], done:true }] };
+  })();`);
+  ev('endLiveSession()');
+  const hTaggedLog = ev(`S.logs.slice().reverse().find(function(l){ return l.entries.some(function(e){ return e.exercise==='Home Session Tag Test'; }); })`);
+  ok('endLiveSession tags the log record home:true when the session was HOME', hTaggedLog && hTaggedLog.home === true, JSON.stringify(hTaggedLog));
+
+  // agent context surfaces the HOME tag to DELTA/CHARLIE
+  const hTrainCtx = ev('trainingContext()');
+  ok('trainingContext flags the HOME session for the nightly agents', /HOME/.test(hTrainCtx));
+
+  // cleanup
+  ev(`(function(){
+    S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){
+      return e.exercise==='Home Test DB Squat' || e.exercise==='Home Decline Test' || e.exercise==='Home Session Tag Test'; }); });
+    for(var d in S.split){ S.split[d].exercises = (S.split[d].exercises||[]).filter(function(x){
+      return !(typeof x==='object' && (x.name==='Home Test Squat' || x.name==='Home Test DB Squat' || x.name==='Home Test Skip Ex')); }); }
+    S.homeToday = null;
+    live = null;
+  })();`);
+
   // ============ render smoke ============
   console.log('=== RENDER ===');
   try {
