@@ -1204,10 +1204,55 @@ setTimeout(async () => {
   bpWelcome = ev('welcomeHTML()');
   ok('welcome screen reflects that practice was already logged today', /Bench practice logged/.test(bpWelcome), bpWelcome);
 
+  // ---- agent-managed frequency target (bpFreq) ----
+  const Vbp = ev('agValidateFix');
+  ok('bpFreq valid clamp', JSON.stringify(Vbp({ type: 'bpFreq', payload: { daysPerWeek: 2, pct: 80 } })) === JSON.stringify({ type: 'bpFreq', payload: { daysPerWeek: 2, pct: 80 } }));
+  ok('bpFreq daysPerWeek 0 rejected', Vbp({ type: 'bpFreq', payload: { daysPerWeek: 0, pct: 80 } }) === null);
+  ok('bpFreq daysPerWeek 5 rejected', Vbp({ type: 'bpFreq', payload: { daysPerWeek: 5, pct: 80 } }) === null);
+  ok('bpFreq pct below 60 rejected', Vbp({ type: 'bpFreq', payload: { daysPerWeek: 2, pct: 50 } }) === null);
+  ok('bpFreq pct above 95 rejected', Vbp({ type: 'bpFreq', payload: { daysPerWeek: 2, pct: 96 } }) === null);
+
+  ev('S.benchPracticeFreq = null;');
+  ev('agApplyFix')({ type: 'bpFreq', payload: { daysPerWeek: 2, pct: 80 } });
+  const bpf = ev('S.benchPracticeFreq');
+  ok('bpFreq apply writes target with agent provenance', bpf && bpf.daysPerWeek === 2 && bpf.pct === 80 && bpf.setBy === 'agent', JSON.stringify(bpf));
+
+  // suggested weight derives from tracked Barbell Bench Press working weight, not bench-practice history
+  ev(`(function(){
+    S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='Barbell Bench Press'; }); });
+    S.logs.push({date:'2026-08-01', entries:[{exercise:'Barbell Bench Press', sets:[{w:200,r:5},{w:200,r:5},{w:200,r:5}]}]});
+  })();`);
+  const bpSug = ev('bpSuggestedWeight()');
+  ok('bpSuggestedWeight is 80% of 200 lb, rounded to nearest 5', bpSug === 160, 'got=' + bpSug);
+
+  ev("S.benchPractice = (S.benchPractice||[]).filter(function(e){ return e.date !== todayKey(); });");
+  ev('openBenchPractice()');
+  ok('modal seeds the agent-suggested weight over the last-practice weight', ev("document.getElementById('bp-w-0').value") === '160');
+  const bpModalHtml = ev("document.getElementById('bpBody').innerHTML");
+  ok('modal surfaces the DELTA target line', /DELTA target/.test(bpModalHtml) && /2x\/week/.test(bpModalHtml), bpModalHtml.slice(0, 200));
+  ev('closeBenchPractice()');
+
+  // welcome screen shows this-week progress against the target
+  ev("S.benchPractice = (S.benchPractice||[]).filter(function(e){ return e.date !== todayKey(); });");
+  let bpFreqWelcome = ev('welcomeHTML()');
+  ok('welcome screen shows 0/2 against an active target with nothing logged this week', /Bench Practice \(0\/2 this week\)/.test(bpFreqWelcome), bpFreqWelcome);
+  ev("S.benchPractice.push({date: todayKey(), sets:[{w:160,r:5}]});");
+  bpFreqWelcome = ev('welcomeHTML()');
+  ok('welcome screen shows logged state once today is done, not the frequency counter', /Bench practice logged/.test(bpFreqWelcome));
+
+  // no target set -> old manual behavior is untouched
+  ev('S.benchPracticeFreq = null;');
+  ev("S.benchPractice = (S.benchPractice||[]).filter(function(e){ return e.date !== todayKey(); });");
+  ok('bpSuggestedWeight returns null with no active target', ev('bpSuggestedWeight()') === null);
+  ev('openBenchPractice()');
+  ok('with no target, modal falls back to blank/last-entry seeding (no DELTA target line)', ev("document.getElementById('bpBody').innerHTML").indexOf('DELTA target') === -1);
+  ev('closeBenchPractice()');
+
   // cleanup
   ev(`(function(){
-    S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='BP Separation Test'; }); });
+    S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='BP Separation Test' || e.exercise==='Barbell Bench Press'; }); });
     S.benchPractice = [];
+    S.benchPracticeFreq = null;
     closeBenchPractice();
   })();`);
 
