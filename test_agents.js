@@ -1115,6 +1115,102 @@ setTimeout(async () => {
     live = null;
   })();`);
 
+  console.log('=== BENCH PRACTICE ===');
+  ok('openBenchPractice exists', ev('typeof openBenchPractice') === 'function');
+  ok('saveBenchPractice exists', ev('typeof saveBenchPractice') === 'function');
+  ok('S.benchPractice defaults to an array', Array.isArray(ev('S.benchPractice')));
+
+  // start clean
+  ev("S.benchPractice = (S.benchPractice||[]).filter(function(e){ return e.date !== todayKey(); });");
+
+  // openBenchPractice renders blank rows, no prior session -> no seeded weight
+  ev('openBenchPractice()');
+  ok('bp overlay shown after open', ev("document.getElementById('bpOverlay').classList.contains('show')") === true);
+  ok('first weight input starts blank with no history', ev("document.getElementById('bp-w-0').value") === '');
+
+  // fill 3 sets and save
+  ev(`(function(){
+    document.getElementById('bp-w-0').value = '135'; document.getElementById('bp-r-0').value = '5';
+    document.getElementById('bp-w-1').value = '135'; document.getElementById('bp-r-1').value = '5';
+    document.getElementById('bp-w-2').value = '145'; document.getElementById('bp-r-2').value = '3';
+  })();`);
+  ev('saveBenchPractice()');
+  ok('overlay closes on save', ev("document.getElementById('bpOverlay').classList.contains('show')") === false);
+  let bpToday = ev('bpTodayEntry()');
+  ok('today entry created with the three filled sets', bpToday && bpToday.sets.length === 3, JSON.stringify(bpToday));
+  ok('blank trailing rows are not saved as zero sets', bpToday.sets.every(s => s.w > 0 && s.r > 0), JSON.stringify(bpToday));
+  ok('set values round-trip correctly', bpToday.sets[2].w === 145 && bpToday.sets[2].r === 3, JSON.stringify(bpToday));
+
+  // reopening the same day pre-fills existing sets, not blank
+  ev('openBenchPractice()');
+  ok('reopening same day shows the already-logged first set', ev("document.getElementById('bp-w-0').value") === '135');
+
+  // re-saving with fewer sets replaces (upserts) rather than appending a second entry for today
+  ev(`(function(){
+    document.getElementById('bp-w-0').value = '140'; document.getElementById('bp-r-0').value = '5';
+    for(var si=1; document.getElementById('bp-w-'+si); si++){ document.getElementById('bp-w-'+si).value=''; document.getElementById('bp-r-'+si).value=''; }
+  })();`);
+  ev('saveBenchPractice()');
+  const bpTodayCount = ev("(S.benchPractice||[]).filter(function(e){ return e.date===todayKey(); }).length");
+  ok('saving again upserts today rather than duplicating', bpTodayCount === 1, 'count=' + bpTodayCount);
+  bpToday = ev('bpTodayEntry()');
+  ok('upsert replaced the sets with the new values', bpToday.sets.length === 1 && bpToday.sets[0].w === 140, JSON.stringify(bpToday));
+
+  // saving with everything blank removes today's entry entirely
+  ev('openBenchPractice()');
+  ev(`(function(){ for(var si=0; document.getElementById('bp-w-'+si); si++){ document.getElementById('bp-w-'+si).value=''; document.getElementById('bp-r-'+si).value=''; } })();`);
+  ev('saveBenchPractice()');
+  ok('an all-blank save clears today\'s entry rather than storing an empty one', ev('bpTodayEntry()') === null);
+
+  // seeding: the next-open weight seeds from the last entry once no entry exists for today
+  ev("S.benchPractice = [{date:'2026-01-01', sets:[{w:130,r:5}]}];");
+  ev('openBenchPractice()');
+  ok('first weight input seeds from the last recorded practice session', ev("document.getElementById('bp-w-0').value") === '130');
+  ev('closeBenchPractice()');
+
+  // separation: bench practice sets must never be visible to progression/trend/Investigation code,
+  // which only ever reads S.logs — proven here by an extreme, obviously-would-flag practice weight
+  // that changes nothing about a real declining bench trend.
+  ev(`(function(){
+    S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='BP Separation Test'; }); });
+    var start = new Date('2026-05-01T00:00:00');
+    var weights = [200,190,180,170,160,150];
+    for(var i=0;i<weights.length;i++){
+      var d = new Date(start.getTime() + i*7*86400000);
+      S.logs.push({date: d.toISOString().slice(0,10), entries:[{exercise:'BP Separation Test', sets:[{w:weights[i],r:8}]}]});
+    }
+    S.benchPractice = [{date: todayKey(), sets:[{w:999,r:1}]}]; // wildly out of range, should have zero influence
+  })();`);
+  const bpSepDecline = ev("investigateLift('BP Separation Test')");
+  ok('a real declining lift still flags red even with an unrelated bench-practice entry present', bpSepDecline.severity === 'red', 'severity=' + bpSepDecline.severity);
+  const bpSepE1rm = ev("e1rmSeries('BP Separation Test')");
+  ok('e1rmSeries never picks up bench-practice sets (series length matches S.logs only)', bpSepE1rm.length === 6, 'len=' + bpSepE1rm.length);
+
+  // agent context: informational only, clearly labeled advisory, present when entries exist
+  ev("S.benchPractice = [{date:'2026-06-01', sets:[{w:135,r:5}]}];");
+  let bpCtx = ev('trainingContext()');
+  ok('trainingContext surfaces recent bench-practice sessions for advisory commentary', /BENCH PRACTICE/.test(bpCtx) && /135/.test(bpCtx), bpCtx.slice(0, 50));
+  ok('trainingContext explicitly tells agents not to use it for progression/Investigation/trend calls', /do NOT use this for progression, Investigation, or trend/.test(bpCtx));
+  ev("S.benchPractice = [];");
+  bpCtx = ev('trainingContext()');
+  ok('trainingContext falls back to "none logged" with no bench-practice history', /none logged/.test(bpCtx));
+
+  // welcome screen affordance
+  ev("S.benchPractice = (S.benchPractice||[]).filter(function(e){ return e.date !== todayKey(); });");
+  let bpWelcome = ev('welcomeHTML()');
+  ok('welcome screen offers the Bench Practice entry point', /Bench Practice/.test(bpWelcome));
+  ok('welcome screen keeps it separate from the Train at home today toggle', /Train at home today/.test(bpWelcome) && /Bench Practice/.test(bpWelcome));
+  ev("S.benchPractice = [{date: todayKey(), sets:[{w:135,r:5}]}];");
+  bpWelcome = ev('welcomeHTML()');
+  ok('welcome screen reflects that practice was already logged today', /Bench practice logged/.test(bpWelcome), bpWelcome);
+
+  // cleanup
+  ev(`(function(){
+    S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='BP Separation Test'; }); });
+    S.benchPractice = [];
+    closeBenchPractice();
+  })();`);
+
   // ============ render smoke ============
   console.log('=== RENDER ===');
   try {
