@@ -1212,6 +1212,35 @@ setTimeout(async () => {
   })();`);
 
   // ============ render smoke ============
+  console.log('=== TODAY TAB HONORS INVESTIGATION OVERRIDE ===');
+  try {
+    const OV_EX = 'Override Sync Test Lift';
+    // seed history that would earn a STR-mode weight jump on its own (top set hit the ceiling)
+    ev("S.logs = (S.logs||[]).filter(l => !l.entries.some(e=>e.exercise==='" + OV_EX + "'));");
+    ev("S.logs.push({date:'2026-08-01', entries:[{exercise:'" + OV_EX + "', sets:[{w:145,r:6},{w:145,r:5},{w:145,r:5}]}]});");
+    // force STR mode so recommend() takes the ceiling-jump branch (mirrors Barbell Bench Press config)
+    ev("S.split[Object.keys(S.split)[0]].exercises.push({name:'" + OV_EX + "', inc:5, repMode:'str'});");
+    const withoutOverride = call('recommend', OV_EX, 'ok');
+    ok('sanity: history alone earns a jump to 150', withoutOverride.sets[0].w === 150, JSON.stringify(withoutOverride.sets[0]));
+
+    // apply an active liftReset override locking this lift at 145 for 14 days
+    ev('agApplyFix')({ type: 'liftReset', payload: { name: OV_EX, w: 145, days: 14 } });
+    const ov = ev('invState')().overrides[OV_EX];
+    ok('override active and unexpired', ov && ov.w === 145 && ov.until >= ev('todayKey')());
+
+    // Today tab render must reflect the lock, not the raw recommend() jump
+    ev('todaySwaps = {}');
+    const html = call('exBlockHTML', 0, { name: OV_EX, inc: 5, repMode: 'str' }, 'ok');
+    ok('Today tab shows locked 145, not the earned 150', html.indexOf('145 lb') >= 0 && html.indexOf('150 lb') === -1, html.slice(0, 300));
+
+    // cleanup
+    ev("delete invState().overrides['" + OV_EX + "'];");
+    ev("S.logs = (S.logs||[]).filter(l => !l.entries.some(e=>e.exercise==='" + OV_EX + "'));");
+    ev("var _dk = Object.keys(S.split)[0]; S.split[_dk].exercises = S.split[_dk].exercises.filter(x => (typeof x==='object'?x.name:x) !== '" + OV_EX + "');");
+  } catch (e) {
+    ok('Today tab honors investigation override', false, e.message);
+  }
+
   console.log('=== RENDER ===');
   try {
     ev('renderOps')();

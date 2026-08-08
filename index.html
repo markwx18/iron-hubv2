@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-08-v6a">
+<meta name="ironhub-build" content="2026-08-08-v6b">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1703,6 +1703,13 @@ function exBlockHTML(i, exObj, tier){
   const original = exName(exObj);
   const ex = (todaySwaps[i] != null) ? todaySwaps[i] : original;
   const rec = recommend(ex, tier);
+  const {lo:_ovLo, hi:_ovHi} = exRepMode(ex);
+  const _ov = (typeof invOverrideFor==='function') ? invOverrideFor(ex) : null;
+  if(_ov){
+    rec.target = _ov.w+' lb × '+_ovLo+'–'+_ovHi+' (rebuild)';
+    rec.detail = _ov.note+'. Keep every rep clean — climbing back fast is the point.';
+    rec.sets = rec.sets.map(s=>({w:_ov.w, r:s.r}));
+  }
   let plateTxt = '';
   if(isPlateLift(ex) && rec.sets[0] && +rec.sets[0].w > 0){
     const pc = plateCalc(+rec.sets[0].w);
