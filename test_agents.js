@@ -200,6 +200,42 @@ setTimeout(async () => {
   ev("applyPulled(window.__newerDump)");
   ok('genuinely newer remote timestamp is kept', ev('agState().lastRunAt') === ev('window.__newerDump.agents.lastRunAt'));
 
+  console.log('=== INVESTIGATION HISTORY DELETE SURVIVES A SYNC PULL ===');
+  try {
+    // Seed a history entry, exactly like a resolved/dismissed flag would look.
+    ev("invState().history.unshift({id:'histdeltest1', title:'Test flag', severity:'watch', status:'dismissed', closed:todayKey(), created:todayKey()})");
+    ok('history entry seeded', ev("invState().history.some(f=>f.id==='histdeltest1')"));
+
+    // Simulate: local changedAt is stale (last touched a while ago), and the gist
+    // already holds this entry from a real push that landed *after* that touch —
+    // the exact ordering that happens in practice between two real saves.
+    ev('S.meta = S.meta || {}; S.meta.changedAt = Date.now() - 100000;');
+    ev("window.__staleRemote = {exportedAt: Date.now() - 50000, data: JSON.parse(JSON.stringify(S))};");
+
+    ev("invDeleteHistory('histdeltest1')");
+    ok('entry removed from local state', !ev("invState().history.some(f=>f.id==='histdeltest1')"));
+
+    // The bug: invDeleteHistory used save(false), which never bumps S.meta.changedAt.
+    // bgSyncTick/autoPullOnLoad decide whether to pull with exactly this comparison
+    // (see iron_hub.html) — if changedAt wasn't bumped past the stale remote's
+    // exportedAt, the very next pull overwrites S wholesale and resurrects the
+    // "deleted" row.
+    const wouldPullStaleData = ev('window.__staleRemote.exportedAt > S.meta.changedAt');
+    ok('delete bumps changedAt past the stale remote snapshot (no revert on next pull)', !wouldPullStaleData,
+      'changedAt=' + ev('S.meta.changedAt') + ' staleRemoteExportedAt=' + ev('window.__staleRemote.exportedAt'));
+
+    // Demonstrate the actual failure mode this guards against: if the gate had let
+    // the stale snapshot through, applyPulled would restore the deleted entry.
+    ev('applyPulled(window.__staleRemote.data)');
+    ok('sanity: pulling the stale remote directly would have resurrected the entry (confirms the gate is what matters)',
+      ev("invState().history.some(f=>f.id==='histdeltest1')"));
+
+    // cleanup: undo the direct applyPulled above and drop the seeded fixture
+    ev("invState().history = invState().history.filter(f=>f.id!=='histdeltest1')");
+  } catch (e) {
+    ok('investigation history delete survives a sync pull', false, e.message);
+  }
+
   console.log('=== LIVE DELTA + CLEAR CHAT ===');
   ok('liveDeltaPanelHTML exists', ev("typeof liveDeltaPanelHTML") === 'function');
   ok('liveDeltaContext exists', ev("typeof liveDeltaContext") === 'function');

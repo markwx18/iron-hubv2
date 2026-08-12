@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-08-v6c">
+<meta name="ironhub-build" content="2026-08-12-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -5825,7 +5825,10 @@ function invDismiss(id){
 function invDeleteHistory(id){
   const st = invState();
   st.history = st.history.filter(f=>f.id!==id);
-  save(false); renderInvestigation();
+  // Must touch+push: save(false) would leave the gist holding the pre-delete
+  // history, and the next visibilitychange pull (bgSyncTick) silently restores
+  // the "cleared" rows since it compares only exportedAt vs. changedAt.
+  save(); renderInvestigation();
 }
 function invApplyFix(id){
   const f = invActiveFlags().find(x=>x.id===id); if(!f || !f.fix) return;
