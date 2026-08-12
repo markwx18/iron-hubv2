@@ -1322,6 +1322,279 @@ setTimeout(async () => {
     ok('Today tab honors investigation override', false, e.message);
   }
 
+  console.log('=== GEAR FLAGS (wraps / belt / knee sleeves) ===');
+  try {
+    const gear = n => call('gearFor', n);
+    // pressing loads the wrist, but a bench press needs neither belt nor sleeves
+    const bench = gear('Barbell Bench Press');
+    ok('bench: wraps yes', bench.wraps === true);
+    ok('bench: belt no', bench.belt === false);
+    ok('bench: sleeves no', bench.sleeves === false);
+    // back squat is the inverse: belt + sleeves, bar rides the back so no wraps
+    const sq = gear('Barbell Back Squat');
+    ok('back squat: wraps no', sq.wraps === false);
+    ok('back squat: belt yes', sq.belt === true);
+    ok('back squat: sleeves yes', sq.sleeves === true);
+    // front rack forces wrist extension -> all three
+    const fsq = gear('Front Squat');
+    ok('front squat: all three', fsq.wraps && fsq.belt && fsq.sleeves);
+    // isolation work gets nothing
+    const lat = gear('Cable Lateral Raise');
+    ok('lateral raise: none', !lat.wraps && !lat.belt && !lat.sleeves);
+    const lc = gear('Machine Leg Curl');
+    ok('leg curl: none', !lc.wraps && !lc.belt && !lc.sleeves);
+    // "leg press" contains "press" but must not read as a wrist-loaded press
+    const lp = gear('Leg Press');
+    ok('leg press: wraps no (not an upper-body press)', lp.wraps === false);
+    ok('leg press: belt + sleeves', lp.belt === true && lp.sleeves === true);
+    // hinges earn a belt, nothing else
+    const dl = gear('Trap Bar Deadlift');
+    ok('deadlift: belt only', dl.belt === true && dl.wraps === false && dl.sleeves === false);
+    // seated/machine pressing does not load the spine
+    ok('seated shoulder press: no belt', gear('Seated Dumbbell Shoulder Press').belt === false);
+    ok('standing OHP: belt', gear('Standing Overhead Press').belt === true);
+    // unilateral squat patterns load the knee but aren't a braced axial lift
+    const bss = gear('Bulgarian Split Squat');
+    ok('split squat: sleeves but no belt', bss.sleeves === true && bss.belt === false);
+    ok('goblet squat: sleeves but no belt', gear('Goblet Squat').sleeves === true && gear('Goblet Squat').belt === false);
+    // unknown names still resolve without throwing
+    ok('unknown lift resolves', typeof gear('Some Novel Machine Thing').belt === 'boolean');
+    ok('empty name resolves', gear('').wraps === false);
+
+    // the card must actually render the flags, between Setup and Cues
+    const card = call('exInfoCardHTML', 'Barbell Back Squat');
+    ok('card has a Gear section', card.indexOf('>Gear<') >= 0);
+    ok('card lists all three items',
+      card.indexOf('Wrist Wraps') >= 0 && card.indexOf('Belt') >= 0 && card.indexOf('Knee Sleeves') >= 0);
+    ok('gear sits between Setup and Cues',
+      card.indexOf('>Setup<') < card.indexOf('>Gear<') && card.indexOf('>Gear<') < card.indexOf('>Cues<'));
+    // squat: Belt/Knee Sleeves affirmative, Wrist Wraps struck out
+    const wrapItem = /<div class="gear-item no"><span>✗<\/span>Wrist Wraps<\/div>/.test(card);
+    const beltItem = /<div class="gear-item"><span>✓<\/span>Belt<\/div>/.test(card);
+    ok('squat card marks Wrist Wraps with an X', wrapItem, card.slice(card.indexOf('Gear'), card.indexOf('Gear') + 320));
+    ok('squat card marks Belt with a check', beltItem);
+    // and the LIVE screen reaches the same card through the same modal
+    ok('live info button opens showExInfo', typeof ev('showExInfo') === 'function');
+  } catch (e) {
+    ok('gear flags section', false, e.message);
+  }
+
+  console.log('=== STRENGTH BLOCK: PATTERN CLASSIFICATION ===');
+  try {
+    const pat = n => ev('mesoPattern(' + JSON.stringify(n) + ')');
+    ok('back squat -> squat', pat('Barbell Back Squat') === 'squat');
+    ok('leg press -> squat', pat('Leg Press') === 'squat');
+    ok('deadlift -> hinge', pat('Trap Bar Deadlift') === 'hinge');
+    ok('hip thrust -> hinge', pat('Hip Thrust Machine') === 'hinge');
+    ok('bench -> push', pat('Barbell Bench Press') === 'push');
+    ok('lat pulldown -> pull', pat('Lat Pulldown') === 'pull');
+    ok('cable row -> pull', pat('Cable Row') === 'pull');
+    // regression: unanchored /chin/ matches inside "maCHINe", which classified every
+    // machine press as a pull and scrambled the day anchors
+    ok('overhead press MACHINE -> push, not pull', pat('Overhead Press Machine') === 'push', pat('Overhead Press Machine'));
+    ok('smith MACHINE bench -> push', pat('Smith Machine Bench Press') === 'push', pat('Smith Machine Bench Press'));
+    ok('incline press MACHINE -> push', pat('Incline Press Machine') === 'push', pat('Incline Press Machine'));
+    ok('row machine still reads as a pull', pat('Row Machine') === 'pull', pat('Row Machine'));
+    ok('chin-up still reads as a pull', pat('Chin-Up') === 'pull', pat('Chin-Up'));
+    // plural: /\bdip\b/ missed "Dips" entirely
+    ok('Dips -> push', pat('Dips') === 'push', pat('Dips'));
+    ok('Dips gets wrist wraps', ev('gearFor("Dips")').wraps === true);
+  } catch (e) {
+    ok('pattern classification', false, e.message);
+  }
+
+  console.log('=== STRENGTH BLOCK: SPLIT GENERATION ===');
+  try {
+    const gen = JSON.parse(ev('JSON.stringify(mesoGenerateStrengthSplit())'));
+    const keys = Object.keys(gen.split);
+    ok('collapses to exactly three days', keys.length === 3, keys.join(','));
+    ok('uses S1/S2/S3 keys, not D-keys', keys.join(',') === 'S1,S2,S3', keys.join(','));
+    ok('days are named', keys.every(k => !!gen.split[k].name), keys.map(k => gen.split[k].name).join('|'));
+    ok('day colours are tokens, not raw hex', keys.every(k => /^var\(--/.test(gen.split[k].hex || '')),
+      keys.map(k => gen.split[k].hex).join('|'));
+    ok('five exercises per day', keys.every(k => gen.split[k].exercises.length === 5),
+      keys.map(k => k + ':' + gen.split[k].exercises.length).join(' '));
+    ok('two heavy compounds per day', keys.every(k =>
+      gen.split[k].exercises.filter(x => x.repMode === 'str').length === 2),
+      keys.map(k => k + ':' + gen.split[k].exercises.filter(x => x.repMode === 'str').length).join(' '));
+    // no exercise appears on two days — six days of lifts have to divide, not duplicate
+    const all = keys.flatMap(k => gen.split[k].exercises.map(x => x.name));
+    ok('no exercise duplicated across days', new Set(all).size === all.length, all.join(','));
+
+    // the anchor rule: each day's heaviest pattern is distinct...
+    const heavyPats = keys.map(k => gen.split[k].exercises.filter(x => x.repMode === 'str')
+      .map(x => ev('mesoPattern(' + JSON.stringify(x.name) + ')')));
+    const anchors = heavyPats.map(p => p[0]);
+    ok('each day anchors a different movement pattern', new Set(anchors).size === 3, anchors.join(','));
+    // ...and the secondary doesn't smuggle an adjacent day's pattern back in. Only
+    // S1/S2 and S2/S3 are consecutive — two rest days sit between S3 and the next S1.
+    // Pull is exempt by design (see the generator comment): with squat/hinge/push all
+    // taken as anchors, barring pull would force heavy squat + heavy hinge into one day.
+    let collision = '';
+    for (let i = 0; i < 2; i++) {
+      const shared = heavyPats[i].filter(p => p !== 'pull' && heavyPats[i + 1].indexOf(p) >= 0);
+      if (shared.length) collision = 'S' + (i + 1) + '/S' + (i + 2) + ' both load ' + shared.join(',') + ' heavy';
+    }
+    ok('no fatiguing pattern loaded heavy on consecutive days', collision === '', collision);
+    // the thing the exemption is protecting against
+    let axial = '';
+    heavyPats.forEach((p, i) => {
+      if (p.indexOf('squat') >= 0 && p.indexOf('hinge') >= 0) axial = 'S' + (i + 1) + ' stacks heavy squat and hinge';
+    });
+    ok('no day stacks heavy squat and heavy hinge together', axial === '', axial);
+    ok('reports what it cut', gen.rationale.some(r => /Cut for the block/.test(r)), gen.rationale.join(' | '));
+  } catch (e) {
+    ok('strength split generation', false, e.message);
+  }
+
+  console.log('=== STRENGTH BLOCK: ROTATION OVERRIDES THE SCHEDULE ===');
+  try {
+    const before = ev('scheduledDayFor(todayKey())');
+    ev("mesoStart({phases:[{id:'p1',type:'str',name:'Strength',weeks:2,repLo:3,repHi:5,rpeLo:8,rpeHi:9}],repeat:false,cycles:1}, todayKey())");
+    ev('mesoEnsureProposals()');
+    const start = ev('mesoActive().weeks[0].startKey');
+    const bid = ev('mesoActive().weeks[0].blockId');
+    const at = n => ev('scheduledDayFor(mesoAddDays(' + JSON.stringify(start) + ',' + n + '))');
+
+    // proposed but not approved changes NOTHING — same gate as the split itself
+    ok('unapproved block leaves the schedule alone', at(0) === ev('S.schedule[new Date(' + JSON.stringify(start) + '+"T00:00:00").getDay()] || "REST"'), at(0));
+    ok('unapproved block leaves the split alone', ev('Object.keys(activeSplitObj()).join(",")').indexOf('S1') < 0);
+
+    ev('mesoApproveSplit(' + JSON.stringify(bid) + ')');
+    ok('approved block swaps the split in', ev('Object.keys(activeSplitObj()).join(",")') === 'S1,S2,S3');
+    // 3 on / 2 off, anchored to the block's first day rather than the calendar week
+    const seq = [];
+    for (let i = 0; i < 15; i++) seq.push(at(i));
+    ok('rotation is S1,S2,S3,REST,REST', seq.slice(0, 5).join(',') === 'S1,S2,S3,REST,REST', seq.slice(0, 5).join(','));
+    ok('rotation repeats on a 5-day cycle', seq[5] === 'S1' && seq[10] === 'S1', seq.join(','));
+    ok('rotation does not follow the 7-day week', seq[7] !== seq[0], seq[0] + ' vs ' + seq[7]);
+    ok('9 training days across the 14-day block', seq.slice(0, 14).filter(d => d !== 'REST').length === 9,
+      String(seq.slice(0, 14).filter(d => d !== 'REST').length));
+    // day 15 is past the last week's endKey -> back to the permanent schedule
+    ok('schedule reverts the day the block ends', seq[14].indexOf('S') !== 0, seq[14]);
+
+    // a manual day override still wins over the rotation
+    ev('S.overrideDay={date:todayKey(), day:"S2"}');
+    ok('manual override still beats the rotation', ev('currentDayKey()') === 'S2');
+    ev('S.overrideDay=null');
+
+    // block day keys must resolve everywhere that used to read S.split directly
+    ok('dayMeta resolves a block key', !!ev('dayMeta("S1")'));
+    ok('dayName resolves a block key', ev('dayName("S1")').length > 0, ev('dayName("S1")'));
+    ok('S1 is genuinely absent from the permanent split', ev('!S.split.S1') === true);
+    ok('dayExNames returns the block exercises', ev('dayExNames("S1").length') === 5);
+
+    // the two renders that read a day name unguarded, and would white-screen on launch
+    ev('S.overrideDay={date:todayKey(), day:"S1"}');
+    try { ev('renderHeader()'); ok('renderHeader survives a block day key', true); }
+    catch (e) { ok('renderHeader survives a block day key', false, e.message); }
+    try { ev('setAccent()'); ok('setAccent survives a block day key', true); }
+    catch (e) { ok('setAccent survives a block day key', false, e.message); }
+    try {
+      ev('renderToday()');
+      const t = w.document.getElementById('today').innerHTML;
+      ok('Today renders the block day, not the permanent one', t.indexOf('S1 — ') >= 0, t.slice(0, 200));
+      ok('Today shows the block exercises', ev('dayExNames("S1")').every(n => t.indexOf(n) >= 0));
+    } catch (e) { ok('renderToday survives a block day key', false, e.message); }
+
+    // sessions logged during the block keep their label after the block is gone
+    ev("live = {date:todayKey(), day:'S1', startedAt:Date.now(), exercises:[{name:'Barbell Back Squat', sets:[{w:185,r:5}]}], curIdx:0};");
+    ev('endLiveSession()');
+    const rec = ev('S.logs[S.logs.length-1]');
+    ok('log stamps the day name at save time', rec.day === 'S1' && !!rec.dayName, JSON.stringify({ d: rec.day, n: rec.dayName }));
+    ev("S.logs = S.logs.filter(l => l.day !== 'S1');");
+    ev('live = null');
+
+    // cleanup — the plan must not leak into later sections
+    ev('S.overrideDay=null'); ev('mesoStop()');
+    ok('cleanup: schedule restored', ev('scheduledDayFor(todayKey())') === before, ev('scheduledDayFor(todayKey())'));
+    ok('cleanup: permanent split back in force', ev('Object.keys(activeSplitObj()).join(",")') === ev('Object.keys(S.split).join(",")'));
+  } catch (e) {
+    ok('strength block rotation', false, e.message);
+    ev('S.overrideDay=null'); ev('mesoStop()'); ev('live=null');
+  }
+
+  console.log('=== SESSION WARM-UP ===');
+  try {
+    const EXW = 'Warmup Probe Squat';
+    ev("S.logs.push({date:'2026-08-05', day:'D1', entries:[{exercise:'Barbell Back Squat', sets:[{w:185,r:5},{w:185,r:5}]}]});");
+    const plan = JSON.parse(ev('JSON.stringify(warmupPlanFor(currentDayKey()))'));
+    ok('a plan is produced for a normal training day', !!plan && Array.isArray(plan.prep));
+    ok('prep is keyed to a movement pattern', ['squat', 'hinge', 'push', 'pull'].indexOf(plan.pattern) >= 0, plan.pattern);
+
+    // ramp percentages come off the actual prescribed top set
+    const sq = JSON.parse(ev('JSON.stringify(warmupPlanFor("D1"))'));
+    ev("S.split.D1.exercises.unshift({name:'Barbell Back Squat', inc:10, repMode:'str'});");
+    const sq2 = JSON.parse(ev('JSON.stringify(warmupPlanFor("D1"))'));
+    const r = sq2.ramps.find(x => x.name === 'Barbell Back Squat');
+    ok('squat gets a ramp', !!r, sq2.ramps.map(x => x.name).join(','));
+    if (r) {
+      ok('ramp starts with the empty bar on a barbell lift', r.steps[0].w === 'Bar', JSON.stringify(r.steps[0]));
+      ok('ramp ends on the working weight', r.steps[r.steps.length - 1].w === r.top && r.steps[r.steps.length - 1].work === true);
+      const mid = r.steps.filter(s => s.pct > 0 && !s.work);
+      ok('intermediate steps are a fraction of the top set',
+        mid.every(s => s.w < r.top && s.w >= 5), JSON.stringify(mid.map(s => s.w)));
+      ok('steps climb monotonically', mid.every((s, i) => i === 0 || s.w >= mid[i - 1].w), JSON.stringify(mid.map(s => s.w)));
+      ok('40% step is ~40% of the top set',
+        Math.abs(mid[0].w - Math.round(r.top * 0.40 / 5) * 5) < 0.01, mid[0].w + ' vs top ' + r.top);
+    }
+    // the second heavy lift gets feeders, not a second full ramp
+    if (sq2.ramps.length > 1) {
+      ok('second heavy lift gets a shorter feeder ramp', sq2.ramps[1].steps.length < r.steps.length,
+        sq2.ramps[1].steps.length + ' vs ' + r.steps.length);
+      ok('non-barbell feeder has no empty-bar step', sq2.ramps[1].steps.every(s => s.w !== 'Bar') ||
+        ev('warmIsBarbell(' + JSON.stringify(sq2.ramps[1].name) + ')') === true);
+    }
+    ok('barbell detection: back squat yes, cable row no',
+      ev('warmIsBarbell("Barbell Back Squat")') === true && ev('warmIsBarbell("Cable Row")') === false);
+
+    // gear from improvement #1 surfaces here too
+    ok('plan carries the gear flags for the lead lift', typeof sq2.gear.belt === 'boolean');
+
+    // a lift with no history has no target to ramp to -> prep still renders, ramp doesn't
+    ev("S.split.D1.exercises.unshift({name:'" + EXW + "', inc:5, repMode:'str'});");
+    const noHist = JSON.parse(ev('JSON.stringify(warmupPlanFor("D1"))'));
+    ok('unrampable lift is listed, not silently dropped', noHist.unknown.indexOf(EXW) >= 0, noHist.unknown.join(','));
+    ev('warmupOpen = true');
+    const cardNo = ev('warmupCardHTML("D1")');
+    ok('card explains why a lift has no ramp', cardNo.indexOf('no logged history yet') >= 0);
+
+    // the case that matters: a day where NOTHING is rampable. The prep work is the whole
+    // point of the card on a day full of untrained lifts, so it must not vanish.
+    const savedD6 = ev('JSON.stringify(S.split.D6.exercises)');
+    ev("S.split.D6.exercises = [{name:'" + EXW + " Two', inc:5, repMode:'str'}];");
+    const bare = JSON.parse(ev('JSON.stringify(warmupPlanFor("D6"))'));
+    ok('sanity: that day really has no ramps', bare.ramps.length === 0, JSON.stringify(bare.ramps.map(r => r.name)));
+    const cardBare = ev('warmupCardHTML("D6")');
+    ok('card still renders with zero ramps', cardBare.length > 0);
+    ok('card still renders general prep with zero ramps', cardBare.indexOf('General prep') >= 0, cardBare.slice(0, 200));
+    ev('S.split.D6.exercises = ' + savedD6 + ';');
+
+    // warm-up sets are a guide: building a plan must not touch logs or state
+    const logsBefore = ev('S.logs.length');
+    ev('warmupPlanFor("D1"); warmupCardHTML("D1");');
+    ok('building a warm-up logs nothing', ev('S.logs.length') === logsBefore);
+    ok('card says warm-up sets are never logged', cardNo.indexOf('never logged') >= 0);
+
+    // collapsed by default outside a strength block, open inside one
+    ev('warmupOpen = null; mesoStop();');
+    ok('collapsed by default outside a strength block', ev('warmupIsOpen()') === false);
+    ev("mesoStart({phases:[{id:'p2',type:'str',name:'Strength',weeks:2,repLo:3,repHi:5,rpeLo:8,rpeHi:9}],repeat:false,cycles:1}, todayKey())");
+    ok('auto-opens during a strength block', ev('warmupIsOpen()') === true);
+    ev('warmupOpen = false');
+    ok('an explicit collapse still wins inside the block', ev('warmupIsOpen()') === false);
+    ev('warmupOpen = null; mesoStop();');
+
+    // cleanup
+    ev("S.split.D1.exercises = S.split.D1.exercises.filter(x => (typeof x==='object'?x.name:x) !== '" + EXW + "');");
+    ev("S.split.D1.exercises.shift();");
+    ev("S.logs = S.logs.filter(l => l.date !== '2026-08-05');");
+    ok('cleanup: probe lift removed from the split', ev('dayExNames("D1")').indexOf(EXW) < 0);
+  } catch (e) {
+    ok('session warm-up', false, e.message);
+    ev('warmupOpen = null'); ev('mesoStop()');
+  }
+
   console.log('=== RENDER ===');
   try {
     ev('renderOps')();

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-12-v1">
+<meta name="ironhub-build" content="2026-08-12-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -303,6 +303,11 @@
   .exinfo-cue{display:flex; gap:9px; font-size:13.5px; color:var(--text); padding:4px 0; line-height:1.45; align-items:flex-start;}
   .exinfo-cue span{color:var(--cyan); flex:none; font-size:12px; margin-top:2px;}
   .exinfo-cue.bad span{color:var(--red);}
+  .exinfo-gear{display:flex; flex-wrap:wrap; gap:6px 16px;}
+  .gear-item{display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--text);}
+  .gear-item span{color:var(--cyan); font-size:12px; line-height:1;}
+  .gear-item.no{color:var(--dim);}
+  .gear-item.no span{color:var(--red);}
 
   /* dock last-session + deltas */
   .dock-last{font-family:var(--mono); font-size:11px; color:var(--muted); margin-bottom:6px; padding:5px 8px; background:var(--base); border:1px solid var(--line); border-radius:3px; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
@@ -458,7 +463,28 @@
   .meso-prop-t{font-family:var(--disp); font-size:14.5px; font-weight:600;}
   .meso-prop-split{display:flex; flex-direction:column; gap:6px; margin-bottom:9px;}
   .meso-prop-day{display:flex; gap:8px; align-items:flex-start;}
-  .meso-prop-dk{font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:.08em; padding-top:4px; flex:none; width:26px;}
+  .meso-prop-dk{font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:.08em; padding-top:4px; flex:none; width:64px;}
+  .meso-prop-dk i{display:block; font-style:normal; font-size:9px; color:var(--line2); letter-spacing:.05em;}
+  .warmup{border-left:3px solid var(--line2); padding:0;}
+  .warmup.heavy{border-left-color:var(--amber);}
+  .warmup-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:13px 15px; cursor:pointer;}
+  .warmup-t{font-family:var(--disp); font-weight:600; font-size:15px; letter-spacing:.04em; text-transform:uppercase;}
+  .warmup-t .pill{margin-left:7px; font-size:9px; padding:1px 6px; vertical-align:middle;}
+  .warmup-head .chev{color:var(--dim); font-size:12px;}
+  .warmup-sum{padding:0 15px 13px; margin:0;}
+  .warmup-body{padding:0 15px 15px;}
+  .warmup-steps{border:1px solid var(--line); border-radius:3px; overflow:hidden; margin-top:7px;}
+  .warmup-gear{margin-top:10px; font-size:12px; color:var(--muted); line-height:1.5; border-top:1px solid var(--line); padding-top:9px;}
+  .meso-rot{display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin-bottom:10px;}
+  .meso-rot-d{font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--amber); border:1px solid var(--amber-dim); border-radius:2px; padding:3px 7px;}
+  .meso-rot-d.off{color:var(--dim); border-color:var(--line);}
+  .meso-rot-note{font-size:10.5px; color:var(--dim); margin-left:2px;}
+  /* the 64px day gutter leaves too little for the exercise chips on a small phone */
+  @media (max-width:380px){
+    .meso-prop-day{flex-direction:column; gap:3px;}
+    .meso-prop-dk{width:auto; padding-top:0;}
+    .meso-prop-dk i{display:inline; margin-left:6px;}
+  }
   .meso-prop-exs{display:flex; flex-wrap:wrap; gap:4px;}
   .meso-ex{font-size:11.5px; color:var(--muted); background:var(--base2); border:1px solid var(--line); border-radius:2px; padding:2px 7px;}
   .meso-ex.heavy{color:var(--amber-soft); border-color:var(--amber-dim);}
@@ -991,10 +1017,19 @@ function exInc(x){
   return incFor(exName(x)); // fall back to smart default
 }
 function dayExNames(dk){
-  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
-  const d = src[dk] || S.split[dk]; if(!d) return [];
+  const d = dayMeta(dk); if(!d) return [];
   return (d.exercises||[]).map(exName);
 }
+/* The day map in force RIGHT NOW. During an approved strength block that's the block's
+   generated split, whose day keys (S1/S2/S3) don't exist in S.split at all — so anything
+   resolving a day key to a name, colour, or exercise list at runtime must go through here.
+   S.split stays the editing target in Settings; only these read paths follow the block. */
+function activeDayKeys(){ return Object.keys(activeSplitObj()); }
+function dayMeta(dk){
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  return src[dk] || S.split[dk] || null;
+}
+function dayName(dk){ const d = dayMeta(dk); return (d && d.name) || ''; }
 /* Rep-mode helpers — per-exercise override of the global rep range. */
 function exRepMode(ex){
   if(isStrMode(ex)) return {lo:3, hi:6};   // explicit per-exercise strength mode always wins
@@ -1100,6 +1135,9 @@ function cyclePosition(dateKey){
   return ((diff % len) + len) % len;
 }
 function scheduledDayFor(dateKey){
+  // An approved strength block overrides the schedule for its own dates only.
+  const mr = (typeof mesoRotationDayFor==='function') ? mesoRotationDayFor(dateKey) : null;
+  if(mr) return mr;
   if(scheduleMode()==='cycle'){
     const pat = cyclePattern();
     return pat[cyclePosition(dateKey)] || 'REST';
@@ -1131,7 +1169,7 @@ function toggleHomeToday(){
   S.homeToday = homeActiveToday() ? null : {date:todayKey()};
   save(); renderLive();
 }
-function dayColor(d){ return (S.split[d] && S.split[d].hex) || '#8d909a'; }
+function dayColor(d){ const m = dayMeta(d); return (m && m.hex) || '#8d909a'; }
 function setAccent(){
   const d = currentDayKey();
   document.documentElement.style.setProperty('--accent', d==='REST' ? '#8d909a' : dayColor(d));
@@ -1746,7 +1784,16 @@ function renderToday(){
     el.innerHTML = html; return;
   }
 
-  const day = S.split[dk];
+  // dayMeta(), not S.split — during an approved strength block the scheduled day key
+  // (S1/S2/S3) only exists in the block's split. Today used to read S.split directly,
+  // which also meant it showed the permanent exercises while LIVE built the block's.
+  const day = dayMeta(dk);
+  if(!day){
+    el.innerHTML = '<div class="card"><div class="ex-name" style="font-size:18px">Unknown day</div>'+
+      '<p class="small" style="margin-top:6px">'+esc(dk)+' isn’t in the split that’s currently active.</p>'+
+      '<div style="margin-top:12px"><button class="btn ghost sm" onclick="trainAnyway()">Pick a day</button></div></div>';
+    return;
+  }
   if(_todaySwapDayKey !== dk){ todaySwaps = {}; _todaySwapDayKey = dk; }
   html += auditCardHTML();
   html += readinessCardHTML();
@@ -1760,7 +1807,9 @@ function renderToday(){
     '<p class="small" style="margin-top:4px">Targets below are computed from your last sessions. Hit the numbers, type what you actually got, save at the end.</p>'+
     '<p class="small mono" style="margin-top:6px">Effort tag (the <b style="color:var(--text)">\u2013</b> button on each set) \u2014 tap to cycle: <b style="color:#2f6fd0">E</b>asy \u00b7 <b style="color:#3da25f">S</b>olid \u00b7 <b style="color:#dfae36">G</b>rind \u00b7 <b style="color:#d23b3b">F</b>ail. Optional, but it sharpens your next targets.</p></div>';
 
-  day.exercises.forEach((exObj,i)=>{
+  html += warmupCardHTML(dk);
+
+  (day.exercises||[]).forEach((exObj,i)=>{
     html += exBlockHTML(i, exObj, tier);
   });
 
@@ -1788,9 +1837,11 @@ function addSet(i){
   box.insertAdjacentHTML('beforeend', setRowHTML(i,j,''));
 }
 function trainAnyway(){
-  const pick = prompt('Which day? Enter D1–D6:\n'+Object.keys(S.split).map(k=>k+' = '+S.split[k].name).join('\n'));
-  if(pick && S.split[pick.toUpperCase().trim()]){
-    S.overrideDay = {date:todayKey(), day:pick.toUpperCase().trim()};
+  const keys = activeDayKeys();
+  const pick = prompt('Which day? Enter '+keys[0]+'–'+keys[keys.length-1]+':\n'+keys.map(k=>k+' = '+dayName(k)).join('\n'));
+  const dk = pick && pick.toUpperCase().trim();
+  if(dk && keys.indexOf(dk)>=0){
+    S.overrideDay = {date:todayKey(), day:dk};
     save(); setAccent(); renderHeader(); renderToday();
   }
 }
@@ -1890,7 +1941,7 @@ function renderLog(){
     html += '<div class="hist" style="border-left-color:'+dayColor(l.day)+'">'+
       '<button class="del" onclick="openEditSession('+l.id+')">edit</button>'+
       '<button class="del" style="margin-left:4px" onclick="delLog('+l.id+')">delete</button>'+
-      '<div class="h-date">'+fmtDate(l.date)+(l.deload?' <span class="pill" style="border-color:var(--violet);color:var(--violet);padding:1px 7px">DELOAD</span>':'')+'</div><div class="h-day">'+esc(l.day)+' — '+esc((S.split[l.day]||{}).name||'')+'</div>'+
+      '<div class="h-date">'+fmtDate(l.date)+(l.deload?' <span class="pill" style="border-color:var(--violet);color:var(--violet);padding:1px 7px">DELOAD</span>':'')+'</div><div class="h-day">'+esc(l.day)+' — '+esc(l.dayName||dayName(l.day))+'</div>'+
       l.entries.map(e=>'<div class="h-ex"><b>'+esc(e.exercise)+'</b> '+esc(summ(e.sets))+'</div>').join('')+
       '<div class="elog-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\');this.querySelector(\'.et-chev\').classList.toggle(\'open\')">\u2699 Engine log <span class="et-chev">\u25be</span></div>'+
       '<div class="elog-wrap">'+engineLogHTML(l)+'</div>'+
@@ -2546,7 +2597,7 @@ async function callClaude(messages, system, maxTokens){
 }
 function trainingContext(){
   const recent = [...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
-  const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+((S.split[l.day]||{}).name||'')+(l.home?' · HOME':'')+']\n'+
+  const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+(l.dayName||dayName(l.day))+(l.home?' · HOME':'')+']\n'+
     l.entries.map(e=>'  '+e.exercise+': '+summ(e.sets)).join('\n')).join('\n');
   const wts = S.weights.slice(-10).map(w=>w.date+': '+w.lbs+' lb').join(', ');
   const nut = S.nutrition.slice(-7).map(n=>n.date+': '+n.cals+' cal / '+n.protein+'g protein').join(', ');
@@ -3604,7 +3655,7 @@ function resetAll(){
 function renderHeader(){
   const dk = currentDayKey();
   $('#hdrDate').innerHTML = '<b>'+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+'</b>';
-  $('#hdrDay').textContent = dk==='REST' ? 'Rest Day' : dk+' · '+S.split[dk].name;
+  $('#hdrDay').textContent = dk==='REST' ? 'Rest Day' : dk+' · '+dayName(dk);
   $('#hdrDay').style.background = dk==='REST' ? '#8d909a' : dayColor(dk);
 }
 </script>
@@ -3799,7 +3850,7 @@ function welcomeHTML(){
     const already = S.logs.some(l=>l.date===todayKey());
     sub = already
       ? 'You already logged '+dk+' today. Open the session to add more, or review your trends.'+streakTxt
-      : dk+' is on deck — '+S.split[dk].name+'.'+streakTxt+' Tap below when you\u2019re at the rack.';
+      : dk+' is on deck — '+dayName(dk)+'.'+streakTxt+' Tap below when you\u2019re at the rack.';
     cta = '<button class="btn primary sm" onclick="liveStartSession()">'+(already?'Log again':'Start session')+'</button>'+
           '<button class="btn ghost sm" onclick="setMode(\'review\')">Review stats</button>';
   }
@@ -3910,11 +3961,11 @@ function _startLiveNow(dk, trim){
   renderLive();
 }
 function liveStartPicker(){
-  const days = Object.keys(S.split);
-  const pick = prompt('Train which day? '+days.join(' / ')+' (type e.g. D1)', currentDayKey()==='REST'?'D1':currentDayKey());
+  const days = activeDayKeys();
+  const pick = prompt('Train which day? '+days.join(' / ')+' (type e.g. '+days[0]+')', currentDayKey()==='REST'?days[0]:currentDayKey());
   if(!pick) return;
   const dk = pick.trim().toUpperCase();
-  if(!S.split[dk]){ alert('Unknown day: '+dk); return; }
+  if(days.indexOf(dk)<0){ alert('Unknown day: '+dk); return; }
   startLiveForDay(dk);
 }
 function endLiveSessionConfirm(){
@@ -3967,8 +4018,9 @@ function renderLive(){
   let h = '';
   const _rd = todayReadiness();
   const _rdChip = _rd ? '<span class="pill" style="font-size:9px;border-color:'+(_rd.tier==='high'?'var(--cyan-dim);color:var(--cyan)':_rd.tier==='low'?'var(--red-dim);color:var(--red)':'var(--line2);color:var(--muted)')+'">'+_rd.tier.toUpperCase()+(live.trimmed?' \u00b7 TRIMMED':'')+'</span>' : '';
-  h += '<div class="sessionbar"><span class="sb-day">'+esc(live.day)+' · '+esc((S.split[live.day]||{}).name||live.day)+'</span>'+_rdChip+
+  h += '<div class="sessionbar"><span class="sb-day">'+esc(live.day)+' · '+esc(dayName(live.day)||live.day)+'</span>'+_rdChip+
        '<span class="sb-prog" id="sbProg"></span><span class="sb-clock" id="sbClock">00:00</span></div>';
+  h += warmupCardHTML(live.day);
   live.exercises.forEach((ex,i)=>{ h += liveExHTML(ex,i); });
   h += liveDeltaPanelHTML();
   h += '<div style="display:flex; gap:10px; margin:16px 0 8px">'+
@@ -3989,7 +4041,7 @@ function liveDeltaContext(){
   const done = live.exercises.filter(e=>e.done);
   const cur = live.exercises[liveActiveIdx];
   const rd = todayReadiness();
-  let t = '\nLIVE SESSION IN PROGRESS \u2014 '+live.day+' ('+((S.split[live.day]||{}).name||'')+').\n';
+  let t = '\nLIVE SESSION IN PROGRESS \u2014 '+live.day+' ('+dayName(live.day)+').\n';
   if(rd) t += 'Today\u2019s readiness: '+rd.tier+' ('+rd.sleep+'h sleep, '+rd.sore+' soreness, '+rd.energy+' energy).\n';
   t += 'Completed so far this session: '+(done.length?done.map(e=>e.name+' \u2014 '+summ(e.sets)).join('; '):'none yet')+'.\n';
   if(cur && !cur.done) t += 'Currently on: '+cur.name+', logged this exercise so far: '+(cur.sets&&cur.sets.length?summ(cur.sets):'no sets yet')+'.\n';
@@ -4247,7 +4299,10 @@ function endLiveSession(){
   const decisions = {};
   live.exercises.forEach(e=>{ if(e._decision) decisions[e.name]=e._decision; });
   const isDeload = deloadActive() || live.exercises.some(e=>e._deload);
-  const logRec = {id:Date.now(), date:todayKey(), day:live.day, entries, decisions};
+  // Stamp the day's name at save time. Strength-block day keys (S1/S2/S3) stop resolving
+  // once the block ends, and permanent days get renamed — either way the log should keep
+  // the label it was actually trained under.
+  const logRec = {id:Date.now(), date:todayKey(), day:live.day, dayName:dayName(live.day), entries, decisions};
   if(isDeload) logRec.deload = true;
   if(live.home) logRec.home = true;
   S.logs.push(logRec);
@@ -4580,6 +4635,31 @@ function exLibInfo(name){
     mistakes:['Using momentum instead of the target muscle','Cutting the range of motion short','Adding weight before owning the current load'],
     setup:'Primary: '+((m.p||[]).join(', ')||'\u2014')+(m.s&&m.s.length?'. Secondary: '+m.s.join(', '):'')+'.'};
 }
+/* ---- gear: wrist wraps / belt / knee sleeves ----
+   Derived from the exercise name rather than stored on EX_LIBRARY entries, because
+   exLibInfo() falls back to a *similar* lift for unknown names — a Goblet Squat must
+   not inherit "belt: yes" just because it borrows Back Squat's cues. */
+const GEAR_ITEMS=[['wraps','Wrist Wraps'],['belt','Belt'],['sleeves','Knee Sleeves']];
+function gearFor(name){
+  const n=' '+(name||'').toLowerCase()+' ';
+  const t=re=>re.test(n);
+  const squat    = t(/squat/) && !t(/sissy|wall sit/);
+  // unilateral / light squat patterns still load the knee, but they're not a braced axial lift
+  const squatHeavy = squat && !t(/split|bulgarian|goblet|body ?weight|air squat/);
+  const hinge    = t(/deadlift|romanian|\brdl\b|stiff.?leg|good ?morning|rack pull/);
+  // seated/machine pressing doesn't load the spine, so it doesn't earn a belt
+  const ohpStand = t(/overhead press|military|push press|\bohp\b|standing.*press/) && !t(/seated|machine/);
+  const bentRow  = t(/barbell row|pendlay|bent.?over|t.?bar row|meadows/);
+  const legMach  = t(/leg press|hack|belt squat/);
+  // anything that puts a load directly over the wrist joint
+  const pressing = t(/press|\bdips?\b|skull|\bjm\b|push.?up/) && !t(/leg press/);
+  const frontRack= t(/front squat|zercher|clean|overhead squat/);
+  return {
+    wraps:   !!(pressing || frontRack),
+    belt:    !!(squatHeavy || hinge || ohpStand || bentRow || legMach),
+    sleeves: !!(squat || legMach || t(/lunge|split squat|bulgarian|step.?up/))
+  };
+}
 function exInfoCardHTML(name){
   const info=exLibInfo(name); const mus=musclesFor(name);
   let h='<div class="exinfo-muscles">';
@@ -4587,6 +4667,11 @@ function exInfoCardHTML(name){
   (mus.s||[]).forEach(m=>h+='<span class="pill">'+esc(m)+'</span>');
   h+='</div>';
   h+='<div class="exinfo-sec"><div class="exinfo-h">Setup</div><p class="small">'+esc(info.setup)+'</p></div>';
+  const g=gearFor(name);
+  h+='<div class="exinfo-sec"><div class="exinfo-h">Gear</div><div class="exinfo-gear">'+
+    GEAR_ITEMS.map(function(it){ const on=g[it[0]];
+      return '<div class="gear-item'+(on?'':' no')+'"><span>'+(on?'✓':'✗')+'</span>'+esc(it[1])+'</div>'; }).join('')+
+    '</div></div>';
   h+='<div class="exinfo-sec"><div class="exinfo-h">Cues</div>'+info.cues.map(c=>'<div class="exinfo-cue"><span>\u2713</span>'+esc(c)+'</div>').join('')+'</div>';
   h+='<div class="exinfo-sec"><div class="exinfo-h">Common mistakes</div>'+info.mistakes.map(c=>'<div class="exinfo-cue bad"><span>\u2717</span>'+esc(c)+'</div>').join('')+'</div>';
   return h;
@@ -4751,6 +4836,140 @@ function render1RMLab(){
   // pre-fill plate calc with current target
   const pcIn = document.getElementById('pcOut');
   if(pcIn) calcPlates(+est||135);
+}
+
+/* ===================== 7b. SESSION WARM-UP =====================
+   Generated off today's actual prescribed top sets, not a fixed checklist — a ramp to
+   225 and a ramp to 95 are different warm-ups. Guide only: none of these sets are
+   loggable, because warm-up volume must never reach progression or e1RM. */
+const WARM_RAMP = [
+  {pct:0,   reps:'8–10', rest:'—',      label:'Empty bar', note:'Groove the pattern, no load'},
+  {pct:.40, reps:5,           rest:'45s',    label:'Ramp'},
+  {pct:.55, reps:4,           rest:'60s',    label:'Ramp'},
+  {pct:.70, reps:3,           rest:'75s',    label:'Ramp'},
+  {pct:.85, reps:1,           rest:'2 min',  label:'Primer', note:'Should move fast — if it grinds, your top set is too heavy today'}
+];
+const WARM_FEEDER = [
+  {pct:.50, reps:5, rest:'45s', label:'Feeder'},
+  {pct:.75, reps:3, rest:'60s', label:'Feeder', note:'You’re already warm — two sets is enough'}
+];
+/* General prep, keyed to the day's heaviest pattern. Deliberately short: the specific
+   ramp does most of the work, and a warm-up nobody finishes is worth nothing. */
+const WARM_PREP = {
+  squat:['5 min bike or incline walk — legs warm, light sweat','Leg swings ×10 each leg, front-to-back then side-to-side','Bodyweight squats ×10, sink into the bottom and hold the last one 10s','Ankle rocks at the wall ×10 per side — this is what stops heels lifting under load'],
+  hinge:['5 min bike or brisk walk','Cat-cow ×10 — find neutral before you load it','Dowel hip hinge ×10, three points of contact on the back','Glute bridges ×15, 2s squeeze at the top'],
+  push:['5 min row or bike — blood into the shoulders','Band pull-aparts ×20','Band or broomstick shoulder dislocates ×10','Push-ups ×10, slow, full lockout'],
+  pull:['5 min row or bike','Band pull-aparts ×20','Dead hang 20–30s','Scapular pull-ups ×8']
+};
+function warmIsBarbell(nm){
+  const n = ' '+String(nm).toLowerCase()+' ';
+  if(/machine|cable|dumbbell|\bdb\b|kettlebell|smith|pec deck|hammer strength|assisted/.test(n)) return false;
+  return /barbell|bench press|squat|deadlift|overhead press|military|\bohp\b|rack pull|good ?morning|romanian|\brdl\b|jm press|pendlay/.test(n);
+}
+/* Build the plan from live.exercises when a session is running (their targets are already
+   autoregulated for today's readiness), otherwise from the day's prescriptions. */
+function warmupSourceFor(dk){
+  if(live && live.day===dk) return live.exercises.map(e=>({name:e.name, w:+e.targetW||0, heavy:e.repMode==='str'}));
+  return dayExNames(dk).map(nm=>{
+    let w = 0;
+    try{ const rec = recommend(nm, currentReadinessTier()); w = +(rec.sets&&rec.sets[0]&&rec.sets[0].w)||0; }catch(e){ w = 0; }
+    return {name:nm, w, heavy:isStrMode(nm)};
+  });
+}
+function warmupPlanFor(dk){
+  const src = warmupSourceFor(dk);
+  if(!src.length) return null;
+  const round5 = w => Math.round(w/5)*5;
+  // heaviest pattern of the day drives general prep; fall back to the first lift
+  const heavies = src.filter(s=>s.heavy);
+  const lead = heavies[0] || src[0];
+  const pattern = mesoPattern(lead.name) || 'push';
+  const ramps = [];
+  const rampFor = (s, steps) => ({
+    name: s.name, top: s.w,
+    steps: steps.filter(st=>st.pct>0 || warmIsBarbell(s.name)).map(st=>({
+      label: st.label, note: st.note, pct: st.pct, reps: st.reps, rest: st.rest,
+      w: st.pct===0 ? 'Bar' : Math.max(5, round5(s.w*st.pct))
+    })).concat([{label:'Working set', pct:1, reps:'target', rest:'full', w:s.w, work:true}])
+  });
+  // full ramp for the day's first heavy lift, feeders for the rest — you only warm the
+  // body up once, and re-ramping the second compound just burns the session
+  src.forEach(s=>{
+    if(!s.w || !s.heavy) return;
+    ramps.push(rampFor(s, ramps.length===0 ? WARM_RAMP : WARM_FEEDER));
+  });
+  if(!ramps.length && src[0] && src[0].w) ramps.push(rampFor(src[0], WARM_RAMP));
+  const accs = src.filter(s=>!s.heavy).map(s=>s.name);
+  // A lift with no history has no target to ramp to. That's a reason to show the prep
+  // work WITHOUT a ramp, not a reason to hide the warm-up — first sessions on a new lift
+  // are exactly when the general prep matters most.
+  const unknown = src.filter(s=>!s.w).map(s=>s.name);
+  return {
+    dk, pattern, prep: WARM_PREP[pattern] || WARM_PREP.push, ramps, unknown,
+    accessories: accs, gear: gearFor(lead.name), lead: lead.name
+  };
+}
+let warmupOpen = null;   // null = follow the block default, true/false = user's choice
+function warmupToggle(){
+  warmupOpen = !warmupIsOpen();
+  if(live) renderLive(); else renderToday();
+}
+function warmupIsOpen(){
+  if(warmupOpen !== null) return warmupOpen;
+  const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
+  return !!(mw && mw.type==='str');   // heavy block: open by default, it matters most there
+}
+function warmupCardHTML(dk){
+  if(!dk || dk==='REST') return '';
+  let plan = null;
+  try{ plan = warmupPlanFor(dk); }catch(e){ plan = null; }
+  if(!plan) return '';
+  const open = warmupIsOpen();
+  const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
+  const heavyBlock = !!(mw && mw.type==='str');
+  const g = plan.gear;
+  const gearTxt = ['wraps','belt','sleeves'].filter(k=>g[k])
+    .map(k=>({wraps:'wrist wraps',belt:'belt',sleeves:'knee sleeves'})[k]).join(', ');
+  let h = '<div class="card warmup'+(heavyBlock?' heavy':'')+'">'+
+    '<div class="warmup-head" onclick="warmupToggle()">'+
+      '<span class="warmup-t">Warm-up'+(heavyBlock?' <span class="pill" style="border-color:var(--amber);color:var(--amber)">HEAVY BLOCK</span>':'')+'</span>'+
+      '<span class="chev">'+(open?'▴':'▾')+'</span></div>';
+  if(!open){
+    h += '<p class="small warmup-sum">'+esc(plan.pattern)+'-pattern prep'+
+         (plan.ramps.length ? ' + '+plan.ramps.length+' ramp'+(plan.ramps.length>1?'s':'')+' off today’s targets' : '')+
+         (gearTxt?' · gear: '+esc(gearTxt):'')+'. Tap to open.</p></div>';
+    return h;
+  }
+  h += '<div class="warmup-body">';
+  h += '<div class="exinfo-h">General prep · '+esc(plan.pattern)+' day</div>';
+  h += plan.prep.map(p=>'<div class="exinfo-cue"><span>✓</span>'+esc(p)+'</div>').join('');
+  plan.ramps.forEach((r,i)=>{
+    h += '<div class="exinfo-h" style="margin-top:14px">'+esc(r.name)+' · ramp to '+esc(r.top)+' lb</div>';
+    h += '<div class="warmup-steps">';
+    r.steps.forEach(st=>{
+      h += '<div class="rm-step'+(st.work?' attempt':'')+'">'+
+        '<div class="rm-w">'+(st.w==='Bar'?'Bar':esc(st.w)+'<span class="rm-lb">lb</span>')+'</div>'+
+        '<div class="rm-mid"><div class="rm-label">'+esc(st.label)+(st.pct>0&&!st.work?' · '+Math.round(st.pct*100)+'%':'')+'</div>'+
+          (st.note?'<div class="rm-note">'+esc(st.note)+'</div>':'')+'</div>'+
+        '<div class="rm-reps">×'+esc(st.reps)+'</div>'+
+        '<div class="rm-rest">'+esc(st.rest)+'</div></div>';
+    });
+    h += '</div>';
+  });
+  if(plan.unknown.length){
+    h += '<p class="small" style="margin-top:12px;color:var(--amber)">No ramp for '+esc(plan.unknown.join(', '))+
+         ' — no logged history yet, so there’s no target to ramp to. Work up in small jumps and let the first session set the baseline.</p>';
+  }
+  if(plan.accessories.length){
+    h += '<p class="small" style="margin-top:10px">Accessories ('+esc(plan.accessories.join(', '))+
+         '): one set at roughly half your working weight for 8–10 before the first real set. No ramp needed — you’re warm by then.</p>';
+  }
+  h += '<p class="small" style="margin-top:8px;color:var(--dim)">Warm-up sets are a guide and are never logged — they don’t count toward volume or your e1RM.</p>';
+  h += '<div class="warmup-gear">'+(gearTxt
+      ? 'Gear for '+esc(plan.lead)+': <b style="color:var(--cyan)">'+esc(gearTxt)+'</b>. Put it on for the primer, not before — warming up in a belt defeats the point.'
+      : 'No belt, wraps, or sleeves needed for '+esc(plan.lead)+' today.')+'</div>';
+  h += '</div></div>';
+  return h;
 }
 
 function calcPlates(total){
@@ -6438,6 +6657,41 @@ function activeSplitObj(){
   return ms || S.split;
 }
 
+/* ---- block-scoped rotation ----
+   A strength block runs its own repeating rotation (3 on / 2 off by default) anchored to
+   the block's first day, NOT to the calendar week. A 5-day rotation can't be expressed as
+   a weekday map, and it must not leak outside the block — so this is resolved ahead of the
+   normal dow/cycle path and returns null the moment the block isn't in force, at which
+   point your permanent schedule takes over again with nothing to undo.
+   Gated on approval, exactly like the split itself: an unapproved block changes nothing. */
+const MESO_DEFAULT_ROTATION = ['S1','S2','S3','REST','REST'];
+function mesoBlockFirstWeek(blockId){
+  const a = mesoState().active; if(!a) return null;
+  return a.weeks.find(w=>w.blockId===blockId) || null;
+}
+function mesoRotationFor(w){
+  const a = mesoState().active;
+  if(!a || !w || w.type!=='str') return null;
+  const rec = (a.splits||{})[w.blockId];
+  if(!rec || rec.status!=='approved') return null;
+  const pat = (rec.rotation && rec.rotation.length) ? rec.rotation : MESO_DEFAULT_ROTATION;
+  return {pat, first:mesoBlockFirstWeek(w.blockId)};
+}
+function mesoRotationDayFor(dateKey){
+  const r = mesoRotationFor(mesoWeekAt(dateKey));
+  if(!r || !r.first) return null;
+  const len = r.pat.length || 1;
+  const i = ((daysBetween(r.first.startKey, dateKey) % len) + len) % len;
+  return r.pat[i] || 'REST';
+}
+/* Day n of the rotation for a date, 1-based — display only. */
+function mesoRotationPos(dateKey){
+  const r = mesoRotationFor(mesoWeekAt(dateKey));
+  if(!r || !r.first) return null;
+  const len = r.pat.length || 1;
+  return {n: ((daysBetween(r.first.startKey, dateKey) % len) + len) % len + 1, len};
+}
+
 /* ---- strength-block split auto-generation ----
    Consolidates heavy compounds, trims accessory volume to make room for intensity,
    and reports what it cut and why. Proposal only — nothing applies without approval. */
@@ -6457,30 +6711,121 @@ function mesoLiftScore(nm){
   }
   return score;
 }
+/* Movement pattern, used to keep consecutive rotation days from loading the same pattern
+   heavy. Ordered so the more specific tests win: "hack squat" is a squat, not a hinge. */
+function mesoPattern(nm){
+  const n = ' '+String(nm).toLowerCase()+' ';
+  if(/squat|leg press|hack|lunge|split squat|bulgarian|step.?up|leg extension/.test(n)) return 'squat';
+  if(/deadlift|romanian|\brdl\b|stiff.?leg|good ?morning|rack pull|hip thrust|leg curl|back extension|hyperextension/.test(n)) return 'hinge';
+  // "chin" unanchored matches inside "maCHINe" — every machine press read as a pull.
+  // Anchor it (and every other short token) or the anchors come out scrambled.
+  if(/row|pulldown|pull-?ups?|chin-?ups?|face pull|pullover|shrug|rear delt/.test(n)) return 'pull';
+  if(/bench|chest press|incline|decline|overhead press|shoulder press|military|\bohp\b|\bdips?\b|push.?up|jm press|floor press|landmine|arnold|press/.test(n)) return 'push';
+  return null;
+}
+/* The three days a strength block collapses to. One heavy anchor pattern each, so a
+   3-on/2-off run never stacks two heavy days of the same pattern back to back \u2014 the
+   whole reason the rotation is safe to run three days consecutively.
+   `hex` is the day's colour *data* (same field the permanent split uses); token
+   references resolve wherever dayColor() lands, so no raw hex enters the UI. */
+const MESO_STR_DAYS = [
+  {key:'S1', name:'Squat',        hex:'var(--amber)',  anchor:'squat'},
+  {key:'S2', name:'Press',        hex:'var(--cyan)',   anchor:'push'},
+  {key:'S3', name:'Hinge + Pull', hex:'var(--violet)', anchor:'hinge'}
+];
+const MESO_STR_PER_DAY = 5;   // 2 heavy compounds + 3 accessories
+
 function mesoGenerateStrengthSplit(){
   const src = S.split;
-  const out = {}, rationale = [];
-  Object.keys(src).forEach(dk=>{
-    const day = src[dk];
-    const scored = (day.exercises||[]).map(x=>{
-      const nm = exName(x);
-      return {x, nm, sc:mesoLiftScore(nm), comp:mesoIsCompound(nm)};
-    }).sort((a,b)=>b.sc-a.sc);
-    if(!scored.length){ out[dk] = JSON.parse(JSON.stringify(day)); return; }
-    const comps = scored.filter(s=>s.comp);
-    const accs  = scored.filter(s=>!s.comp);
-    const keepC = comps.slice(0,2);
-    const keepA = accs.slice(0, Math.max(1, 4 - keepC.length));
-    const kept  = [...keepC, ...keepA];
-    const cut   = scored.filter(s=>kept.indexOf(s)<0);
-    out[dk] = Object.assign({}, day, {exercises: kept.map(s=>{
-      const o = (typeof s.x==='object') ? JSON.parse(JSON.stringify(s.x)) : {name:s.nm, inc:incFor(s.nm)};
-      if(s.comp) o.repMode = 'str';   // heavy compounds run 3-6
-      return o;
-    })});
-    if(keepC.length) rationale.push(dk+': '+keepC.map(s=>s.nm).join(' + ')+' anchor'+(keepC.length>1?'':'s')+' the day \u2014 heaviest loads and best recent trend.');
-    if(cut.length)   rationale.push(dk+': cut '+cut.map(s=>s.nm).join(', ')+' to make room for intensity.');
+  const rationale = [];
+  // Pool every lift across the whole permanent split, de-duplicated, best-scoring first.
+  // Day-by-day trimming can't work here: six days have to become three, so selection has
+  // to see the entire roster at once.
+  const seenNm = {}; const pool = [];
+  Object.keys(src).forEach(dk=>(src[dk].exercises||[]).forEach(x=>{
+    const nm = exName(x);
+    if(!nm || seenNm[nm]) return;
+    seenNm[nm] = true;
+    pool.push({x, nm, sc:mesoLiftScore(nm), comp:mesoIsCompound(nm), pat:mesoPattern(nm)});
+  }));
+  pool.sort((a,b)=>b.sc-a.sc);
+
+  const used = {};
+  const take = pred => {
+    const f = pool.find(s=>!used[s.nm] && pred(s));
+    if(f) used[f.nm] = true;
+    return f || null;
+  };
+  const picks = {}; MESO_STR_DAYS.forEach(d=>picks[d.key] = []);
+
+  // 1. anchors \u2014 one movement pattern per day
+  MESO_STR_DAYS.forEach(d=>{
+    const a = take(s=>s.comp && s.pat===d.anchor) || take(s=>s.comp);
+    if(!a) return;
+    picks[d.key].push(a);
+    rationale.push(d.key+' ('+d.name+'): '+a.nm+' anchors the day'+
+      (a.pat===d.anchor ? ' \u2014 best '+d.anchor+' pattern by load and recent trend.'
+                        : ' \u2014 no '+d.anchor+' compound in your split, so the next-best compound took the slot.'));
   });
+  // 2. one secondary compound per day. The anchors already guarantee the *heaviest* lift
+  //    differs each day; the secondary has to respect the same rule or it re-introduces
+  //    the collision through the back door (a heavy incline press the day before heavy
+  //    bench). It may not share a pattern with this day's anchor or with an ADJACENT
+  //    training day's anchor — adjacency is linear, since two rest days separate the last
+  //    day from the next first day.
+  //    Pull is deliberately exempt. Squat/hinge/push are the three anchors, so barring
+  //    pull too would leave the secondaries with only each other's anchors to choose from
+  //    — you'd get heavy squat AND heavy hinge in one session, which is far worse for a
+  //    spine than two heavy pulling days in a row. Pulling recovers fast and competes with
+  //    nothing here, which is exactly why it's the right secondary on all three days.
+  MESO_STR_DAYS.forEach((d,i)=>{
+    const banned = [d.anchor];
+    if(i>0) banned.push(MESO_STR_DAYS[i-1].anchor);
+    if(i<MESO_STR_DAYS.length-1) banned.push(MESO_STR_DAYS[i+1].anchor);
+    const allowed = s => s.pat==='pull' || banned.indexOf(s.pat)<0;
+    let sec = take(s=>s.comp && s.pat && allowed(s));
+    if(!sec) sec = take(s=>s.comp && s.pat!==d.anchor) || take(s=>s.comp);
+    if(sec) picks[d.key].push(sec);
+  });
+  // 3. accessories dealt to whichever day covers that muscle least, so the three days
+  //    end up complementary rather than three copies of the same shopping list
+  const dayCov = {}; MESO_STR_DAYS.forEach(d=>{
+    dayCov[d.key] = {};
+    picks[d.key].forEach(s=>(musclesFor(s.nm).p||[]).forEach(g=>dayCov[d.key][g] = (dayCov[d.key][g]||0)+1));
+  });
+  pool.filter(s=>!used[s.nm] && !s.comp).forEach(s=>{
+    const open = MESO_STR_DAYS.filter(d=>picks[d.key].length < MESO_STR_PER_DAY);
+    if(!open.length) return;
+    const prim = (musclesFor(s.nm).p||[])[0] || '';
+    open.sort((a,b)=> (dayCov[a.key][prim]||0)-(dayCov[b.key][prim]||0) || picks[a.key].length-picks[b.key].length);
+    const d = open[0];
+    picks[d.key].push(s); used[s.nm] = true;
+    (musclesFor(s.nm).p||[]).forEach(g=>dayCov[d.key][g] = (dayCov[d.key][g]||0)+1);
+  });
+  // 4. top up any short day with the best remaining lift of any kind
+  MESO_STR_DAYS.forEach(d=>{
+    while(picks[d.key].length < MESO_STR_PER_DAY){
+      const f = take(()=>true);
+      if(!f) break;
+      picks[d.key].push(f);
+    }
+  });
+
+  const out = {};
+  MESO_STR_DAYS.forEach(d=>{
+    out[d.key] = {name:d.name, hex:d.hex, exercises: picks[d.key].map(s=>{
+      const o = (typeof s.x==='object') ? JSON.parse(JSON.stringify(s.x)) : {name:s.nm, inc:incFor(s.nm)};
+      // compounds run 3-6; accessories keep whatever rep mode they already had, so a
+      // deliberate per-exercise setting isn't silently overwritten by the generator
+      if(s.comp) o.repMode = 'str';
+      return o;
+    })};
+    const heavy = picks[d.key].filter(s=>s.comp).map(s=>s.nm);
+    if(heavy.length>1) rationale.push(d.key+': '+heavy.join(' + ')+' run heavy; the rest is accessory work at your normal rep range.');
+  });
+  const cut = pool.filter(s=>!used[s.nm]).map(s=>s.nm);
+  if(cut.length) rationale.push('Cut for the block: '+cut.join(', ')+' \u2014 six days of accessories don\u2019t fit in three, and intensity is the point here.');
+
   // coverage sanity check against the permanent split
   const cov = {}; MUSCLE_GROUPS.forEach(g=>cov[g]=0);
   Object.values(out).forEach(d=>(d.exercises||[]).forEach(x=>{
@@ -6502,8 +6847,8 @@ function mesoGenerateStrengthSplit(){
 function mesoProposeSplit(blockId){
   const a = mesoState().active; if(!a) return null;
   const gen = mesoGenerateStrengthSplit();
-  a.splits[blockId] = {status:'proposed', split:gen.split, rationale:gen.rationale,
-                       dropped:gen.dropped, generatedAt:todayKey()};
+  a.splits[blockId] = {status:'proposed', split:gen.split, rotation:MESO_DEFAULT_ROTATION.slice(),
+                       rationale:gen.rationale, dropped:gen.dropped, generatedAt:todayKey()};
   save();
   return a.splits[blockId];
 }
@@ -6511,7 +6856,13 @@ function mesoApproveSplit(blockId){
   const a = mesoState().active; if(!a || !a.splits[blockId]) return;
   a.splits[blockId].status = 'approved';
   a.splits[blockId].approvedAt = todayKey();
-  save(); renderMeso();
+  save(); renderMeso(); mesoAfterScheduleChange();
+}
+/* Approving or dropping a block split changes which day today resolves to, not just which
+   exercises it holds — the header, accent, and Today tab are all stale until they repaint. */
+function mesoAfterScheduleChange(){
+  try{ setAccent(); renderHeader(); }catch(e){}
+  try{ if(typeof renderToday==='function') renderToday(); }catch(e){}
   try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
 }
 function mesoRegenerateSplit(blockId){
@@ -6520,8 +6871,7 @@ function mesoRegenerateSplit(blockId){
 function mesoUnapproveSplit(blockId){
   const a = mesoState().active; if(!a || !a.splits[blockId]) return;
   a.splits[blockId].status = 'proposed';
-  save(); renderMeso();
-  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+  save(); renderMeso(); mesoAfterScheduleChange();
 }
 /* Ensure every strength block in the calendar has a proposal ready to review. */
 function mesoEnsureProposals(){
@@ -6683,8 +7033,14 @@ function mesoCurrentCardHTML(){
   }
   if(w.type==='str'){
     const rec = (a.splits||{})[w.blockId];
-    if(rec && rec.status==='approved') h += '<div class="meso-now-meta" style="color:var(--cyan)">\u2713 Strength split active for this block.</div>';
-    else h += '<div class="meso-now-meta" style="color:var(--amber)">\u26a0 Strength split proposed but not approved \u2014 your normal split is running. Review it below.</div>';
+    if(rec && rec.status==='approved'){
+      h += '<div class="meso-now-meta" style="color:var(--cyan)">\u2713 Strength split active for this block.</div>';
+      const pos = mesoRotationPos(todayKey());
+      const dk  = currentDayKey();
+      if(pos) h += '<div class="meso-now-meta">Rotation day '+pos.n+' of '+pos.len+' \u2014 today is '+
+        (dk==='REST' ? 'a rest day' : esc(dk+' \u00b7 '+dayName(dk)))+'. The rotation runs off the block start, not the calendar week.</div>';
+    }
+    else h += '<div class="meso-now-meta" style="color:var(--amber)">\u26a0 Strength split proposed but not approved \u2014 your normal split and schedule are running. Review it below.</div>';
   }
   h += '</div>';
   return h;
@@ -6721,7 +7077,7 @@ function mesoProposalsHTML(){
   a.weeks.forEach(w=>{ if(w.type==='str' && !seen[w.blockId]){ seen[w.blockId]=true; blocks.push(w); } });
   if(!blocks.length) return '';
   let h = '<div class="card"><div class="k">Strength block splits</div>'+
-    '<p class="small" style="margin-bottom:12px">Auto-built from your e1RM trends \u2014 heavy compounds anchor each day, accessories trimmed for intensity. Nothing applies until you approve it.</p>';
+    '<p class="small" style="margin-bottom:12px">Six days collapse to three, each anchored on a different movement pattern so no two training days in a row load the same pattern heavy. Auto-built from your e1RM trends. Nothing applies \u2014 split or schedule \u2014 until you approve it.</p>';
   blocks.forEach(w=>{
     const rec = (a.splits||{})[w.blockId];
     if(!rec){ h += '<p class="small">No proposal yet for the block starting '+fmtDate(w.startKey)+'.</p>'; return; }
@@ -6729,6 +7085,10 @@ function mesoProposalsHTML(){
     h += '<div class="meso-prop'+(approved?' ok':'')+'">';
     h += '<div class="meso-prop-top"><span class="meso-prop-t">Weeks '+w.n+'\u2013'+(w.n+w.blockLen-1)+' \u00b7 '+esc(w.name)+'</span>'+
          '<span class="pill" style="'+(approved?'border-color:var(--cyan);color:var(--cyan)':'border-color:var(--amber);color:var(--amber)')+'">'+(approved?'Approved':'Proposed')+'</span></div>';
+    const rot = (rec.rotation && rec.rotation.length) ? rec.rotation : MESO_DEFAULT_ROTATION;
+    const onCount = rot.filter(x=>x!=='REST').length;
+    h += '<div class="meso-rot">'+rot.map(x=>'<span class="meso-rot-d'+(x==='REST'?' off':'')+'">'+esc(x==='REST'?'rest':x)+'</span>').join('')+
+         '<span class="meso-rot-note">repeats — '+onCount+' on / '+(rot.length-onCount)+' off, ~'+(onCount*7/rot.length).toFixed(1)+' sessions/wk</span></div>';
     h += '<div class="meso-prop-split">';
     Object.keys(rec.split).forEach(dk=>{
       const d = rec.split[dk];
@@ -6737,7 +7097,7 @@ function mesoProposalsHTML(){
         const heavy = (typeof x==='object' && x.repMode==='str');
         return '<span class="meso-ex'+(heavy?' heavy':'')+'">'+esc(nm)+(heavy?' <b>3\u20136</b>':'')+'</span>';
       }).join('');
-      h += '<div class="meso-prop-day"><span class="meso-prop-dk">'+esc(dk)+'</span><div class="meso-prop-exs">'+(names||'<span class="small">empty</span>')+'</div></div>';
+      h += '<div class="meso-prop-day"><span class="meso-prop-dk">'+esc(dk)+(d.name?'<i>'+esc(d.name)+'</i>':'')+'</span><div class="meso-prop-exs">'+(names||'<span class="small">empty</span>')+'</div></div>';
     });
     h += '</div>';
     if(rec.rationale && rec.rationale.length){
@@ -6776,8 +7136,7 @@ function mesoEditTemplate(){
 }
 function mesoConfirmStop(){
   if(!confirm('Stop this plan? The calendar clears and your normal split resumes. Logs and history are untouched.')) return;
-  mesoStop(); _mesoDraft = null; renderMeso();
-  try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+  mesoStop(); _mesoDraft = null; renderMeso(); mesoAfterScheduleChange();
 }
 
 function renderMeso(){
