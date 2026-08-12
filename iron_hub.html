@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-12-v3">
+<meta name="ironhub-build" content="2026-08-12-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -6816,8 +6816,9 @@ function mesoGenerateStrengthSplit(){
     out[d.key] = {name:d.name, hex:d.hex, exercises: picks[d.key].map((s, idx)=>{
       const o = (typeof s.x==='object') ? JSON.parse(JSON.stringify(s.x)) : {name:s.nm, inc:incFor(s.nm)};
       // only the first two exercises (anchor + secondary) run 3-6, even if the secondary is a compound
-      // the rest are accessories at the global rep range
+      // accessories use the global rep range, so strip any per-exercise override
       if(idx < 2 && s.comp) o.repMode = 'str';
+      else delete o.repMode;
       return o;
     })};
     const heavy = picks[d.key].slice(0, 2).filter(s=>s.comp).map(s=>s.nm);
