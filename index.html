@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-13-v1">
+<meta name="ironhub-build" content="2026-08-13-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3807,7 +3807,7 @@ const NAV_MODEL = [
     {id:'road',        label:'Road'},
     {id:'an_strength', label:'PR history'},
     {id:'an_fatigue',  label:'Fatigue'},
-    {id:'an_recovery', label:'Recovery'},
+    {id:'an_recovery', label:'Readiness'},
     {id:'an_dev',      label:'Development'},
     {id:'an_pred',     label:'Predictions'}]},
   {id:'bulk',      label:'Bulk',        ic:'\u25c6', subs:[
@@ -4409,6 +4409,10 @@ function endLiveSession(){
   const logRec = {id:Date.now(), date:todayKey(), day:live.day, dayName:dayName(live.day), entries, decisions};
   if(isDeload) logRec.deload = true;
   if(live.home) logRec.home = true;
+  // Stamped either way, not just when true. The Readiness tab compares trimmed vs
+  // full-plan sessions, and "field missing" has to stay distinguishable from
+  // "answered no" — every log written before this existed is genuinely unknown.
+  logRec.trimmed = !!live.trimmed;
   S.logs.push(logRec);
   save();
   // compute summary
@@ -5293,7 +5297,7 @@ REVIEW_RENDER.meso = renderMeso;
 REVIEW_RENDER.an_over = function(){ renderAnOverview(); };
 REVIEW_RENDER.an_strength = function(){ renderAnPRs(); };
 REVIEW_RENDER.an_fatigue = function(){ renderAnFatigue(); };
-REVIEW_RENDER.an_recovery = function(){ renderAnRecovery(); };
+REVIEW_RENDER.an_recovery = function(){ renderAnReadiness(); };
 REVIEW_RENDER.an_dev = function(){ renderAnDev(); };
 REVIEW_RENDER.an_pred = function(){ renderAnPred(); };
 
@@ -7459,17 +7463,12 @@ function startUpdateWatcher(){
    degrades gracefully when history is thin, nothing is invented.
    ============================================================ */
 function anEffMult(e){ return e==='easy' ? 0.85 : e==='grind' ? 1.25 : e==='fail' ? 1.45 : 1; }
-function anEpley(w,r){ w=+w||0; r=+r||0; if(w<=0||r<=0) return 0; return r===1 ? w : w*(1+r/30); }
 function anWeekStart(key){ return mesoMondayOf(key); }
 function anLastWeeks(n, includeCurrent){
   const cur = anWeekStart(todayKey());
   const out = [];
   for(let i=(includeCurrent?0:1); out.length<n; i++) out.push(mesoAddDays(cur, -7*i));
   return out.reverse();   // oldest first
-}
-function anSessionsFor(ex){
-  return [...S.logs].filter(l=>!l.deload && l.entries.some(e=>e.exercise===ex))
-    .sort((a,b)=>a.date.localeCompare(b.date));
 }
 function anBigLifts(minSessions){
   const counts = {};
@@ -7608,51 +7607,130 @@ function renderAnPRs(){
   el.innerHTML = h;
 }
 
-/* ---------------- RECOVERY ---------------- */
-const AN_GAP_BUCKETS = [{k:'1\u20132 days',lo:1,hi:2},{k:'3\u20134 days',lo:3,hi:4},{k:'5\u20137 days',lo:5,hi:7},{k:'8+ days',lo:8,hi:99}];
-function anSessionE1(ex, log){
-  let best=0;
-  log.entries.forEach(e=>{ if(e.exercise!==ex) return; e.sets.forEach(s=>{ const v=anEpley(s.w,s.r); if(v>best) best=v; }); });
-  return best;
-}
-function anRecoveryFor(ex){
-  const ses = anSessionsFor(ex);
-  if(ses.length<5) return null;
-  const gaps=[], buckets = AN_GAP_BUCKETS.map(b=>({...b, n:0, ok:0}));
-  for(let i=1;i<ses.length;i++){
-    const gap = Math.round((new Date(ses[i].date)-new Date(ses[i-1].date))/86400000);
-    if(gap<1) continue;
-    const prev = anSessionE1(ex, ses[i-1]), cur = anSessionE1(ex, ses[i]);
-    if(prev<=0 || cur<=0) continue;
-    gaps.push(gap);
-    const b = buckets.find(x=>gap>=x.lo && gap<=x.hi); if(!b) continue;
-    b.n++; if(cur >= prev*0.995) b.ok++;   // matched or beat (0.5% tolerance)
-  }
-  if(gaps.length<4) return null;
-  gaps.sort((a,b)=>a-b);
-  const median = gaps[Math.floor(gaps.length/2)];
-  const scored = buckets.filter(b=>b.n>=2).map(b=>({...b, rate:b.ok/b.n}));
-  const best = scored.length ? scored.reduce((a,b)=>b.rate>a.rate?b:a, scored[0]) : null;
-  return {median, buckets, best, n:gaps.length};
-}
-function renderAnRecovery(){
-  const el = document.getElementById('an_recovery'); if(!el) return;
-  const lifts = anBigLifts(5);
-  const rows = lifts.map(ex=>({ex, r:anRecoveryFor(ex)})).filter(x=>x.r);
-  let h = '<div class="card"><div class="k">Recovery</div>'+
-    '<p class="small" style="margin-bottom:4px">How your big lifts respond to different rest gaps between sessions \u2014 the share of sessions where you matched or beat your previous e1RM after each gap length.</p></div>';
-  if(!rows.length){ el.innerHTML = h + anEmpty('Needs roughly 5+ sessions per lift with varied spacing. This sharpens as your log grows.'); return; }
-  rows.slice(0,4).forEach(({ex, r})=>{
-    h += '<div class="card"><div class="k">'+esc(ex)+'</div>';
-    r.buckets.filter(b=>b.n>0).forEach(b=>{
-      const rate = b.n ? Math.round(100*b.ok/b.n) : 0;
-      const isBest = r.best && b.k===r.best.k;
-      h += anBarRow(b.k+(isBest?' \u2605':''), rate, rate+'% held/beat \u00b7 '+b.n+'\u00d7', isBest?'var(--amber)':'var(--cyan)');
-    });
-    h += '<p class="small" style="margin-top:10px">Typical gap: '+r.median+' days.'+
-      (r.best ? ' Best results so far after <b style="color:var(--amber)">'+r.best.k+'</b> of rest.' : '')+
-      (r.n<8 ? ' <span style="color:var(--dim)">(Small sample \u2014 treat as a hint, not a rule.)</span>' : '')+'</p></div>';
+/* ---------------- READINESS vs OUTCOME ----------------
+   The pre-session check-in is logged every session; effort tags are logged every set.
+   Joining them answers the question the old rest-gap Recovery view never could on a
+   fixed rotation: do the days you show up under-recovered actually produce more
+   grinding and failed sets, and does taking the volume trim change anything. */
+const AN_RD_MIN_TAGGED   = 5;   // effort-tagged sets before one session's grind rate means anything
+const AN_RD_MIN_SESSIONS = 4;   // sessions per side before a comparison is shown at all
+const AN_RD_MIN_TRIM     = 3;   // trimmed / kept-full low sessions before that split is shown
+function anReadinessRows(){
+  const byDate = {};
+  (S.readiness||[]).forEach(r=>{ if(r && r.date && r.tier) byDate[r.date] = r; });
+  const rows = [];
+  S.logs.forEach(l=>{
+    if(l.deload) return;                       // deload sets are supposed to feel easy
+    const rd = byDate[l.date]; if(!rd) return;
+    let sets=0, tagged=0, hard=0;
+    l.entries.forEach(e=>e.sets.forEach(s=>{
+      sets++;
+      // An untagged set is unknown, not clean. Counting it as clean would drag every
+      // partially-tagged session's grind rate toward zero and wash the comparison out.
+      if(!s.e) return;
+      tagged++;
+      if(s.e==='grind' || s.e==='fail') hard++;
+    }));
+    if(tagged < AN_RD_MIN_TAGGED) return;
+    rows.push({date:l.date, tier:rd.tier, sets, tagged, hard,
+               trimmed: (typeof l.trimmed==='boolean') ? l.trimmed : null});
   });
+  return rows.sort((a,b)=>a.date.localeCompare(b.date));
+}
+/* Pooled rate (total hard sets / total tagged sets) rather than the mean of per-session
+   rates — a 3-set session shouldn't weigh the same as a 20-set one. */
+function anRdGroup(rows){
+  const tagged = rows.reduce((a,r)=>a+r.tagged,0);
+  const hard   = rows.reduce((a,r)=>a+r.hard,0);
+  const sets   = rows.reduce((a,r)=>a+r.sets,0);
+  return {n:rows.length, tagged, hard, sets,
+          rate: tagged ? hard/tagged : 0,
+          setsPer: rows.length ? sets/rows.length : 0};
+}
+function anReadinessTrim(lowRows){
+  const t = lowRows.filter(r=>r.trimmed===true), k = lowRows.filter(r=>r.trimmed===false);
+  const base = {trimmed:t.length, kept:k.length, need:AN_RD_MIN_TRIM};
+  if(t.length<AN_RD_MIN_TRIM || k.length<AN_RD_MIN_TRIM) return Object.assign({ok:false}, base);
+  const tg = anRdGroup(t), kg = anRdGroup(k);
+  return Object.assign({ok:true, trimRate:tg.rate, keptRate:kg.rate,
+                        trimSets:tg.setsPer, keptSets:kg.setsPer}, base);
+}
+function anReadinessOutcome(){
+  const rows = anReadinessRows();
+  const low  = rows.filter(r=>r.tier==='low');
+  const rest = rows.filter(r=>r.tier!=='low');
+  const groups = {low:anRdGroup(low), rest:anRdGroup(rest),
+                  ok:anRdGroup(rows.filter(r=>r.tier==='ok')),
+                  high:anRdGroup(rows.filter(r=>r.tier==='high'))};
+  const enough = low.length>=AN_RD_MIN_SESSIONS && rest.length>=AN_RD_MIN_SESSIONS;
+  return {ok:enough, rows, groups, need:AN_RD_MIN_SESSIONS,
+          diff: enough ? groups.low.rate - groups.rest.rate : null,
+          trim: anReadinessTrim(low)};
+}
+function anRdPct(v){ return Math.round(v*100); }
+function renderAnReadiness(){
+  const el = document.getElementById('an_recovery'); if(!el) return;
+  const r = anReadinessOutcome();
+  let h = '<div class="card"><div class="k">Readiness vs outcome</div>'+
+    '<p class="small">Whether the days you check in under-recovered actually cost you — the share of '+
+    'effort-tagged sets that came back <b>grind</b> or <b>fail</b>, split by that morning’s check-in. '+
+    'Only sessions with '+AN_RD_MIN_TAGGED+'+ tagged sets count; an untagged set is unknown, not clean.</p></div>';
+  if(!r.ok){
+    const g0 = r.groups;
+    el.innerHTML = h + anEmpty('Not enough data yet — '+g0.low.n+' low-readiness and '+g0.rest.n+
+      ' ok/high session'+(g0.rest.n===1?'':'s')+' on record, and this needs '+r.need+' of each before it can say anything real. '+
+      'Lock in the check-in and tag your sets’ effort — it fills in on its own.');
+    return;
+  }
+  const g = r.groups;
+  const worse = r.diff > 0.02, better = r.diff < -0.02;
+  const headCol = worse ? 'var(--red)' : better ? 'var(--cyan)' : 'var(--muted)';
+  const pts = Math.abs(anRdPct(g.low.rate) - anRdPct(g.rest.rate));
+  h += '<div class="card">'+
+    anBarRow('Low readiness', anRdPct(g.low.rate),
+      anRdPct(g.low.rate)+'% grind/fail · '+g.low.n+' sessions', 'var(--red)')+
+    anBarRow('Ok / high readiness', anRdPct(g.rest.rate),
+      anRdPct(g.rest.rate)+'% grind/fail · '+g.rest.n+' sessions', 'var(--cyan)')+
+    '<p class="small" style="margin-top:12px;color:'+headCol+'">'+
+    (worse   ? 'Low-readiness days do cost you — '+pts+' points more of your sets come back grind or fail.'
+     : better? 'Low-readiness days aren’t grinding more — '+pts+' points fewer, in fact. Either the trim is absorbing it, or you rate yourself harshly on days that turn out fine.'
+     :         'No meaningful difference so far — low-readiness days grind at about the same rate as the rest.')+'</p>'+
+    '<p class="small" style="color:var(--dim);margin-top:4px">Descriptive, not a significance test — sets inside one session rise and fall together, '+
+    'so a few points either way is noise.'+
+    ((g.low.n<8 || g.rest.n<8) ? ' Sample is still small ('+g.low.n+' vs '+g.rest.n+' sessions).' : '')+'</p></div>';
+  // Secondary read: a grind rate is easy to hold down by simply doing less work.
+  const maxSets = Math.max(g.low.setsPer, g.rest.setsPer) || 1;
+  h += '<div class="card"><div class="k">Work done</div>'+
+    anBarRow('Low readiness', 100*g.low.setsPer/maxSets,
+      (Math.round(g.low.setsPer*10)/10)+' sets/session', 'var(--red)')+
+    anBarRow('Ok / high readiness', 100*g.rest.setsPer/maxSets,
+      (Math.round(g.rest.setsPer*10)/10)+' sets/session', 'var(--cyan)')+
+    '<p class="small" style="margin-top:10px">How much work actually gets done on each kind of day — read the grind rate above against this, not on its own.</p></div>';
+  // Per-tier detail, only for tiers carrying enough sessions to deserve a number.
+  const tiers = [['high',g.high,'var(--cyan)'],['ok',g.ok,'var(--muted)'],['low',g.low,'var(--red)']]
+    .filter(t=>t[1].n>=AN_RD_MIN_SESSIONS);
+  if(tiers.length>=2){
+    h += '<div class="card"><div class="k">By tier</div>';
+    tiers.forEach(t=>{ h += anBarRow(t[0], anRdPct(t[1].rate), anRdPct(t[1].rate)+'% · '+t[1].n+' sessions', t[2]); });
+    h += '</div>';
+  }
+  const t = r.trim;
+  h += '<div class="card"><div class="k">Is the volume trim working?</div>';
+  if(t.ok){
+    const gap = anRdPct(t.keptRate) - anRdPct(t.trimRate);
+    h += anBarRow('Trimmed', anRdPct(t.trimRate), anRdPct(t.trimRate)+'% grind/fail · '+t.trimmed+' sessions', 'var(--cyan)')+
+         anBarRow('Kept full plan', anRdPct(t.keptRate), anRdPct(t.keptRate)+'% grind/fail · '+t.kept+' sessions', 'var(--amber)')+
+         '<p class="small" style="margin-top:12px">'+
+         (gap>2   ? 'Trimming is doing real work — '+gap+' points less grinding than the low days you pushed through, at '+
+                    (Math.round(t.trimSets*10)/10)+' vs '+(Math.round(t.keptSets*10)/10)+' sets/session.'
+          : gap<-2? 'Trimmed days are grinding <b>more</b>, not less — worth a look. The likeliest reason is selection: you accept the trim on the days that were already the worst.'
+          :         'No clear difference yet between trimming and pushing through on a low day.')+'</p>';
+  } else {
+    h += '<p class="small" style="color:var(--dim)">Not enough data yet — '+t.trimmed+' trimmed and '+t.kept+
+         ' kept-full low-readiness session'+(t.kept===1?'':'s')+' on record, and this needs '+t.need+' of each. '+
+         'Sessions logged before this comparison existed never recorded which choice you made, so they sit out rather than get guessed at.</p>';
+  }
+  h += '</div>';
   el.innerHTML = h;
 }
 

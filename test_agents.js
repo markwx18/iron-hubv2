@@ -1760,6 +1760,158 @@ setTimeout(async () => {
     ok('PR history section', false, e.message);
   }
 
+  console.log('=== READINESS vs OUTCOME ===');
+  try {
+    const RDX = 'RD Probe Lift';
+    let rdId = 900000;
+    const savedRd = ev('JSON.stringify(S.readiness)');
+    const resetRd = () => {
+      ev('S.readiness = [];');
+      ev("S.logs = S.logs.filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='" + RDX + "'; }); });");
+    };
+    // one session: `tagged` effort-tagged sets of which `hard` are grinds, plus `untagged` bare sets
+    const pushSess = (date, tagged, hard, untagged, extra) => {
+      const sets = [];
+      for (let i = 0; i < tagged; i++) sets.push({ w: 100, r: 8, e: i < hard ? 'grind' : 'solid' });
+      for (let i = 0; i < (untagged || 0); i++) sets.push({ w: 100, r: 8 });
+      const rec = Object.assign({ id: rdId++, date: date, day: 'D1', entries: [{ exercise: RDX, sets: sets }] }, extra || {});
+      ev('S.logs.push(' + JSON.stringify(rec) + ')');
+    };
+    const pushRd = (date, tier) =>
+      ev('S.readiness.push(' + JSON.stringify({ date: date, sleep: '7-8', sore: 'mild', energy: 'ok', tier: tier }) + ')');
+    const D = (n) => '2026-05-' + String(n).padStart(2, '0');
+
+    // --- the gate ---
+    resetRd();
+    ok('no data at all -> not enough', ev('anReadinessOutcome()').ok === false);
+    for (let i = 1; i <= 3; i++) { pushRd(D(i), 'low'); pushSess(D(i), 10, 6); }
+    for (let i = 11; i <= 14; i++) { pushRd(D(i), 'ok'); pushSess(D(i), 10, 2); }
+    ok('3 low sessions is still not enough', ev('anReadinessOutcome()').ok === false,
+      'lowN=' + ev('anReadinessOutcome()').groups.low.n);
+    pushRd(D(4), 'low'); pushSess(D(4), 10, 6);
+    let R = ev('anReadinessOutcome()');
+    ok('4 per side clears the gate', R.ok === true);
+    ok('low-readiness grind rate is pooled correctly', Math.abs(R.groups.low.rate - 0.6) < 1e-9, R.groups.low.rate);
+    ok('ok/high grind rate is pooled correctly', Math.abs(R.groups.rest.rate - 0.2) < 1e-9, R.groups.rest.rate);
+    ok('diff is low minus rest', Math.abs(R.diff - 0.4) < 1e-9, R.diff);
+    ok('sets/session is tracked per group', Math.abs(R.groups.low.setsPer - 10) < 1e-9, R.groups.low.setsPer);
+
+    // --- exclusions: each must not move the numbers ---
+    const baseLowN = R.groups.low.n, baseLowRate = R.groups.low.rate;
+    pushRd(D(5), 'low'); pushSess(D(5), 4, 4);                  // under the tagged-set floor
+    R = ev('anReadinessOutcome()');
+    ok('a session under the tagged-set floor is excluded',
+      R.groups.low.n === baseLowN && Math.abs(R.groups.low.rate - baseLowRate) < 1e-9,
+      'n=' + R.groups.low.n + ' rate=' + R.groups.low.rate);
+
+    pushSess(D(6), 10, 10);                                     // no check-in that day
+    R = ev('anReadinessOutcome()');
+    ok('a session with no check-in is excluded',
+      R.groups.low.n === baseLowN && R.groups.rest.n === 4, 'lowN=' + R.groups.low.n + ' restN=' + R.groups.rest.n);
+
+    pushRd(D(7), 'low'); pushSess(D(7), 10, 10, 0, { deload: true });
+    R = ev('anReadinessOutcome()');
+    ok('a deload session is excluded',
+      R.groups.low.n === baseLowN && Math.abs(R.groups.low.rate - baseLowRate) < 1e-9,
+      'n=' + R.groups.low.n + ' rate=' + R.groups.low.rate);
+
+    // untagged sets are unknown, not clean: they must not dilute the rate
+    pushRd(D(8), 'low'); pushSess(D(8), 10, 6, 20);
+    R = ev('anReadinessOutcome()');
+    ok('untagged sets do not count toward the grind rate',
+      Math.abs(R.groups.low.rate - 0.6) < 1e-9, R.groups.low.rate);
+    // 4 sessions of 10 sets + one of 30 = 14/session. If untagged sets were dropped from
+    // the work-done count too, that last session would read as 10 and the mean would stay 10.
+    ok('untagged sets still count as work done',
+      Math.abs(R.groups.low.setsPer - 14) < 1e-9, R.groups.low.setsPer);
+
+    // --- pooled, not mean-of-session-rates ---
+    resetRd();
+    pushRd(D(1), 'low'); pushSess(D(1), 20, 10);   // 50% over a big session
+    for (let i = 2; i <= 4; i++) { pushRd(D(i), 'low'); pushSess(D(i), 5, 0); }   // 0% over small ones
+    for (let i = 11; i <= 14; i++) { pushRd(D(i), 'high'); pushSess(D(i), 10, 1); }
+    R = ev('anReadinessOutcome()');
+    // mean of per-session rates would be 12.5%; pooled is 10/35 = 28.57%
+    ok('grind rate pools sets, not sessions',
+      Math.abs(R.groups.low.rate - 10 / 35) < 1e-9, R.groups.low.rate);
+    ok('pooled tagged-set count is exposed', R.groups.low.tagged === 35, R.groups.low.tagged);
+
+    // --- trim effectiveness ---
+    ok('trim analysis is unavailable when no log records the choice',
+      R.trim.ok === false && R.trim.trimmed === 0 && R.trim.kept === 0, JSON.stringify(R.trim));
+    resetRd();
+    for (let i = 1; i <= 3; i++) { pushRd(D(i), 'low'); pushSess(D(i), 10, 2, 0, { trimmed: true }); }
+    for (let i = 5; i <= 7; i++) { pushRd(D(i), 'low'); pushSess(D(i), 10, 7, 0, { trimmed: false }); }
+    for (let i = 11; i <= 14; i++) { pushRd(D(i), 'ok'); pushSess(D(i), 10, 3); }
+    R = ev('anReadinessOutcome()');
+    ok('trim analysis unlocks at 3 per side', R.trim.ok === true, JSON.stringify(R.trim));
+    ok('trimmed grind rate is correct', Math.abs(R.trim.trimRate - 0.2) < 1e-9, R.trim.trimRate);
+    ok('kept-full grind rate is correct', Math.abs(R.trim.keptRate - 0.7) < 1e-9, R.trim.keptRate);
+    // one fewer kept-full session drops it back below the floor
+    ev("S.logs = S.logs.filter(function(l){ return l.date !== '" + D(7) + "'; });");
+    ok('trim analysis re-locks below the floor', ev('anReadinessOutcome()').trim.ok === false);
+    ev('S.logs.push(' + JSON.stringify({ id: rdId++, date: D(7), day: 'D1', trimmed: false,
+        entries: [{ exercise: RDX, sets: Array.from({ length: 10 }, (_, i) => ({ w: 100, r: 8, e: i < 7 ? 'grind' : 'solid' })) }] }) + ')');
+
+    // legacy sessions (no trimmed field) must sit out, not be read as "kept full"
+    pushRd(D(9), 'low'); pushSess(D(9), 10, 9);
+    R = ev('anReadinessOutcome()');
+    ok('a log with no trimmed field counts in neither trim bucket',
+      R.trim.trimmed === 3 && R.trim.kept === 3, JSON.stringify(R.trim));
+    ok('but it still counts in the low-readiness group', R.groups.low.n === 7, R.groups.low.n);
+
+    // --- endLiveSession stamps the choice ---
+    ev("(function(){ live = { date: todayKey(), day:'D1', startedAt: Date.now(), curIdx:0, trimmed:true, home:false," +
+       " exercises:[{ name:'RD Trim Stamp Test', sets:[{w:100,r:8,e:'grind'}], done:true }] }; })();");
+    ev('endLiveSession()');
+    let stamped = ev("S.logs.slice().reverse().find(function(l){ return l.entries.some(function(e){ return e.exercise==='RD Trim Stamp Test'; }); })");
+    ok('endLiveSession stamps trimmed:true when the trim was taken', stamped && stamped.trimmed === true, JSON.stringify(stamped && stamped.trimmed));
+    ev("S.logs = S.logs.filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='RD Trim Stamp Test'; }); });");
+    ev("(function(){ live = { date: todayKey(), day:'D1', startedAt: Date.now(), curIdx:0, trimmed:false, home:false," +
+       " exercises:[{ name:'RD Trim Stamp Test', sets:[{w:100,r:8,e:'grind'}], done:true }] }; })();");
+    ev('endLiveSession()');
+    stamped = ev("S.logs.slice().reverse().find(function(l){ return l.entries.some(function(e){ return e.exercise==='RD Trim Stamp Test'; }); })");
+    ok('endLiveSession stamps trimmed:false when the full plan was kept',
+      stamped && stamped.trimmed === false, JSON.stringify(stamped && stamped.trimmed));
+    ok('"kept full" is a real false, not a missing field',
+      stamped && typeof stamped.trimmed === 'boolean', typeof (stamped && stamped.trimmed));
+    ev("S.logs = S.logs.filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='RD Trim Stamp Test'; }); });");
+    ev('live = null;');
+
+    // --- render ---
+    ev('renderAnReadiness()');
+    let rout = w.document.getElementById('an_recovery').innerHTML;
+    ok('readiness view renders both group rates', /20% grind\/fail/.test(rout) && /70% grind\/fail/.test(rout), rout.slice(0, 300));
+    ok('readiness view names the low-readiness verdict', rout.indexOf('Low-readiness days') >= 0);
+    ok('readiness view renders the work-done comparison', rout.indexOf('sets/session') >= 0);
+    ok('readiness view renders the trim card', rout.indexOf('Is the volume trim working?') >= 0);
+    ok('readiness view flags the small sample', rout.indexOf('Sample is still small') >= 0);
+
+    resetRd();
+    ev('renderAnReadiness()');
+    rout = w.document.getElementById('an_recovery').innerHTML;
+    ok('with no data the view says so instead of showing a number',
+      rout.indexOf('Not enough data yet') >= 0 && !/\d+% grind/.test(rout), rout.slice(0, 300));
+
+    // --- wiring ---
+    const anSubs2 = ev("NAV_MODEL.find(function(n){ return n.id==='analytics'; }).subs");
+    ok('nav labels the tab Readiness', anSubs2.some(s => s.id === 'an_recovery' && s.label === 'Readiness'),
+      JSON.stringify(anSubs2.map(s => s.label)));
+    ok('REVIEW_RENDER.an_recovery still wired', typeof ev('REVIEW_RENDER').an_recovery === 'function');
+    ok('the old rest-gap recovery engine is gone', ev('typeof anRecoveryFor') === 'undefined');
+    ok('the old recovery renderer is gone', ev('typeof renderAnRecovery') === 'undefined');
+
+    // cleanup
+    ev('S.readiness = ' + savedRd + ';');
+    ev("S.logs = S.logs.filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='" + RDX + "'; }); });");
+    ok('cleanup: readiness probe logs removed',
+      ev("S.logs.filter(function(l){ return l.entries.some(function(e){ return e.exercise==='" + RDX + "'; }); }).length") === 0);
+    ok('cleanup: readiness restored', ev('JSON.stringify(S.readiness)') === savedRd);
+  } catch (e) {
+    ok('readiness section', false, e.message);
+    ev('live = null;');
+  }
+
   console.log('=== RENDER ===');
   try {
     ev('renderOps')();
