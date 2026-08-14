@@ -1912,6 +1912,213 @@ setTimeout(async () => {
     ev('live = null;');
   }
 
+  console.log('=== BULK QUALITY ===');
+  const savedLogs = ev('JSON.stringify(S.logs)');
+  const savedWeights = ev('JSON.stringify(S.weights)');
+  try {
+    const BQX = 'BQ Probe Lift';
+    let bqId = 700000;
+    const dayOff = (n) => ev('mesoAddDays(todayKey(), ' + n + ')');
+    // The window scans every exercise in the log, so the section runs on an isolated
+    // S.logs/S.weights rather than trying to out-shout the other sections' fixtures.
+    const resetBq = () => { ev('S.logs = []; S.weights = [];'); };
+    // 11 weekly points across 70 days, all inside the default 12-week window
+    const OFFS = [];
+    for (let i = 0; i <= 10; i++) OFFS.push(-77 + i * 7);
+    const seedBw = (fn) => OFFS.forEach((o, i) =>
+      ev('S.weights.push(' + JSON.stringify({ date: dayOff(o), lbs: fn(i) }) + ')'));
+    // r:1 means epley() returns the weight untouched, so e1RM is exactly what's asserted
+    const seedLift = (name, fn, offs, extra) => (offs || OFFS).forEach((o, i) =>
+      ev('S.logs.push(' + JSON.stringify(Object.assign(
+        { id: bqId++, date: dayOff(o), day: 'D1', entries: [{ exercise: name, sets: [{ w: fn(i), r: 1 }] }] },
+        extra || {})) + ')'));
+
+    // --- bodyweight +10 lb, strength +20%: the healthy case ---
+    resetBq();
+    seedBw(i => 170 + i);
+    seedLift(BQX, i => 200 + i * 4);
+    let B = ev('anBulkQuality(12)');
+    ok('bulk quality reads a full window', B.ok === true, B.why);
+    ok('bodyweight change comes off the fitted line', Math.abs(B.bwLb - 10) < 0.01, B.bwLb);
+    ok('bodyweight percent change is right', Math.abs(B.bwPct - 5.882) < 0.01, B.bwPct);
+    ok('rate of gain is right', Math.abs(B.bwPerWeek - 1) < 0.001, B.bwPerWeek);
+    ok('strength percent change is right', Math.abs(B.stPct - 20) < 0.01, B.stPct);
+    ok('ratio is strength percent per bodyweight percent', Math.abs(B.ratio - 3.4) < 0.01, B.ratio);
+    ok('a 3.4x ratio reads as strength outpacing the scale', B.key === 'strong', B.key);
+    ok('per-lift breakdown is exposed for auditing', B.lifts.length === 1 && B.lifts[0].ex === BQX,
+      JSON.stringify(B.lifts.map(l => l.ex)));
+    ok('per-lift weekly rate is right', Math.abs(B.lifts[0].perWeek - 4) < 0.001, B.lifts[0].perWeek);
+
+    // --- same weight gain, no strength gain: the case this tab exists to catch ---
+    ev("S.logs = [];");
+    seedLift(BQX, () => 200);
+    B = ev('anBulkQuality(12)');
+    ok('flat strength under a real weight gain scores weak', B.key === 'weak', B.key + ' ratio=' + B.ratio);
+    ok('flat strength reports ~0% gain', Math.abs(B.stPct) < 0.01, B.stPct);
+
+    // --- a ratio between 1 and 2 is "good", not "strong" ---
+    ev("S.logs = [];");
+    seedLift(BQX, i => 200 + i * 1.764);   // +17.64 lb on 200 = +8.82%, a ratio of ~1.5
+    B = ev('anBulkQuality(12)');
+    ok('a 1.5x ratio reads as good, not strong', B.key === 'good', B.key + ' ratio=' + B.ratio);
+    ok('that ratio lands between 1 and 2', B.ratio > 1 && B.ratio < 2, B.ratio);
+
+    // --- flat bodyweight: no ratio at all, rather than a number divided by noise ---
+    ev("S.weights = [];");
+    seedBw(() => 170);
+    ev("S.logs = [];");
+    seedLift(BQX, i => 200 + i * 4);
+    B = ev('anBulkQuality(12)');
+    ok('flat bodyweight takes the flat branch', B.key === 'flat' && B.flat === true, B.key);
+    ok('flat bodyweight yields no ratio', B.ratio === null, B.ratio);
+    ok('strength still reported on a flat window', Math.abs(B.stPct - 20) < 0.01, B.stPct);
+
+    // --- falling bodyweight ---
+    ev("S.weights = [];");
+    seedBw(i => 180 - i);
+    B = ev('anBulkQuality(12)');
+    ok('falling bodyweight takes the losing branch', B.key === 'losing' && B.losing === true, B.key);
+    ok('falling bodyweight yields no ratio', B.ratio === null, B.ratio);
+
+    // --- the gates ---
+    ev("S.weights = [];");
+    ev('S.weights.push(' + JSON.stringify({ date: dayOff(-70), lbs: 170 }) + ')');
+    ev('S.weights.push(' + JSON.stringify({ date: dayOff(-63), lbs: 171 }) + ')');
+    B = ev('anBulkQuality(12)');
+    ok('two bodyweight points is not enough', B.ok === false && /bodyweight entries/.test(B.why), B.why);
+    ev("S.weights = [];"); seedBw(i => 170 + i);
+    ev("S.logs = [];");
+    B = ev('anBulkQuality(12)');
+    ok('no qualifying lift is reported as such', B.ok === false && /lift/.test(B.why), B.why);
+
+    // a lift needs 4+ sessions
+    seedLift('BQ Too Few', i => 100 + i, [-70, -42, -14]);
+    B = ev('anBulkQuality(12)');
+    ok('a lift with 3 sessions does not qualify', B.ok === false, B.ok && JSON.stringify(B.lifts.map(l => l.ex)));
+    // ...and 21+ days of span
+    seedLift('BQ Too Short', i => 100 + i, [-12, -10, -8, -6, -4]);
+    B = ev('anBulkQuality(12)');
+    ok('a lift crammed into 8 days does not qualify', B.ok === false, B.ok && JSON.stringify(B.lifts.map(l => l.ex)));
+    seedLift(BQX, i => 200 + i * 4);
+    B = ev('anBulkQuality(12)');
+    ok('only qualifying lifts enter the index', B.lifts.length === 1 && B.lifts[0].ex === BQX,
+      JSON.stringify(B.lifts.map(l => l.ex)));
+
+    // --- data outside the window must not move the numbers ---
+    const inWindow = { bwLb: B.bwLb, stPct: B.stPct };
+    ev('S.weights.push(' + JSON.stringify({ date: dayOff(-400), lbs: 100 }) + ')');
+    seedLift(BQX, () => 999, [-400, -393, -386, -379]);
+    B = ev('anBulkQuality(12)');
+    ok('bodyweight before the window is excluded', Math.abs(B.bwLb - inWindow.bwLb) < 0.001, B.bwLb);
+    ok('sessions before the window are excluded', Math.abs(B.stPct - inWindow.stPct) < 0.001, B.stPct);
+    // a wider window does pick them up — proves the filter is the window, not a coincidence
+    const wide = ev('anBulkQuality(80)');
+    ok('a wider window does reach the older data', Math.abs(wide.bwLb - inWindow.bwLb) > 1, wide.bwLb);
+
+    // --- deload sessions are excluded from the strength side ---
+    seedLift(BQX, () => 999, [-35], { deload: true });
+    B = ev('anBulkQuality(12)');
+    ok('deload sessions do not inflate the strength trend',
+      Math.abs(B.stPct - inWindow.stPct) < 0.001, B.stPct);
+
+    // --- the trend is fitted, not read off the endpoints ---
+    // Ten sessions climbing 200 -> 236, then one bad day at 205. Endpoint arithmetic would
+    // call that +2.5% and let a single session define the verdict; the fitted line says +11.8%.
+    ev("S.logs = []; S.weights = [];");
+    seedBw(i => 170 + i);
+    OFFS.forEach((o, i) => ev('S.logs.push(' + JSON.stringify({ id: bqId++, date: dayOff(o), day: 'D1',
+      entries: [{ exercise: BQX, sets: [{ w: i === 10 ? 205 : 200 + 4 * i, r: 1 }] }] }) + ')'));
+    B = ev('anBulkQuality(12)');
+    ok('one bad last session does not define the strength trend',
+      Math.abs(B.stPct - 11.76) < 0.05, B.stPct + ' (endpoints would say 2.5)');
+    ok('the fitted start is above the first raw point',
+      Math.abs(B.lifts[0].start - 204.77) < 0.05, B.lifts[0].start);
+    // same for bodyweight: a single heavy weigh-in on the last day must not become the trend
+    ev("S.weights = [];");
+    OFFS.forEach((o, i) => ev('S.weights.push(' + JSON.stringify({ date: dayOff(o), lbs: i === 10 ? 176 : 170 + i }) + ')'));
+    B = ev('anBulkQuality(12)');
+    ok('one off weigh-in does not define the bodyweight trend',
+      Math.abs(B.bwLb - 8.18) < 0.05, B.bwLb + ' (endpoints would say 6)');
+
+    // restore the clean linear fixture for the series/render assertions below
+    ev("S.logs = []; S.weights = [];");
+    seedBw(i => 170 + i);
+    seedLift(BQX, i => 200 + i * 4);
+    B = ev('anBulkQuality(12)');
+
+    // --- the two series ---
+    ok('both chart lines are percent change from the window start',
+      Math.abs(B.bwLine[0].v) < 1e-9 && Math.abs(B.stLine[0].v) < 1e-9,
+      JSON.stringify([B.bwLine[0], B.stLine[0]]));
+    ok('the bodyweight line ends at the measured percent change',
+      Math.abs(B.bwLine[B.bwLine.length - 1].v - 5.882) < 0.05, B.bwLine[B.bwLine.length - 1].v);
+    const spark = ev("anDualSpark(" + JSON.stringify(B.bwLine) + "," + JSON.stringify(B.stLine) + ",300,74,'var(--violet)','var(--amber)')");
+    ok('the dual chart draws two lines', (spark.match(/<path/g) || []).length === 2, spark.slice(0, 120));
+    const crossing = ev("anDualSpark([{date:'2026-01-01',v:-5},{date:'2026-02-01',v:5}],[{date:'2026-01-01',v:-2},{date:'2026-02-01',v:3}],300,74,'a','b')");
+    const above = ev("anDualSpark([{date:'2026-01-01',v:10},{date:'2026-02-01',v:20}],[{date:'2026-01-01',v:12},{date:'2026-02-01',v:18}],300,74,'a','b')");
+    ok('the dual chart draws a zero reference when the range crosses it', crossing.indexOf('stroke-dasharray') >= 0);
+    ok('the dual chart omits it when the range never reaches zero', above.indexOf('stroke-dasharray') < 0);
+    ok('the dual chart refuses a single-point series',
+      /not enough points/.test(ev("anDualSpark([{date:'2026-01-01',v:0}],[{date:'2026-01-01',v:0},{date:'2026-01-08',v:1}],300,74,'a','b')")));
+    // x is mapped by DATE, not by position in the array. Bodyweight and lifting rarely cover
+    // the same weeks, so an index-mapped chart would stretch a short series across the full
+    // width and put the two lines out of register. The fixture is deliberately non-uniform:
+    // series A runs Jan 1 / Jan 8 / Mar 1, series B starts a month late at Feb 1 / Mar 1.
+    // Across a 59-day span on a 300-wide viewBox, x = 4 + (days/59)*292.
+    const uneven = ev("anDualSpark(" +
+      "[{date:'2026-01-01',v:0},{date:'2026-01-08',v:1},{date:'2026-03-01',v:2}]," +
+      "[{date:'2026-02-01',v:0},{date:'2026-03-01',v:3}],300,74,'a','b')");
+    const paths = (uneven.match(/ d="([^"]+)"/g) || []).map(s => s.slice(4, -1));
+    ok('unequal-length series still chart', paths.length === 2, JSON.stringify(paths));
+    const xsOf = (d) => d.split(/[ML]/).filter(Boolean).map(seg => parseFloat(seg.trim().split(' ')[0]));
+    const xa = xsOf(paths[0] || ''), xb = xsOf(paths[1] || '');
+    ok('a series starting a month late starts a month in, not at the left edge',
+      Math.abs(xb[0] - 157.4) < 0.5, xb[0] + ' (index mapping would put it at 4)');
+    ok('a point 7 days in sits 7 days in, not at the array midpoint',
+      Math.abs(xa[1] - 38.7) < 0.5, xa[1] + ' (index mapping would put it at 150)');
+    ok('both series end on the same x', Math.abs(xa[xa.length - 1] - xb[xb.length - 1]) < 0.05,
+      xa[xa.length - 1] + ' vs ' + xb[xb.length - 1]);
+
+    // --- render ---
+    ev('anBqWeeks = 12;');
+    ev('renderAnBulkQuality()');
+    let bout = w.document.getElementById('an_dev').innerHTML;
+    ok('bulk quality renders a verdict', bout.indexOf('outpacing the scale') >= 0 || bout.indexOf('ahead of the scale') >= 0, bout.slice(0, 400));
+    ok('bulk quality renders the bodyweight delta', /\+10 lb/.test(bout), 'no +10 lb');
+    ok('bulk quality renders the ratio', /3\.4×/.test(bout), 'no ratio');
+    ok('bulk quality renders the per-lift breakdown', bout.indexOf(BQX) >= 0);
+    ok('bulk quality renders the rate-of-gain context', bout.indexOf('lean-bulk band') >= 0);
+    ok('bulk quality defers calorie changes rather than prescribing', bout.indexOf('Investigate and ECHO') >= 0);
+    ok('bulk quality renders the window picker', /24 wk/.test(bout));
+    ev('anBqSetWindow(24)');
+    ok('the window picker changes the window', ev('anBqWeeks') === 24);
+    ev('anBqSetWindow(12)');
+
+    ev("S.weights = []; S.logs = [];");
+    ev('renderAnBulkQuality()');
+    bout = w.document.getElementById('an_dev').innerHTML;
+    ok('with no data the view explains what it needs rather than showing a number',
+      /bodyweight entries/.test(bout) && bout.indexOf('Ratio') < 0 && bout.indexOf('lean-bulk band') < 0,
+      bout.slice(0, 300));
+
+    // --- wiring ---
+    const anSubs3 = ev("NAV_MODEL.find(function(n){ return n.id==='analytics'; }).subs");
+    ok('nav labels the tab Bulk quality', anSubs3.some(s => s.id === 'an_dev' && s.label === 'Bulk quality'),
+      JSON.stringify(anSubs3.map(s => s.label)));
+    ok('REVIEW_RENDER.an_dev still wired', typeof ev('REVIEW_RENDER').an_dev === 'function');
+    ok('the old development renderer is gone', ev('typeof renderAnDev') === 'undefined');
+    ok('the old muscle-group weekly helper is gone', ev('typeof anGroupWeekly') === 'undefined');
+    ok('the weekly heatmap it overlapped with is untouched', typeof ev('weeklyVolumeByGroup') === 'function');
+
+    // cleanup
+    ev('S.logs = ' + savedLogs + '; S.weights = ' + savedWeights + ';');
+    ok('cleanup: real logs restored', ev('JSON.stringify(S.logs)') === savedLogs);
+    ok('cleanup: real bodyweight restored', ev('JSON.stringify(S.weights)') === savedWeights);
+  } catch (e) {
+    ok('bulk quality section', false, e.message);
+    ev('S.logs = ' + savedLogs + '; S.weights = ' + savedWeights + ';');
+  }
+
   console.log('=== RENDER ===');
   try {
     ev('renderOps')();

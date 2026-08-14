@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-13-v2">
+<meta name="ironhub-build" content="2026-08-13-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3808,7 +3808,7 @@ const NAV_MODEL = [
     {id:'an_strength', label:'PR history'},
     {id:'an_fatigue',  label:'Fatigue'},
     {id:'an_recovery', label:'Readiness'},
-    {id:'an_dev',      label:'Development'},
+    {id:'an_dev',      label:'Bulk quality'},
     {id:'an_pred',     label:'Predictions'}]},
   {id:'bulk',      label:'Bulk',        ic:'\u25c6', subs:[
     {id:'bulk',     label:'Bodyweight'},
@@ -5298,7 +5298,7 @@ REVIEW_RENDER.an_over = function(){ renderAnOverview(); };
 REVIEW_RENDER.an_strength = function(){ renderAnPRs(); };
 REVIEW_RENDER.an_fatigue = function(){ renderAnFatigue(); };
 REVIEW_RENDER.an_recovery = function(){ renderAnReadiness(); };
-REVIEW_RENDER.an_dev = function(){ renderAnDev(); };
+REVIEW_RENDER.an_dev = function(){ renderAnBulkQuality(); };
 REVIEW_RENDER.an_pred = function(){ renderAnPred(); };
 
 /* ===================== 1RM LIVE MODE ===================== */
@@ -7734,42 +7734,176 @@ function renderAnReadiness(){
   el.innerHTML = h;
 }
 
-/* ---------------- DEVELOPMENT (muscle group trends) ---------------- */
-function anGroupWeekly(nWeeks){
-  const weeks = anLastWeeks(nWeeks, false);   // completed weeks only
-  return weeks.map(ws=>{
-    const vol = weeklyVolumeByGroup(ws, mesoAddDays(ws,6));
-    return {date:ws, vol};
+/* ---------------- BULK QUALITY ----------------
+   The Weekly Volume Heatmap already covers per-muscle-group volume, which is all the old
+   Development view did on a different window. What nothing else answers: over the same
+   stretch of time, is strength climbing faster than the scale, or are you just heavier?
+   Bodyweight comes from the weekly-averaged series (daily weigh-ins are too noisy to fit
+   a trend to) and strength from the e1RM trend on whatever you've actually been training. */
+const AN_BQ_WINDOWS = [8, 12, 24];
+let anBqWeeks = 12;
+/* Per-lift trend inside the window. Change is read off the fitted line rather than
+   first-vs-last points, so one bad session at either end can't define the whole verdict. */
+function anBqLifts(startKey){
+  const counts = {};
+  S.logs.forEach(l=>{
+    if(l.deload || l.date < startKey) return;
+    l.entries.forEach(e=>{ counts[e.exercise] = (counts[e.exercise]||0)+1; });
   });
+  return Object.keys(counts).map(ex=>{
+    const pts = e1rmSeries(ex).filter(p=>p.date>=startKey);
+    if(pts.length < 4) return null;
+    const span = (new Date(pts[pts.length-1].date)-new Date(pts[0].date))/86400000;
+    if(span < 21) return null;                       // a week of data can't carry a trend
+    const reg = linreg(pts); if(!reg) return null;
+    const start = reg.intercept, end = reg.intercept + reg.slope*span;
+    if(start <= 0) return null;
+    return {ex, pts, n:pts.length, span, start, end,
+            pct: 100*(end-start)/start, perWeek: reg.slope*7};
+  }).filter(Boolean).sort((a,b)=>b.n-a.n).slice(0,5);
 }
-function renderAnDev(){
-  const el = document.getElementById('an_dev'); if(!el) return;
-  const data = anGroupWeekly(8);
-  const hasAny = data.some(w=>Object.values(w.vol).some(v=>v>0));
-  if(!hasAny){ el.innerHTML = anEmpty('Development tracking needs a few weeks of logged sessions.'); return; }
-  const rows = MUSCLE_GROUPS.filter(g=>g!=='Abs').map(g=>{
-    const pts = data.map(w=>({date:w.date, v:w.vol[g]||0}));
-    const recent = pts.slice(-4).reduce((a,p)=>a+p.v,0)/4;
-    const prior  = pts.slice(0,4).reduce((a,p)=>a+p.v,0)/4;
-    const delta = prior>0.5 ? (recent-prior)/prior : (recent>0.5 ? 1 : 0);
-    return {g, pts, recent, prior, delta};
-  }).filter(r=>r.recent>0.25 || r.prior>0.25);
-  rows.sort((a,b)=>b.delta-a.delta);
-  let h = '<div class="card"><div class="k">Development</div>'+
-    '<p class="small">Weekly hard sets per muscle group \u2014 last 4 completed weeks vs the 4 before. Rising groups are getting emphasis; falling ones are drifting.</p></div>';
-  rows.forEach(r=>{
-    const up = r.delta>0.12, down = r.delta<-0.12;
-    const col = up?'var(--cyan)':down?'var(--red)':'var(--muted)';
-    const arrow = up?'\u2191':down?'\u2193':'\u2192';
-    const pctTxt = (r.prior>0.5||r.recent>0.5) ? (r.delta>=0?'+':'')+Math.round(r.delta*100)+'%' : '\u2014';
-    h += '<div class="card" style="padding:12px 14px"><div style="display:flex;align-items:center;gap:12px">'+
-      '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">'+
-      '<b style="font-family:var(--disp);font-size:15px;letter-spacing:.03em">'+r.g+'</b>'+
-      '<span class="mono" style="font-size:12px;color:'+col+'">'+arrow+' '+pctTxt+' \u00b7 '+(Math.round(r.recent*10)/10)+' sets/wk</span></div>'+
-      anSpark(r.pts, 300, 34, col)+'</div></div></div>';
+function anBqWeekGrid(startKey){
+  const out = [];
+  const last = anWeekStart(todayKey());
+  let ws = anWeekStart(startKey), guard = 0;
+  while(ws <= last && guard++ < 60){ out.push(mesoAddDays(ws,6)); ws = mesoAddDays(ws,7); }
+  return out;
+}
+/* Both lines as percent change from their own window start, so a 190 lb bodyweight and a
+   225 lb bench can share one axis. Each week takes the most recent value at or before it —
+   bodyweight and lifts are logged on different days, and neither should leave gaps. */
+function anBqSeries(startKey, lifts){
+  const grid = anBqWeekGrid(startKey);
+  const bwPts = bodyweightSeriesSmoothed().filter(p=>p.date>=startKey);
+  const bw0 = bwPts.length ? bwPts[0].v : 0;
+  const bwLine = [], stLine = [];
+  grid.forEach(end=>{
+    const b = bwPts.filter(p=>p.date<=end).pop();
+    if(b && bw0>0) bwLine.push({date:end, v:100*(b.v-bw0)/bw0});
+    const vals = [];
+    lifts.forEach(L=>{
+      const p = L.pts.filter(x=>x.date<=end).pop();
+      if(p && L.pts[0].v>0) vals.push(100*(p.v-L.pts[0].v)/L.pts[0].v);
+    });
+    if(vals.length) stLine.push({date:end, v:vals.reduce((a,c)=>a+c,0)/vals.length});
   });
-  const lag = rows.filter(r=>r.delta<-0.25);
-  if(lag.length) h += '<div class="card"><p class="small" style="color:var(--amber)">\u26a0 Falling off: '+lag.map(r=>r.g).join(', ')+'. Intentional (e.g. a strength block) is fine \u2014 unintentional drift is how weak points form.</p></div>';
+  return {bwLine, stLine};
+}
+const AN_BQ_VERDICTS = {
+  strong:{col:'var(--cyan)',  label:'Strength is outpacing the scale'},
+  good:  {col:'var(--cyan)',  label:'Strength is ahead of the scale'},
+  even:  {col:'var(--amber)', label:'Gaining roughly in proportion'},
+  weak:  {col:'var(--red)',   label:'The scale is moving faster than the bar'},
+  flat:  {col:'var(--muted)', label:'Bodyweight is flat'},
+  losing:{col:'var(--muted)', label:'Bodyweight is falling'}
+};
+function anBulkQuality(weeks){
+  weeks = weeks || anBqWeeks;
+  const startKey = mesoAddDays(todayKey(), -7*weeks);
+  const bw = bodyweightSeriesSmoothed().filter(p=>p.date>=startKey);
+  if(bw.length < 3)
+    return {ok:false, weeks, why:'Needs at least 3 weeks of bodyweight entries inside this window. Weigh in most mornings and it fills in on its own.'};
+  const lifts = anBqLifts(startKey);
+  if(!lifts.length)
+    return {ok:false, weeks, why:'Needs at least one lift with 4+ logged sessions spanning 3+ weeks inside this window. Try a longer window.'};
+  const reg = linreg(bw);
+  if(!reg || reg.intercept <= 0)
+    return {ok:false, weeks, why:'Not enough spread in the bodyweight entries here to fit a trend.'};
+  const span = (new Date(bw[bw.length-1].date)-new Date(bw[0].date))/86400000;
+  const bwStart = reg.intercept, bwEnd = reg.intercept + reg.slope*span;
+  const bwLb = bwEnd - bwStart, bwPct = 100*bwLb/bwStart, bwPerWeek = reg.slope*7;
+  const stPct = lifts.reduce((a,l)=>a+l.pct,0)/lifts.length;
+  // A ratio against a bodyweight change of roughly zero is meaningless, so those windows
+  // get their own branch instead of a number that would divide by noise.
+  const flat = Math.abs(bwPct) < 0.2, losing = bwPct <= -0.2;
+  const ratio = (!flat && !losing) ? stPct/bwPct : null;
+  const key = flat ? 'flat' : losing ? 'losing'
+            : ratio >= 2   ? 'strong'
+            : ratio >= 1   ? 'good'
+            : ratio >= 0.5 ? 'even' : 'weak';
+  return Object.assign({ok:true, weeks, startKey, lifts, bw, bwLb, bwPct, bwPerWeek, bwStart, bwEnd,
+                        stPct, ratio, flat, losing, key},
+                       anBqSeries(startKey, lifts));
+}
+/* Two series on one normalized axis. x is mapped by date, not by index, so the lines stay
+   aligned even when bodyweight and lifting cover different numbers of weeks. */
+function anDualSpark(a, b, w, h, colA, colB){
+  if(!a || !b || a.length < 2 || b.length < 2)
+    return '<div class="small" style="color:var(--dim)">not enough points to chart</div>';
+  const all = a.concat(b);
+  const ts = all.map(p=>+new Date(p.date));
+  const t0 = Math.min(...ts), t1 = Math.max(...ts);
+  let lo = Math.min(...all.map(p=>p.v)), hi = Math.max(...all.map(p=>p.v));
+  if(hi === lo){ hi += 1; lo -= 1; }
+  const pad = (hi-lo)*0.15; lo -= pad; hi += pad;
+  const px = d => ((+new Date(d)-t0)/Math.max(1, t1-t0))*(w-8)+4;
+  const py = v => h-6 - ((v-lo)/(hi-lo))*(h-12);
+  const line = (pts, col) =>
+    '<path d="'+pts.map((p,i)=>(i?'L':'M')+px(p.date).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ')+
+    '" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+
+    '<circle cx="'+px(pts[pts.length-1].date).toFixed(1)+'" cy="'+py(pts[pts.length-1].v).toFixed(1)+'" r="3" fill="'+col+'"/>';
+  const zero = (lo < 0 && hi > 0)
+    ? '<line x1="0" y1="'+py(0).toFixed(1)+'" x2="'+w+'" y2="'+py(0).toFixed(1)+'" stroke="var(--line2)" stroke-width="1" stroke-dasharray="3 3"/>' : '';
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block">'+
+    zero + line(a, colA) + line(b, colB) + '</svg>';
+}
+function anBqSetWindow(n){ anBqWeeks = +n || 12; renderAnBulkQuality(); }
+function renderAnBulkQuality(){
+  const el = document.getElementById('an_dev'); if(!el) return;
+  const picker = '<div style="display:flex;gap:8px;margin-top:10px">'+
+    AN_BQ_WINDOWS.map(n=>'<button class="btn sm'+(n===anBqWeeks?' primary':' ghost')+'" onclick="anBqSetWindow('+n+')">'+n+' wk</button>').join('')+
+    '</div>';
+  const r = anBulkQuality(anBqWeeks);
+  let h = '<div class="card"><div class="k">Bulk quality</div>'+
+    '<p class="small">Bodyweight against strength over the same window — whether you’re getting proportionally '+
+    'stronger as you gain, or just heavier. Both read as percent change so they share one scale.</p>'+picker+'</div>';
+  if(!r.ok){ el.innerHTML = h + anEmpty(r.why); return; }
+  const v = AN_BQ_VERDICTS[r.key];
+  const sign = n => (n>=0?'+':'')+(Math.round(n*10)/10);
+  h += '<div class="card" style="border-left:4px solid '+v.col+'">'+
+    '<b style="color:'+v.col+';text-transform:uppercase;letter-spacing:.1em;font-size:12px">'+v.label+'</b>'+
+    '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px">'+
+      '<div><div class="small" style="color:var(--dim)">Bodyweight</div>'+
+        '<div class="mono" style="font-size:17px;color:var(--violet)">'+sign(r.bwLb)+' lb</div>'+
+        '<div class="small mono" style="color:var(--muted)">'+sign(r.bwPct)+'%</div></div>'+
+      '<div><div class="small" style="color:var(--dim)">Strength (e1RM)</div>'+
+        '<div class="mono" style="font-size:17px;color:var(--amber)">'+sign(r.stPct)+'%</div>'+
+        '<div class="small mono" style="color:var(--muted)">'+r.lifts.length+' lift'+(r.lifts.length===1?'':'s')+'</div></div>'+
+      (r.ratio!=null ? '<div><div class="small" style="color:var(--dim)">Ratio</div>'+
+        '<div class="mono" style="font-size:17px;color:'+v.col+'">'+(Math.round(r.ratio*100)/100)+'×</div>'+
+        '<div class="small mono" style="color:var(--muted)">per 1% bw</div></div>' : '')+
+    '</div>'+
+    '<p class="small" style="margin-top:10px">'+
+    (r.key==='strong' ? 'Strength is climbing about '+(Math.round(r.ratio*10)/10)+'× faster than bodyweight in percentage terms. The surplus is going somewhere useful.'
+     : r.key==='good' ? 'Strength is gaining faster than the scale. That’s the shape a lean bulk is supposed to have.'
+     : r.key==='even' ? 'Strength and bodyweight are climbing at roughly the same rate. Not a problem on its own, but worth watching — you want the bar moving faster than the scale.'
+     : r.key==='weak' ? 'Bodyweight is rising faster than strength over this window. That can be a stall, a bad stretch of sleep, or a rate of gain running ahead of what you can use — check the Bulk tab and Investigate before changing anything.'
+     : r.key==='flat' ? 'Bodyweight is essentially flat here, so there’s no bulk to judge — this window reads as maintenance. The strength number still stands on its own.'
+     :                  'Bodyweight is falling over this window. Holding or gaining strength while it does is a good outcome; losing both is worth a look at the Bulk tab.')+
+    '</p></div>';
+  // chart
+  h += '<div class="card"><div class="k">Same window, both lines</div>'+
+    anDualSpark(r.bwLine, r.stLine, 300, 74, 'var(--violet)', 'var(--amber)')+
+    '<div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">'+
+      '<span class="small mono" style="color:var(--violet)">— bodyweight</span>'+
+      '<span class="small mono" style="color:var(--amber)">— strength index</span>'+
+    '</div>'+
+    '<p class="small" style="margin-top:8px;color:var(--dim)">Percent change from the start of the window. The strength index is the average of the lifts below.</p></div>';
+  // per-lift breakdown, so the aggregate above is auditable rather than a black box
+  h += '<div class="card"><div class="k">Lifts in the index</div>';
+  const mag = Math.max(...r.lifts.map(l=>Math.abs(l.pct)), 1);
+  r.lifts.forEach(l=>{
+    h += anBarRow(l.ex, 100*Math.abs(l.pct)/mag,
+      sign(l.pct)+'% · '+sign(l.perWeek)+' lb/wk · '+l.n+' sessions',
+      l.pct>=0 ? 'var(--amber)' : 'var(--red)');
+  });
+  h += '<p class="small" style="margin-top:10px;color:var(--dim)">Trend fitted across the window, not first-vs-last, so one bad session can’t define the number. Deload weeks are excluded.</p></div>';
+  // rate of gain against the band the Bulk investigator already uses — context, not a prescription
+  h += '<div class="card"><div class="k">Rate of gain</div>'+
+    '<p class="small"><span class="mono" style="color:var(--violet);font-size:15px">'+sign(r.bwPerWeek)+' lb/week</span> '+
+    'over this window, against the 0.5–1 lb/week lean-bulk band. '+
+    (r.bwPerWeek > 1.5 ? 'Running hot.' : r.bwPerWeek < 0.25 ? 'Running slow.' : 'Inside the band.')+
+    ' Calorie changes live in Investigate and ECHO — this view only reports what the trend is doing.</p></div>';
   el.innerHTML = h;
 }
 

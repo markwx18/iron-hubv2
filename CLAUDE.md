@@ -68,7 +68,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 266 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 572 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Setup (once): `npm install acorn jsdom`
 
@@ -141,6 +141,9 @@ This also bit the test harness itself.
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()` |
 | Agents | `agRunAll()`, `agValidateFix()`, `agApplyFix()`, `agSendChat()`, `renderOps()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
+| PR history | `checkPRs()`, `prAppend()`, `prBackfill()`, `renderAnPRs()` |
+| Readiness | `anReadinessOutcome()`, `anReadinessTrim()`, `renderAnReadiness()` |
+| Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
 | Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()` |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
 
