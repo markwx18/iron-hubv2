@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-12-v4">
+<meta name="ironhub-build" content="2026-08-13-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -692,9 +692,9 @@
      one tall ribbon, so the screen fills horizontally and you scroll less.
      ============================================================ */
   @media(min-width:1240px){
-    #an_over.on, #an_dev.on, #an_recovery.on, #an_pred.on{
+    #an_over.on, #an_strength.on, #an_dev.on, #an_recovery.on, #an_pred.on{
       column-count:2; column-gap:16px;}
-    #an_over .card, #an_dev .card, #an_recovery .card, #an_pred .card{
+    #an_over .card, #an_strength .card, #an_dev .card, #an_recovery .card, #an_pred .card{
       break-inside:avoid; -webkit-column-break-inside:avoid; page-break-inside:avoid;
       margin-top:0; margin-bottom:16px; display:inline-block; width:100%;}
     /* Investigate is a control rail + findings feed, not a text flow — a naive
@@ -974,6 +974,9 @@ const DEFAULT_STATE = {
   chat: [],                    // {role, content}
   road: [],                    // {id, exercise, target, start, deadline}
   readiness: [],               // {date, sleep, sore, energy, tier}
+  prHistory: [],               // {exercise, weight, reps, e1rm, prev, gain, date} — every e1RM PR ever hit.
+                               // Written only by checkPRs()/prBackfillOnce(); read by the PR History tab.
+  prBackfilled: false,         // one-time flag: existing logs have been replayed into prHistory
   fuel: {likes:'', dislikes:'eggs, cup yogurt, rice, cottage cheese', limits:'', calTarget:3000, proTarget:150, meals:null},
   audit: {weekStart:'', proposals:null, status:''},  // weak-group reinforcement
   settings: {apiKey:'', repLow:8, repHigh:12, ghToken:'', gistId:'', autoSync:true},
@@ -1636,16 +1639,117 @@ function actualPR(ex){
   return best;
 }
 function prWatchList(){ return [...new Set([...Object.keys(PR_LIFTS), ...S.road.map(g=>g.exercise)])]; }
-function snapshotPRs(){ const m={}; prWatchList().forEach(ex=>m[ex]=bestE1RM(ex)); return m; }
-function checkPRs(before){
-  let top = null;
-  prWatchList().forEach(ex=>{
-    const now = bestE1RM(ex);
-    if(before[ex] > 0 && now > before[ex] + 0.01){
-      if(!top || (now-before[ex]) > top.gain) top = {ex, now, prev:before[ex], gain:now-before[ex]};
-    }
+const PR_HISTORY_MAX = 500;
+/* Best e1RM for EVERY exercise in the log, in a single pass.
+   PR History records all lifts, not just the watch list, so the old shape (a full
+   bestE1RM() log scan per watched lift) would have become one scan per exercise.
+   One walk over S.logs instead — cheaper than what it replaces. */
+function snapshotPRs(){
+  const m = {};
+  S.logs.forEach(l=>{
+    if(l.deload) return;           // deload weeks are excluded from the e1RM trend, so they can't set PRs
+    l.entries.forEach(e=>e.sets.forEach(s=>{
+      const w = +s.w||0, r = +s.r||0;
+      // r>0 guard: epley() returns w unchanged for r<=1, so a stray 0-rep set would
+      // otherwise register as a full PR at that weight on every exercise we now watch.
+      if(w<=0 || r<=0) return;
+      const v = epley(w,r);
+      if(v>0 && (!(e.exercise in m) || v>m[e.exercise])) m[e.exercise] = v;
+    }));
   });
+  return m;
+}
+/* The set that actually produced the current best e1RM. Earliest one wins a tie —
+   PR History is a record of the first time a number went up, not the last. */
+function prBestSetFor(ex){
+  let best = null;
+  [...S.logs].sort((a,b)=>a.date.localeCompare(b.date)).forEach(l=>{
+    if(l.deload) return;
+    l.entries.forEach(e=>{
+      if(e.exercise!==ex) return;
+      e.sets.forEach(s=>{
+        const w = +s.w||0, r = +s.r||0;
+        if(w<=0 || r<=0) return;
+        const v = epley(w,r);
+        if(v>0 && (!best || v>best.v)) best = {w, r, v, date:l.date};
+      });
+    });
+  });
+  return best;
+}
+/* Record one PR row. Returns true only if it was actually written — a repeat call with
+   the same `before` snapshot, or a second device replaying the same save through gist
+   sync, must not double-log the same lift/date/e1RM. */
+function prAppend(ex, now, prev){
+  const bs = prBestSetFor(ex);
+  if(!bs) return false;
+  const e1 = Math.round(now*10)/10;
+  if(!Array.isArray(S.prHistory)) S.prHistory = [];
+  if(S.prHistory.some(p=>p.exercise===ex && p.date===bs.date && Math.abs(p.e1rm-e1)<0.05)) return false;
+  S.prHistory.push({exercise:ex, weight:bs.w, reps:bs.r, e1rm:e1,
+                    prev:Math.round(prev*10)/10, gain:Math.round((now-prev)*10)/10, date:bs.date});
+  if(S.prHistory.length > PR_HISTORY_MAX) S.prHistory = S.prHistory.slice(-PR_HISTORY_MAX);
+  return true;
+}
+function checkPRs(before){
+  const after = snapshotPRs();
+  const watch = prWatchList();
+  let top = null, added = 0;
+  Object.keys(after).forEach(ex=>{
+    const prev = before[ex] || 0, now = after[ex];
+    if(!(prev > 0) || !(now > prev + 0.01)) return;   // a lift's first-ever entry is a baseline, not a PR
+    if(prAppend(ex, now, prev)) added++;
+    // The celebration stays scoped to the watch list. Recording every lift's history must
+    // not turn a five-pound bump on a cable machine into a full-screen popup mid-session.
+    if(watch.includes(ex) && (!top || (now-prev) > top.gain)) top = {ex, now, prev, gain:now-prev};
+  });
+  if(added) save();
   if(top) celebrate(top);
+}
+/* Replay the existing log into prHistory. Every row is a real logged set, and the running
+   max is computed exactly the way checkPRs() computes it live, so a backfilled row and a
+   live-detected row mean the same thing. */
+function prBackfill(){
+  const logs = [...S.logs].filter(l=>!l.deload).sort((a,b)=>a.date.localeCompare(b.date));
+  const best = {}, out = [];
+  logs.forEach(l=>{
+    // Reduce to the session's best set per exercise first. Comparing set-by-set would emit
+    // two "PRs" on one date for the ordinary warm-up-then-top-set pattern.
+    const sess = {};
+    l.entries.forEach(e=>e.sets.forEach(s=>{
+      const w = +s.w||0, r = +s.r||0;
+      if(w<=0 || r<=0) return;
+      const v = epley(w,r);
+      if(v>0 && (!sess[e.exercise] || v>sess[e.exercise].v)) sess[e.exercise] = {w, r, v};
+    }));
+    Object.keys(sess).forEach(ex=>{
+      const cur = sess[ex], prev = best[ex] || 0;
+      if(prev > 0 && cur.v > prev + 0.01){
+        out.push({exercise:ex, weight:cur.w, reps:cur.r, e1rm:Math.round(cur.v*10)/10,
+                  prev:Math.round(prev*10)/10, gain:Math.round((cur.v-prev)*10)/10, date:l.date});
+      }
+      if(cur.v > prev) best[ex] = cur.v;
+    });
+  });
+  return out;
+}
+/* Lazy, once. Deliberately not run at boot: autoPullOnLoad() can replace S wholesale a
+   moment later, which would throw the work away and re-run it next launch. The PR History
+   tab is the only consumer, so it backfills on first paint instead. */
+function prBackfillOnce(){
+  if(S.prBackfilled) return false;
+  if(!Array.isArray(S.prHistory)) S.prHistory = [];
+  const seen = {};
+  S.prHistory.forEach(p=>{ seen[p.exercise+'|'+p.date+'|'+p.e1rm] = 1; });
+  prBackfill().forEach(r=>{
+    const k = r.exercise+'|'+r.date+'|'+r.e1rm;
+    if(!seen[k]){ seen[k]=1; S.prHistory.push(r); }
+  });
+  S.prHistory.sort((a,b)=>a.date.localeCompare(b.date));
+  if(S.prHistory.length > PR_HISTORY_MAX) S.prHistory = S.prHistory.slice(-PR_HISTORY_MAX);
+  S.prBackfilled = true;
+  save();
+  return true;
 }
 function celebrate(pr){
   const o = document.createElement('div');
@@ -3701,7 +3805,7 @@ const NAV_MODEL = [
   {id:'analytics', label:'Analytics',   ic:'\u223f', subs:[
     {id:'an_over',     label:'Overview'},
     {id:'road',        label:'Road'},
-    {id:'an_strength', label:'Strength curve'},
+    {id:'an_strength', label:'PR history'},
     {id:'an_fatigue',  label:'Fatigue'},
     {id:'an_recovery', label:'Recovery'},
     {id:'an_dev',      label:'Development'},
@@ -5187,7 +5291,7 @@ REVIEW_RENDER.settings = function(){ renderSettings(); enableSplitDrag(); };
 REVIEW_RENDER.invest = renderInvestigation;
 REVIEW_RENDER.meso = renderMeso;
 REVIEW_RENDER.an_over = function(){ renderAnOverview(); };
-REVIEW_RENDER.an_strength = function(){ renderAnStrength(); };
+REVIEW_RENDER.an_strength = function(){ renderAnPRs(); };
 REVIEW_RENDER.an_fatigue = function(){ renderAnFatigue(); };
 REVIEW_RENDER.an_recovery = function(){ renderAnRecovery(); };
 REVIEW_RENDER.an_dev = function(){ renderAnDev(); };
@@ -7458,44 +7562,49 @@ function fatigueSuggestsDeload(){
 }
 function fatigueDismiss(){ S.fatigueDismissed = todayKey(); save(false); renderLive(); try{ renderAnFatigue(); }catch(e){} }
 
-/* ---------------- STRENGTH CURVE ---------------- */
-const AN_REP_BUCKETS = [{k:'1\u20133',lo:1,hi:3},{k:'4\u20136',lo:4,hi:6},{k:'7\u20139',lo:7,hi:9},{k:'10\u201312',lo:10,hi:12},{k:'13+',lo:13,hi:99}];
-let anStrengthPick = null;
-function anStrengthCurve(ex){
-  const buckets = AN_REP_BUCKETS.map(b=>({...b, bestW:0, bestE1:0, sets:0}));
-  anSessionsFor(ex).forEach(l=>l.entries.forEach(e=>{
-    if(e.exercise!==ex) return;
-    e.sets.forEach(s=>{
-      const w=+s.w||0, r=+s.r||0; if(w<=0||r<=0) return;
-      const b = buckets.find(x=>r>=x.lo && r<=x.hi); if(!b) return;
-      b.sets++;
-      if(w>b.bestW) b.bestW=w;
-      const e1 = anEpley(w,r); if(e1>b.bestE1) b.bestE1=e1;
-    });
-  }));
-  return buckets;
+/* ---------------- PR HISTORY ----------------
+   The permanent record behind the one-time celebrate() popup: every e1RM PR ever hit,
+   newest first, with the size of the jump. Written by checkPRs() at save time. */
+let anPRPick = 'all';
+function prHistorySorted(){
+  return (S.prHistory||[]).slice().sort((a,b)=> b.date.localeCompare(a.date) || (b.e1rm-a.e1rm));
 }
-function renderAnStrength(){
+function anPRRow(p){
+  const gain = (p.gain!=null && p.gain>0) ? '+'+(Math.round(p.gain*10)/10)+' lb' : '';
+  const reps = (+p.weight>0 ? p.weight+' lb \u00d7 '+p.reps : p.reps+' reps');
+  return '<div class="card" style="padding:11px 14px">'+
+    '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
+      '<span class="mono" style="font-size:11px;color:var(--dim);min-width:74px">'+esc(fmtDate(p.date))+'</span>'+
+      '<b style="font-family:var(--disp);font-size:14px;letter-spacing:.03em;flex:1;min-width:0">'+esc(p.exercise)+'</b>'+
+      '<span class="mono" style="font-size:13px;color:var(--amber)">'+Math.round(p.e1rm)+' e1RM</span>'+
+    '</div>'+
+    '<div class="small mono" style="margin-top:3px;color:var(--muted)">'+esc(reps)+
+      (p.prev>0 ? ' \u00b7 was '+Math.round(p.prev) : '')+
+      (gain ? ' \u00b7 <span style="color:var(--cyan)">'+gain+'</span>' : '')+'</div></div>';
+}
+function renderAnPRs(){
   const el = document.getElementById('an_strength'); if(!el) return;
-  const lifts = anBigLifts(4);
-  if(!lifts.length){ el.innerHTML = anEmpty('Strength curves need at least 4 logged sessions of a lift. Keep training \u2014 this fills in on its own.'); return; }
-  if(!anStrengthPick || !lifts.includes(anStrengthPick)) anStrengthPick = lifts[0];
-  const buckets = anStrengthCurve(anStrengthPick).filter(b=>b.sets>0);
-  let h = '<div class="card"><div class="k">Strength curve</div>'+
-    '<p class="small" style="margin-bottom:10px">Where you\u2019re strongest across rep ranges \u2014 best estimated 1RM produced from sets in each bucket.</p>'+
-    '<div class="field" style="max-width:280px;margin-bottom:14px"><label>Lift</label><select onchange="anStrengthPick=this.value;renderAnStrength()">'+
-    lifts.map(l=>'<option'+(l===anStrengthPick?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div>';
-  if(!buckets.length){ h += '<p class="small" style="color:var(--dim)">No usable sets for this lift yet.</p></div>'; el.innerHTML=h; return; }
-  const maxE1 = Math.max(...buckets.map(b=>b.bestE1));
-  const best = buckets.reduce((a,b)=>b.bestE1>a.bestE1?b:a, buckets[0]);
-  buckets.forEach(b=>{
-    const isBest = b===best;
-    h += anBarRow(b.k+' reps'+(isBest?' \u2605':''), 100*b.bestE1/maxE1,
-      Math.round(b.bestE1)+' e1RM \u00b7 best '+b.bestW+' lb \u00b7 '+b.sets+' sets',
-      isBest?'var(--amber)':'var(--cyan)');
-  });
-  h += '<p class="small" style="margin-top:12px">Your strongest zone on '+esc(anStrengthPick)+' is <b style="color:var(--amber)">'+best.k+' reps</b>.'+
-       (buckets.length<3 ? ' Log sets across more rep ranges for a fuller picture.' : '')+'</p></div>';
+  prBackfillOnce();
+  const all = prHistorySorted();
+  if(!all.length){
+    el.innerHTML = anEmpty('No PRs on record yet. Every time you beat your best estimated 1RM on any lift, it lands here \u2014 permanently, whether or not you catch the popup.');
+    return;
+  }
+  const lifts = [...new Set(all.map(p=>p.exercise))].sort();
+  if(anPRPick!=='all' && !lifts.includes(anPRPick)) anPRPick = 'all';
+  const rows = anPRPick==='all' ? all : all.filter(p=>p.exercise===anPRPick);
+  const biggest = all.reduce((a,p)=>(p.gain||0)>(a.gain||0)?p:a, all[0]);
+  const daysSince = Math.round((new Date(todayKey())-new Date(all[0].date))/86400000);
+  let h = '<div class="card"><div class="k">PR history</div>'+
+    '<p class="small" style="margin-bottom:10px">Everything you\u2019ve hit for the first time \u2014 '+all.length+' PR'+(all.length===1?'':'s')+
+      ' across '+lifts.length+' lift'+(lifts.length===1?'':'s')+'. Most recent '+
+      (daysSince<=0 ? 'today' : daysSince+' day'+(daysSince===1?'':'s')+' ago')+
+      '; biggest single jump +'+(Math.round((biggest.gain||0)*10)/10)+' lb on '+esc(biggest.exercise)+'.</p>'+
+    '<div class="field" style="max-width:280px"><label>Lift</label><select onchange="anPRPick=this.value;renderAnPRs()">'+
+      '<option value="all"'+(anPRPick==='all'?' selected':'')+'>All lifts</option>'+
+      lifts.map(l=>'<option value="'+esc(l)+'"'+(l===anPRPick?' selected':'')+'>'+esc(l)+'</option>').join('')+
+    '</select></div></div>';
+  h += rows.map(anPRRow).join('');
   el.innerHTML = h;
 }
 

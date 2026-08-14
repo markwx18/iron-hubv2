@@ -1595,6 +1595,171 @@ setTimeout(async () => {
     ev('warmupOpen = null'); ev('mesoStop()');
   }
 
+  console.log('=== PR HISTORY ===');
+  try {
+    const PRX = 'PR Probe Lift', PRX2 = 'PR Probe Lift Two';
+    const mkLog = (date, ex, w, r, extra) =>
+      "S.logs.push(Object.assign({id:" + Date.now() + Math.floor(Math.random()*1e6) +
+      ", date:'" + date + "', day:'D1', entries:[{exercise:'" + ex + "', sets:[{w:" + w + ",r:" + r + "}]}]}, " + (extra || '{}') + "));";
+
+    // --- state shape ---
+    ok('S.prHistory defaults to an array', Array.isArray(ev('S.prHistory')));
+    ok('S.prBackfilled defaults false', ev('DEFAULT_STATE.prBackfilled') === false);
+    ok('prHistory survives a load() of state that predates it',
+      Array.isArray(ev("(function(){ var o = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), {logs:[]}); return o.prHistory; })()")));
+
+    // --- live detection through checkPRs ---
+    // backfill is switched off here so every row asserted below came from checkPRs itself
+    ev("S.prHistory = []; S.prBackfilled = true;");
+    ev(mkLog('2026-06-01', PRX, 100, 5));       // baseline session
+    const before1 = ev('snapshotPRs()');
+    ok('snapshotPRs covers every exercise, not just the watch list', before1[PRX] > 116 && before1[PRX] < 117, JSON.stringify(before1[PRX]));
+    ev(mkLog('2026-06-04', PRX, 105, 5));       // +5 lb -> PR
+    ev('__before1 = ' + JSON.stringify(before1) + ';');
+    ev('checkPRs(__before1)');
+    let hist = ev("S.prHistory.filter(function(p){ return p.exercise==='" + PRX + "'; })");
+    ok('checkPRs records a PR row', hist.length === 1, 'len=' + hist.length);
+    ok('PR row carries the set that produced it', hist[0] && hist[0].weight === 105 && hist[0].reps === 5, JSON.stringify(hist[0]));
+    ok('PR row carries e1rm', hist[0] && Math.abs(hist[0].e1rm - 122.5) < 0.05, hist[0] && hist[0].e1rm);
+    ok('PR row carries the previous best', hist[0] && Math.abs(hist[0].prev - 116.7) < 0.05, hist[0] && hist[0].prev);
+    ok('PR row carries the jump size', hist[0] && Math.abs(hist[0].gain - 5.8) < 0.05, hist[0] && hist[0].gain);
+    ok('PR row carries the session date', hist[0] && hist[0].date === '2026-06-04', hist[0] && hist[0].date);
+
+    // replaying the same snapshot must not double-log (repeat call / second device via gist)
+    ev('checkPRs(__before1)');
+    ok('replaying the same snapshot does not double-log',
+      ev("S.prHistory.filter(function(p){ return p.exercise==='" + PRX + "'; }).length") === 1);
+
+    // a session that does not beat the best is not a PR
+    const before2 = ev('snapshotPRs()');
+    ev('__before2 = ' + JSON.stringify(before2) + ';');
+    ev(mkLog('2026-06-07', PRX, 95, 5));
+    ev('checkPRs(__before2)');
+    ok('a non-PR session records nothing',
+      ev("S.prHistory.filter(function(p){ return p.exercise==='" + PRX + "'; }).length") === 1);
+
+    // deload weeks are excluded from the e1RM trend, so they cannot set a PR
+    const before3 = ev('snapshotPRs()');
+    ev('__before3 = ' + JSON.stringify(before3) + ';');
+    ev(mkLog('2026-06-10', PRX, 200, 5, '{deload:true}'));
+    ev('checkPRs(__before3)');
+    ok('a deload session cannot set a PR',
+      ev("S.prHistory.filter(function(p){ return p.exercise==='" + PRX + "'; }).length") === 1);
+    ok('snapshotPRs ignores deload sets', ev('snapshotPRs()')[PRX] < 130, ev('snapshotPRs()')[PRX]);
+
+    // a lift's first-ever session is a baseline, not a PR
+    const before4 = ev('snapshotPRs()');
+    ev('__before4 = ' + JSON.stringify(before4) + ';');
+    ev(mkLog('2026-06-11', PRX2, 150, 5));
+    ev('checkPRs(__before4)');
+    ok('first-ever session of a lift is not a PR',
+      ev("S.prHistory.filter(function(p){ return p.exercise==='" + PRX2 + "'; }).length") === 0);
+
+    // --- celebration scope is unchanged: history is universal, the popup is not ---
+    ev("Array.prototype.slice.call(document.querySelectorAll('.pr-overlay')).forEach(function(o){ o.remove(); });");
+    const before5 = ev('snapshotPRs()');
+    ev('__before5 = ' + JSON.stringify(before5) + ';');
+    ev(mkLog('2026-06-12', PRX, 115, 5));       // PR on a NON-watch-list lift
+    ev('checkPRs(__before5)');
+    ok('a non-watch-list PR is still recorded',
+      ev("S.prHistory.filter(function(p){ return p.exercise==='" + PRX + "'; }).length") === 2);
+    ok('a non-watch-list PR does NOT fire the popup',
+      ev("document.querySelectorAll('.pr-overlay').length") === 0);
+
+    ev(mkLog('2026-06-13', 'Barbell Bench Press', 900, 3));   // baseline above any real history
+    const before6 = ev('snapshotPRs()');
+    ev('__before6 = ' + JSON.stringify(before6) + ';');
+    ev(mkLog('2026-06-14', 'Barbell Bench Press', 950, 3));
+    ev('checkPRs(__before6)');
+    ok('a watch-list PR still fires the popup',
+      ev("document.querySelectorAll('.pr-overlay').length") === 1);
+    ev("Array.prototype.slice.call(document.querySelectorAll('.pr-overlay')).forEach(function(o){ o.remove(); });");
+    ev("S.logs = S.logs.filter(function(l){ return l.date!=='2026-06-13' && l.date!=='2026-06-14'; });");
+    ev("S.prHistory = S.prHistory.filter(function(p){ return p.exercise!=='Barbell Bench Press' || p.date.slice(0,7)!=='2026-06'; });");
+
+    // --- backfill from existing logs ---
+    ev("S.logs = S.logs.filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='" + PRX + "' || e.exercise==='" + PRX2 + "'; }); });");
+    ev("S.prHistory = []; S.prBackfilled = false;");
+    ev(mkLog('2026-06-01', PRX, 100, 5));   // baseline
+    ev(mkLog('2026-06-04', PRX, 105, 5));   // PR
+    ev(mkLog('2026-06-07', PRX,  95, 5));   // regression, not a PR
+    ev(mkLog('2026-06-11', PRX, 110, 5));   // PR
+    const bf = ev("prBackfill().filter(function(p){ return p.exercise==='" + PRX + "'; })");
+    ok('backfill emits one row per new max', bf.length === 2, 'len=' + bf.length);
+    ok('backfill skips the baseline session', bf[0] && bf[0].date === '2026-06-04', bf[0] && bf[0].date);
+    ok('backfill skips a regression session', bf.every(p => p.date !== '2026-06-07'));
+    ok('backfill rows carry the real set', bf[1] && bf[1].weight === 110 && bf[1].reps === 5, JSON.stringify(bf[1]));
+
+    // a warm-up plus a top set on one date is ONE pr, not two
+    ev("S.logs.push({id:" + (Date.now() + 7) + ", date:'2026-06-18', day:'D1', entries:[{exercise:'" + PRX + "', sets:[{w:112,r:5},{w:120,r:5}]}]});");
+    const bf2 = ev("prBackfill().filter(function(p){ return p.exercise==='" + PRX + "' && p.date==='2026-06-18'; })");
+    ok('warm-up + top set on one date yields a single PR row', bf2.length === 1, 'len=' + bf2.length);
+    ok('that row is the top set, not the warm-up', bf2[0] && bf2[0].weight === 120, bf2[0] && bf2[0].weight);
+
+    ev('prBackfillOnce()');
+    const afterOnce = ev("S.prHistory.filter(function(p){ return p.exercise==='" + PRX + "'; }).length");
+    ok('prBackfillOnce writes the reconstructed rows', afterOnce === 3, 'n=' + afterOnce);
+    ok('prBackfillOnce sets its once-flag', ev('S.prBackfilled') === true);
+    ev('S.prBackfilled = false;');
+    ev('prBackfillOnce()');
+    ok('prBackfillOnce is idempotent',
+      ev("S.prHistory.filter(function(p){ return p.exercise==='" + PRX + "'; }).length") === afterOnce);
+
+    // --- render ---
+    ev("anPRPick = 'all';");
+    ev('renderAnPRs()');
+    let out = w.document.getElementById('an_strength').innerHTML;
+    ok('PR history renders the lift name', out.indexOf(PRX) >= 0);
+    ok('PR history renders the jump size', /\+\d/.test(out), out.slice(0, 200));
+    ok('PR history renders a PR count', /\d+ PRs/.test(out));
+    ok('PR history renders newest first',
+      out.indexOf('120 lb') >= 0 && out.indexOf('120 lb') < out.indexOf('105 lb'),
+      'idx120=' + out.indexOf('120 lb') + ' idx105=' + out.indexOf('105 lb'));
+
+    // filter actually filters
+    ev(mkLog('2026-06-20', PRX2, 150, 5));
+    ev(mkLog('2026-06-23', PRX2, 160, 5));
+    ev("S.prBackfilled = false;"); ev('prBackfillOnce()');
+    ev('renderAnPRs()');
+    out = w.document.getElementById('an_strength').innerHTML;
+    // match the row markup (<b>Name</b>), not the filter dropdown — the dropdown lists
+    // every lift whatever the filter is, so a bare name search would always hit
+    const rowOf = (name) => '>' + name + '</b>';
+    ok('unfiltered view shows both lifts', out.indexOf(rowOf(PRX2)) >= 0 && out.indexOf(rowOf(PRX)) >= 0);
+    ev("anPRPick = '" + PRX2 + "';");
+    ev('renderAnPRs()');
+    out = w.document.getElementById('an_strength').innerHTML;
+    ok('filtering to one lift hides the other',
+      out.indexOf(rowOf(PRX2)) >= 0 && out.indexOf(rowOf(PRX)) < 0);
+    ev("anPRPick = 'all';");
+
+    // empty state
+    ev("__savedPR = S.prHistory; S.prHistory = []; S.prBackfilled = true;");
+    ev('renderAnPRs()');
+    out = w.document.getElementById('an_strength').innerHTML;
+    ok('empty PR history renders the empty state', out.indexOf('No PRs on record yet') >= 0);
+    ev("S.prHistory = __savedPR;");
+
+    // --- wiring ---
+    const anSubs = ev("NAV_MODEL.find(function(n){ return n.id==='analytics'; }).subs");
+    ok('nav labels the tab PR history',
+      anSubs.some(s => s.id === 'an_strength' && s.label === 'PR history'),
+      JSON.stringify(anSubs.map(s => s.label)));
+    ok('REVIEW_RENDER.an_strength still wired', typeof ev('REVIEW_RENDER').an_strength === 'function');
+    ok('the old strength-curve renderer is gone', ev('typeof renderAnStrength') === 'undefined');
+    ok('the old strength-curve helper is gone', ev('typeof anStrengthCurve') === 'undefined');
+
+    // cleanup
+    ev("S.logs = S.logs.filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='" + PRX + "' || e.exercise==='" + PRX2 + "'; }); });");
+    ev("S.prHistory = S.prHistory.filter(function(p){ return p.exercise!=='" + PRX + "' && p.exercise!=='" + PRX2 + "'; });");
+    ok('cleanup: PR probe logs removed',
+      ev("S.logs.filter(function(l){ return l.entries.some(function(e){ return e.exercise==='" + PRX + "'; }); }).length") === 0);
+    ok('cleanup: PR probe history removed',
+      ev("S.prHistory.filter(function(p){ return p.exercise==='" + PRX + "'; }).length") === 0);
+  } catch (e) {
+    ok('PR history section', false, e.message);
+  }
+
   console.log('=== RENDER ===');
   try {
     ev('renderOps')();
