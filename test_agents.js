@@ -236,6 +236,125 @@ setTimeout(async () => {
     ok('investigation history delete survives a sync pull', false, e.message);
   }
 
+  // Reproduces the real report: 159.0 lb, +1.27 lb/wk, protein target 150g. proFloor is
+  // round(159*0.95) = 151, so an exact comparison prescribed "raise protein 150 -> 151g".
+  console.log('=== BULK INVESTIGATION: PROTEIN DEADBAND ===');
+  try {
+    ev("window.__wSave = JSON.parse(JSON.stringify(S.weights)); window.__fSave = S.fuel ? JSON.parse(JSON.stringify(S.fuel)) : null;");
+    // four Sundays, one per Monday-anchored week so the smoother keeps all four points:
+    // 155.2 -> 159.0 over 21 days = +1.267 lb/week (the "slightly hot" band, >1.0 and <=1.5)
+    ev("S.weights = [{date:'2026-07-26',lbs:155.2},{date:'2026-08-02',lbs:156.5},{date:'2026-08-09',lbs:157.7},{date:'2026-08-16',lbs:159.0}];");
+    ev("S.fuel = Object.assign({}, S.fuel||{}, {proTarget:150, calTarget:3200});");
+
+    const rate = ev("(function(){var r=linreg(bodyweightSeriesSmoothed().slice(-4)); return r?r.slope*7:0;})()");
+    ok('fixture reproduces the reported +1.27 lb/wk rate', Math.abs(rate - 1.26) < 0.02, rate);
+    ok('fixture reproduces a 1g gap to the protein floor',
+      ev("Math.round(bodyweightSeriesSmoothed().slice(-1)[0].v*0.95)") === 151);
+
+    const r1 = ev("investigateBulk()");
+    ok('slightly-hot bulk is a yellow advisory', r1.severity === 'yellow', r1.severity + ' / ' + r1.title);
+    ok('a 1g protein shortfall produces no fix', r1.fix === null, JSON.stringify(r1.fix));
+    ok('a 1g protein shortfall is not even mentioned in the findings',
+      !r1.findings.some(f => /protein/i.test(f)), r1.findings.join(' | '));
+
+    // but a materially low target must still be caught
+    ev("S.fuel.proTarget = 120;");
+    const r2 = ev("investigateBulk()");
+    ok('a materially low protein target still gets a fix', !!(r2.fix && r2.fix.type === 'pro'), JSON.stringify(r2.fix));
+    ok('recommendation is a round number, not the raw floor',
+      !!r2.fix && r2.fix.payload.to === 155, r2.fix && r2.fix.payload.to);
+    ok('materially low protein is stated in the findings', r2.findings.some(f => /protein/i.test(f)));
+
+    ev("S.weights = window.__wSave; if(window.__fSave) S.fuel = window.__fSave; else delete S.fuel;");
+  } catch (e) {
+    ok('bulk investigation protein deadband', false, e.message);
+    ev("if(window.__wSave) S.weights = window.__wSave;");
+  }
+
+  // A pushed payload always stamps exportedAt AFTER the changedAt it carries, so the pull
+  // gate (exportedAt > changedAt) stays true forever against an UNCHANGED gist. bgSyncTick
+  // asks that question every 60s, so the same snapshot was being re-applied on a loop and
+  // each replay reverted anything written with save(false) since — which is why a freshly
+  // raised investigation flag disappeared about a minute after it appeared.
+  console.log('=== BACKGROUND PULL DOES NOT REPLAY THE SAME SNAPSHOT ===');
+  try {
+    ev("S.meta = S.meta || {changedAt:0,lastSync:0}; S.meta.changedAt = Date.now() - 100000;");
+    ev("window.__snap = {exportedAt: Date.now() - 50000, data: JSON.parse(JSON.stringify(S))};");
+    ok('fixture has the gate open before the pull', ev('window.__snap.exportedAt > S.meta.changedAt'));
+
+    // Re-parse on every apply, the way fetchGistData() does. Handing applyPulled the same
+    // object twice would let it become S.invest by reference, so a later local mutation
+    // would silently edit the "remote" fixture too and the replay test would prove nothing.
+    ev("window.__snapFresh = () => JSON.parse(JSON.stringify(window.__snap.data));");
+    ev("applyPulled(window.__snapFresh(), window.__snap.exportedAt)");
+    ok('consuming a snapshot closes the gate against that same snapshot',
+      !ev('window.__snap.exportedAt > S.meta.changedAt'),
+      'changedAt=' + ev('S.meta.changedAt') + ' exportedAt=' + ev('window.__snap.exportedAt'));
+    ok('a genuinely newer remote snapshot still passes the gate',
+      ev('(window.__snap.exportedAt + 60000) > S.meta.changedAt'));
+
+    // Behavioural form of the same bug: raise a flag the way invAutoRun does (save(false),
+    // deliberately no touch) and then ask what the next background tick would do.
+    ev("invState().flags.push({id:'replaytest1', cat:'bulk', key:'replaytest', severity:'yellow', title:'Replay test', findings:[], fix:null, status:'active', source:'auto', created:todayKey(), updated:todayKey()}); save(false);");
+    if (ev('window.__snap.exportedAt > S.meta.changedAt')) {   // exactly bgSyncTick's condition
+      ev("applyPulled(window.__snapFresh(), window.__snap.exportedAt)");
+    }
+    ok('a flag written with save(false) survives the next background tick',
+      ev("invState().flags.some(f=>f.id==='replaytest1')"));
+    ev("invState().flags = invState().flags.filter(f=>f.id!=='replaytest1')");
+  } catch (e) {
+    ok('background pull does not replay the same snapshot', false, e.message);
+  }
+
+  console.log('=== MANUAL INVESTIGATION SURVIVES A SYNC PULL ===');
+  try {
+    ev("window.__wSave3 = JSON.parse(JSON.stringify(S.weights));");
+    ev("S.weights = [{date:'2026-07-26',lbs:155.2},{date:'2026-08-02',lbs:156.5},{date:'2026-08-09',lbs:157.7},{date:'2026-08-16',lbs:159.0}];");
+    ev("S.meta.changedAt = Date.now() - 100000;");
+    ev("window.__manualRemote = {exportedAt: Date.now() - 50000, data: JSON.parse(JSON.stringify(S))};");
+
+    ev("invRunManual('bulk')");
+    ok('manual bulk investigation raised a flag', ev("invActiveFlags().some(f=>f.key==='bulk')"));
+    // invRaise() only save(false)s on purpose (a boot-time auto-run must not bump changedAt,
+    // or autoPullOnLoad would skip its pull and push stale local state). The manual entry
+    // point has to touch instead, or the flag is local-only and the next pull eats it.
+    ok('a hand-run investigation bumps changedAt past the stale remote',
+      !ev('window.__manualRemote.exportedAt > S.meta.changedAt'),
+      'changedAt=' + ev('S.meta.changedAt') + ' remoteExportedAt=' + ev('window.__manualRemote.exportedAt'));
+
+    // dismissing is a user action too, so it must reach the gist rather than be resurrected
+    ev("S.meta.changedAt = Date.now() - 100000;");
+    ev("window.__dismissRemote = {exportedAt: Date.now() - 50000};");
+    ev("invDismiss(invActiveFlags().find(f=>f.key==='bulk').id)");
+    ok('dismiss removes the flag locally', !ev("invActiveFlags().some(f=>f.key==='bulk')"));
+    ok('dismiss bumps changedAt past the stale remote',
+      !ev('window.__dismissRemote.exportedAt > S.meta.changedAt'),
+      'changedAt=' + ev('S.meta.changedAt'));
+
+    ev("S.weights = window.__wSave3; invState().history = invState().history.filter(f=>f.key!=='bulk');");
+  } catch (e) {
+    ok('manual investigation survives a sync pull', false, e.message);
+    ev("if(window.__wSave3) S.weights = window.__wSave3;");
+  }
+
+  console.log('=== A PUSH DOES NOT READ AS NEWER THAN US ===');
+  try {
+    const realFetch = w.fetch;
+    w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1'; S.meta.changedAt = Date.now() - 100000;");
+    await ev("syncPush(false)");
+    const pushedAt = ev('_lastPushExportedAt');
+    ok('push stamped an exportedAt', pushedAt > 0, pushedAt);
+    ok('our own push does not read as newer than us on the next tick',
+      !(pushedAt > ev('S.meta.changedAt')),
+      'changedAt=' + ev('S.meta.changedAt') + ' pushedAt=' + pushedAt);
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('a push does not read as newer than us', false, e.message);
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
   console.log('=== LIVE DELTA + CLEAR CHAT ===');
   ok('liveDeltaPanelHTML exists', ev("typeof liveDeltaPanelHTML") === 'function');
   ok('liveDeltaContext exists', ev("typeof liveDeltaContext") === 'function');
@@ -1518,7 +1637,10 @@ setTimeout(async () => {
   try {
     const EXW = 'Warmup Probe Squat';
     ev("S.logs.push({date:'2026-08-05', day:'D1', entries:[{exercise:'Barbell Back Squat', sets:[{w:185,r:5},{w:185,r:5}]}]});");
-    const plan = JSON.parse(ev('JSON.stringify(warmupPlanFor(currentDayKey()))'));
+    // Not currentDayKey(): that resolves against the real calendar, so on a weekday the
+    // split marks as rest it correctly returns null and this section failed for reasons
+    // that had nothing to do with warm-ups. Ask about a day that is always a training day.
+    const plan = JSON.parse(ev('JSON.stringify(warmupPlanFor("D1"))'));
     ok('a plan is produced for a normal training day', !!plan && Array.isArray(plan.prep));
     ok('prep is keyed to a movement pattern', ['squat', 'hinge', 'push', 'pull'].indexOf(plan.pattern) >= 0, plan.pattern);
 

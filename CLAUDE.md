@@ -68,7 +68,11 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 572 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 590 assertions. Must be `0 failed`. A red suite is never shipped.
+
+Tests must not depend on what day the suite is run. `currentDayKey()` resolves
+against the real calendar, so a test that assumes today is a training day is red
+every rest day. Name a day key (`"D1"`) instead.
 
 Setup (once): `npm install acorn jsdom`
 
@@ -125,6 +129,25 @@ surviving and others not — is the fingerprint of this bug.**
 
 Anywhere you add an `await` in code that touches `S`, re-resolve state after it.
 This also bit the test harness itself.
+
+---
+
+## The other sync trap: `save(false)` and the `changedAt` watermark
+
+`bgSyncTick()` pulls every 60s and applies the gist whenever
+`exportedAt > S.meta.changedAt`. `save(false)` writes localStorage without
+touching `changedAt`, so **anything saved with `save(false)` can be reverted by
+the next background pull.** Two rules follow:
+
+- **A user action must `save()` (touch+push).** `invRaise()` and `invArchive()`
+  deliberately stay on `save(false)` — a boot-time `invAutoRun()` that bumped
+  `changedAt` would make `autoPullOnLoad()` skip its pull and then push stale
+  local state over the phone's newer data. The *entry points* touch instead:
+  `invRunManual()`, `invDismiss()`, `invApplyFix()`, `invDeleteHistory()`.
+- **Consuming or producing a snapshot advances the watermark.** `applyPulled()`
+  takes the snapshot's `exportedAt`, and `syncPush()` takes its own upload's.
+  Without this the gate never closes (a payload stamps `exportedAt` *after* the
+  `changedAt` it carries), so the identical snapshot replays every minute.
 
 ---
 

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-13-v3">
+<meta name="ironhub-build" content="2026-08-16-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2834,10 +2834,12 @@ function confirmShot(){
 const GIST_FILE = 'ironhub_data.json';
 function syncReady(){ return !!(S.settings.ghToken && S.settings.gistId); }
 function ghHeaders(){ return {'Authorization':'Bearer '+S.settings.ghToken, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'}; }
+let _lastPushExportedAt = 0;   // exportedAt stamp of the snapshot this device last uploaded
 function syncPayload(){
   const d = JSON.parse(JSON.stringify(S));
   delete d.settings.ghToken; delete d.settings.gistId; delete d.settings.apiKey; // secrets never leave the device
-  return JSON.stringify({app:'ironhub', v:1, exportedAt:Date.now(), data:d});
+  _lastPushExportedAt = Date.now();
+  return JSON.stringify({app:'ironhub', v:1, exportedAt:_lastPushExportedAt, data:d});
 }
 function setSyncMsg(t, err){ const el = $('#syncMsg'); if(el){ el.textContent = t; el.className = err ? 'err' : 'small ok'; } }
 function markSynced(){
@@ -2878,6 +2880,13 @@ async function syncPush(manual){
     const res = await fetch('https://api.github.com/gists/'+S.settings.gistId,{method:'PATCH',headers:ghHeaders(),
       body:JSON.stringify({files:{[GIST_FILE]:{content:syncPayload()}}})});
     if(!res.ok) throw new Error('Push failed ('+res.status+')');
+    // Adopt our own upload's exportedAt as the local freshness watermark. A payload always
+    // stamps exportedAt AFTER the changedAt it carries, so without this the pull gate
+    // (exportedAt > changedAt) reads our own push as "newer than us" and bgSyncTick
+    // re-applies it a minute later — reverting anything written with save(false) since.
+    // Math.max, not assignment: an edit made during the await must stay the newer side.
+    S.meta = S.meta || {changedAt:0,lastSync:0};
+    S.meta.changedAt = Math.max(S.meta.changedAt||0, _lastPushExportedAt);
     markSynced();
     if(manual) setSyncMsg('\u2713 Pushed to cloud at '+new Date().toLocaleTimeString());
   }catch(e){ if(manual) setSyncMsg(e.message, true); }
@@ -2901,13 +2910,13 @@ async function syncPull(force){
     if(!force && S.meta && S.meta.changedAt > p.exportedAt){
       if(!confirm('This device has NEWER local changes than the cloud copy. Pull anyway and overwrite them?')) return;
     }
-    applyPulled(p.data);
+    applyPulled(p.data, p.exportedAt);
     markSynced();
     setSyncMsg('\u2713 Pulled cloud data at '+new Date().toLocaleTimeString());
     setAccent(); renderHeader(); renderToday(); renderSettings();
   }catch(e){ setSyncMsg(e.message, true); }
 }
-function applyPulled(d){
+function applyPulled(d, exportedAt){
   const keep = {apiKey:S.settings.apiKey, ghToken:S.settings.ghToken, gistId:S.settings.gistId, autoSync:S.settings.autoSync};
   // A daily gate (agents.lastRun) is far more fragile to a wholesale overwrite than a weekly
   // one (invest.lastAuto): if the incoming snapshot predates today's local run \u2014 entirely
@@ -2921,6 +2930,14 @@ function applyPulled(d){
   S.settings = Object.assign({}, DEFAULT_STATE.settings, d.settings||{}, keep);
   S.meta = S.meta || {changedAt:0,lastSync:0};
   S.meta.changedAt = d && d.meta ? (d.meta.changedAt||Date.now()) : Date.now();
+  // Watermark against the snapshot we just consumed, not the writer's own changedAt.
+  // The writer stamps exportedAt after its changedAt, so taking changedAt alone leaves
+  // the pull gate (exportedAt > changedAt) permanently true against an UNCHANGED gist:
+  // bgSyncTick then re-applies the identical snapshot every 60s, and each replay wipes
+  // whatever was written with save(false) in between. That is what made a freshly raised
+  // investigation flag vanish about a minute after it appeared. A genuinely newer push
+  // from another device carries a larger exportedAt, so real updates still land.
+  if(exportedAt) S.meta.changedAt = Math.max(S.meta.changedAt, exportedAt);
   if(localAgents){
     const a = agState();
     if((localAgents.lastRun||'') > (a.lastRun||'')) a.lastRun = localAgents.lastRun;
@@ -2961,7 +2978,7 @@ async function autoPullOnLoad(){
   try{
     const p = await fetchGistData();
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
-      applyPulled(p.data);
+      applyPulled(p.data, p.exportedAt);
       // BOOT ordering: invAutoRun() runs at line ~6678, this pull lands after it. Everything
       // that run produced against the pre-pull state \u2014 raised flags AND the lastAuto cooldown
       // stamp \u2014 was just discarded. Without re-running here the stamp never survives a load,
@@ -5976,10 +5993,17 @@ function investigateBulk(){
     findings.push('Slightly above the 1 lb/week upper bound \u2014 fine short-term, worth watching.');
     fix=null;
   }
-  if(pro < proFloor){
-    findings.push('Protein target '+pro+'g is under the ~1g/lb guideline ('+proFloor+'g at your weight).');
+  // proFloor is a rule of thumb (~1g/lb), not a precise number, and it drifts by a gram
+  // every time bodyweight ticks up. Comparing the target to it exactly produced findings
+  // like "raise protein 150 \u2192 151g" \u2014 a prescription with no nutritional meaning that also
+  // burned the one fix slot on the flag. Only speak up on a materially low target, and
+  // recommend a round number rather than the raw floor.
+  const PRO_SLACK = 10;
+  if(pro < proFloor - PRO_SLACK){
+    const proGoal = Math.ceil(proFloor/5)*5;
+    findings.push('Protein target '+pro+'g is well under the ~1g/lb guideline ('+proFloor+'g at your weight).');
     if(!fix && severity===null){ severity='yellow'; title='Protein target low'; }
-    if(!fix) fix={label:'Raise protein to '+proFloor+'g', desc:'Set protein target '+pro+' \u2192 '+proFloor+'g/day.', type:'pro', payload:{to:proFloor}};
+    if(!fix) fix={label:'Raise protein to '+proGoal+'g', desc:'Set protein target '+pro+' \u2192 '+proGoal+'g/day.', type:'pro', payload:{to:proGoal}};
   }
   return {severity, key:'bulk', title, findings, fix};
 }
@@ -6147,7 +6171,9 @@ function invArchive(flag, outcome){
 }
 function invDismiss(id){
   const f = invActiveFlags().find(x=>x.id===id); if(!f) return;
-  invArchive(f,'dismissed'); renderInvestigation(); invUpdateBadge();
+  // Touch+push, same reason as invDeleteHistory: invArchive() only save(false)s, so the gist
+  // would keep serving the dismissed flag and the next pull would resurrect it.
+  invArchive(f,'dismissed'); save(); renderInvestigation(); invUpdateBadge();
 }
 function invDeleteHistory(id){
   const st = invState();
@@ -6359,6 +6385,10 @@ function invRunManual(kind, liftName){
     save(false);
   }
   invCheckResolutions();
+  // A hand-run investigation is a user action, so it has to reach the gist. invRaise() only
+  // save(false)s (deliberately — an auto-run at boot must not bump changedAt and cause
+  // autoPullOnLoad to skip its pull), which left a manually raised flag local-only.
+  save();
   renderInvestigation(); invUpdateBadge();
 }
 function renderInvestigation(){
@@ -8903,7 +8933,7 @@ async function bgSyncTick(){
   try{
     const p = await fetchGistData();
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
-      applyPulled(p.data);
+      applyPulled(p.data, p.exportedAt);
       setAccent(); renderHeader();
       rerenderActive();
     }
