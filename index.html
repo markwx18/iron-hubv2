@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-16-v1">
+<meta name="ironhub-build" content="2026-08-16-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -579,6 +579,37 @@
   .an-bar div{height:100%; transition:width .4s ease;}
   .an-eta{display:flex; align-items:baseline; gap:12px; padding:7px 0; border-top:1px solid var(--line);}
   .an-eta:first-of-type{border-top:none;}
+
+  /* replacement tier list (LIVE swap sheet + split editor) */
+  .swap-list{display:flex; flex-direction:column; gap:6px;}
+  .swap-row{display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+    background:var(--panel2); border:1px solid var(--line); border-radius:4px; padding:8px 10px; color:var(--text);}
+  .swap-row:active{border-color:var(--cyan);}
+  .swap-tier{font-family:var(--disp); font-weight:700; font-size:14px; line-height:1;
+    border:1px solid; border-radius:3px; width:24px; height:24px; flex:none;
+    display:flex; align-items:center; justify-content:center;}
+  .swap-body{display:flex; flex-direction:column; gap:2px; min-width:0; flex:1;}
+  .swap-nm{font-size:13.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .swap-meta{font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .swap-score{font-size:11px; color:var(--dim); flex:none;}
+  @media(max-width:360px){ .swap-score{display:none;} }
+
+  /* overload status tab */
+  .ol-row{display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line);}
+  .ol-row:first-of-type{border-top:none;}
+  .ol-dir{font-family:var(--mono); font-size:15px; width:16px; flex:none; text-align:center;}
+  /* flex column, not a plain block: .ol-nm/.ol-sig are spans, and text-overflow:ellipsis
+     does nothing on an inline box — so a long lift name pushed the row wide at 320px
+     instead of truncating. Same structure .swap-body already uses. */
+  .ol-body{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;}
+  .ol-nm{font-size:13.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .ol-sig{font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .ol-verdict{font-family:var(--mono); font-size:9.5px; letter-spacing:.09em; text-transform:uppercase;
+    border:1px solid; border-radius:2px; padding:3px 7px; flex:none; white-space:nowrap;}
+  .ol-tip{font-size:12.5px; color:var(--muted); line-height:1.45; margin:2px 0 4px 26px;
+    padding-left:9px; border-left:2px solid var(--line2);}
   .an-pr{display:flex; align-items:baseline; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px;}
   .an-pr:last-child{border-bottom:none;}
   .an-pr .mono{flex:none; font-size:12px; min-width:56px;}
@@ -692,9 +723,9 @@
      one tall ribbon, so the screen fills horizontally and you scroll less.
      ============================================================ */
   @media(min-width:1240px){
-    #an_over.on, #an_strength.on, #an_dev.on, #an_recovery.on, #an_pred.on{
+    #an_over.on, #an_strength.on, #an_dev.on, #an_recovery.on, #an_pred.on, #an_overload.on{
       column-count:2; column-gap:16px;}
-    #an_over .card, #an_strength .card, #an_dev .card, #an_recovery .card, #an_pred .card{
+    #an_over .card, #an_strength .card, #an_dev .card, #an_recovery .card, #an_pred .card, #an_overload .card{
       break-inside:avoid; -webkit-column-break-inside:avoid; page-break-inside:avoid;
       margin-top:0; margin-bottom:16px; display:inline-block; width:100%;}
     /* Investigate is a control rail + findings feed, not a text flow — a naive
@@ -866,6 +897,7 @@
         <section id="an_recovery"></section>
         <section id="an_dev"></section>
         <section id="an_pred"></section>
+        <section id="an_overload"></section>
         <section id="today" style="display:none"></section>
       </main>
     </div>
@@ -910,6 +942,13 @@
   <div class="exinfo-modal" style="max-width:460px">
     <div class="exinfo-top"><span class="exinfo-title">Bench Practice</span><button onclick="closeBenchPractice()" class="exinfo-x">&times;</button></div>
     <div id="bpBody" style="padding:16px"></div>
+  </div>
+</div>
+
+<div class="overlay" id="swapOverlay" onclick="if(event.target===this)closeSplitSwap()">
+  <div class="exinfo-modal" style="max-width:480px">
+    <div class="exinfo-top"><span class="exinfo-title" id="swapTitle">Replace exercise</span><button onclick="closeSplitSwap()" class="exinfo-x">&times;</button></div>
+    <div id="swapBody" style="padding:16px"></div>
   </div>
 </div>
 
@@ -1540,13 +1579,17 @@ function musclesFor(ex){
   if(/squat|leg press|lunge|hack/.test(n)) return {p:['Quads','Glutes'],s:['Hamstrings']};
   if(/leg curl|rdl|romanian|hamstring/.test(n)) return {p:['Hamstrings'],s:[]};
   if(/extension/.test(n) && /leg/.test(n)) return {p:['Quads'],s:[]};
-  if(/hip thrust|glute/.test(n)) return {p:['Glutes'],s:[]};
+  if(/hip thrust|glute|abductor|adductor/.test(n)) return {p:['Glutes'],s:[]};
   if(/curl/.test(n)) return {p:['Biceps'],s:[]};
   if(/pushdown|tricep|jm|skull|dip/.test(n)) return {p:['Triceps'],s:[]};
   if(/lateral|delt|shoulder|overhead press|ohp/.test(n)) return {p:['Shoulders'],s:[]};
-  if(/row|pulldown|pull-up|pullup|lat/.test(n)) return {p:['Back'],s:['Biceps']};
-  if(/bench|chest|fly|pec|press/.test(n)) return {p:['Chest'],s:['Triceps']};
-  if(/ab|crunch|leg raise|core/.test(n)) return {p:['Abs'],s:[]};
+  // Short tokens MUST be anchored here, same trap mesoPattern() documents for "chin" inside
+  // "maCHINe": unanchored /lat/ matches "PLATe", so "Plate Loaded Chest Press" was being
+  // classified as Back — miscounting his chest volume on D5 and making it rank as a
+  // replacement for Lat Pulldown. Unanchored /ab/ matches "cABle" and "ABductor" the same way.
+  if(/\brows?\b|pulldown|pull-?ups?|chin-?ups?|\blats?\b/.test(n)) return {p:['Back'],s:['Biceps']};
+  if(/bench|chest|fly|\bpec\b|press/.test(n)) return {p:['Chest'],s:['Triceps']};
+  if(/\babs?\b|abdominal|crunch|leg raise|core/.test(n)) return {p:['Abs'],s:[]};
   return {p:[],s:[]};
 }
 const MUSCLE_GROUPS = ['Chest','Back','Shoulders','Biceps','Triceps','Quads','Hamstrings','Glutes','Abs'];
@@ -3031,6 +3074,7 @@ function renderBulk(){
     '<div style="flex:none"><button class="btn sm" onclick="addWeight()">Log Weight</button></div></div>'+
     '<p class="small" style="margin-top:8px">Weigh first thing in the morning, after the bathroom, before food — same conditions every time or the trend means nothing.</p></div>';
   if(w.length) html += '<div class="card">'+lineChart(w.map(p=>({date:p.date, v:p.lbs})), '#3da25f')+'</div>';
+  html += bwProjectionCardHTML();
 
   html += '<h2>Daily Intake (from Cal AI)</h2><div class="card"><div class="row">'+
     '<div><label>Date</label><input type="date" id="nDate" value="'+todayKey()+'"></div>'+
@@ -3826,7 +3870,8 @@ const NAV_MODEL = [
     {id:'an_fatigue',  label:'Fatigue'},
     {id:'an_recovery', label:'Readiness'},
     {id:'an_dev',      label:'Bulk quality'},
-    {id:'an_pred',     label:'Predictions'}]},
+    {id:'an_pred',     label:'Predictions'},
+    {id:'an_overload', label:'Overload'}]},
   {id:'bulk',      label:'Bulk',        ic:'\u25c6', subs:[
     {id:'bulk',     label:'Bodyweight'},
     {id:'fuel',     label:'Fuel'}]},
@@ -3845,6 +3890,7 @@ const NAV_LEGACY = {
   road:['analytics','road'], an_over:['analytics','an_over'], an_strength:['analytics','an_strength'],
   an_fatigue:['analytics','an_fatigue'], an_recovery:['analytics','an_recovery'],
   an_dev:['analytics','an_dev'], an_pred:['analytics','an_pred'],
+  an_overload:['analytics','an_overload'],
   bulk:['bulk','bulk'], fuel:['bulk','fuel'],
   invest:['invest','invest'],
   // Coach was folded into ZULU inside OPERATIONS \u2014 keep the old id routing so any
@@ -4862,6 +4908,65 @@ function injectBulkChart(){
   div.innerHTML='<div class="chart-h">Bodyweight trend<span class="chart-sub">'+pts.length+' weigh-ins</span></div>'+lineChart(pts,'#46CDBA');
   sec.insertBefore(div, sec.firstChild.nextSibling||null);
 }
+/* ---- bodyweight projection: the lift-prediction model, pointed at the scale ----
+   Same core as the Predictions tab (anFanProject) — least-squares centre line, spread taken
+   from the real scatter around it, widening with sqrt(time). What differs is only what the
+   three lines MEAN: for a lift they are percentiles of an outcome you don't control, here
+   they read as paces, because intake is the dial. The centre is his actual measured lb/week;
+   the outer two are the leaner and heavier edges of how much his own weeks have varied.
+   Fed the weekly-averaged series for the reason bodyweightSeriesSmoothed() already documents:
+   daily scale noise is big enough to make a raw-point regression read flat or negative on a
+   bulk that is genuinely working. */
+const BW_PACE_LABEL = {10:'Leaner pace', 50:'Your pace', 90:'Heavier pace'};
+const BW_RANGES = [{days:56,label:'8 weeks'},{days:84,label:'12 weeks'},{days:182,label:'6 months'}];
+let bwProjRange = 84;
+function bwProjChangeRange(v){ bwProjRange = +v||84; renderBulkV2(); }
+function bwProjectFor(horizonDays){
+  const raw = bodyweightSeries();
+  return anFanProject(bodyweightSeriesSmoothed(), horizonDays, {
+    minPts:4, minSpan:21,
+    // three branching lines start from where he actually is today, not from a week average
+    anchorV: raw.length ? raw[raw.length-1].v : null,
+    whyPoints:'Needs at least 4 weeks with a weigh-in to project a bulk pace — keep logging the scale.',
+    whySpan:'Needs about 3 weeks of weigh-ins before a pace means anything.'
+  });
+}
+function bwProjectionCardHTML(){
+  const res = bwProjectFor(bwProjRange);
+  let h = '<div class="card"><div class="k" style="color:var(--cyan)">Bulk projection</div>'+
+    '<p class="small">Where the scale lands if the next stretch looks like the last one. Same projection model as the lift Predictions tab — the centre line is your real measured lb/week, and the fan is how much your own weeks have actually bounced around it.</p>';
+  if(!res.ok) return h+'<p class="small" style="color:var(--dim);margin-top:8px">'+esc(res.why)+'</p></div>';
+  h += '<div style="display:flex;gap:8px;margin:10px 0">'+
+    '<select onchange="bwProjChangeRange(this.value)" style="flex:none;width:auto">'+
+    BW_RANGES.map(r=>'<option value="'+r.days+'"'+(r.days===bwProjRange?' selected':'')+'>'+r.label+'</option>').join('')+
+    '</select></div>';
+  h += anFanChartSVG(res, 640, 240, {bandFill:'rgba(70,205,186,.08)'});
+  h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
+  h += '<div style="display:flex;align-items:center;gap:6px">'+
+    '<span style="width:9px;height:2px;background:var(--muted);display:inline-block"></span>'+
+    '<span class="small">Weekly average</span></div>';
+  AN_ENS_PCTS.forEach(pc=>{
+    const arr = res.series[pc.p], last = arr[arr.length-1];
+    const rate = (last.v - res.cur)/(bwProjRange/7);
+    h += '<div style="display:flex;align-items:center;gap:6px">'+
+      '<span style="width:9px;height:9px;border-radius:50%;background:'+pc.col+';display:inline-block"></span>'+
+      '<span class="small">'+BW_PACE_LABEL[pc.p]+': <span class="mono" style="color:'+pc.col+'">'+last.v.toFixed(1)+' lb</span> '+
+      '<span style="color:var(--dim)">('+(rate>=0?'+':'')+rate.toFixed(2)+' lb/wk)</span></span></div>';
+  });
+  h += '</div>';
+  const pw = res.perWeek;
+  // sd of 0 means the weekly averages sit exactly on the trend line. The three paces then
+  // coincide, which is the honest reading of noiseless data — but say so, or three identical
+  // numbers in the legend above just look like a broken chart.
+  if(res.sd === 0) h += '<p class="small" style="margin-top:10px;color:var(--dim)">Your weigh-ins show no week-to-week variance at all against the trend, so all three paces land on the same single line. That will fan out as soon as the scale wobbles like a real one.</p>';
+  h += '<p class="small" style="margin-top:10px;color:var(--dim)">Measured pace '+(pw>=0?'+':'')+pw.toFixed(2)+
+    ' lb/wk · '+res.conf+' (R² '+res.r2.toFixed(2)+'). '+
+    (pw < 0.15 ? 'That is below the lean-bulk floor — the surplus is not landing.'
+     : pw <= 1.1 ? 'That sits in the 0.5–1 lb/week lean-bulk pocket.'
+     : 'That is above ~1 lb/week, so some of the projected gain is fat.')+
+    ' The fan widens with distance because a bulk is not a straight line either.</p>';
+  return h+'</div>';
+}
 
 /* ===================== 5. DELOAD DETECTION ===================== */
 function deloadCheck(){
@@ -5243,6 +5348,7 @@ function splitEditorHTML(){
         '<button class="ord ff-toggle" title="Maxed out: no heavier setting on this machine. Progression switches to reps instead of load, and stalled-weight warnings are suppressed." style="'+(mx?'color:var(--amber);border-color:var(--amber);font-weight:800':'')+'" onclick="toggleMaxed(\''+dk+'\','+i+')">MAX</button>'+
         (str ? '<button class="ord ff-toggle" title="Backoff sets: strength lifts run the first set heavy, then ~10% lighter for the rest. Toggle this on to keep every set at the same weight instead." style="'+(nb?'color:var(--red);border-color:var(--red);font-weight:800':'')+'" onclick="toggleNoBackoff(\''+dk+'\','+i+')">'+(nb?'NOBK':'BACK')+'</button>' : '')+
         '<button class="ord ff-toggle" title="Home mode: what this exercise becomes on a home session \u2014 unchanged, skipped, or substituted with a rounded dumbbell/kettlebell weight." style="'+(hActive?'color:var(--good);border-color:var(--good);font-weight:800':'')+'" onclick="toggleSdExHome(\''+dk+'\','+i+')">HOME</button>'+
+        '<button class="ord ff-toggle" title="Ranked replacements for this exercise \u2014 a permanent swap on this day." onclick="openSplitSwap(\''+dk+'\','+i+')">SWAP</button>'+
         '<button class="ord" title="Move up" onclick="moveEx(\''+dk+'\','+i+',-1)">\u2191</button>'+
         '<button class="ord" title="Move down" onclick="moveEx(\''+dk+'\','+i+',1)">\u2193</button>'+
         '<button class="xx" title="Delete" onclick="delEx(\''+dk+'\','+i+')">\u00d7</button>'+
@@ -5268,6 +5374,29 @@ function splitEditorHTML(){
   return h;
 }
 function refreshSplitEditor(){ const w=$('#sdWrap'); if(w){ w.innerHTML=splitEditorHTML(); enableSplitDrag(); } }
+/* Split-editor swap: same ranking as LIVE, but permanent on that day rather than today-only. */
+let _splitSwap = null;
+function openSplitSwap(dk, i){
+  const list = (S.split[dk]||{}).exercises || [];
+  const nm = exName(list[i]); if(!nm) return;
+  _splitSwap = {dk, i, from:nm};
+  document.getElementById('swapTitle').textContent = 'Replace ' + nm;
+  document.getElementById('swapBody').innerHTML =
+    '<p class="small" style="margin-bottom:12px">Permanent swap on <b>'+esc(dk)+'</b>. '+esc(nm)+'’s logged history stays saved under its own name.</p>'+
+    // exclude the rest of that day: proposing something already in the same session is not a swap
+    swapListHTML(nm, 'splitSwapPick', {exclude: list.map(exName).filter((_,j)=>j!==i)});
+  document.getElementById('swapOverlay').classList.add('show');
+}
+function closeSplitSwap(){ const el=document.getElementById('swapOverlay'); if(el) el.classList.remove('show'); }
+function splitSwapPick(i){
+  const nm = swapPickedName(i); if(nm==null || !_splitSwap) return;
+  const s = _splitSwap;
+  if(!confirm('Replace '+s.from+' with '+nm+' on '+s.dk+'? This changes your saved split for every future '+s.dk+'.')) return;
+  renameEx(s.dk, s.i, nm);   // keeps the slot's increment/flags, same as typing over the name
+  closeSplitSwap();
+  refreshSplitEditor();
+  const b = document.getElementById('sdbody-'+s.dk); if(b) b.classList.add('open');
+}
 
 /* Progress: body map + ported progress + Trends(volume) + Fatigue check */
 function renderProgressV2(){
@@ -5317,6 +5446,7 @@ REVIEW_RENDER.an_fatigue = function(){ renderAnFatigue(); };
 REVIEW_RENDER.an_recovery = function(){ renderAnReadiness(); };
 REVIEW_RENDER.an_dev = function(){ renderAnBulkQuality(); };
 REVIEW_RENDER.an_pred = function(){ renderAnPred(); };
+REVIEW_RENDER.an_overload = function(){ renderAnOverload(); };
 
 /* ===================== 1RM LIVE MODE ===================== */
 function rampRestSecs(step){
@@ -5871,9 +6001,172 @@ function allKnownExerciseNames(){
 function liveExOptionsHTML(){
   return allKnownExerciseNames().map(n=>'<option value="'+esc(n)+'">').join('');
 }
+
+/* ============================================================
+   REPLACEMENT TIER LIST — S..F ranking of swap candidates
+
+   There is no exercise catalogue in this app. Every name is free text Mark typed at some
+   point, so "similar exercise" has to be DERIVED rather than looked up. Three signals,
+   ordered by how much they can be trusted:
+
+     1. Muscle overlap  — musclesFor() already resolves any name to primary/secondary groups
+        (explicit map first, keyword inference after), so this is the only signal that
+        exists for every name, including one typed once and never repeated. It carries the
+        most weight for exactly that reason.
+     2. Movement pattern — vertical vs horizontal push/pull, hinge, squat, and the isolation
+        patterns, read off the name. Same muscles trained a DIFFERENT way is a worse
+        replacement than the same muscles trained the same way, and muscle overlap alone
+        cannot tell those apart (a fly and a bench press are both "chest").
+     3. Equipment class  — barbell / dumbbell / cable / machine / bodyweight, also from the
+        name. This is the "can I actually do this instead, right now, in this gym" signal.
+
+   Reading equipment and pattern out of the name is not a new trick here: gearFor() and
+   mesoPattern() already do it, and his naming is consistent enough to support it.
+
+   This is deliberately a heuristic and NOT an agent call. The list opens mid-set with a bar
+   racked, so it has to be instant and work with no network; the agents run once nightly and
+   an on-demand call would put a spinner between him and a swap. It also has to rank the same
+   way every time, or the tiers never become something he can trust at a glance.
+   ============================================================ */
+const SWAP_TIERS = [
+  {key:'S', min:82, col:'var(--cyan)',   blurb:'near-identical'},
+  {key:'A', min:70, col:'var(--amber)',  blurb:'strong swap'},
+  {key:'B', min:57, col:'var(--violet)', blurb:'solid, trains it a bit differently'},
+  {key:'C', min:44, col:'var(--muted)',  blurb:'partial overlap'},
+  {key:'D', min:30, col:'var(--dim)',    blurb:'weak — only if nothing better is free'},
+  {key:'F', min:0,  col:'var(--dim)',    blurb:'not a replacement'}
+];
+const SWAP_SHOW_FLOOR = 44;   // C
+const SWAP_THIN_FLOOR = 30;   // D, only when the field above is thin
+/* Free-weight vs pin-loaded neighbours: not the same, but close enough to part-credit. */
+const SWAP_EQUIP_KIN = {machine:['cable'], cable:['machine'], barbell:['dumbbell'], dumbbell:['barbell','kettlebell'], kettlebell:['dumbbell']};
+function swapEquip(nm){
+  const n = ' '+String(nm).toLowerCase()+' ';
+  // machine first: "Plate-Loaded Lat Pulldown" is a machine, not a cable stack
+  if(/plate.?loaded|machine|pec deck|smith|hack squat|\bsled\b|leg press|selector/.test(n)) return 'machine';
+  if(/cable|pulldown|pushdown|\brope\b/.test(n)) return 'cable';
+  if(/barbell|\bez bar\b|\bez\b|trap bar/.test(n)) return 'barbell';
+  if(/dumbbell|\bdb\b/.test(n)) return 'dumbbell';
+  if(/kettlebell|\bkb\b/.test(n)) return 'kettlebell';
+  if(/\bdips?\b|pull-?ups?|chin-?ups?|push.?up|hanging|body ?weight/.test(n)) return 'bodyweight';
+  return null;
+}
+/* Finer than mesoPattern(), which only needs squat/hinge/pull/push to keep a rotation from
+   stacking heavy days. Swapping needs the isolation patterns too, and needs vertical and
+   horizontal split apart — bench and overhead press share "push" but do not replace each
+   other. */
+function swapPattern(nm){
+  const n = ' '+String(nm).toLowerCase()+' ';
+  if(/leg curl|lying leg curl/.test(n)) return 'knee-flex';       // before the generic curl test
+  if(/leg extension/.test(n)) return 'knee-ext';                  // before mesoPattern calls it a squat
+  if(/wrist curl/.test(n)) return 'wrist';
+  if(/curl/.test(n)) return 'elbow-flex';
+  if(/pushdown|skull|\bjm\b|tricep|overhead extension|kickback/.test(n)) return 'elbow-ext';
+  if(/lateral raise|side raise|\blat raise\b/.test(n)) return 'lat-raise';
+  if(/rear delt|reverse fly|face pull|prone reverse/.test(n)) return 'rear-delt';
+  if(/\bfly\b|\bflye\b|pec deck/.test(n)) return 'chest-fly';
+  if(/crunch|leg raise|abdominal|sit.?up|plank|ab wheel/.test(n)) return 'trunk-flex';
+  if(/calve|calf/.test(n)) return 'calf';
+  if(/abductor|adductor/.test(n)) return 'hip-abd';
+  if(/pulldown|pull-?ups?|chin-?ups?|pullover/.test(n)) return 'vert-pull';
+  if(/\brows?\b|shrug/.test(n)) return 'horiz-pull';
+  if(/overhead press|shoulder press|military|\bohp\b|push press|arnold/.test(n)) return 'vert-push';
+  if(/bench|chest press|incline|decline|floor press|\bdips?\b|push.?up|landmine/.test(n)) return 'horiz-push';
+  return mesoPattern(nm);   // squat / hinge, or null
+}
+/* 0..100, or null when there is nothing to compare on. */
+function swapScore(from, to){
+  const A = musclesFor(from), B = musclesFor(to);
+  const ap = A.p||[], as = A.s||[], bp = B.p||[], bs = B.s||[];
+  if(!ap.length || !bp.length) return null;
+  // Primary agreement as a fraction of the union, so a one-group lift matching a one-group
+  // lift scores as fully as a two-group lift matching both — not half as well.
+  const shared = ap.filter(g=>bp.includes(g)).length;
+  const union = new Set(ap.concat(bp)).size;
+  let score = 58 * (shared/union);
+  // a primary that only turns up as the other's secondary is real, but thinner
+  score += 9 * ap.filter(g=>bs.includes(g)).length;
+  score += 9 * bp.filter(g=>as.includes(g)).length;
+  score += 4 * as.filter(g=>bs.includes(g)).length;
+  score = Math.min(score, 62);
+  const pa = swapPattern(from), pb = swapPattern(to);
+  if(pa && pb) score += (pa===pb) ? 20 : -4;
+  const ea = swapEquip(from), eb = swapEquip(to);
+  if(ea && eb){
+    if(ea===eb) score += 12;
+    else if((SWAP_EQUIP_KIN[ea]||[]).includes(eb)) score += 6;
+  }
+  // already proven: he has logged it, so there's a real working weight to start from
+  const logged = historyFor(to).length;
+  if(logged >= 3) score += 8; else if(logged >= 1) score += 5;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+function swapTierFor(score){
+  return (SWAP_TIERS.find(t=>score>=t.min) || SWAP_TIERS[SWAP_TIERS.length-1]).key;
+}
+/* His names are free text typed over months, so the pool holds genuine near-duplicates
+   ("Hanging Leg Raise" / "Hanging Leg Raises"). Collapse them or the top tier spends two
+   slots saying the same thing. */
+function swapDedupeKey(nm){ return invNormName(nm).replace(/s\b/g,''); }
+function swapCandidates(from, opts){
+  opts = opts || {};
+  const skip = new Set([from].concat(opts.exclude||[]).map(invNormName));
+  const best = {};
+  allKnownExerciseNames().forEach(nm=>{
+    if(skip.has(invNormName(nm))) return;
+    const score = swapScore(from, nm);
+    if(score == null) return;
+    const logged = historyFor(nm).length;
+    const k = swapDedupeKey(nm);
+    // keep the spelling he actually trains under, then the better-scoring one
+    if(!best[k] || logged > best[k].logged || (logged === best[k].logged && score > best[k].score)){
+      best[k] = {name:nm, score, logged, tier:swapTierFor(score)};
+    }
+  });
+  const rows = Object.keys(best).map(k=>best[k])
+    .sort((a,b)=> b.score-a.score || b.logged-a.logged || a.name.localeCompare(b.name));
+  // Never pad the list to look full. Show what is genuinely good; only reach down into D
+  // when there is barely anything above it, and never show F at all — a list that is always
+  // the same length teaches him nothing about which lifts have real alternatives.
+  let out = rows.filter(r=>r.score >= SWAP_SHOW_FLOOR);
+  // Thin field: reach down one tier, but keep it short. Handing back seven D-tier rows would
+  // be the padding this is meant to avoid, just spelled differently.
+  if(out.length < 3) out = rows.filter(r=>r.score >= SWAP_THIN_FLOOR).slice(0,5);
+  return out.slice(0, opts.limit || 12);
+}
+/* Rendered rows are indexed into this so a name with quotes or an apostrophe can never
+   have to survive a round trip through an inline onclick string. */
+let _swapRows = [];
+function swapPickedName(i){ const r = _swapRows[i]; return r ? r.name : null; }
+function swapListHTML(from, pickFn, opts){
+  _swapRows = swapCandidates(from, opts);
+  if(!_swapRows.length){
+    return '<p class="small" style="color:var(--dim)">Nothing in your history or the library overlaps '+esc(from)+
+      ' closely enough to call a replacement. An empty list is the honest answer here — padding it out with '+
+      'unrelated lifts would be worse.</p>';
+  }
+  const thin = _swapRows.every(r=>r.score < SWAP_SHOW_FLOOR);
+  let h = '<div class="swap-list">';
+  _swapRows.forEach((r,i)=>{
+    const t = SWAP_TIERS.find(x=>x.key===r.tier);
+    const m = musclesFor(r.name);
+    const meta = [(m.p||[]).join('/'), (swapPattern(r.name)||'').replace(/-/g,' '), swapEquip(r.name)||'']
+      .filter(Boolean).join(' · ');
+    h += '<button class="swap-row" onclick="'+pickFn+'('+i+')" title="'+esc(t.blurb)+'">'+
+      '<span class="swap-tier" style="color:'+t.col+';border-color:'+t.col+'">'+r.tier+'</span>'+
+      '<span class="swap-body"><span class="swap-nm">'+esc(r.name)+'</span>'+
+      '<span class="swap-meta">'+esc(meta)+(r.logged?' · '+r.logged+' logged':' · never logged')+'</span></span>'+
+      '<span class="swap-score mono">'+r.score+'</span></button>';
+  });
+  h += '</div>';
+  if(thin) h += '<p class="small" style="color:var(--dim);margin-top:8px">Slim pickings — nothing here is a clean match for '+esc(from)+', so these are the best partial overlaps rather than real equivalents.</p>';
+  return h;
+}
+let _liveEditIdx = -1;
 function openLiveExEdit(i){
   if(event) event.stopPropagation();
   const ex = live.exercises[i];
+  _liveEditIdx = i;
   document.getElementById('liveEditTitle').textContent = 'Edit today\u2019s exercise';
   const hasSets = ex.sets.length>0;
   let h = '<datalist id="liveExDatalist">'+liveExOptionsHTML()+'</datalist>';
@@ -5886,8 +6179,21 @@ function openLiveExEdit(i){
        '<button class="btn ghost" onclick="removeLiveEx('+i+')" style="color:var(--red)">Remove for today</button>'+
        '<button class="btn ghost" onclick="closeLiveExEdit()">Cancel</button>'+
        '</div>';
+  // Ranked alternatives, so the swap doesn't depend on remembering what else hits the same
+  // muscles while standing at an occupied rack. Anything already in today's session is
+  // excluded \u2014 suggesting a lift he's about to do anyway isn't a replacement.
+  h += '<div style="margin-top:16px"><label style="margin-bottom:7px">Best replacements</label>'+
+       swapListHTML(ex.name, 'liveSwapPick', {exclude: live.exercises.map(e=>e.name)})+'</div>';
   document.getElementById('liveEditBody').innerHTML = h;
   document.getElementById('liveEditOverlay').classList.add('show');
+}
+/* Route through the input + confirmSwapLiveEx so the "this clears N logged sets" guard
+   still fires \u2014 one tap must not be a quieter way to lose data than typing the name. */
+function liveSwapPick(i){
+  const nm = swapPickedName(i); if(nm==null || _liveEditIdx<0) return;
+  const inp = document.getElementById('liveEditName');
+  if(inp) inp.value = nm;
+  confirmSwapLiveEx(_liveEditIdx);
 }
 function closeLiveExEdit(){
   document.getElementById('liveEditOverlay').classList.remove('show');
@@ -6223,9 +6529,26 @@ function invClearExpiredOverrides(){
   const ov = invState().overrides; const t = todayKey();
   Object.keys(ov).forEach(k=>{ if(ov[k].until < t) delete ov[k]; });
 }
+/* Overrides are stored under an exercise NAME, and not every writer of that name is
+   trustworthy: agApplyFix() takes it straight from model output. A near miss — "bench
+   press", a stray double space, different capitalisation — writes a key that this lookup
+   would never match again, so the override sits in state looking applied while LIVE
+   quietly ignores it, with no error raised anywhere. Compare on a normalised form so a
+   cosmetic naming difference can't silently break the match. */
+function invNormName(s){
+  return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
 function invOverrideFor(nm){
   invClearExpiredOverrides();
-  const o = invState().overrides[nm];
+  const ov = invState().overrides;
+  let o = ov[nm];                          // exact key wins, and costs nothing
+  if(!o){
+    const want = invNormName(nm);
+    if(want){
+      const k = Object.keys(ov).find(x=>invNormName(x)===want);
+      if(k) o = ov[k];
+    }
+  }
   return (o && o.until >= todayKey()) ? o : null;
 }
 
@@ -7937,30 +8260,14 @@ function renderAnBulkQuality(){
   el.innerHTML = h;
 }
 
-/* ---------------- PREDICTIONS ---------------- */
-function anPredictFor(ex){
-  const pts = e1rmSeries(ex).slice(-10);
-  if(pts.length<5) return {ex, ok:false, why:'needs 5+ sessions'};
-  const spanDays = (new Date(pts[pts.length-1].date)-new Date(pts[0].date))/86400000;
-  if(spanDays<28) return {ex, ok:false, why:'needs a month of history'};
-  const reg = linreg(pts); if(!reg) return {ex, ok:false, why:'no trend'};
-  const r2 = anR2(pts, reg);
-  const perWeek = reg.slope*7;
-  const cur = Math.max(...pts.map(p=>p.v));
-  if(isMaxed(ex)) return {ex, ok:true, maxed:true, cur, perWeek, r2};
-  if(perWeek < 0.15) return {ex, ok:true, flat:true, cur, perWeek, r2};
-  // next two 5-lb milestones above current best
-  const targets = [];
-  let t = Math.ceil((cur+0.01)/5)*5;
-  while(targets.length<2){ targets.push(t); t+=5; }
-  const etas = targets.map(tv=>{
-    const days = (tv-cur)/reg.slope;
-    return {target:tv, days:Math.round(days), date:mesoAddDays(todayKey(), Math.round(days))};
-  }).filter(e=>e.days<=182);
-  return {ex, ok:true, flat:false, cur, perWeek, r2, etas};
-}
+/* ---------------- PREDICTIONS ----------------
+   anPredictFor() used to live here and drive a stack of per-lift milestone cards below the
+   chart. It was removed with them: the tab shows the selected lift and nothing else, and
+   the milestone maths it did now runs off the same projection the chart draws
+   (anFanMilestones), so there is only one trend model on this screen instead of two that
+   could disagree. */
 /* ---- ensemble model: percentile bands built from YOUR OWN residual noise ----
-   The center line is the same least-squares trend used above (median case). The spread
+   The center line is a least-squares trend (median case). The spread
    isn't invented \u2014 it's the actual scatter of your historical e1RM points around that
    trend line (residual std dev), fanned out with sqrt(time) the way a real random-walk
    confidence interval grows, then scaled per percentile via a standard-normal quantile
@@ -7984,15 +8291,23 @@ function anResidualStd(pts, reg){
   const variance = resid.reduce((a,b)=>a+(b-mean)**2,0)/Math.max(1,resid.length-1);
   return Math.sqrt(variance);
 }
-function anEnsembleFor(ex, horizonDays){
-  const pts = e1rmSeries(ex);
-  if(pts.length<5) return {ok:false, why:'Needs 5+ logged sessions on '+ex+' to build a trend.'};
+/* Shared fan-projection core. The lift ensemble and the bodyweight projection both run
+   through this, so the two charts are literally the same model pointed at different series
+   rather than two hand-rolled approximations that drift apart as one gets tuned. Options
+   only cover what genuinely differs: how much history is enough, and what "today's value"
+   means (best-ever for a lift, latest reading for a scale). */
+function anFanProject(pts, horizonDays, opts){
+  opts = opts || {};
+  const minPts = opts.minPts || 5, minSpan = opts.minSpan || 28;
+  if(pts.length < minPts) return {ok:false, why: opts.whyPoints || ('Needs '+minPts+'+ data points to build a trend.')};
   const spanDays = (new Date(pts[pts.length-1].date)-new Date(pts[0].date))/86400000;
-  if(spanDays<28) return {ok:false, why:'Needs about a month of history on '+ex+' \u2014 keep logging it.'};
+  if(spanDays < minSpan) return {ok:false, why: opts.whySpan || ('Needs about '+Math.round(minSpan/7)+' weeks of history.')};
   const reg = linreg(pts); if(!reg) return {ok:false, why:'No usable trend yet.'};
   const r2 = anR2(pts, reg);
   const sd = anResidualStd(pts, reg);
-  const cur = Math.max(...pts.map(p=>p.v));
+  const cur = opts.anchorV != null ? opts.anchorV
+            : opts.curFrom === 'last' ? pts[pts.length-1].v
+            : Math.max(...pts.map(p=>p.v));
   const todayX = (new Date(todayKey()+'T00:00:00').getTime()-reg.x0)/86400000;
   const startDay = Math.round(todayX);
   const steps = 14; // sample points across the horizon for a smooth-ish path
@@ -8002,7 +8317,7 @@ function anEnsembleFor(ex, horizonDays){
     const day = startDay + Math.round((horizonDays/steps)*i);
     const fit = reg.intercept + reg.slope*day;
     // uncertainty grows with sqrt(elapsed) beyond "now" \u2014 a standard random-walk property,
-    // and is anchored so every band passes through the actual current e1RM at day 0.
+    // and is anchored so every band passes through the actual current value at day 0.
     const daysOut = Math.max(0, day - startDay);
     const spread = sd * Math.sqrt(1 + daysOut/14);
     AN_ENS_PCTS.forEach(pc=>{
@@ -8010,10 +8325,34 @@ function anEnsembleFor(ex, horizonDays){
       series[pc.p].push({date: mesoAddDays(todayKey(), day-startDay), v: Math.max(0, Math.round(v*10)/10)});
     });
   }
-  // re-anchor every band's first point to the real current e1RM so lines visibly start together
+  // re-anchor every band's first point to the real current value so lines visibly start together
   AN_ENS_PCTS.forEach(pc=>{ if(series[pc.p].length) series[pc.p][0].v = cur; });
-  return {ok:true, ex, cur, r2, sd, perWeek:reg.slope*7, series,
+  return {ok:true, cur, r2, sd, reg, perWeek:reg.slope*7, series, hist:pts,
     conf: r2>0.7?'steady trend':r2>0.4?'noisy trend':'very noisy trend'};
+}
+function anEnsembleFor(ex, horizonDays){
+  const res = anFanProject(e1rmSeries(ex), horizonDays, {
+    minPts:5, minSpan:28,
+    whyPoints:'Needs 5+ logged sessions on '+ex+' to build a trend.',
+    whySpan:'Needs about a month of history on '+ex+' \u2014 keep logging it.'
+  });
+  if(res.ok) res.ex = ex;
+  return res;
+}
+/* Milestone ETAs for ONE lift, clipped to the horizon actually on screen. The old
+   Predictions tab printed these for up to six lifts regardless of the dropdown; they now
+   belong to the selected lift and nothing else. */
+function anFanMilestones(res, horizonDays){
+  if(!res.ok || !res.reg || res.reg.slope <= 0) return [];
+  const out = [];
+  let t = Math.ceil((res.cur+0.01)/5)*5;
+  while(out.length < 3){
+    const days = Math.round((t-res.cur)/res.reg.slope);
+    if(days > horizonDays) break;
+    out.push({target:t, days, date:mesoAddDays(todayKey(), days)});
+    t += 5;
+  }
+  return out;
 }
 const AN_ENS_RANGES = [
   {days:28,  label:'4 weeks'},
@@ -8024,36 +8363,95 @@ const AN_ENS_RANGES = [
 let anEnsembleEx = null, anEnsembleRange = 84;
 function anEnsembleChangeEx(v){ anEnsembleEx = v||null; renderAnPred(); }
 function anEnsembleChangeRange(v){ anEnsembleRange = +v||84; renderAnPred(); }
-function anEnsembleChartSVG(res, w, h){
-  const all = res.series[10].concat(res.series[50], res.series[90]);
-  const vs = all.map(p=>p.v);
+function anDayMs(k){ return new Date(k+'T00:00:00').getTime(); }
+/* Confidence, as three discrete steps. The number the app already computes is r\u00b2; this is
+   the only place it becomes a shape rather than a sentence. */
+function anConfLevel(r2){
+  return r2>0.7 ? {n:3, col:'var(--cyan)'} : r2>0.4 ? {n:2, col:'var(--amber)'} : {n:1, col:'var(--red)'};
+}
+/* Fan chart: real history on the left of a "today" divider, projection fan on the right.
+   Time-scaled on x rather than index-scaled, because the historical points have to sit at
+   their true spacing relative to the projection or the two halves lie about each other. */
+function anFanChartSVG(res, w, h, opts){
+  opts = opts || {};
+  const s50 = res.series[50], n = s50.length;
+  const projEnd = s50[n-1].date;
+  const horizonDays = Math.max(1, Math.round((anDayMs(projEnd)-anDayMs(s50[0].date))/86400000));
+  // Show a history window roughly the size of the horizon so neither half is crushed, but
+  // never fewer than 6 real points \u2014 a projection floating over nothing is exactly what
+  // this chart was rebuilt to stop doing.
+  const cutoff = mesoAddDays(todayKey(), -Math.round(horizonDays*0.9));
+  let hist = (res.hist||[]).filter(p=>p.date>=cutoff);
+  if(hist.length < 6) hist = (res.hist||[]).slice(-6);
+
+  const vs = res.series[10].concat(res.series[50], res.series[90], hist).map(p=>p.v);
   let lo = Math.min(...vs), hi = Math.max(...vs);
   if(hi===lo){ hi+=1; lo-=1; }
   const pad = (hi-lo)*0.10; lo = Math.max(0, lo-pad); hi += pad;
-  const n = res.series[50].length;
-  const px = i => (i/(n-1))*(w-44)+38;
-  const py = v => h-24 - ((v-lo)/(hi-lo))*(h-40);
-  const pathFor = arr => arr.map((p,i)=>(i?'L':'M')+px(i).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ');
-  const bandTop = res.series[90].map((p,i)=>px(i).toFixed(1)+','+py(p.v).toFixed(1)).join(' ');
-  const bandBot = res.series[10].slice().reverse().map((p,i)=>px(n-1-i).toFixed(1)+','+py(res.series[10][n-1-i].v).toFixed(1)).join(' ');
+
+  const t0 = Math.min(anDayMs(hist.length?hist[0].date:todayKey()), anDayMs(todayKey()));
+  const t1 = anDayMs(projEnd);
+  const L = 38, R = w-8, span = Math.max(1, t1-t0);
+  const px = k => L + ((anDayMs(k)-t0)/span)*(R-L);
+  const py = v => h-24 - ((v-lo)/(hi-lo))*(h-42);
+  const pathFor = arr => arr.map((p,i)=>(i?'L':'M')+px(p.date).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ');
+
   let s = '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block">';
   // shaded p10\u2013p90 envelope
-  s += '<polygon points="'+bandTop+' '+bandBot+'" fill="rgba(246,134,47,.08)"/>';
-  // y gridlines at lo/hi
+  s += '<polygon points="'+
+    res.series[90].map(p=>px(p.date).toFixed(1)+','+py(p.v).toFixed(1)).join(' ')+' '+
+    res.series[10].slice().reverse().map(p=>px(p.date).toFixed(1)+','+py(p.v).toFixed(1)).join(' ')+
+    '" fill="'+(opts.bandFill||'rgba(246,134,47,.08)')+'"/>';
+  // y labels
   s += '<text x="4" y="'+(py(hi)+4).toFixed(1)+'" class="mono" font-size="10" fill="var(--dim)">'+Math.round(hi)+'</text>';
   s += '<text x="4" y="'+(py(lo)+4).toFixed(1)+'" class="mono" font-size="10" fill="var(--dim)">'+Math.round(lo)+'</text>';
+
+  if(hist.length){
+    // The fitted trend line, drawn back across the real points. Confidence stops being an
+    // adjective here: you can see how tightly the dots actually hug the line the forecast
+    // is extrapolating from.
+    const conf = anConfLevel(res.r2);
+    if(res.reg){
+      const fitAt = k => res.reg.intercept + res.reg.slope*((new Date(k).getTime()-res.reg.x0)/86400000);
+      s += '<path d="M'+px(hist[0].date).toFixed(1)+' '+py(fitAt(hist[0].date)).toFixed(1)+
+           'L'+px(todayKey()).toFixed(1)+' '+py(fitAt(todayKey())).toFixed(1)+
+           '" fill="none" stroke="'+conf.col+'" stroke-width="1.2" stroke-dasharray="5 4" opacity=".55"/>';
+    }
+    s += '<path d="'+pathFor(hist)+'" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity=".75"/>';
+    hist.forEach(p=>{
+      s += '<circle cx="'+px(p.date).toFixed(1)+'" cy="'+py(p.v).toFixed(1)+'" r="2.4" fill="var(--muted)"/>';
+    });
+    // divider between what happened and what is guessed
+    s += '<line x1="'+px(todayKey()).toFixed(1)+'" y1="10" x2="'+px(todayKey()).toFixed(1)+'" y2="'+(h-22)+
+         '" stroke="var(--line2)" stroke-width="1" stroke-dasharray="2 3"/>';
+  }
+
   AN_ENS_PCTS.forEach(pc=>{
     const dash = pc.p===50 ? '' : ' stroke-dasharray="4 3"';
     s += '<path d="'+pathFor(res.series[pc.p])+'" fill="none" stroke="'+pc.col+'" stroke-width="'+(pc.p===50?2.5:1.5)+'" stroke-linejoin="round" stroke-linecap="round"'+dash+'/>';
     const last = res.series[pc.p][n-1];
-    s += '<circle cx="'+px(n-1).toFixed(1)+'" cy="'+py(last.v).toFixed(1)+'" r="'+(pc.p===50?3.5:2.5)+'" fill="'+pc.col+'"/>';
+    s += '<circle cx="'+px(last.date).toFixed(1)+'" cy="'+py(last.v).toFixed(1)+'" r="'+(pc.p===50?3.5:2.5)+'" fill="'+pc.col+'"/>';
   });
-  // x-axis start/end date labels
-  s += '<text x="'+px(0).toFixed(1)+'" y="'+(h-6)+'" text-anchor="start" class="mono" font-size="10" fill="var(--dim)">'+fmtDate(res.series[50][0].date)+'</text>';
-  s += '<text x="'+px(n-1).toFixed(1)+'" y="'+(h-6)+'" text-anchor="end" class="mono" font-size="10" fill="var(--dim)">'+fmtDate(res.series[50][n-1].date)+'</text>';
+
+  // confidence meter, on the chart itself
+  const cf = anConfLevel(res.r2);
+  const mx = L+4, my = 12;
+  for(let i=0;i<3;i++){
+    s += '<rect x="'+(mx+i*9)+'" y="'+my+'" width="7" height="6" rx="1" fill="'+
+      (i<cf.n?cf.col:'var(--line2)')+'"'+(i<cf.n?'':' opacity=".7"')+'/>';
+  }
+  s += '<text x="'+(mx+32)+'" y="'+(my+6)+'" class="mono" font-size="9.5" fill="var(--dim)">R\u00b2 '+
+       res.r2.toFixed(2)+' \u00b7 '+res.conf+'</text>';
+
+  // x-axis labels: window start, today, horizon end
+  if(hist.length) s += '<text x="'+px(hist[0].date).toFixed(1)+'" y="'+(h-6)+'" text-anchor="start" class="mono" font-size="10" fill="var(--dim)">'+fmtDate(hist[0].date)+'</text>';
+  s += '<text x="'+px(todayKey()).toFixed(1)+'" y="'+(h-6)+'" text-anchor="middle" class="mono" font-size="10" fill="var(--muted)">today</text>';
+  s += '<text x="'+px(projEnd).toFixed(1)+'" y="'+(h-6)+'" text-anchor="end" class="mono" font-size="10" fill="var(--dim)">'+fmtDate(projEnd)+'</text>';
   s += '</svg>';
   return s;
 }
+/* kept as the lift-flavoured entry point so existing callers/tests keep their name */
+function anEnsembleChartSVG(res, w, h){ return anFanChartSVG(res, w, h); }
 function anEnsembleCardHTML(){
   const lifts = anBigLifts(5);
   if(!lifts.length) return anEmpty('Ensemble projection needs at least 5 sessions on a lift.');
@@ -8069,8 +8467,11 @@ function anEnsembleCardHTML(){
   h += '</div>';
   const res = anEnsembleFor(anEnsembleEx, anEnsembleRange);
   if(!res.ok){ h += '<p class="small" style="color:var(--dim)">'+esc(res.why)+'</p></div>'; return h; }
-  h += anEnsembleChartSVG(res, 640, 220);
+  h += anEnsembleChartSVG(res, 640, 240);
   h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
+  h += '<div style="display:flex;align-items:center;gap:6px">'+
+    '<span style="width:9px;height:2px;background:var(--muted);display:inline-block"></span>'+
+    '<span class="small">Logged e1RM</span></div>';
   AN_ENS_PCTS.forEach(pc=>{
     const last = res.series[pc.p][res.series[pc.p].length-1];
     h += '<div style="display:flex;align-items:center;gap:6px">'+
@@ -8078,47 +8479,216 @@ function anEnsembleCardHTML(){
       '<span class="small">'+pc.label+': <span class="mono" style="color:'+pc.col+'">'+Math.round(last.v)+' lb</span></span></div>';
   });
   h += '</div>';
-  h += '<p class="small" style="margin-top:10px;color:var(--dim)">Trend confidence: '+res.conf+' \u00b7 currently '+
+  h += '<p class="small" style="margin-top:10px;color:var(--dim)">Trend confidence: '+res.conf+' (R\u00b2 '+res.r2.toFixed(2)+
+    ', shown on the chart as the dashed fit line through your real points and the meter top-left) \u00b7 currently '+
     (res.perWeek<0.15?'holding flat':('+'+(Math.round(res.perWeek*10)/10)+' lb/wk on the median line'))+
     '. Bands widen the further out you look \u2014 that\u2019s honest, not a bug: nobody\u2019s lifts are actually a straight line for a full year.</p>';
+
+  // Milestones for THIS lift only, and only ones that land inside the selected window.
+  const rangeLabel = (AN_ENS_RANGES.find(r=>r.days===anEnsembleRange)||{}).label || (anEnsembleRange+' days');
+  if(isMaxed(res.ex)){
+    h += '<p class="small" style="margin-top:10px">Marked MAXED \u2014 there\u2019s no heavier setting on this machine, so there\u2019s no weight ETA to project. Progress here is more reps or sets at '+Math.round(res.cur)+' lb.</p>';
+  } else {
+    const ms = anFanMilestones(res, anEnsembleRange);
+    if(ms.length){
+      h += '<div style="margin-top:12px">';
+      ms.forEach(e=>{
+        h += '<div class="an-eta"><span class="mono" style="color:var(--amber);font-size:15px;font-weight:600">'+e.target+' lb</span>'+
+             '<span class="small">\u2248 '+fmtDate(e.date)+' <span style="color:var(--dim)">('+Math.max(1,Math.round(e.days/7))+' wks \u00b7 '+res.conf+')</span></span></div>';
+      });
+      h += '</div>';
+    } else {
+      h += '<p class="small" style="margin-top:10px;color:var(--dim)">'+
+        (res.perWeek<0.15
+          ? 'Trend is flat right now \u2014 no milestone ETA to give honestly.'+
+            ((typeof mesoCurrentWeek==='function' && (mesoCurrentWeek()||{}).type==='hyp') ? ' You\u2019re in a hypertrophy block, so that\u2019s the expected shape.' : '')
+          : 'No 5-lb milestone lands inside '+esc(rangeLabel)+' at this rate \u2014 widen the range above to see the next one.')+'</p>';
+    }
+  }
   h += '</div>';
   return h;
 }
 function renderAnPred(){
   const el = document.getElementById('an_pred'); if(!el) return;
-  const lifts = anBigLifts(5).slice(0,6);
+  const lifts = anBigLifts(5);
   if(!lifts.length){ el.innerHTML = anEmpty('Predictions need at least 5 sessions per lift spanning a month or more.'); return; }
+  // Deliberately ONE lift's worth of content: whatever the two selectors below say. The tab
+  // used to append milestone cards for up to six other lifts underneath, which had nothing
+  // to do with the selection and made the dropdown look broken.
   let h = '<div class="card"><div class="k">Predictions</div>'+
-    '<p class="small">Straight-line projection of your recent e1RM trend. Useful as a target date, not a promise \u2014 progress is never actually linear, and anything past ~6 months is guesswork (so it isn\u2019t shown).</p></div>';
+    '<p class="small">Straight-line projection of your recent e1RM trend, drawn over the real sessions behind it. Useful as a target date, not a promise \u2014 progress is never actually linear.</p></div>';
   h += anEnsembleCardHTML();
-  let shown = 0;
-  lifts.forEach(ex=>{
-    const p = anPredictFor(ex);
-    if(!p.ok){ return; }
-    shown++;
-    const conf = p.r2>0.7?'steady trend':p.r2>0.4?'noisy trend':'very noisy trend';
-    h += '<div class="card"><div class="k">'+esc(ex)+'</div>'+
-      '<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">'+
-      '<span style="font-family:var(--disp);font-size:30px;font-weight:700;color:var(--text)">'+Math.round(p.cur)+'</span>'+
-      '<span class="small">current e1RM</span>'+
-      '<span class="mono" style="margin-left:auto;font-size:12px;color:'+(p.maxed?'var(--amber)':(p.flat?'var(--dim)':'var(--cyan)'))+'">'+
-      (p.maxed?'at machine ceiling':(p.flat?'holding steady':'+'+(Math.round(p.perWeek*10)/10)+' lb/wk'))+'</span></div>';
-    if(p.maxed){
-      h += '<p class="small">Marked MAXED \u2014 there\u2019s no heavier setting on this machine, so there\u2019s no weight ETA to project. Progress here is more reps or sets at '+Math.round(p.cur)+' lb.</p>';
-    } else if(p.flat){
-      h += '<p class="small">Trend is flat right now \u2014 no ETA to give honestly.'+
-        ((typeof mesoCurrentWeek==='function' && (mesoCurrentWeek()||{}).type==='hyp') ? ' You\u2019re in a hypertrophy block, so that\u2019s the expected shape.' : '')+'</p>';
-    } else if(p.etas && p.etas.length){
-      p.etas.forEach(e=>{
-        h += '<div class="an-eta"><span class="mono" style="color:var(--amber);font-size:15px;font-weight:600">'+e.target+' lb</span>'+
-             '<span class="small">\u2248 '+fmtDate(e.date)+' <span style="color:var(--dim)">('+Math.round(e.days/7)+' wks \u00b7 '+conf+')</span></span></div>';
-      });
-    } else {
-      h += '<p class="small">Next milestone is more than ~6 months out at the current rate \u2014 too far to forecast honestly.</p>';
-    }
-    h += '</div>';
+  el.innerHTML = h;
+}
+
+/* ============================================================
+   OVERLOAD STATUS — one consolidated, always-current read per tracked lift.
+
+   Every number on this tab comes from a signal the app already produces: the same
+   least-squares trend and r² the Predictions chart draws, the MAXED equipment-ceiling flag,
+   active Investigation flags, and grind/fail density off the effort tags. Nothing here is a
+   new way of judging progress, and nothing here is a second opinion that can drift out of
+   step with Investigate.
+
+   The agents refresh the verdict wording and the tip each night, but they are a LAYER, not
+   the source. olSignals() and olBaselineVerdict() run on every render, so the tab is fully
+   populated and correct if the agents have never run, failed last night, or came back with
+   nonsense. Worst case is missing commentary, never an empty or wrong tab.
+
+   Informational only: nothing here writes training state, so it does not belong in the
+   proposal queue — approving it would be a no-op. The stored report is the same class of
+   agent write as agLog(): the agents' own words about what they saw, not a change to what
+   the app will prescribe.
+   ============================================================ */
+const OL_MIN_SESSIONS = 4;
+const OL_VERDICTS = {
+  'on-track':  {label:'On track',        col:'var(--cyan)'},
+  'stalling':  {label:'Stalling',        col:'var(--amber)'},
+  'attention': {label:'Needs attention', col:'var(--red)'}
+};
+const OL_SEV = {'on-track':0, 'stalling':1, 'attention':2};
+const OL_DIR_MARK = {up:'↗', flat:'→', down:'↘'};
+const OL_DIR_COL  = {up:'var(--cyan)', flat:'var(--muted)', down:'var(--red)'};
+const OL_STALE_DAYS = 7;     // past this, the agent layer is shown as stale rather than current
+const OL_MAX_TIP = 200;
+/* Flat band, in lb/week. Matched to investigateLift()'s |slope| <= 0.3 rather than the
+   Predictions tab's 0.15, because this tab produces a SEVERITY judgement and that is the
+   threshold the app already raises flags on. A tighter band called a 0.2 lb/wk drift on an
+   ab machine "needs attention", which would put this tab at odds with Investigate. */
+const OL_FLAT_BAND = 0.3;
+function olBaselineVerdict(s){
+  // A red/orange Investigation flag already IS the app saying this needs attention. Deferring
+  // to it keeps this tab from quietly disagreeing with the flag sitting in Investigate.
+  if(s.flag && (s.flag.severity==='red' || s.flag.severity==='orange')) return 'attention';
+  if(s.dir==='down') return 'attention';
+  // No heavier setting exists, so a flat LOAD trend is the equipment ceiling, not a stall —
+  // the same carve-out investigateLift() and the Predictions tab already make.
+  if(s.maxed) return 'on-track';
+  if(s.hardPct!=null && s.hardPct>=50 && s.dir!=='up') return 'attention';
+  // Flat e1RM through a hypertrophy block is the expected shape, not a stall. Same reasoning
+  // investigateLift() uses before it declines to raise a flag.
+  if(s.dir==='flat' && s.hypBlock) return 'on-track';
+  if(s.dir==='flat') return 'stalling';
+  return 'on-track';
+}
+function olSignals(){
+  const flags = invActiveFlags();
+  const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
+  const hypBlock = !!(mw && mw.type==='hyp');
+  const rows = anBigLifts(OL_MIN_SESSIONS).map(nm=>{
+    const pts = e1rmSeries(nm);
+    const recent = pts.slice(-10);
+    const reg = recent.length>=2 ? linreg(recent) : null;
+    const perWeek = reg ? reg.slope*7 : 0;
+    const maxed = isMaxed(nm);
+    // grind/fail density over this lift's last 6 sessions — the same measure investigateLift uses
+    let tagged=0, hard=0;
+    historyFor(nm).slice(0,6).forEach(h=>h.sets.forEach(st=>{ if(st.e){ tagged++; if(st.e==='grind'||st.e==='fail') hard++; } }));
+    const f = flags.find(x=>x.key === 'lift:'+nm) || null;
+    const s = {
+      lift:nm, sessions:pts.length, cur: pts.length ? Math.max(...pts.map(p=>p.v)) : 0,
+      perWeek, r2: reg ? anR2(recent, reg) : 0, maxed, hypBlock,
+      dir: maxed ? 'flat' : perWeek > OL_FLAT_BAND ? 'up' : perWeek < -OL_FLAT_BAND ? 'down' : 'flat',
+      hardPct: tagged ? Math.round(100*hard/tagged) : null,
+      flag: f ? {severity:f.severity, title:f.title} : null,
+      lastDate: pts.length ? pts[pts.length-1].date : null
+    };
+    s.verdict = olBaselineVerdict(s);
+    return s;
   });
-  if(!shown) h += anEmpty('No lift has enough history for a projection yet \u2014 needs 5+ sessions across a month.');
+  // worst first — the point of a consolidated view is that problems surface without scrolling
+  return rows.sort((a,b)=> OL_SEV[b.verdict]-OL_SEV[a.verdict] || a.perWeek-b.perWeek || a.lift.localeCompare(b.lift));
+}
+/* The sanity gate. Never let a bad night reach the screen. */
+function olValidateReport(raw, signals){
+  if(!raw || !Array.isArray(raw.lifts)) return null;
+  const byNorm = {};
+  (signals||[]).forEach(s=>{ byNorm[invNormName(s.lift)] = s; });
+  const seen = {}, out = [];
+  raw.lifts.forEach(row=>{
+    if(!row || !row.lift) return;
+    const sig = byNorm[invNormName(row.lift)];
+    if(!sig) return;                                        // not a lift this tab tracks
+    if(seen[sig.lift]) return;                              // one row per lift
+    const dir = String(row.direction||'').toLowerCase();
+    // Direction is arithmetic, not opinion. If the model says a lift is climbing while the
+    // regression says it is falling, the row is discarded — a confident wrong verdict on
+    // this tab is worse than no verdict at all.
+    if(dir !== sig.dir) return;
+    const verdict = String(row.verdict||'').toLowerCase().trim().replace(/\s+/g,'-');
+    if(!OL_VERDICTS[verdict]) return;
+    // The agents see context the rules don't (block type, what he said in chat), so they may
+    // soften or sharpen by one step. They may never invert: a lift the data calls "needs
+    // attention" cannot come back as "on track".
+    if(Math.abs(OL_SEV[verdict] - OL_SEV[sig.verdict]) > 1) return;
+    let tip = row.tip==null ? '' : String(row.tip).trim();
+    if(tip.length > OL_MAX_TIP) tip = tip.slice(0, OL_MAX_TIP).replace(/\s+\S*$/,'')+'…';
+    seen[sig.lift] = 1;
+    out.push({lift:sig.lift, direction:dir, verdict, tip});
+  });
+  if(!out.length) return null;
+  return {at:new Date().toISOString(), day:todayKey(), lifts:out.slice(0,12)};
+}
+function olReport(){
+  const r = agState().overload;
+  return (r && Array.isArray(r.lifts) && r.lifts.length) ? r : null;
+}
+function olReportFresh(r){
+  // daysBetween, not invDaysSince — the latter looks a key up in invest.lastAuto and would
+  // report Infinity for a plain date string, marking every report stale forever.
+  return !!(r && r.day && daysBetween(r.day, todayKey()) <= OL_STALE_DAYS);
+}
+/* Compact numeric brief handed to the agents so their verdicts are written against the same
+   arithmetic the tab renders, rather than re-derived from raw logs and drifting. */
+function olAgentContext(){
+  const sigs = olSignals();
+  if(!sigs.length) return '\nOVERLOAD STATUS: no lift has '+OL_MIN_SESSIONS+'+ logged sessions yet.\n';
+  return '\nOVERLOAD STATUS (app-computed — your verdicts must agree with these directions):\n'+
+    sigs.map(s=>'- '+s.lift+': dir='+s.dir+', '+(s.perWeek>=0?'+':'')+s.perWeek.toFixed(2)+
+      ' lb/wk, R2='+s.r2.toFixed(2)+', best e1RM '+Math.round(s.cur)+' lb, '+s.sessions+' sessions'+
+      (s.maxed?', MAXED (at machine ceiling — flat load is expected)':'')+
+      (s.hardPct!=null?', '+s.hardPct+'% of tagged sets grind/fail':'')+
+      (s.flag?', investigation flag ['+s.flag.severity+'] '+s.flag.title:'')+
+      ', app verdict='+s.verdict).join('\n')+'\n';
+}
+function olRowHTML(s, note){
+  const v = OL_VERDICTS[(note && note.verdict) || s.verdict];
+  const bits = [
+    (s.perWeek>=0?'+':'')+s.perWeek.toFixed(2)+' lb/wk',
+    'R² '+s.r2.toFixed(2),
+    Math.round(s.cur)+' lb best',
+    s.sessions+' sessions'
+  ];
+  if(s.maxed) bits.push('at ceiling');
+  if(s.hardPct!=null) bits.push(s.hardPct+'% grind/fail');
+  if(s.flag) bits.push('flagged: '+s.flag.severity);
+  let h = '<div class="ol-row">'+
+    '<span class="ol-dir" style="color:'+OL_DIR_COL[s.dir]+'">'+OL_DIR_MARK[s.dir]+'</span>'+
+    '<span class="ol-body"><span class="ol-nm">'+esc(s.lift)+'</span>'+
+    '<span class="ol-sig">'+esc(bits.join(' · '))+'</span></span>'+
+    '<span class="ol-verdict" style="color:'+v.col+';border-color:'+v.col+'">'+v.label+'</span></div>';
+  if(note && note.tip) h += '<div class="ol-tip">'+esc(note.tip)+'</div>';
+  return h;
+}
+function renderAnOverload(){
+  const el = document.getElementById('an_overload'); if(!el) return;
+  const sigs = olSignals();
+  if(!sigs.length){
+    el.innerHTML = anEmpty('Overload status needs at least '+OL_MIN_SESSIONS+' logged sessions on a lift before it can read a direction.');
+    return;
+  }
+  const rep = olReport(), fresh = olReportFresh(rep);
+  const notes = {};
+  if(rep && fresh) rep.lifts.forEach(r=>{ notes[r.lift] = r; });
+  let h = '<div class="card"><div class="k">Overload status</div>'+
+    '<p class="small">Every lift with '+OL_MIN_SESSIONS+'+ logged sessions, worst first. Direction and the numbers behind it are computed live from your e1RM trend, the MAXED flag, active investigation flags and your grind/fail tags — the agents refresh the verdict and the tips on their nightly cycle.</p></div>';
+  h += '<div class="card">' + sigs.map(s=>olRowHTML(s, notes[s.lift])).join('') + '</div>';
+  const stamp = rep && rep.day ? fmtDate(rep.day) : null;
+  h += '<div class="card"><p class="small" style="color:var(--dim);margin:0">'+
+    (!rep ? 'The agents haven’t written a review of these lifts yet — the readings above are computed live, so they’re current regardless. Tips appear after the next cycle.'
+     : !fresh ? 'Agent notes from '+stamp+' are more than '+OL_STALE_DAYS+' days old, so they’re held back rather than shown next to fresher numbers. The readings above are still computed live.'
+     : 'Agent notes last refreshed '+stamp+'. Anything that didn’t agree with the computed direction was discarded rather than displayed.')+
+    '</p></div>';
   el.innerHTML = h;
 }
 
@@ -8409,6 +8979,28 @@ function agSweepExpired(){
 
 /* ---- fix validation: never trust model output straight into state ---- */
 const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','schedule','cycleSchedule','bpFreq'];
+/* Every exercise Mark actually trains — split slots plus anything he has logged. NOT
+   allKnownExerciseNames(), which folds in the whole EX_LIBRARY: an override on a lift he
+   has never performed is inert by construction, so accepting one would just be a different
+   way of writing a dead key. */
+function agTrainedExNames(){
+  const set = new Set();
+  Object.keys(S.split).forEach(dk=>(S.split[dk].exercises||[]).forEach(x=>set.add(exName(x))));
+  S.logs.forEach(l=>(l.entries||[]).forEach(e=>set.add(e.exercise)));
+  return [...set].filter(Boolean);
+}
+/* Resolve a model-supplied exercise name to the real one, or null. Returning the CANONICAL
+   spelling matters as much as rejecting junk: it means the override lands under exactly the
+   key the split uses, so the lenient match in invOverrideFor() is a safety net rather than
+   the thing load-bearing the feature. DELTA has already proposed a liftReset for "Trap Bar
+   Deadlift", which is not in the split at all — approving that wrote nothing anyone would
+   ever see fire. */
+function agResolveExName(raw){
+  const want = invNormName(raw);
+  if(!want) return null;
+  const names = agTrainedExNames();
+  return names.find(n=>n===raw) || names.find(n=>invNormName(n)===want) || null;
+}
 function agValidateFix(fx){
   if(!fx || !fx.type) return null;
   if(AG_FIX_TYPES.indexOf(fx.type) < 0) return null;
@@ -8426,7 +9018,11 @@ function agValidateFix(fx){
   if(fx.type==='liftReset'){
     const w = Math.round(+p.w||0), days = Math.round(+p.days||0);
     if(!p.name || w<=0 || days<1 || days>30) return null;
-    return {type:'liftReset', payload:{name:String(p.name), w, days}};
+    // Tightened, not loosened: the name has to resolve to a lift he actually trains, and it
+    // is rewritten to that lift's canonical spelling before it can reach state.
+    const name = agResolveExName(p.name);
+    if(!name) return null;
+    return {type:'liftReset', payload:{name, w, days}};
   }
   if(fx.type==='deload') return {type:'deload', payload:{}};
   if(fx.type==='addEx'){
@@ -8634,7 +9230,15 @@ async function agRunAll(manual){
     'almost always via summary rather than proposals.\n'+
     'Cap: at most 2 proposals per agent. Fewer is better \u2014 most nights, most agents should have zero. '+
     'Keep summaries tight so the JSON stays complete.\n\n'+
-    coachMemContext()+trainingContext()+agContext();
+    // Read-only: this refreshes the Overload Status tab. It is NOT a proposal and never
+    // changes anything, so it deliberately sits outside the per-agent proposal arrays.
+    'ALSO include a top-level "overload" key refreshing the Overload Status tab (DELTA\'s read, informational only, nothing is applied):\n'+
+    '  "overload":{"lifts":[{"lift":"<exact name from OVERLOAD STATUS below>","direction":"up|flat|down","verdict":"on-track|stalling|attention","tip":"<=200 chars, only if there is something actionable \u2014 otherwise \\"\\">"}]}\n'+
+    '  Cover every lift listed under OVERLOAD STATUS. "direction" MUST match the dir= given there; a row whose '+
+    'direction disagrees is discarded, not shown. "verdict" may move at most one step from the app verdict given there '+
+    '(on-track < stalling < attention) \u2014 rows that invert it are discarded too. Tips should be concrete and cite his '+
+    'numbers; leave tip empty rather than writing filler.\n\n'+
+    coachMemContext()+trainingContext()+agContext()+olAgentContext();
   try{
     const {text} = await callClaudeWithTools(
       [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
@@ -8675,6 +9279,14 @@ async function agRunAll(manual){
         raised++;
       });
     });
+    // Overload Status refresh. Validated against freshly computed signals, and on failure the
+    // PREVIOUS report is left in place rather than cleared \u2014 a bad night should cost the tab
+    // its newest commentary, not the commentary it already had.
+    try{
+      const olv = olValidateReport(parsed && parsed.overload, olSignals());
+      if(olv) a2.overload = olv;
+      else if(parsed && parsed.overload) agLog('delta','Overload status update didn\u2019t pass the sanity check \u2014 kept the previous read rather than showing it.');
+    }catch(e){ agLog('delta','Overload status update failed to parse ('+e.message+') \u2014 previous read kept.'); }
     if(!raised) agLog('zulu','Cycle complete \u2014 nothing needed your attention today.');
   }catch(e){
     agLog('zulu','Cycle failed: '+e.message+' \u2014 no retry today; use Run cycle now if you want another attempt.');

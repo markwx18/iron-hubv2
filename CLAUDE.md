@@ -68,7 +68,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 590 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 721 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -89,6 +89,23 @@ without the fix proves nothing, and this has actually happened in this repo more
 than once — a mock was written that the fixed code recovered from, so the test was
 silently exercising the success path.
 
+The cheap way to do this is a *mutant*: copy the app, undo one fix in the copy, and
+point the suite at it — the harness honours `IRONHUB_HTML`.
+
+```bash
+IRONHUB_HTML=/tmp/mutant.html node test_agents.js
+```
+
+Two traps this caught, both of which produce a mutant that wrongly *passes*:
+- A single-line anchor string can match an **earlier, unrelated** occurrence
+  (`if(hist.length){` appears in `deloadExercise()` long before the chart code).
+  Verify the mutation landed where you meant.
+- A fixture too clean to distinguish the branches. A perfectly linear bodyweight
+  series has zero residual variance, so the projection fan collapses and any spread
+  bug passes; one weigh-in per week makes the weekly average equal the raw value, so
+  an anchoring bug is invisible. Fixtures need the messiness real data has — but use
+  fixed offsets, never randomness, so the suite stays deterministic.
+
 **Assert behavior, not absence of exceptions.** `renderX() does not throw` is a
 weak test. Assert what the function actually produced. A composer that *renders*
 and a Send button that *works* are different claims — one was verified here while
@@ -98,7 +115,26 @@ the other was broken.
 `clientHeight`, and `offsetWidth` are all 0. Scroll and CSS behavior cannot be
 truly verified in the harness. Where a test touches layout, assert *which branch
 was taken* rather than a pixel value, and say so in a comment. Visual and layout
-verification has to happen on a real device.
+verification has to happen in a real browser.
+
+**Checking layout in a real browser.** `file://` is blocked by the Chrome extension,
+so serve the working copy and drive that:
+
+```bash
+node -e "const h=require('http'),f=require('fs');h.createServer((q,s)=>{s.writeHead(200,{'Content-Type':'text/html'});s.end(f.readFileSync('iron_hub.html'))}).listen(8731)"
+```
+
+Seed `localStorage['ironhub:v1']` with a fixture and reload. To measure narrow widths
+without resizing the window, render the component into an offscreen div of a fixed
+width and compare `scrollWidth` to `clientWidth` — but set `column-count:1` on it
+first, or the ≥1240px two-column rule halves the width and every row reads as
+overflowing. That measurement caught a real bug: `text-overflow:ellipsis` silently
+does nothing on an **inline** element, so a long lift name widened its row instead of
+truncating. Row containers need `display:flex` + `min-width:0`.
+
+His live data is at `https://markwx18.github.io/iron-hubv2/` — reading
+`localStorage['ironhub:v1']` there is the fastest way to check a bug report against
+what his state actually says before changing anything.
 
 **Clean up synthetic data.** Tests that push into `S.logs` or `S.split` must
 filter their fixtures back out, or they leak into later sections' assertions.
@@ -164,6 +200,9 @@ the next background pull.** Two rules follow:
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()` |
 | Agents | `agRunAll()`, `agValidateFix()`, `agApplyFix()`, `agSendChat()`, `renderOps()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
+| Projections | `anFanProject()` (shared core), `anFanChartSVG()`, `anFanMilestones()`, `bwProjectFor()` |
+| Overload status | `olSignals()`, `olBaselineVerdict()`, `olValidateReport()`, `renderAnOverload()` |
+| Exercise swaps | `swapScore()`, `swapPattern()`, `swapEquip()`, `swapCandidates()`, `swapListHTML()` |
 | PR history | `checkPRs()`, `prAppend()`, `prBackfill()`, `renderAnPRs()` |
 | Readiness | `anReadinessOutcome()`, `anReadinessTrim()`, `renderAnReadiness()` |
 | Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
@@ -194,6 +233,20 @@ prompt — models don't reliably follow "don't do X."
 
 **Prompt instructions are not enforcement.** Anything that must be true should be
 validated in code. The prompt is a hint; the validator is the guarantee.
+
+**Model-supplied exercise names must be resolved, never trusted.** An override is
+stored *and looked up* by exercise name, so a name that matches nothing real writes a
+key that can never fire — an "applied" fix that silently does nothing. DELTA has
+already proposed a `liftReset` for `Trap Bar Deadlift`, which is not in the split at
+all. `agValidateFix()` now resolves the name through `agResolveExName()` and stores
+the canonical spelling; `invOverrideFor()` additionally matches on a normalised form
+as a second line of defence.
+
+**Read-only agent output still needs a validator.** The Overload Status tab is
+informational, so it does not go through the proposal queue — but `olValidateReport()`
+discards any row whose direction contradicts the computed trend, or whose verdict
+inverts the computed one, and the tab renders live-computed signals underneath
+regardless. A bad night costs the tab its commentary, never its content.
 
 **Schedule fixes are mode-gated in both directions.** `schedule` (day-of-week map)
 is rejected in cycle mode; `cycleSchedule` is rejected in dow mode. The cycle
@@ -230,6 +283,10 @@ Check at 393px and 320px widths.
 
 - Comments should explain *why*, especially for non-obvious guards. Several
   functions carry comments explaining a specific bug they prevent — keep those.
+- **Anchor short keyword tokens in name-matching regexes.** `musclesFor()` classified
+  "Plate Loaded Chest Press" as Back because unanchored `/lat/` matches inside
+  "**Plat**e", and `/ab/` matches inside "c**ab**le" and "**Ab**ductor". `mesoPattern()`
+  carries the same warning about `chin` inside "ma**chin**e". Use `\b`.
 - Match surrounding code style rather than imposing a new one.
 - `esc()` all user/model-supplied text going into HTML.
 - Prefer editing existing functions over adding parallel ones.

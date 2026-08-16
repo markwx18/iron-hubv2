@@ -828,10 +828,17 @@ setTimeout(async () => {
   ok('agent context lists maxed lifts', mCtx.indexOf('Maxed Machine') >= 0 && /MAXED OUT/.test(mCtx));
   ok('agent context forbids adding load to them', /NEVER propose adding load/.test(mCtx));
 
-  // predictions must not forecast a higher weight
-  const mPred = ev("anPredictFor('Maxed Machine')");
-  ok('prediction marks the lift as maxed', mPred.maxed === true);
-  ok('prediction gives no weight ETA', !mPred.etas || mPred.etas.length === 0);
+  // predictions must not forecast a higher weight. anPredictFor() is gone with the
+  // per-lift milestone cards, so this now asserts on the card the tab actually renders.
+  ev("anEnsembleEx='Maxed Machine'; anEnsembleRange=182;");
+  const mCard = ev('anEnsembleCardHTML()');
+  ok('maxed lift card names the machine ceiling', /machine ceiling|MAXED/.test(mCard), mCard.slice(0, 200));
+  ok('maxed lift card offers no weight ETA', mCard.indexOf('an-eta') === -1);
+  // and the milestone generator itself refuses to invent one
+  const mRes = ev("anEnsembleFor('Maxed Machine', 182)");
+  ok('maxed lift still projects a trend', mRes.ok === true, JSON.stringify(mRes.why));
+  ok('flat maxed trend yields no milestones', ev("anFanMilestones(anEnsembleFor('Maxed Machine',182),182)").length === 0);
+  ev('anEnsembleEx=null;');
 
   // cleanup
   ev(`(function(){
@@ -2239,6 +2246,372 @@ setTimeout(async () => {
   } catch (e) {
     ok('bulk quality section', false, e.message);
     ev('S.logs = ' + savedLogs + '; S.weights = ' + savedWeights + ';');
+  }
+
+  console.log('=== LIFT OVERRIDE NAME MATCHING ===');
+  {
+    const savedOv = ev('JSON.stringify(invState().overrides)');
+    const FUT = ev("mesoAddDays(todayKey(), 20)");
+    ev("invState().overrides = {}; invState().overrides['Barbell Bench Press'] = {w:150, until:'" + FUT + "', note:'t'};");
+
+    ok('exact name still resolves', (ev("invOverrideFor('Barbell Bench Press')") || {}).w === 150);
+    // These are the near misses that used to write a key nothing could ever read back.
+    ok('lowercase variant resolves', (ev("invOverrideFor('barbell bench press')") || {}).w === 150);
+    ok('mixed case variant resolves', (ev("invOverrideFor('Barbell Bench press')") || {}).w === 150);
+    ok('double-space variant resolves', (ev("invOverrideFor('Barbell  Bench Press')") || {}).w === 150);
+    ok('trailing-space variant resolves', (ev("invOverrideFor('Barbell Bench Press ')") || {}).w === 150);
+    ok('punctuation variant resolves', (ev("invOverrideFor('Barbell-Bench-Press')") || {}).w === 150);
+    // ...but leniency must not become "matches anything"
+    ok('a different lift does NOT resolve', ev("invOverrideFor('Barbell Back Squat')") === null);
+    ok('a substring does NOT resolve', ev("invOverrideFor('Bench Press')") === null);
+
+    // stored the other way round: a sloppy key must still be found by the split's real name
+    ev("invState().overrides = {}; invState().overrides['barbell bench  press'] = {w:135, until:'" + FUT + "', note:'t'};");
+    ok('sloppy stored key found by canonical name', (ev("invOverrideFor('Barbell Bench Press')") || {}).w === 135);
+    ok('override actually reaches the LIVE build', ev("buildOneLiveExercise('Barbell Bench Press').targetW") === 135);
+    ok('LIVE marks it as an override decision', ev("buildOneLiveExercise('Barbell Bench Press')._decision.code") === 'inv-override');
+
+    // expiry still wins over the looser matching
+    const PAST = ev("mesoAddDays(todayKey(), -3)");
+    ev("invState().overrides = {}; invState().overrides['barbell bench press'] = {w:99, until:'" + PAST + "', note:'t'};");
+    ok('expired override still ignored (loose key)', ev("invOverrideFor('Barbell Bench Press')") === null);
+
+    ev('invState().overrides = ' + savedOv + ';');
+    ok('cleanup: overrides restored', ev('JSON.stringify(invState().overrides)') === savedOv);
+  }
+
+  console.log('=== liftReset NAMES ARE RESOLVED, NOT TRUSTED ===');
+  {
+    const V2 = ev('agValidateFix');
+    ok('exact split name accepted', V2({ type:'liftReset', payload:{name:'Barbell Bench Press', w:150, days:14} }).payload.name === 'Barbell Bench Press');
+    // canonicalisation: the override must land under the spelling the split uses
+    ok('near-miss name is canonicalised', V2({ type:'liftReset', payload:{name:'barbell  BENCH press', w:150, days:14} }).payload.name === 'Barbell Bench Press');
+    // the real proposal DELTA made on 2026-07-30 for a lift that is not in the split at all
+    ok('unknown exercise rejected', V2({ type:'liftReset', payload:{name:'Trap Bar Deadlift', w:185, days:7} }) === null);
+    ok('gibberish name rejected', V2({ type:'liftReset', payload:{name:'Zzz Not A Lift', w:100, days:7} }) === null);
+    ok('empty name still rejected', V2({ type:'liftReset', payload:{name:'   ', w:100, days:7} }) === null);
+    // numeric clamps must be untouched by the new check
+    ok('w<=0 still rejected', V2({ type:'liftReset', payload:{name:'Barbell Bench Press', w:0, days:7} }) === null);
+    ok('days>30 still rejected', V2({ type:'liftReset', payload:{name:'Barbell Bench Press', w:100, days:99} }) === null);
+
+    // end to end: validate -> apply -> LIVE reads it back
+    const savedOv2 = ev('JSON.stringify(invState().overrides)');
+    ev("invState().overrides = {};");
+    ev("agApplyFix(agValidateFix({type:'liftReset', payload:{name:'barbell bench press', w:160, days:9}}));");
+    ok('applied under the canonical key', Object.keys(ev('invState().overrides'))[0] === 'Barbell Bench Press');
+    ok('LIVE picks up the applied override', ev("buildOneLiveExercise('Barbell Bench Press').targetW") === 160);
+    ev('invState().overrides = ' + savedOv2 + ';');
+    ok('cleanup: overrides restored again', ev('JSON.stringify(invState().overrides)') === savedOv2);
+  }
+
+  console.log('=== musclesFor: SHORT TOKENS ARE ANCHORED ===');
+  {
+    // /lat/ used to match inside "PLATe", so a chest press classified as Back
+    ok('Plate Loaded Chest Press is Chest', ev("musclesFor('Plate Loaded Chest Press').p[0]") === 'Chest');
+    ok('Plate Loaded Row is still Back', ev("musclesFor('Plate Loaded Row').p[0]") === 'Back');
+    // /ab/ used to match inside "cABle" and "ABductor"
+    ok('Abductor/Adductor Machine is Glutes', ev("musclesFor('Abductor/Adductor Machine').p[0]") === 'Glutes');
+    ok('Abdominal Machine is still Abs', ev("musclesFor('Abdominal Machine').p[0]") === 'Abs');
+    ok('Cable Crunches is still Abs', ev("musclesFor('Cable Crunches').p[0]") === 'Abs');
+    ok('Lat Pulldown is still Back', ev("musclesFor('Lat Pulldown').p[0]") === 'Back');
+  }
+
+  console.log('=== REPLACEMENT TIER LIST ===');
+  {
+    const savedLogsT = ev('JSON.stringify(S.logs)');
+    ev('S.logs = [];');   // no history, so scoring is pure name/muscle signal
+
+    ok('same muscle + pattern + equipment ranks S',
+      ev("swapTierFor(swapScore('Lat Pulldown','Plate-Loaded Lat Pulldown'))") === 'S',
+      'score=' + ev("swapScore('Lat Pulldown','Plate-Loaded Lat Pulldown')"));
+    // vertical vs horizontal pull share muscles but are not interchangeable
+    const vert = ev("swapScore('Lat Pulldown','Plate-Loaded Lat Pulldown')");
+    const horiz = ev("swapScore('Lat Pulldown','Cable Row')");
+    ok('vertical pull outranks a row for a pulldown', vert > horiz, vert + ' vs ' + horiz);
+    // bench and overhead press both read "push" to mesoPattern; they must not tie
+    const flat = ev("swapScore('Barbell Bench Press','Smith Machine Bench Press')");
+    const oh = ev("swapScore('Barbell Bench Press','Overhead Press Machine')");
+    ok('bench outranks overhead press as a bench swap', flat > oh, flat + ' vs ' + oh);
+    ok('an unrelated lift scores below the display floor',
+      ev("swapScore('Barbell Bench Press','Machine Leg Curl')") < ev('SWAP_SHOW_FLOOR'));
+    ok('no muscle data yields null, not a score', ev("swapScore('Calve Raises','Leg Press')") === null);
+
+    const cands = ev("swapCandidates('Barbell Bench Press', {})");
+    ok('candidates are returned', cands.length > 0);
+    ok('never returns the source exercise', cands.every(r => r.name !== 'Barbell Bench Press'));
+    ok('never returns an F tier', cands.every(r => r.tier !== 'F'));
+    ok('sorted best first', cands.every((r, i) => i === 0 || cands[i - 1].score >= r.score));
+    ok('bench list is chest work, not legs', cands.every(r => /press|bench|fly|dip|pec/i.test(r.name)),
+      cands.map(r => r.name).join(','));
+
+    const excl = ev("swapCandidates('Barbell Bench Press', {exclude:['Smith Machine Bench Press','Incline Press Machine']})");
+    ok('exclude list is honoured', excl.every(r => r.name !== 'Smith Machine Bench Press' && r.name !== 'Incline Press Machine'));
+    ok('excluding does not empty the list', excl.length > 0);
+
+    // dedupe: his real data holds "Hanging Leg Raise" AND "Hanging Leg Raises"
+    ev("S.logs = [{date:'2026-01-01', entries:[{exercise:'Hanging Leg Raises', sets:[{w:10,r:10}]}]}];");
+    const abs = ev("swapCandidates('Abdominal Machine', {})");
+    ok('near-duplicate names collapse to one row',
+      abs.filter(r => /^hanging leg raises?$/i.test(r.name)).length === 1,
+      abs.map(r => r.name).join(','));
+
+    // thin field must not be padded out to look full
+    ev('S.logs = [];');
+    const thin = ev("swapCandidates('Abductor/Adductor Machine', {})");
+    ok('thin field stays short', thin.length <= 5, 'n=' + thin.length);
+    ok('thin field still returns its best option', thin.length > 0 && thin[0].score >= ev('SWAP_THIN_FLOOR'));
+
+    // rendering: rows are indexed, names are escaped, nothing is invented
+    const listHTML = ev("swapListHTML('Barbell Bench Press','liveSwapPick',{})");
+    ok('list renders one button per candidate',
+      (listHTML.match(/class="swap-row"/g) || []).length === ev('_swapRows').length);
+    ok('rows carry their tier letter', /class="swap-tier"/.test(listHTML));
+    ok('pick resolves by index, not by name string', ev('swapPickedName(0)') === ev('_swapRows')[0].name);
+    ok('out-of-range pick returns null', ev('swapPickedName(999)') === null);
+    // a name with an apostrophe must survive rendering without breaking the onclick
+    ev("S.logs = [{date:'2026-01-01', entries:[{exercise:\"Coach's Bench Press\", sets:[{w:10,r:10}]}]}];");
+    const q = ev("swapListHTML('Barbell Bench Press','liveSwapPick',{})");
+    ok('apostrophe names are escaped, not interpolated into onclick', q.indexOf("Coach's Bench") === -1 && /Coach&#39;s|Coach&amp;#39;s/.test(q));
+
+    // empty is an honest answer, not an error
+    ev('S.logs = [];');
+    const none = ev("swapListHTML('Calve Raises','liveSwapPick',{})");
+    ok('no-overlap case explains itself instead of padding', /honest answer|closely enough/.test(none));
+    ok('no-overlap case renders no rows', none.indexOf('swap-row') === -1);
+
+    ev('S.logs = ' + savedLogsT + ';');
+    ok('cleanup: logs restored after tier list', ev('JSON.stringify(S.logs)') === savedLogsT);
+  }
+
+  console.log('=== PREDICTIONS: SELECTION ONLY, HISTORY DRAWN, CONFIDENCE VISIBLE ===');
+  {
+    const savedLogsP = ev('JSON.stringify(S.logs)');
+    // two lifts with enough history; only the selected one may appear
+    ev(`(function(){
+      S.logs = [];
+      var start = new Date('2026-01-05T00:00:00');
+      for(var i=0;i<9;i++){
+        var d = new Date(start.getTime() + i*7*86400000).toISOString().slice(0,10);
+        S.logs.push({date:d, entries:[
+          {exercise:'Pred Alpha', sets:[{w:100+i*5, r:5}]},
+          {exercise:'Pred Beta',  sets:[{w:200+i*5, r:5}]}
+        ]});
+      }
+    })();`);
+    ev("anEnsembleEx='Pred Alpha'; anEnsembleRange=84;");
+    ev('renderAnPred')();
+    const pred = w.document.getElementById('an_pred').innerHTML;
+    ok('selected lift is shown', pred.indexOf('Pred Alpha') >= 0);
+    ok('every lift is still offered in the picker', pred.indexOf('Pred Beta') >= 0);
+    // The old tab appended a milestone card for every big lift regardless of the dropdown.
+    // Outside the <select>, the unselected lift must not appear at all.
+    const outsidePicker = pred.replace(/<select[\s\S]*?<\/select>/g, '');
+    ok('unselected lift has no content of its own', outsidePicker.indexOf('Pred Beta') === -1);
+    ok('exactly one projection card is rendered', (pred.match(/anEnsembleChangeEx/g) || []).length === 1);
+    ok('no stray per-lift milestone cards remain', (pred.match(/class="card"/g) || []).length === 2,
+      'cards=' + (pred.match(/class="card"/g) || []).length);
+
+    const res = ev("anEnsembleFor('Pred Alpha', 84)");
+    ok('projection resolves', res.ok === true, JSON.stringify(res.why));
+    ok('history comes back with the projection', Array.isArray(res.hist) && res.hist.length === 9, 'n=' + (res.hist || []).length);
+    const svg = ev('anEnsembleChartSVG(' + JSON.stringify(res).replace(/</g, '\\u003c') + ', 640, 240)');
+    // three endpoint dots belong to the projection; anything beyond them is real history
+    ok('historical points are plotted on the chart',
+      (svg.match(/<circle/g) || []).length > 3, 'circles=' + (svg.match(/<circle/g) || []).length);
+    ok('a today divider separates past from forecast', svg.indexOf('<line') >= 0);
+    ok('confidence appears on the chart as a number', /R²/.test(svg));
+    ok('confidence appears on the chart as a meter', (svg.match(/<rect/g) || []).length >= 3);
+    ok('confidence wording matches the computed r2',
+      svg.indexOf(res.conf) >= 0, res.conf);
+
+    // milestones belong to the selected lift and respect the selected horizon
+    const near = ev("anFanMilestones(anEnsembleFor('Pred Alpha',28), 28)");
+    const far = ev("anFanMilestones(anEnsembleFor('Pred Alpha',365), 365)");
+    ok('a longer horizon exposes at least as many milestones', far.length >= near.length, far.length + ' vs ' + near.length);
+    ok('no milestone lands beyond the horizon', far.every(m => m.days <= 365));
+    ok('milestones climb in 5 lb steps', far.length < 2 || far[1].target - far[0].target === 5);
+
+    ev('S.logs = ' + savedLogsP + '; anEnsembleEx=null; anEnsembleRange=84;');
+    ok('cleanup: logs restored after predictions', ev('JSON.stringify(S.logs)') === savedLogsP);
+  }
+
+  console.log('=== BODYWEIGHT PROJECTION ===');
+  {
+    const savedW = ev('JSON.stringify(S.weights)');
+    ok('too little data refuses rather than guessing',
+      ev('(function(){ S.weights=[{date:"2026-01-01",lbs:150}]; return bwProjectFor(84).ok; })()') === false);
+    ok('the refusal explains what is missing', /weigh-in|weeks/.test(ev('bwProjectFor(84).why')));
+
+    // Deliberately noisy, because a real scale is: a perfectly linear fixture has zero
+    // residual variance, which collapses the fan to a single line and would let a broken
+    // spread calculation pass unnoticed. Fixed offsets, not random — the suite stays
+    // deterministic.
+    const WOBBLE = [0, 0.6, -0.5, 0.4, -0.7, 0.3, 0.5, -0.4, 0.2, -0.6, 0.7, -0.3];
+    w.__wobble = WOBBLE;
+    // THREE weigh-ins per week, not one. With a single reading per week the weekly average
+    // equals that reading, and an anchor bug (fanning out from the week average instead of
+    // from today's actual weight) would be invisible.
+    ev(`(function(){
+      S.weights = [];
+      var start = new Date('2026-01-05T00:00:00');
+      for(var i=0;i<12;i++){
+        var base = 150 + i*0.8 + window.__wobble[i];
+        [0,2,4].forEach(function(off, j){
+          var d = new Date(start.getTime() + i*7*86400000 + off*86400000).toISOString().slice(0,10);
+          S.weights.push({date:d, lbs: Math.round((base + (j-1)*0.9)*10)/10});
+        });
+      }
+    })();`);
+    const bw = ev('bwProjectFor(84)');
+    ok('projection resolves with enough weigh-ins', bw.ok === true, JSON.stringify(bw.why));
+    ok('three paces are produced', [10, 50, 90].every(p => Array.isArray(bw.series[p]) && bw.series[p].length > 1));
+    // all three branch from TODAY'S weight, not from a week average
+    const last = ev('bodyweightSeries()').slice(-1)[0].v;
+    const lastWeekAvg = ev('bodyweightSeriesSmoothed()').slice(-1)[0].v;
+    ok('fixture separates latest weigh-in from its week average', last !== lastWeekAvg, last + ' vs ' + lastWeekAvg);
+    ok('every pace starts at the latest weigh-in', [10, 50, 90].every(p => bw.series[p][0].v === last), 'anchor=' + bw.cur + ' last=' + last);
+    ok('anchor is not the weekly average', bw.cur !== lastWeekAvg, 'cur=' + bw.cur);
+    const endOf = p => bw.series[p][bw.series[p].length - 1].v;
+    ok('leaner < your pace < heavier at the horizon', endOf(10) < endOf(50) && endOf(50) < endOf(90),
+      endOf(10) + '/' + endOf(50) + '/' + endOf(90));
+    ok('centre pace matches the measured lb/week', Math.abs(bw.perWeek - 0.8) < 0.15, 'perWeek=' + bw.perWeek);
+    ok('the leaner and heavier paces are genuinely different rates',
+      Math.abs((endOf(90) - endOf(10))) > 0.5, 'spread=' + (endOf(90) - endOf(10)));
+    // same core as the lift projection, not a second implementation
+    ok('the fan widens with distance',
+      (endOf(90) - endOf(10)) > (bw.series[90][1].v - bw.series[10][1].v));
+    ok('projection carries history for the chart', Array.isArray(bw.hist) && bw.hist.length >= 4);
+
+    const card = ev('bwProjectionCardHTML()');
+    ok('card renders a chart', card.indexOf('<svg') >= 0);
+    ok('card names all three paces', ['Leaner pace', 'Your pace', 'Heavier pace'].every(l => card.indexOf(l) >= 0));
+    ok('card states the measured rate', /lb\/wk/.test(card));
+    ok('card reads the lean-bulk band', /lean-bulk pocket/.test(card), card.slice(-260));
+    ok('bulk tab embeds the projection', (ev('renderBulk')(), w.document.getElementById('bulk').innerHTML).indexOf('Bulk projection') >= 0);
+
+    // A scale with literally no week-to-week variance collapses the fan. That is the honest
+    // reading of noiseless data rather than a bug, but the card must say so instead of
+    // silently printing the same number three times.
+    ev(`(function(){
+      S.weights = [];
+      var start = new Date('2026-01-05T00:00:00');
+      for(var i=0;i<12;i++){
+        S.weights.push({date:new Date(start.getTime()+i*7*86400000).toISOString().slice(0,10), lbs:150+i*0.8});
+      }
+    })();`);
+    const flatFan = ev('bwProjectFor(84)');
+    ok('noiseless data still projects', flatFan.ok === true);
+    ok('noiseless data collapses the fan to one line', flatFan.sd === 0);
+    ok('the card explains a collapsed fan', /no week-to-week variance|single line/.test(ev('bwProjectionCardHTML()')));
+
+    ev('S.weights = ' + savedW + ';');
+    ok('cleanup: bodyweight restored', ev('JSON.stringify(S.weights)') === savedW);
+  }
+
+  console.log('=== OVERLOAD STATUS ===');
+  {
+    const savedLogsO = ev('JSON.stringify(S.logs)');
+    const savedAgO = ev('JSON.stringify(agState().overload || null)');
+    ev(`(function(){
+      S.logs = [];
+      var start = new Date('2026-01-05T00:00:00');
+      for(var i=0;i<8;i++){
+        var d = new Date(start.getTime() + i*7*86400000).toISOString().slice(0,10);
+        S.logs.push({date:d, entries:[
+          {exercise:'OL Climber',  sets:[{w:100+i*5, r:5, e:'solid'}]},
+          {exercise:'OL Sinker',   sets:[{w:200-i*5, r:5, e:'solid'}]},
+          {exercise:'OL Flat',     sets:[{w:150,     r:5, e:'solid'}]},
+          {exercise:'OL Grinder',  sets:[{w:120,     r:5, e:'grind'}]}
+        ]});
+      }
+    })();`);
+    const sigs = ev('olSignals()');
+    const by = {}; sigs.forEach(s => by[s.lift] = s);
+    ok('a rising lift reads up', by['OL Climber'].dir === 'up', JSON.stringify(by['OL Climber'] && by['OL Climber'].perWeek));
+    ok('a falling lift reads down', by['OL Sinker'].dir === 'down');
+    ok('a flat lift reads flat', by['OL Flat'].dir === 'flat');
+    ok('rising lift is on track', by['OL Climber'].verdict === 'on-track');
+    ok('falling lift needs attention', by['OL Sinker'].verdict === 'attention');
+    ok('flat lift is stalling', by['OL Flat'].verdict === 'stalling');
+    ok('heavy grind density escalates a flat lift', by['OL Grinder'].verdict === 'attention', 'hardPct=' + by['OL Grinder'].hardPct);
+    ok('worst lifts sort to the top', sigs[0].verdict === 'attention');
+    ok('signals carry the numbers the tab prints',
+      typeof by['OL Climber'].r2 === 'number' && by['OL Climber'].sessions === 8);
+
+    // MAXED must not read as a stall — load cannot climb by definition
+    ev("S.split.D1.exercises.push({name:'OL Flat', inc:5, maxed:true});");
+    const maxedSig = ev('olSignals()').find(s => s.lift === 'OL Flat');
+    ok('maxed flat lift is not called stalling', maxedSig.verdict === 'on-track', maxedSig.verdict);
+    ok('maxed lift is still reported flat', maxedSig.dir === 'flat');
+    ev("S.split.D1.exercises = S.split.D1.exercises.filter(function(x){ return !(typeof x==='object' && x.name==='OL Flat'); });");
+
+    // ---- the sanity gate ----
+    const sigs2 = ev('olSignals()');
+    w.__sigs = sigs2;
+    const val = (raw) => { w.__raw = raw; return ev('olValidateReport(window.__raw, window.__sigs)'); };
+    ok('junk input yields null', val(null) === null);
+    ok('missing lifts array yields null', val({ nope: 1 }) === null);
+    ok('a lift the app does not track is dropped',
+      val({ lifts: [{ lift: 'Not A Lift', direction: 'up', verdict: 'on-track', tip: 'x' }] }) === null);
+    ok('a valid row survives',
+      val({ lifts: [{ lift: 'OL Climber', direction: 'up', verdict: 'on-track', tip: 'Keep going.' }] }).lifts.length === 1);
+    ok('a near-miss lift name is canonicalised',
+      val({ lifts: [{ lift: 'ol  CLIMBER', direction: 'up', verdict: 'on-track', tip: 'x' }] }).lifts[0].lift === 'OL Climber');
+    // the important one: the model does not get to contradict the arithmetic
+    ok('a direction that contradicts the trend is dropped',
+      val({ lifts: [{ lift: 'OL Sinker', direction: 'up', verdict: 'on-track', tip: 'x' }] }) === null);
+    ok('an inverted verdict is dropped',
+      val({ lifts: [{ lift: 'OL Sinker', direction: 'down', verdict: 'on-track', tip: 'x' }] }) === null);
+    ok('a one-step softer verdict is allowed',
+      val({ lifts: [{ lift: 'OL Sinker', direction: 'down', verdict: 'stalling', tip: 'x' }] }).lifts[0].verdict === 'stalling');
+    ok('an unknown verdict word is dropped',
+      val({ lifts: [{ lift: 'OL Climber', direction: 'up', verdict: 'vibes', tip: 'x' }] }) === null);
+    ok('duplicate rows collapse to one',
+      val({ lifts: [
+        { lift: 'OL Climber', direction: 'up', verdict: 'on-track', tip: 'first' },
+        { lift: 'OL Climber', direction: 'up', verdict: 'on-track', tip: 'second' }] }).lifts.length === 1);
+    const longTip = val({ lifts: [{ lift: 'OL Climber', direction: 'up', verdict: 'on-track', tip: 'y'.repeat(400) }] });
+    ok('an overlong tip is truncated', longTip.lifts[0].tip.length <= ev('OL_MAX_TIP') + 1, 'len=' + longTip.lifts[0].tip.length);
+    ok('a missing tip is tolerated',
+      val({ lifts: [{ lift: 'OL Climber', direction: 'up', verdict: 'on-track' }] }).lifts[0].tip === '');
+    ok('a validated report is date-stamped', longTip.day === ev('todayKey()'));
+
+    // ---- render: computed content survives a missing or bad report ----
+    ev('delete agState().overload;');
+    ev('renderAnOverload')();
+    let olHTML = w.document.getElementById('an_overload').innerHTML;
+    ok('tab renders with no agent report at all', olHTML.indexOf('OL Climber') >= 0 && olHTML.indexOf('ol-row') >= 0);
+    ok('tab says why there are no tips yet', /haven’t written|haven't written/.test(olHTML));
+    ok('tab still shows verdicts without the agents', olHTML.indexOf('Needs attention') >= 0);
+
+    ev("agState().overload = olValidateReport({lifts:[{lift:'OL Climber',direction:'up',verdict:'on-track',tip:'Add a rep before the weight.'}]}, olSignals());");
+    ev('renderAnOverload')();
+    olHTML = w.document.getElementById('an_overload').innerHTML;
+    ok('a fresh agent tip is displayed', olHTML.indexOf('Add a rep before the weight.') >= 0);
+    ok('fresh report is labelled as refreshed', /last refreshed/.test(olHTML));
+
+    // stale report must be held back, but the computed rows must not be
+    ev("agState().overload.day = mesoAddDays(todayKey(), -" + (ev('OL_STALE_DAYS') + 5) + ");");
+    ev('renderAnOverload')();
+    olHTML = w.document.getElementById('an_overload').innerHTML;
+    ok('a stale tip is withheld', olHTML.indexOf('Add a rep before the weight.') === -1);
+    ok('stale case says so', /days old/.test(olHTML));
+    ok('stale case still renders the computed rows', olHTML.indexOf('OL Climber') >= 0);
+
+    // the agents are told the same numbers the tab renders
+    const olCtx = ev('olAgentContext()');
+    ok('agent context lists the tracked lifts', olCtx.indexOf('OL Climber') >= 0 && olCtx.indexOf('OL Sinker') >= 0);
+    ok('agent context carries the computed verdict', /app verdict=/.test(olCtx));
+    ok('agent context carries the direction', /dir=down/.test(olCtx));
+    const runSrc = ev('agRunAll.toString()');
+    ok('the daily cycle asks for an overload block', runSrc.indexOf('"overload"') >= 0);
+    ok('the daily cycle validates it before storing', /olValidateReport/.test(runSrc));
+    ok('the daily cycle feeds the agents the computed signals', /olAgentContext/.test(runSrc));
+    ok('a rejected report keeps the previous one', /kept the previous read|previous read kept/.test(runSrc));
+
+    ev('S.logs = ' + savedLogsO + ';');
+    ev(savedAgO === 'null' ? 'delete agState().overload;' : 'agState().overload = ' + savedAgO + ';');
+    ok('cleanup: logs restored after overload', ev('JSON.stringify(S.logs)') === savedLogsO);
   }
 
   console.log('=== RENDER ===');
