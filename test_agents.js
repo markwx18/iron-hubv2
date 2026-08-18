@@ -2614,6 +2614,214 @@ setTimeout(async () => {
     ok('cleanup: logs restored after overload', ev('JSON.stringify(S.logs)') === savedLogsO);
   }
 
+  // ============ SKIN TOKENS ============
+  // A reskin's real failure mode is a var(--x) left pointing at a token the new
+  // palette dropped: the property silently computes to nothing and an element
+  // renders with no background or no text colour. That is exactly how --bg and
+  // --card were already broken before this pass. Assert every reference resolves.
+  console.log('=== SKIN TOKENS ===');
+  {
+    const refs = new Set([...html.matchAll(/var\((--[a-z0-9-]+)\)/g)].map(m => m[1]));
+    const rootBlock = (html.match(/\n  :root\{[\s\S]*?\n  \}/) || [''])[0];
+    const altBlock = (html.match(/\n  :root\[data-skin="blueprint"\]\{[\s\S]*?\n  \}/) || [''])[0];
+    const defIn = b => new Set([...b.matchAll(/(--[a-z0-9-]+)\s*:/g)].map(m => m[1]));
+    const rootDefs = defIn(rootBlock), altDefs = defIn(altBlock);
+
+    ok('the :root skin block was found', rootBlock.length > 400, 'len=' + rootBlock.length);
+    ok('the alternate skin block was found', altBlock.length > 300, 'len=' + altBlock.length);
+
+    const unresolved = [...refs].filter(r => !rootDefs.has(r));
+    ok('every var(--x) in the file resolves to a :root definition',
+       unresolved.length === 0, unresolved.join(','));
+    ok('--bg is defined (was referenced by .ag-card with no definition)', rootDefs.has('--bg'));
+    ok('--card is defined (was referenced by .ag-card with no definition)', rootDefs.has('--card'));
+
+    // A skin that forgets a colour inherits blueprint's, which is the subtle way
+    // two palettes bleed into each other. Every colour-ish token must be restated.
+    const colourish = [...rootDefs].filter(t =>
+      /^--(base|base2|panel|panel2|line|line2|text|muted|dim|c-|on-|good|warn|bad|d[1-6]$|wash|halo|ring|scrim|glow)/.test(t));
+    const missing = colourish.filter(t => !altDefs.has(t) && !/^--(ag-charlie|ag-delta|ag-echo)$/.test(t));
+    ok('the alternate skin restates every colour token the default defines', missing.length === 0, missing.join(','));
+
+    // The legacy names must stay aliases, or 986 call sites and the chart
+    // assertions above start pointing at nothing.
+    ['--amber', '--cyan', '--violet', '--red', '--accent'].forEach(t => {
+      ok('legacy alias ' + t + ' still defined', rootDefs.has(t));
+    });
+    ok('--amber aliases the role token rather than holding a literal',
+       /--amber:\s*var\(--c-primary\)/.test(rootBlock));
+
+    // Day colours are DATA (S.split[dk].hex, synced through the gist). The reskin
+    // must colour them without rewriting a byte of saved state.
+    ok('dayColor resolves D1 through a token', ev('dayColor("D1")') === 'var(--d1)');
+    ok('stored day hex is untouched by the reskin', ev('S.split.D1.hex') === '#d23b3b');
+    // A day the skin knows nothing about must still colour from its stored value,
+    // or a generated strength-block day would render with no colour at all.
+    ev('S.split.ZZ = {name:"Fallback Probe", hex:"#123456", exercises:[]};');
+    ok('a day outside D1-D6 falls back to its stored hex', ev('dayColor("ZZ")') === '#123456');
+    ev('delete S.split.ZZ;');
+    ok('cleanup: probe day removed', ev('S.split.ZZ === undefined'));
+
+    ok('both skins are registered', Object.keys(ev('SKINS')).sort().join(',') === 'blueprint,kinetic');
+    ok('the default skin is kinetic', ev('currentSkin()') === 'kinetic');
+    ok('DEFAULT_SKIN and currentSkin() agree', ev('DEFAULT_SKIN') === ev('currentSkin()'));
+    // The default must be the BARE :root block, not an attribute selector, or a
+    // blocked localStorage read paints the wrong skin's colours.
+    ok('the default skin owns bare :root, not an attribute block',
+       ev('DEFAULT_SKIN') === 'kinetic' && /:root\[data-skin="blueprint"\]\{/.test(html)
+       && !/:root\[data-skin="kinetic"\]\{/.test(html));
+    ok('the static font link carries the default skin fonts',
+       html.indexOf('id="skinFont" href="' + ev('SKINS')[ev('DEFAULT_SKIN')].fonts) > 0);
+    ok('the boot script tests for the NON-default skin',
+       /localStorage\.getItem\('ironhub:skin'\) !== 'blueprint'/.test(html));
+    ok('setSkin clears the attribute for the default skin',
+       /k===DEFAULT_SKIN\) root\.removeAttribute/.test(ev('setSkin.toString()')));
+    ok('each skin declares its own font URL',
+       ev('SKINS.blueprint.fonts') !== ev('SKINS.kinetic.fonts'));
+    ok('the skin preference is kept out of the synced blob',
+       ev('SKIN_KEY') !== ev('LS_KEY') && ev('SKIN_KEY').indexOf('skin') >= 0);
+    ok('setSkin does not write through save()', !/\bsave\s*\(/.test(ev('setSkin.toString()')));
+  }
+
+  // ============ MUSCLE MAP DATA CORE ============
+  // bmViewerData() is what both renderers draw from, so the numbers behind the
+  // colouring are asserted here rather than the pixels, which jsdom cannot see.
+  console.log('=== MUSCLE MAP DATA ===');
+  {
+    const savedLogsBM = ev('JSON.stringify(S.logs)');
+
+    ok('bmViewerData returns every muscle group',
+       ev('bmViewerData("weekly").length') === ev('BM_GROUPS.length'));
+    ok('rows keep BM_GROUPS order',
+       ev('bmViewerData("weekly").map(r=>r.key).join(",")') === ev('BM_GROUPS.join(",")'));
+    ok('every group resolves to a broad group',
+       ev('bmViewerData("weekly").every(r=>!!r.broad)'));
+    ok('every group carries a label',
+       ev('bmViewerData("weekly").every(r=>!!r.label)'));
+
+    // Primary counts a full set, secondary counts half. Bench is primary Chest and
+    // secondary Triceps, so one exercise proves both halves of the rule at once.
+    const wk = ev('weekStartKey()');
+    ev('S.logs = [];');
+    ev("S.logs.push({date:'" + wk + "', entries:[{exercise:'Barbell Bench Press', sets:[{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5}]}]});");
+    const chest = ev('bmViewerData("weekly").find(r=>r.key==="chest").volume');
+    const tri   = ev('bmViewerData("weekly").find(r=>r.key==="triceps").volume');
+    ok('primary muscle counts one per set', chest === 4, 'chest=' + chest);
+    ok('secondary muscle counts half per set', tri === 2, 'triceps=' + tri);
+
+    // A log from before the week window must not leak into "this week".
+    ev("S.logs.push({date:'2020-01-06', entries:[{exercise:'Barbell Bench Press', sets:[{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5}]}]});");
+    const chestAfter = ev('bmViewerData("weekly").find(r=>r.key==="chest").volume');
+    ok('volume ignores logs before the week window', chestAfter === 4, 'chest=' + chestAfter);
+
+    // Threshold table: 0 -> off, <6 -> red, <10 -> yellow, >=10 -> green.
+    const setsJSON = n => JSON.stringify(Array.from({ length: n }, () => ({ w: 135, r: 5 })));
+    const chestStatus = n => {
+      ev('S.logs = [];');
+      ev("S.logs.push({date:'" + wk + "', entries:[{exercise:'Pec Deck Fly', sets:" + setsJSON(n) + "}]});");
+      return ev('bmViewerData("weekly").find(r=>r.key==="chest").status');
+    };
+    ev('S.logs = [];');
+    ok('no volume reads as not-trained',
+       ev('bmViewerData("weekly").find(r=>r.key==="chest").status') === 'off');
+    ok('5 sets reads as neglected', chestStatus(5) === 'red');
+    ok('6 sets crosses into maintaining', chestStatus(6) === 'yellow');
+    ok('9 sets still maintaining', chestStatus(9) === 'yellow');
+    ok('10 sets reads as progressing', chestStatus(10) === 'green');
+    ok('18 sets stays progressing', chestStatus(18) === 'green');
+
+    // recovery mode keys off days since the group was last trained.
+    // Build the key the way todayKey() does — LOCAL date parts. toISOString() is
+    // UTC and lands a day ahead east of Greenwich, which makes "trained today"
+    // read as a future log, get filtered out, and the test fail only in some
+    // timezones and only at some hours.
+    const dayAgo = n => ev('(function(){var d=new Date();d.setDate(d.getDate()-' + n + ');' +
+      'return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");})()');
+    const chestRecovery = n => {
+      ev('S.logs = [];');
+      ev("S.logs.push({date:'" + dayAgo(n) + "', entries:[{exercise:'Pec Deck Fly', sets:[{w:100,r:10}]}]});");
+      return ev('bmViewerData("recovery").find(r=>r.key==="chest").status');
+    };
+    // Probe the boundaries, not the middle of each band: testing 0 / 2 / 4 left
+    // the d<2 edge unpinned, and a mutant that moved it to d<1 stayed green.
+    ok('trained today needs rest', chestRecovery(0) === 'red');
+    ok('one day out still needs rest', chestRecovery(1) === 'red');
+    ok('two days out is recovering', chestRecovery(2) === 'yellow');
+    ok('three days out is still recovering', chestRecovery(3) === 'yellow');
+    ok('four days out is recovered', chestRecovery(4) === 'green');
+    ev('S.logs = [];');
+    ok('never trained reads as no data',
+       ev('bmViewerData("recovery").find(r=>r.key==="chest").status') === 'off');
+    ok('never trained reports infinite days since',
+       ev('bmViewerData("recovery").find(r=>r.key==="chest").daysSince') === Infinity);
+
+    // today mode: primary green, secondary yellow, uninvolved off
+    ev('S.overrideDay = {date: todayKey(), day:"D1"};');   // D1 = Chest + Triceps
+    const today = k => ev('bmViewerData("today").find(r=>r.key==="' + k + '").status');
+    ok('today marks a primary target', today('chest') === 'green');
+    ok('today marks a secondary target', today('triceps') === 'green');
+    ok('today leaves an untrained group off', today('calves') === 'off');
+    ev('S.overrideDay = {date: todayKey(), day:"REST"};');
+    ok('a rest day targets nothing',
+       ev('bmViewerData("today").every(r=>r.status==="off")'));
+    ev('S.overrideDay = null;');
+
+    // the exercise list behind a tap comes from his own split, primary first
+    const chestEx = ev('JSON.stringify(bmViewerData("weekly").find(r=>r.key==="chest").exercises)');
+    ok('tapping a muscle lists exercises from his split',
+       chestEx.indexOf('Barbell Bench Press') >= 0, chestEx);
+    ok('the exercise list is capped at four',
+       ev('bmViewerData("weekly").every(r=>r.exercises.length<=4)'));
+
+    ev('S.logs = ' + savedLogsBM + ';');
+    ok('cleanup: logs restored after muscle map', ev('JSON.stringify(S.logs)') === savedLogsBM);
+  }
+
+  // ============ 3D VIEWER WIRING ============
+  // The rendering itself cannot be verified here — jsdom has no WebGL and no
+  // layout engine. What IS verifiable: which renderer each surface asks for,
+  // that the 3D model covers every group the data does, and that a machine with
+  // no WebGL still gets a working map rather than an empty card.
+  console.log('=== 3D VIEWER WIRING ===');
+  {
+    ok('the Progress card asks for the 3D viewer', ev('bmUses3D("progress")') === true);
+    ok('the LIVE idle screen stays on the flat map', ev('bmUses3D("live")') === false);
+
+    // "Don't lose information in the redesign" — enforced, not hoped for.
+    const plateKeys = ev('BM3D_PLATES.map(p=>p[0]).sort().join(",")');
+    const groupKeys = ev('BM_GROUPS.slice().sort().join(",")');
+    ok('the 3D model has a plate for every muscle group the data reports',
+       plateKeys === groupKeys, plateKeys);
+
+    ok('three.js is pinned, not floating on latest', /three@\d+\.\d+\.\d+/.test(ev('BM3D_SRC')));
+    ok('three.js is fetched at runtime, not bundled', /^https:/.test(ev('BM3D_SRC')));
+    ok('the viewer is imported lazily rather than at boot',
+       /import\(/.test(ev('bm3dLoad.toString()')));
+    ok('WebGL contexts are disposed, not leaked',
+       /renderer\.dispose/.test(ev('bm3dDispose.toString()')));
+
+    // With no WebGL (this harness, and any old device), Progress must degrade to
+    // the flat bodies rather than showing an empty box.
+    ok('no WebGL is detected as unsupported', ev('bm3dSupported()') === false);
+    ev('renderProgressV2();');
+    const sec = w.document.getElementById('progress');
+    ok('fallback replaced the viewer with the flat bodies',
+       !w.document.getElementById('bm3dwrap-progress') && !!w.document.getElementById('bmfront-progress'));
+    ok('fallback still draws the anterior muscle groups',
+       w.document.querySelectorAll('#bmfront-progress .bm-mgrp').length >= 8);
+    ok('fallback still draws the posterior muscle groups',
+       w.document.querySelectorAll('#bmback-progress .bm-mgrp').length >= 8);
+    ok('fallback keeps all four modes', sec.querySelectorAll('.bm-modes button').length === 4);
+    ok('fallback keeps the legend', sec.querySelectorAll('.bm-legend .bm-sw').length === 4);
+    ok('fallback marks state as 2D so mode switches use the SVG path',
+       ev('bmState.progress.three') === false);
+
+    // Both renderers must classify identically — that is the whole point of the
+    // shared data core.
+    ok('the SVG renderer and the data core agree on status',
+       ev('BM_GROUPS.every(k => bmStatus("progress", k) === bmViewerData(bmState.progress.mode).find(r=>r.key===k).status)'));
+  }
+
   console.log('=== RENDER ===');
   try {
     ev('renderOps')();
