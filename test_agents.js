@@ -360,7 +360,7 @@ setTimeout(async () => {
   // and then locking the phone. Nothing previously retried it, so the session sat in
   // localStorage forever, invisible to every other device even though the local app correctly
   // showed it as logged. S.meta.pushedAt tracks what's actually confirmed on the gist;
-  // bootCatchupPush() closes the gap on the next launch.
+  // pushUnconfirmedChanges() closes the gap on the next launch.
   console.log('=== PUSHEDAT WATERMARK TRACKS A CONFIRMED PUSH ===');
   try {
     const realFetch = w.fetch;
@@ -409,10 +409,10 @@ setTimeout(async () => {
     };
     ev("S.settings.ghToken='tok'; S.settings.gistId='gist1';");
 
-    // No pending change: bootCatchupPush must be a no-op (nothing was lost, no API call spent).
+    // No pending change: pushUnconfirmedChanges must be a no-op (nothing was lost, no API call spent).
     ev("S.meta.changedAt = 5000; S.meta.pushedAt = 5000;");
-    await ev("bootCatchupPush()");
-    ok('boot catch-up does nothing when nothing is pending', patchCalls.length === 0, patchCalls.length);
+    await ev("pushUnconfirmedChanges()");
+    ok('catch-up does nothing when nothing is pending', patchCalls.length === 0, patchCalls.length);
 
     // Simulate the real bug: a session gets logged (save() touches changedAt and would
     // debounce a push 2.5s later), then the tab is killed before that timer fires.
@@ -424,11 +424,11 @@ setTimeout(async () => {
       'changedAt=' + ev('S.meta.changedAt') + ' pushedAt=' + ev('S.meta.pushedAt'));
     ok('the lost push really never reached the gist', patchCalls.length === 0, patchCalls.length);
 
-    await ev("bootCatchupPush()");
-    ok('boot catch-up actually uploaded the stranded session',
+    await ev("pushUnconfirmedChanges()");
+    ok('catch-up actually uploaded the stranded session',
       patchCalls.length === 1 && patchCalls[0].data.logs.some(l => l.id === 'catchuptest1'),
       JSON.stringify(patchCalls.map(p => p.data.logs.length)));
-    ok('boot catch-up closes the pushedAt gap',
+    ok('catch-up closes the pushedAt gap',
       ev('S.meta.pushedAt') === ev('S.meta.changedAt'),
       'pushedAt=' + ev('S.meta.pushedAt') + ' changedAt=' + ev('S.meta.changedAt'));
 
@@ -438,6 +438,61 @@ setTimeout(async () => {
   } catch (e) {
     ok('boot catch-up recovers a push lost to a killed tab', false, e.message);
     ev("S.logs = S.logs.filter(l => l.id !== 'catchuptest1'); S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
+  // The incident this guards against: Device A (PC) logs nothing new today and hits "Push
+  // Now". Device B (phone) logged a real session hours earlier that never made it off the
+  // device (killed debounce). A's push lands AFTER B's local edit, so it carries a fresher
+  // exportedAt despite being strictly less complete. Before this fix, B's next background
+  // sync compared timestamps only, saw A's push as "newer," and applyPulled() silently
+  // replaced B's local S — destroying the only copy of that session. The fix: push local
+  // first, always, before ever accepting an incoming pull.
+  console.log('=== BACKGROUND SYNC PUSHES LOCAL EDITS BEFORE PULLING (stale-but-fresher remote must not clobber them) ===');
+  try {
+    let mockGist = null;
+    const realFetch = w.fetch;
+    w.fetch = (url, opts) => {
+      if (opts && opts.method === 'PATCH') {
+        const body = JSON.parse(opts.body);
+        const payload = JSON.parse(body.files['ironhub_data.json'].content);
+        mockGist = { exportedAt: payload.exportedAt, data: payload.data };
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({
+        files: { 'ironhub_data.json': { content: JSON.stringify({ app: 'ironhub', v: 1, exportedAt: mockGist.exportedAt, data: mockGist.data }) } }
+      }) });
+    };
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1'; S.settings.autoSync=true;");
+
+    // Baseline: this device and the gist agree (no marker session yet).
+    ev("S.meta.changedAt = Date.now() - 20000; S.meta.pushedAt = S.meta.changedAt;");
+    mockGist = { exportedAt: ev('S.meta.changedAt'), data: JSON.parse(ev('JSON.stringify(S)')) };
+
+    // Device B: log a session locally, then the tab gets killed before the debounced push fires.
+    ev("S.logs.push({id:'clobbertest1', date:'2026-08-18', day:'D1', entries:[{exercise:'Clobber Test Lift', sets:[{w:225,r:5}]}]}); save();");
+    ev("clearTimeout(_pushTimer); _pushTimer = null;");
+    const localChangedAt = ev('S.meta.changedAt');
+
+    // Device A: a stale device without the session pushes moments later — fresh timestamp, stale content.
+    const staleData = mockGist.data;
+    mockGist = { exportedAt: localChangedAt + 50, data: staleData };
+    ok('fixture: the stale push out-times the local edit', mockGist.exportedAt > localChangedAt);
+    ok('fixture: the stale push really lacks the local session', !mockGist.data.logs.some(l => l.id === 'clobbertest1'));
+
+    await ev("bgSyncTick()");
+
+    ok('the local session survives a background sync racing a stale-but-fresher remote push',
+      ev("S.logs.some(l=>l.id==='clobbertest1')"));
+    ok('the local edit was actually pushed to the gist, not just left unpulled',
+      mockGist.data.logs.some(l => l.id === 'clobbertest1'),
+      JSON.stringify(mockGist.data.logs.map(l => l.id)));
+
+    ev("S.logs = S.logs.filter(l=>l.id!=='clobbertest1');");
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('background sync pushes local edits before pulling', false, e.message);
+    ev("S.logs = S.logs.filter(l=>l.id!=='clobbertest1'); S.settings.ghToken=''; S.settings.gistId='';");
   }
 
   console.log('=== LIVE DELTA + CLEAR CHAT ===');

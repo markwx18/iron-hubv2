@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-18-v1">
+<meta name="ironhub-build" content="2026-08-18-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3083,14 +3083,20 @@ document.addEventListener('visibilitychange', ()=>{
     syncPush(false);
   }
 });
-// Catch up a push that never made it out. save() bumps S.meta.changedAt and debounces
-// syncPush() 2.5s later (schedulePush()) — if the tab was backgrounded or killed before that
-// timer fired (finishing a workout, then locking the phone), the change is stuck in
-// localStorage with nothing having retried it. autoPullOnLoad() only pulls when the remote is
-// newer, so it can't detect or fix this on its own. Called from BOOT, after autoPullOnLoad()
-// has had a chance to run — reads S.meta fresh rather than a value captured earlier, since
-// applyPulled() may have replaced S wholesale during that pull.
-async function bootCatchupPush(){
+// Push any local edit that hasn't been confirmed on the gist yet, before this device does
+// anything that could discard it. Two ways that matters:
+//  - A debounced push (schedulePush(), 2.5s after save()) can be lost entirely if the tab was
+//    backgrounded or killed before the timer fired — finishing a workout, then locking the
+//    phone, is exactly that. Nothing else retries it, so call this at BOOT.
+//  - Every pull (applyPulled() replaces S wholesale) too: a snapshot's exportedAt is stamped
+//    at PUSH time, not edit time, so a stale-but-just-pushed snapshot from another device can
+//    carry a fresher timestamp than this device's own older, unpushed, and more complete
+//    local edit — a Push Now from a device that never had today's session, done after today's
+//    session was logged elsewhere, outraces and silently overwrites it. Pushing local first
+//    means that edit is safely on the gist before any incoming pull gets a chance to clobber
+//    it. If this throws (e.g. offline), the caller's pull is skipped this tick rather than
+//    risking a pull over data that was never confirmed safe.
+async function pushUnconfirmedChanges(){
   if(syncReady() && S.settings.autoSync !== false && S.meta && (S.meta.changedAt||0) > (S.meta.pushedAt||0)){
     await syncPush(false);
   }
@@ -3098,6 +3104,7 @@ async function bootCatchupPush(){
 async function autoPullOnLoad(){
   if(!syncReady() || S.settings.autoSync === false) return;
   try{
+    await pushUnconfirmedChanges();
     const p = await fetchGistData();
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
       applyPulled(p.data, p.exportedAt);
@@ -9937,6 +9944,7 @@ async function bgSyncTick(){
   if(!syncReady() || S.settings.autoSync === false) return;
   _bgPulling = true;
   try{
+    await pushUnconfirmedChanges();
     const p = await fetchGistData();
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
       applyPulled(p.data, p.exportedAt);
@@ -9973,10 +9981,7 @@ try{ renderSidenav(); }catch(e){}
 // cycle concurrently with a pull means the pull can swap S mid-flight. The stale-reference guards
 // inside agRunAll make that survivable, but not racing at all is better than surviving the race.
 // .catch keeps a failed/absent sync from blocking the agents entirely.
-const _bootPull = (async()=>{
-  try{ await autoPullOnLoad(); }catch(e){}
-  try{ await bootCatchupPush(); }catch(e){}
-})();
+const _bootPull = (async()=>{ try{ await autoPullOnLoad(); }catch(e){} })();
 try{ startUpdateWatcher(); }catch(e){}
 try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
 // agents: expire stale proposals on load, then poll for the 9 PM window
