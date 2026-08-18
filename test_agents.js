@@ -355,6 +355,91 @@ setTimeout(async () => {
     ev("S.settings.ghToken=''; S.settings.gistId='';");
   }
 
+  // A push debounced by schedulePush() (2.5s after save()) can be lost entirely if the tab is
+  // backgrounded or killed before the timer fires — exactly what happens finishing a workout
+  // and then locking the phone. Nothing previously retried it, so the session sat in
+  // localStorage forever, invisible to every other device even though the local app correctly
+  // showed it as logged. S.meta.pushedAt tracks what's actually confirmed on the gist;
+  // bootCatchupPush() closes the gap on the next launch.
+  console.log('=== PUSHEDAT WATERMARK TRACKS A CONFIRMED PUSH ===');
+  try {
+    const realFetch = w.fetch;
+    w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+    // changedAt starts well behind "now" (as it does after a real debounced save()) so the
+    // push's own Math.max(changedAt, exportedAt) bump is exercised, not masked by a tie.
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1'; S.meta.pushedAt=0; S.meta.changedAt = Date.now() - 5000;");
+    await ev("syncPush(false)");
+    const exportedAt = ev('_lastPushExportedAt');
+    ok('push stamped an exportedAt', exportedAt > 0, exportedAt);
+    ok('a confirmed push advances pushedAt to exactly what it uploaded',
+      ev('S.meta.pushedAt') === exportedAt,
+      'pushedAt=' + ev('S.meta.pushedAt') + ' exportedAt=' + exportedAt);
+    ok('pushedAt catches up with changedAt so nothing looks stranded right after a push',
+      ev('S.meta.pushedAt') === ev('S.meta.changedAt'),
+      'pushedAt=' + ev('S.meta.pushedAt') + ' changedAt=' + ev('S.meta.changedAt'));
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('pushedAt watermark tracks a confirmed push', false, e.message);
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
+  console.log('=== APPLYPULLED MARKS THE CONSUMED SNAPSHOT AS PUSHED ===');
+  try {
+    ev("S.meta.changedAt = Date.now() - 100000; S.meta.pushedAt = 0;");
+    ev("window.__cuSnap = {exportedAt: Date.now() - 50000, data: JSON.parse(JSON.stringify(S))};");
+    ev("applyPulled(JSON.parse(JSON.stringify(window.__cuSnap.data)), window.__cuSnap.exportedAt)");
+    ok('consuming a pull leaves nothing pending for the boot catch-up push',
+      ev('S.meta.pushedAt') === ev('S.meta.changedAt'),
+      'pushedAt=' + ev('S.meta.pushedAt') + ' changedAt=' + ev('S.meta.changedAt'));
+  } catch (e) {
+    ok('applyPulled marks the consumed snapshot as pushed', false, e.message);
+  }
+
+  console.log('=== BOOT CATCH-UP RECOVERS A PUSH LOST TO A KILLED TAB ===');
+  try {
+    let patchCalls = [];
+    const realFetch = w.fetch;
+    w.fetch = (url, opts) => {
+      if (opts && opts.method === 'PATCH') {
+        const body = JSON.parse(opts.body);
+        patchCalls.push(JSON.parse(body.files['ironhub_data.json'].content));
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+    };
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1';");
+
+    // No pending change: bootCatchupPush must be a no-op (nothing was lost, no API call spent).
+    ev("S.meta.changedAt = 5000; S.meta.pushedAt = 5000;");
+    await ev("bootCatchupPush()");
+    ok('boot catch-up does nothing when nothing is pending', patchCalls.length === 0, patchCalls.length);
+
+    // Simulate the real bug: a session gets logged (save() touches changedAt and would
+    // debounce a push 2.5s later), then the tab is killed before that timer fires.
+    ev("window.__cuLogsBefore = S.logs.length;");
+    ev("S.logs.push({id:'catchuptest1', date:'2026-08-18', day:'D1', entries:[{exercise:'Catch-up Test Lift', sets:[{w:135,r:8}]}]}); save();");
+    ev("clearTimeout(_pushTimer); _pushTimer = null;"); // the timer that never got to fire
+    ok('a save() with a killed debounce leaves changedAt ahead of pushedAt',
+      ev('S.meta.changedAt > S.meta.pushedAt'),
+      'changedAt=' + ev('S.meta.changedAt') + ' pushedAt=' + ev('S.meta.pushedAt'));
+    ok('the lost push really never reached the gist', patchCalls.length === 0, patchCalls.length);
+
+    await ev("bootCatchupPush()");
+    ok('boot catch-up actually uploaded the stranded session',
+      patchCalls.length === 1 && patchCalls[0].data.logs.some(l => l.id === 'catchuptest1'),
+      JSON.stringify(patchCalls.map(p => p.data.logs.length)));
+    ok('boot catch-up closes the pushedAt gap',
+      ev('S.meta.pushedAt') === ev('S.meta.changedAt'),
+      'pushedAt=' + ev('S.meta.pushedAt') + ' changedAt=' + ev('S.meta.changedAt'));
+
+    ev("S.logs = S.logs.filter(l => l.id !== 'catchuptest1');");
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('boot catch-up recovers a push lost to a killed tab', false, e.message);
+    ev("S.logs = S.logs.filter(l => l.id !== 'catchuptest1'); S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
   console.log('=== LIVE DELTA + CLEAR CHAT ===');
   ok('liveDeltaPanelHTML exists', ev("typeof liveDeltaPanelHTML") === 'function');
   ok('liveDeltaContext exists', ev("typeof liveDeltaContext") === 'function');

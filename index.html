@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-17-v2">
+<meta name="ironhub-build" content="2026-08-18-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1062,7 +1062,7 @@ const DEFAULT_STATE = {
   fuel: {likes:'', dislikes:'eggs, cup yogurt, rice, cottage cheese', limits:'', calTarget:3000, proTarget:150, meals:null},
   audit: {weekStart:'', proposals:null, status:''},  // weak-group reinforcement
   settings: {apiKey:'', repLow:8, repHigh:12, ghToken:'', gistId:'', autoSync:true},
-  meta: {changedAt:0, lastSync:0}
+  meta: {changedAt:0, lastSync:0, pushedAt:0}
 };
 let S = load();
 function load(){
@@ -2971,8 +2971,17 @@ async function syncPush(manual){
     // (exportedAt > changedAt) reads our own push as "newer than us" and bgSyncTick
     // re-applies it a minute later — reverting anything written with save(false) since.
     // Math.max, not assignment: an edit made during the await must stay the newer side.
-    S.meta = S.meta || {changedAt:0,lastSync:0};
+    S.meta = S.meta || {changedAt:0,lastSync:0,pushedAt:0};
     S.meta.changedAt = Math.max(S.meta.changedAt||0, _lastPushExportedAt);
+    // Confirms everything up through this push is now on the gist. Boot checks this watermark
+    // to catch up a push that never fired (see BOOT below) — without it, finishing a workout
+    // and backgrounding the tab before the 2.5s debounce in schedulePush() completes silently
+    // strands that session in localStorage forever, invisible to every other device.
+    // Uses the same _lastPushExportedAt as changedAt above (not the older changedAt this
+    // snapshot carried) so the two stay equal in the common case with nothing concurrently
+    // edited during the await — if they diverge, that gap IS a genuine edit made while this
+    // push was in flight, which really is still unpushed and must stay flagged as such.
+    S.meta.pushedAt = Math.max(S.meta.pushedAt||0, _lastPushExportedAt);
     markSynced();
     if(manual) setSyncMsg('\u2713 Pushed to cloud at '+new Date().toLocaleTimeString());
   }catch(e){ if(manual) setSyncMsg(e.message, true); }
@@ -3024,6 +3033,9 @@ function applyPulled(d, exportedAt){
   // investigation flag vanish about a minute after it appeared. A genuinely newer push
   // from another device carries a larger exportedAt, so real updates still land.
   if(exportedAt) S.meta.changedAt = Math.max(S.meta.changedAt, exportedAt);
+  // We just consumed this exact snapshot, so treat it as pushed too — otherwise the boot
+  // catch-up push (see BOOT) fires needlessly on every pull, re-uploading what we only just downloaded.
+  S.meta.pushedAt = S.meta.changedAt;
   if(localAgents){
     const a = agState();
     if((localAgents.lastRun||'') > (a.lastRun||'')) a.lastRun = localAgents.lastRun;
@@ -3058,6 +3070,30 @@ function schedulePush(){
   if(!syncReady() || S.settings.autoSync === false) return;
   clearTimeout(_pushTimer);
   _pushTimer = setTimeout(()=>syncPush(false), 2500);
+}
+// A backgrounded/closed tab can lose the 2.5s debounce above entirely — iOS suspends or
+// kills the page before the timer fires, which is exactly what happens when a workout is
+// finished and the phone gets locked right after. Nothing previously retried that push (see
+// the BOOT catch-up below for the other half of this fix). Flushing on hide gives the fetch a
+// chance to land while the tab is still alive in the background, instead of a timer that may
+// never get to run.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden' && _pushTimer){
+    clearTimeout(_pushTimer); _pushTimer=null;
+    syncPush(false);
+  }
+});
+// Catch up a push that never made it out. save() bumps S.meta.changedAt and debounces
+// syncPush() 2.5s later (schedulePush()) — if the tab was backgrounded or killed before that
+// timer fired (finishing a workout, then locking the phone), the change is stuck in
+// localStorage with nothing having retried it. autoPullOnLoad() only pulls when the remote is
+// newer, so it can't detect or fix this on its own. Called from BOOT, after autoPullOnLoad()
+// has had a chance to run — reads S.meta fresh rather than a value captured earlier, since
+// applyPulled() may have replaced S wholesale during that pull.
+async function bootCatchupPush(){
+  if(syncReady() && S.settings.autoSync !== false && S.meta && (S.meta.changedAt||0) > (S.meta.pushedAt||0)){
+    await syncPush(false);
+  }
 }
 async function autoPullOnLoad(){
   if(!syncReady() || S.settings.autoSync === false) return;
@@ -9937,7 +9973,10 @@ try{ renderSidenav(); }catch(e){}
 // cycle concurrently with a pull means the pull can swap S mid-flight. The stale-reference guards
 // inside agRunAll make that survivable, but not racing at all is better than surviving the race.
 // .catch keeps a failed/absent sync from blocking the agents entirely.
-const _bootPull = (async()=>{ try{ await autoPullOnLoad(); }catch(e){} })();
+const _bootPull = (async()=>{
+  try{ await autoPullOnLoad(); }catch(e){}
+  try{ await bootCatchupPush(); }catch(e){}
+})();
 try{ startUpdateWatcher(); }catch(e){}
 try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
 // agents: expire stale proposals on load, then poll for the 9 PM window
