@@ -2893,6 +2893,169 @@ setTimeout(async () => {
        ev('BM_GROUPS.every(k => bmStatus("progress", k) === bmViewerData(bmState.progress.mode).find(r=>r.key===k).status)'));
   }
 
+  console.log('=== PROGRESS TIERS: RAPID GATE ===');
+  // Everything the composite reads is global (every log, every weigh-in), so this section
+  // runs on an isolated S and puts the real one back at the end.
+  const savedPT = ev('JSON.stringify({logs:S.logs, weights:S.weights, prHistory:S.prHistory||[], invest:S.invest||null, schedule:S.schedule})');
+  try {
+    const ptOff = (n) => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const PT_WK = []; for (let i = 0; i <= 11; i++) PT_WK.push(-77 + i * 7);  // 12 weekly points
+    let ptId = 900000;
+    const ptPush = (date, ex, wt) => ev('S.logs.push(' + JSON.stringify(
+      { id: ptId++, date, day: 'D1', entries: [{ exercise: ex, sets: [{ w: wt, r: 1 }] }] }) + ')');
+    const ptCount = (h, needle) => h.split(needle).length - 1;
+
+    // A fixture that lands squarely in the top band with all four RAPID checks clear, built so
+    // each check can be broken on its own by one option. bench/squat are lb/week and PR_LIFTS
+    // caps them at 1.75 and 2.5, so the ratio the gate reads back out is exactly bench/1.75.
+    // r:1 keeps epley() from touching the logged weight.
+    const ptSeed = (opt) => {
+      const o = Object.assign({ bench: 2.1, squat: 2.375, bw: (i) => 170 + i * 0.8, pr: -3 }, opt || {});
+      ev('S.logs = []; S.weights = []; S.prHistory = [];');
+      ev('S.invest = {flags:[], history:[], lastAuto:{}, overrides:{}};');
+      ev("S.schedule = {1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6',0:'REST'};");  // 6 training days
+      PT_WK.forEach((d, i) => {
+        ev('S.weights.push(' + JSON.stringify({ date: ptOff(d), lbs: o.bw(i) }) + ')');
+        ptPush(ptOff(d), 'Barbell Bench Press', 200 + i * o.bench);
+        ptPush(ptOff(d), 'Barbell Back Squat', 300 + i * o.squat);
+      });
+      // Six distinct days inside the last week so consistencyScore() reads a full 6/6. A
+      // separate lift on purpose: crammed into 6 days it is too short a span to enter
+      // anBqLifts(), and too steep to read as anything but 'up' in olSignals().
+      for (let i = 0; i <= 5; i++) ptPush(ptOff(-5 + i), 'Filler Cable Row', 100 + i * 2);
+      if (o.pr !== null) ev('S.prHistory.push(' + JSON.stringify({ exercise: 'Barbell Bench Press',
+        weight: 225, reps: 1, e1rm: 225, prev: 220, gain: 5, date: ptOff(o.pr) }) + ')');
+    };
+    const unmetOf = (R) => ((R.rapid && R.rapid.unmet) || []).join(' | ');
+
+    // --- the ladder itself ---
+    ok('tier order runs low to high with rapid on top',
+      ev('TIER_ORDER').join(',') === 'none,slow,prog,accel,rapid', ev('TIER_ORDER').join(','));
+    ok('the middle tier is renamed Steady Progress', ev('TIER_LABELS').prog === 'Steady Progress',
+      ev('TIER_LABELS').prog);
+    ok('rapid is spelled in caps', ev('TIER_LABELS').rapid === 'RAPID PROGRESS', ev('TIER_LABELS').rapid);
+    // The two maps were hand-maintained duplicates and had already drifted on accel's colour.
+    const ptTiers = ev('PSTATUS_TIERS'), ptLab = ev('TIER_LABELS'), ptCol = ev('TIER_COLS');
+    ok('label and colour maps are derived from the tier list, so they cannot drift',
+      ptTiers.every(t => ptLab[t.key] === t.label && ptCol[t.key] === t.col));
+    ok('every tier colour is a token, not a literal', ptTiers.every(t => t.col.indexOf('var(--') === 0),
+      ptTiers.map(t => t.col).join(','));
+
+    // --- all four checks clear ---
+    ptSeed();
+    let R = ev('computeProgressStatus()');
+    ok('the fixture blends into the top band', R.blended >= 0.75, R.blended);
+    ok('each component is maxed', R.st.score === 1 && R.co.score === 1 && R.bu.score === 1,
+      R.st.score + '/' + R.co.score + '/' + R.bu.score);
+    ok('all four RAPID checks clear', R.rapid && R.rapid.pass === true, unmetOf(R));
+    ok('clearing the gate promotes accel to rapid', R.tier === 'rapid', R.tier);
+    // The whole premise of the gate: the blend is already pinned at accel, so it cannot be
+    // what separates the top two tiers.
+    ok('the blend is already at its ceiling, so it cannot be what promotes',
+      Math.abs(R.blended - 1) < 1e-9, R.blended);
+
+    // --- 1. at the cap rate is not past the cap rate ---
+    ptSeed({ bench: 1.75 });   // ratio exactly 1.0: still the top strength bucket, still accel
+    R = ev('computeProgressStatus()');
+    ok('a lift merely at its cap rate still blends into the top band', R.blended >= 0.75, R.blended);
+    ok('merely matching the cap rate does not earn RAPID', R.tier === 'accel', R.tier);
+    ok('...and the gate says the cap is the reason', unmetOf(R).indexOf('past its cap rate') >= 0, unmetOf(R));
+    ok('...naming the lift in full, not as its last word', unmetOf(R).indexOf('Barbell Bench Press') >= 0, unmetOf(R));
+    ok('only that one check failed', R.rapid.unmet.length === 1, unmetOf(R));
+
+    // --- 2. an acceptable scale rate is not the same as a good bulk ---
+    // bulkScore() only reads the last 28 days, so a window that opens with a fast climb and
+    // settles to +0.8 lb/wk still scores a full 1.0 there, while anBulkQuality() fits the whole
+    // 12 weeks and sees bodyweight outrunning the bar. Without check 2 this fixture is RAPID.
+    ptSeed({ bw: (i) => 170 + (i <= 7 ? i * 2.5 : 17.5 + (i - 7) * 0.8) });
+    R = ev('computeProgressStatus()');
+    ok('the recent scale rate alone still scores full marks', R.bu.score === 1, R.bu.rate);
+    ok('a bodyweight-outrunning-strength window blocks RAPID', R.tier === 'accel', R.tier);
+    ok('...and the gate names bulk quality', unmetOf(R).indexOf('Bulk quality') >= 0, unmetOf(R));
+    ok('only that one check failed', R.rapid.unmet.length === 1, unmetOf(R));
+
+    // --- 3. a favourable slope is not a PR ---
+    ptSeed({ pr: -40 });
+    R = ev('computeProgressStatus()');
+    ok('a PR older than the window does not count', R.tier === 'accel', R.tier);
+    ok('...and the gate names the PR drought', unmetOf(R).indexOf('No PR') >= 0, unmetOf(R));
+    ok('only that one check failed', R.rapid.unmet.length === 1, unmetOf(R));
+    ptSeed({ pr: null });
+    ok('no PR history at all does not count', ev('computeProgressStatus()').tier === 'accel');
+    ptSeed({ pr: -20 });
+    ok('a PR just inside the window does count', ev('computeProgressStatus()').tier === 'rapid');
+
+    // --- 4. a flagged lift blocks the top tier however good the averages look ---
+    ptSeed();
+    ev("S.invest.flags.push({key:'lift:Barbell Bench Press', severity:'red', status:'active', title:'Bench stalled', at:todayKey()})");
+    R = ev('computeProgressStatus()');
+    ok('an active red flag blocks RAPID', R.tier === 'accel', R.tier);
+    ok('...and the gate points at Overload Status', unmetOf(R).indexOf('Overload Status') >= 0, unmetOf(R));
+    ok('only that one check failed', R.rapid.unmet.length === 1, unmetOf(R));
+    // A dismissed flag is not an active one, so it must not hold the tier down forever.
+    ev("S.invest.flags[0].status = 'dismissed'");
+    ok('a dismissed flag stops blocking', ev('computeProgressStatus()').tier === 'rapid');
+
+    // --- nothing below accel reaches the gate at all ---
+    ev('S.logs = []; S.weights = []; S.prHistory = [];');
+    ok('an empty state has no tier at all', ev('computeProgressStatus()').tier === null);
+
+    // --- the cards ---
+    ptSeed();
+    let card = ev('nextLevelCardHTML(computeProgressStatus())');
+    ok('the RAPID card says excelling', card.indexOf('excelling') >= 0, card.slice(0, 160));
+    ok('the RAPID card names the tier', card.indexOf('RAPID PROGRESS') >= 0);
+    ok('the RAPID card is not the ACCELERATED card', card.indexOf('ACCELERATED') === -1);
+    ok('the RAPID card quotes the lift that beat its cap', card.indexOf('120% of its cap rate') >= 0,
+      card.slice(0, 400));
+
+    ptSeed({ pr: null });
+    card = ev('nextLevelCardHTML(computeProgressStatus())');
+    ok('the ACCELERATED card keeps its own copy', card.indexOf('doing everything right') >= 0);
+    ok('...and still says the job is consistency', card.indexOf('The job now is consistency') >= 0);
+    ok('...and appends what is still blocking RAPID', card.indexOf('Still between you and RAPID') >= 0);
+    ok('...naming the check that actually failed', card.indexOf('No PR on any lift') >= 0);
+    // A cleared gate must drop the footer entirely rather than render an empty heading.
+    ptSeed();
+    card = ev('nextLevelCardHTML(computeProgressStatus())');
+    ok('a cleared gate renders no blocking footer', card.indexOf('Still between you and RAPID') === -1);
+
+    // --- the step bar ---
+    // jsdom has no layout engine, so this asserts which steps the renderer chose to fill,
+    // not how wide they came out. Widths have to be eyeballed in a real browser.
+    let bar = ev('progressStatusCardHTML(computeProgressStatus())');
+    ok('the step bar draws one step per tier', ptCount(bar, 'ptier-seg') === 5,
+      String(ptCount(bar, 'ptier-seg')));
+    ok('the step bar marks exactly one current step', ptCount(bar, 'ptier-seg cur') === 1);
+    ok('at RAPID the bar reads step 5 of 5', bar.indexOf('Step 5 of 5') >= 0);
+    ok('the bar carries a screen-reader label', bar.indexOf('role="img"') >= 0);
+    // Filled steps carry their own tier token inline; unreached ones carry none and fall
+    // back to the flat CSS background.
+    ok('every step up to the current one is filled', ptCount(bar, 'background:var(--tier-') === 5,
+      String(ptCount(bar, 'background:var(--tier-')));
+    ptSeed({ pr: null });
+    bar = ev('progressStatusCardHTML(computeProgressStatus())');
+    ok('at ACCELERATED the bar reads step 4 of 5', bar.indexOf('Step 4 of 5') >= 0);
+    ok('...and leaves the last step unfilled', ptCount(bar, 'background:var(--tier-') === 4,
+      String(ptCount(bar, 'background:var(--tier-')));
+    ok('...and still marks exactly one current step', ptCount(bar, 'ptier-seg cur') === 1);
+
+    // --- cleanup ---
+    const ptSaved = JSON.parse(savedPT);
+    ev('S.logs = ' + JSON.stringify(ptSaved.logs) + '; S.weights = ' + JSON.stringify(ptSaved.weights) +
+       '; S.prHistory = ' + JSON.stringify(ptSaved.prHistory) + '; S.invest = ' + JSON.stringify(ptSaved.invest) +
+       '; S.schedule = ' + JSON.stringify(ptSaved.schedule) + ';');
+    ok('cleanup: real logs restored', ev('JSON.stringify(S.logs)') === JSON.stringify(ptSaved.logs));
+    ok('cleanup: real bodyweight restored', ev('JSON.stringify(S.weights)') === JSON.stringify(ptSaved.weights));
+    ok('cleanup: real schedule restored', ev('JSON.stringify(S.schedule)') === JSON.stringify(ptSaved.schedule));
+  } catch (e) {
+    ok('progress tier section', false, e.message);
+    const ptSaved = JSON.parse(savedPT);
+    ev('S.logs = ' + JSON.stringify(ptSaved.logs) + '; S.weights = ' + JSON.stringify(ptSaved.weights) +
+       '; S.prHistory = ' + JSON.stringify(ptSaved.prHistory) + '; S.invest = ' + JSON.stringify(ptSaved.invest) +
+       '; S.schedule = ' + JSON.stringify(ptSaved.schedule) + ';');
+  }
+
   console.log('=== RENDER ===');
   try {
     ev('renderOps')();
