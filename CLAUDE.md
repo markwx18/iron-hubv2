@@ -211,7 +211,6 @@ the next background pull.** Two rules follow:
 | Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
 | Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()` |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
-| Skins | `SKINS`, `DEFAULT_SKIN`, `currentSkin()`, `setSkin()`, `pickSkin()`, `SKIN_KEY` |
 | Muscle map data | `bmViewerData()`, `bmStatusFor()`, `bmWeeklyVol()`, `bmTrainedDays()` |
 | 3D viewer | `bm3dInit()`, `bm3dBuild()`, `bm3dApply()`, `bm3dPick()`, `bm3dDispose()`, `bm3dFallback()` |
 
@@ -263,57 +262,16 @@ because shifting it silently changes what today resolves to.
 
 ## UI conventions
 
-### Skins
+Design language: "forge on steel" — near-black background, industrial/mono accents.
 
-The app ships **two complete visual identities**, selected by `data-skin` on
-`<html>`. **KINETIC is the default** — violet-biased black, borderless cards,
-round geometry, Anton/Manrope/DM Mono. **BLUEPRINT** is the alternate — cold ink
-navy, drafting grid, hairline rules, 2px corners, Archivo/Public Sans/JetBrains
-Mono. Switch in Settings → Appearance.
+| Token | Value | Use |
+|---|---|---|
+| `--amber` | `#F6862F` | primary accent, DELTA |
+| `--cyan` | `#46CDBA` | CHARLIE, positive trend |
+| `--violet` | `#B79BFF` | ECHO |
+| ZULU | `#dfae36` | lead agent |
 
-The default skin lives in **bare `:root`** so a missing or unreadable attribute
-still paints a complete app, and its fonts sit on the static `<link>` the preload
-scanner sees. The alternate is `:root[data-skin="blueprint"]` and only overrides.
-
-**To change which skin is the default, three things move together:** the
-`DEFAULT_SKIN` constant, which token block is bare `:root`, and the `href`/test in
-the `<head>` boot script. A test asserts all three agree.
-
-The skin preference is stored in its own `ironhub:skin` localStorage key,
-**never in `S`** — a purely visual per-device choice must not touch
-`save()`/`changedAt`, where a boot-time write could make `autoPullOnLoad()` skip
-its pull and push stale local state over the phone's newer data. Same reasoning as
-`LIVE_KEY`.
-
-### Tokens
-
-`--c-primary` / `--c-review` / `--c-echo` / `--c-alert` are the source of truth.
-`--amber` / `--cyan` / `--violet` / `--red` are **aliases**, kept because ~250 call
-sites and two assertions reference them — that is what makes a skin swap a value
-change rather than a 9,000-line find-replace. Write new UI against the role names.
-
-- `--good` / `--warn` / `--bad` are **independent of the accent** on purpose: they
-  encode readiness tier, fatigue and PR state, and must read as go/caution/stop
-  even when the accent is violet.
-- `--accent` is the **current day's colour**, rewritten at runtime by `setAccent()`.
-  It is not the skin's primary — do not collapse the two.
-- `--ag-zulu/charlie/delta/echo` are agent identity. ZULU is gold because it leads,
-  not because anything is wrong.
-- Washes/scrims (`--wash-*`, `--halo-*`, `--scrim-*`) exist so gradients don't carry
-  the accent's RGB inline.
-- Day colours are **data** (`S.split[dk].hex`, synced through the gist).
-  `dayColor()` resolves `--d1..--d6` first and falls back to the stored hex, so a
-  reskin colours them without touching saved state.
-
-Use CSS variables, never hardcoded hex, in new UI. A test asserts every
-`var(--x)` in the file resolves — it was added after `--bg` and `--card` were found
-referenced but never defined, which left `.ag-card` with no fill.
-
-**Per-skin structural rules and state overrides.** A skin block rewrites surfaces
-at the same specificity as base `.x.on` state rules, so it wins on source order and
-silently blanks selected fills. The `STATE OVERRIDES` block at the end of the
-stylesheet restates those states one level deeper under `:root`. Add new active
-states there, not just to the base sheet.
+Use CSS variables, never hardcoded hex, in new UI.
 
 **Never repaint under the user's hands.** The live-refresh loop deliberately
 refuses to re-render while an input has focus or while a LIVE session is active —
@@ -323,6 +281,19 @@ to bottom if the user was already near the bottom.
 
 **Mobile is the primary target.** Most use is on an iPhone, one-handed, mid-set.
 Check at 393px and 320px widths.
+
+**Muscle map: 2D on LIVE, 3D on Progress.** The Progress tab's muscle map is a
+rotatable three.js viewer; the LIVE idle screen keeps the flat SVG, on purpose —
+it's the front door on a training day and must not wait on a CDN fetch or a GPU
+context before it paints. `bmViewerData(mode)` is the single source of truth both
+renderers draw from, so they can never disagree about a muscle's status; the
+volume math is tested in `test_agents.js` (jsdom has no WebGL, so the 3D render
+itself isn't). three.js is pinned and lazily `import()`ed on first view of the
+card — no build step, no bundler. Every failure path (no WebGL, no network, CDN
+down) falls back to the flat bodies; the tab degrades, it never breaks. Colours
+in `bm3dColors()` are hardcoded to match `BM_C` exactly, so the 2D and 3D pictures
+read as the same picture from a different angle — there is one theme, so nothing
+here reads from a CSS custom property.
 
 ---
 
