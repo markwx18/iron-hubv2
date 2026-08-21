@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-21-v1">
+<meta name="ironhub-build" content="2026-08-21-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -8343,7 +8343,8 @@ function mesoOpenSplitEdit(blockId){
     h += '<div class="meso-ed-day"><div class="meso-ed-dk">'+esc(dk)+' \u00b7 '+esc(d.name||'')+'</div>';
     (d.exercises||[]).forEach((x,i)=>{
       const nm = exName(x); const heavy = (typeof x==='object' && x.repMode==='str');
-      h += '<div class="meso-ed-ex"><span>'+esc(nm)+(heavy?' <b style="color:var(--amber)">3\u20136</b>':'')+'</span>'+
+      h += '<div class="meso-ed-ex"><span>'+esc(nm)+'</span>'+
+           '<button class="ord ff-toggle" style="'+(heavy?'color:var(--violet);border-color:var(--violet);font-weight:800':'')+'" onclick="mesoEdToggleRepMode(\''+dk+'\','+i+')">'+(heavy?'STR':'HYP')+'</button>'+
            '<button class="meso-x" onclick="mesoEdRemove(\''+dk+'\','+i+')" title="Remove">&times;</button></div>';
     });
     h += '<div class="meso-ed-add"><input list="mesoExList" id="mesoAdd_'+dk+'" placeholder="Add exercise\u2026">'+
@@ -8359,6 +8360,16 @@ function mesoOpenSplitEdit(blockId){
 function mesoEdRemove(dk, i){
   const a = mesoActive(); const rec = a.splits[_mesoEditBlock]; if(!rec) return;
   (rec.split[dk].exercises||[]).splice(i,1);
+  save(); mesoOpenSplitEdit(_mesoEditBlock);
+}
+/* Manual 3-6 (STR) vs accessory override for a strength-block exercise — the auto-classifier's
+   compound-pattern guess (mesoGenerateStrengthSplit) is a starting point, not a guarantee. */
+function mesoEdToggleRepMode(dk, i){
+  const a = mesoActive(); const rec = a.splits[_mesoEditBlock]; if(!rec) return;
+  const list = rec.split[dk].exercises || (rec.split[dk].exercises = []);
+  if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:incFor(list[i])};
+  const x = list[i];
+  x.repMode = (x.repMode==='str') ? null : 'str';
   save(); mesoOpenSplitEdit(_mesoEditBlock);
 }
 function mesoEdAdd(dk){

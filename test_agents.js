@@ -1763,6 +1763,24 @@ setTimeout(async () => {
       ok('Today shows the block exercises', ev('dayExNames("S1")').every(n => t.indexOf(n) >= 0));
     } catch (e) { ok('renderToday survives a block day key', false, e.message); }
 
+    // manual 3-6 (STR) vs accessory toggle on a strength-block exercise, reachable from the
+    // block's own split-edit overlay (mesoOpenSplitEdit) — the auto-classifier's compound
+    // guess is a starting point, not a guarantee (it mistagged a single-arm row once).
+    ev("_mesoEditBlock = " + JSON.stringify(bid) + ";");
+    const s1ExBeforeToggle = ev("JSON.stringify(mesoActive().splits[" + JSON.stringify(bid) + "].split.S1.exercises)");
+    const anchorRepModeBefore = ev("mesoActive().splits[" + JSON.stringify(bid) + "].split.S1.exercises[0].repMode");
+    ok('control: block anchor exercise starts tagged STR by the generator', anchorRepModeBefore === 'str');
+    ev('mesoEdToggleRepMode("S1", 0)');
+    ok('mesoEdToggleRepMode flips repMode off',
+       ev("mesoActive().splits[" + JSON.stringify(bid) + "].split.S1.exercises[0].repMode") == null);
+    ev('mesoEdToggleRepMode("S1", 0)');
+    ok('mesoEdToggleRepMode flips repMode back on',
+       ev("mesoActive().splits[" + JSON.stringify(bid) + "].split.S1.exercises[0].repMode") === 'str');
+    ok('toggling only touches the targeted exercise',
+       ev("JSON.stringify(mesoActive().splits[" + JSON.stringify(bid) + "].split.S1.exercises)") === s1ExBeforeToggle);
+    ok('mesoEdToggleRepMode never touches the permanent split', ev('!S.split.S1') === true);
+    ev('_mesoEditBlock = null;');
+
     // sessions logged during the block keep their label after the block is gone
     ev("live = {date:todayKey(), day:'S1', startedAt:Date.now(), exercises:[{name:'Barbell Back Squat', sets:[{w:185,r:5}]}], curIdx:0};");
     ev('endLiveSession()');
