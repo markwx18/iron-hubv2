@@ -1640,6 +1640,99 @@ setTimeout(async () => {
     ev('S.overrideDay=null'); ev('mesoStop()'); ev('live=null');
   }
 
+  console.log('=== DATE OVERRIDES (CALENDAR EXCEPTIONS) ===');
+  try {
+    ok('dateOverridesEditorHTML exists', ev('typeof dateOverridesEditorHTML') === 'function');
+    ok('generateTempStrengthDays exists', ev('typeof generateTempStrengthDays') === 'function');
+    ok('clearTempStrengthDays exists', ev('typeof clearTempStrengthDays') === 'function');
+
+    // --- exact-date override beats the dow map, for its date only ---
+    ev("S.scheduleMode='dow'; S.schedule={0:'REST',1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6'}; S.dateOverrides={};");
+    // 2026-08-21 is a Friday -> dow map gives D5 with no override present
+    ok('control: dow map gives D5 with no override', ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
+    ev("S.dateOverrides['2026-08-21'] = 'S1';");
+    ok('dateOverrides beats the dow map on its exact date', ev("scheduledDayFor('2026-08-21')") === 'S1');
+    ok('dateOverrides does not leak to the day before', ev("scheduledDayFor('2026-08-20')") === 'D4', ev("scheduledDayFor('2026-08-20')"));
+    ok('dateOverrides does not leak to the day after', ev("scheduledDayFor('2026-08-22')") === 'D6', ev("scheduledDayFor('2026-08-22')"));
+
+    // --- exact-date override beats the rotating cycle pattern too ---
+    ev("S.scheduleMode='cycle'; S.cycleSchedule={anchor:'2026-08-20', pattern:['D1','D2','D3','D4','D5','D6','REST']};");
+    ev("delete S.dateOverrides['2026-08-21'];");
+    ok('control: cycle pattern gives D2 once the override is removed', ev("scheduledDayFor('2026-08-21')") === 'D2', ev("scheduledDayFor('2026-08-21')"));
+    ev("S.dateOverrides['2026-08-21'] = 'S1';");
+    ok('dateOverrides beats the cycle pattern on its exact date', ev("scheduledDayFor('2026-08-21')") === 'S1');
+    ev("S.scheduleMode='dow'; S.dateOverrides={};");
+
+    // --- an active meso strength-block rotation still outranks a dateOverrides entry ---
+    // Use the block's own start date (always position 0 of the rotation = S1), not todayKey():
+    // mesoStart() rounds the start back to that week's Monday, so todayKey() itself can land
+    // anywhere in the 5-day rotation (including a REST slot) depending on which real weekday
+    // the suite happens to run on.
+    const before2 = ev('scheduledDayFor(todayKey())');
+    ev("mesoStart({phases:[{id:'p2',type:'str',name:'Strength',weeks:2,repLo:3,repHi:5,rpeLo:8,rpeHi:9}],repeat:false,cycles:1}, todayKey())");
+    ev('mesoEnsureProposals()');
+    const start2 = ev('mesoActive().weeks[0].startKey');
+    const bid2 = ev('mesoActive().weeks[0].blockId');
+    ev('mesoApproveSplit(' + JSON.stringify(bid2) + ')');
+    ev("S.dateOverrides[" + JSON.stringify(start2) + "] = 'D3';"); // deliberately conflicts with the active rotation
+    ok('an active meso rotation still outranks a conflicting dateOverrides entry',
+       ev('scheduledDayFor(' + JSON.stringify(start2) + ')') === 'S1', ev('scheduledDayFor(' + JSON.stringify(start2) + ')'));
+    ev('mesoStop(); S.dateOverrides={};');
+    ok('cleanup: schedule restored after the meso/dateOverrides conflict check',
+       ev('scheduledDayFor(todayKey())') === before2, ev('scheduledDayFor(todayKey())'));
+
+    // --- deload window: exact lower AND upper bound (the bug this task fixed) ---
+    ev("S.deload = {startedAt:'2026-08-25', until:'2026-08-27'};");
+    const fakeDeloadDay = (iso) => {
+      ev(`(function(){
+        var real = Date;
+        window.__fakeDeload = '${iso}';
+        Date = function(...args){ return args.length ? new real(...args) : new real(window.__fakeDeload); };
+        Date.prototype = real.prototype;
+        Object.setPrototypeOf(Date, real);
+        window.__realDateDeload = real;
+      })();`);
+      const v = ev('deloadActive()');
+      ev('Date = window.__realDateDeload;');
+      return v;
+    };
+    ok('deload NOT active the day before startedAt (this is the bug: was true without the fix)',
+       fakeDeloadDay('2026-08-24T12:00:00') === false);
+    ok('deload active on startedAt', fakeDeloadDay('2026-08-25T12:00:00') === true);
+    ok('deload active inside the window', fakeDeloadDay('2026-08-26T12:00:00') === true);
+    ok('deload active on until (inclusive)', fakeDeloadDay('2026-08-27T12:00:00') === true);
+    ok('deload NOT active the day after until', fakeDeloadDay('2026-08-28T12:00:00') === false);
+    ev('S.deload = null;');
+
+    // startDeloadWeek must accept explicit overrides without breaking its no-arg default use
+    ev("startDeloadWeek('2026-08-27','2026-08-25')");
+    ok('startDeloadWeek honors explicit start/until overrides',
+       ev('S.deload.startedAt') === '2026-08-25' && ev('S.deload.until') === '2026-08-27', JSON.stringify(ev('S.deload')));
+    ev('S.deload = null;');
+
+    // --- S1/S2/S3 generation must never pollute the permanent split ---
+    ev('S.tempStrengthSplit = null;');
+    const splitBefore = ev('JSON.stringify(S.split)');
+    const gen = ev('generateTempStrengthDays()');
+    ok('generateTempStrengthDays returns exactly S1/S2/S3',
+       JSON.stringify(Object.keys(gen.split).sort()) === JSON.stringify(['S1', 'S2', 'S3']), JSON.stringify(Object.keys(gen.split)));
+    ok('every generated day has exercises', Object.keys(gen.split).every(k => gen.split[k].exercises && gen.split[k].exercises.length > 0));
+    ok('S.split is byte-for-byte unchanged by generation', ev('JSON.stringify(S.split)') === splitBefore);
+    ok('S.tempStrengthSplit is populated after generation', !!ev('S.tempStrengthSplit'));
+
+    // dayMeta/activeDayKeys are the documented single choke point for day-key resolution
+    ok('dayMeta resolves a temp strength day', !!ev('dayMeta("S1")'));
+    ok('activeDayKeys includes the temp strength days', ev('activeDayKeys().indexOf("S1")') >= 0);
+    ev('clearTempStrengthDays();');
+    ok('dayMeta no longer resolves S1 once cleared', ev('dayMeta("S1")') === null);
+    ok('activeDayKeys drops S1 once cleared', ev('activeDayKeys().indexOf("S1")') === -1);
+
+    ev("S.dateOverrides = {}; S.tempStrengthSplit = null; S.deload = null; S.scheduleMode='dow';");
+  } catch (e) {
+    ok('date overrides / temp strength days / deload window', false, e.message);
+    ev("S.dateOverrides = {}; S.tempStrengthSplit = null; S.deload = null; S.scheduleMode='dow'; mesoStop(); live=null;");
+  }
+
   console.log('=== SESSION WARM-UP ===');
   try {
     const EXW = 'Warmup Probe Squat';

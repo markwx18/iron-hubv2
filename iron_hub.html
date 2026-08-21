@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-16-v2">
+<meta name="ironhub-build" content="2026-08-20-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1001,6 +1001,8 @@ const DEFAULT_STATE = {
   split: JSON.parse(JSON.stringify(DEFAULT_SPLIT)),
   schedule: {1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6',0:'REST'}, // JS getDay(): 0=Sun
   overrideDay: null,           // {date:'YYYY-MM-DD', day:'D2'}
+  dateOverrides: {},           // {'YYYY-MM-DD':'D2'} — exact-date schedule exceptions, checked ahead of dow/cycle
+  tempStrengthSplit: null,     // {S1:{name,hex,exercises},...} — generateTempStrengthDays() output; never merged into S.split
   homeToday: null,             // {date:'YYYY-MM-DD'} — auto-expires, same pattern as overrideDay
   homeEquipment: {dumbbells:[2,5,8,12,15,20,30,40,50], kettlebells:[18,26,35,44,53], hasBarbellRackBench:true, hasRower:true, hasBike:true},
   benchPractice: [],           // {date, sets:[{w,r}]} — standalone home bench frequency work, deliberately kept out
@@ -1066,10 +1068,12 @@ function dayExNames(dk){
    generated split, whose day keys (S1/S2/S3) don't exist in S.split at all — so anything
    resolving a day key to a name, colour, or exercise list at runtime must go through here.
    S.split stays the editing target in Settings; only these read paths follow the block. */
-function activeDayKeys(){ return Object.keys(activeSplitObj()); }
+function activeDayKeys(){
+  return Array.from(new Set(Object.keys(activeSplitObj()).concat(Object.keys(S.tempStrengthSplit||{}))));
+}
 function dayMeta(dk){
   const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
-  return src[dk] || S.split[dk] || null;
+  return src[dk] || S.split[dk] || (S.tempStrengthSplit && S.tempStrengthSplit[dk]) || null;
 }
 function dayName(dk){ const d = dayMeta(dk); return (d && d.name) || ''; }
 /* Rep-mode helpers — per-exercise override of the global rep range. */
@@ -1180,6 +1184,9 @@ function scheduledDayFor(dateKey){
   // An approved strength block overrides the schedule for its own dates only.
   const mr = (typeof mesoRotationDayFor==='function') ? mesoRotationDayFor(dateKey) : null;
   if(mr) return mr;
+  // Exact-date exceptions (e.g. a temporary calendar change) beat the recurring dow/cycle
+  // schedule for that date only — see S.dateOverrides in DEFAULT_STATE.
+  if(S.dateOverrides && S.dateOverrides[dateKey]) return S.dateOverrides[dateKey];
   if(scheduleMode()==='cycle'){
     const pat = cyclePattern();
     return pat[cyclePosition(dateKey)] || 'REST';
@@ -3570,6 +3577,29 @@ function renderSettings(){
   }
   html += '<p class="small" style="margin-top:8px">Changes apply immediately to the Today tab.</p></div>';
 
+  html += '<h2>Calendar Override</h2><div class="card">'+
+    '<p class="small">One-off exceptions for specific dates — travel, a modified block, a missed day. These beat the recurring schedule above for their exact date only, then stop applying.</p>'+
+    dateOverridesEditorHTML() +
+    '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'+
+    '<p class="small"><b style="color:var(--text)">Strength days (S1/S2/S3)</b> — auto-generated squat/press/hinge+pull days, the same logic as a meso strength block, usable as override day-keys above.</p>'+
+    (S.tempStrengthSplit
+      ? '<p class="small" style="margin-top:6px">Active: '+Object.keys(S.tempStrengthSplit).map(k=>k+' ('+esc(S.tempStrengthSplit[k].name)+')').join(', ')+'</p>'+
+        (_tempStrengthGen ? '<div class="small" style="margin-top:6px;color:var(--dim)">'+_tempStrengthGen.rationale.map(r=>esc(r)).join('<br>')+
+          (_tempStrengthGen.dropped.length ? '<br>Dropped from coverage: '+esc(_tempStrengthGen.dropped.join(', ')) : '')+'</div>' : '')+
+        '<div style="margin-top:8px"><button class="btn sm ghost" onclick="clearTempStrengthDays();_tempStrengthGen=null;renderSettings()">Clear strength days</button></div>'
+      : '<div style="margin-top:8px"><button class="btn sm" onclick="tempStrengthGenClick()">Generate strength days</button></div>') +
+    '</div>'+
+    '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'+
+    '<p class="small"><b style="color:var(--text)">Custom deload window</b> — lighten loads (~60%, 2 sets, excluded from progression) for an exact date range, instead of the default 7-day-from-today window.</p>'+
+    (deloadActive()
+      ? '<p class="small" style="margin-top:6px">Deload active '+esc(S.deload.startedAt)+' through '+esc(S.deload.until)+'.</p>'+
+        '<div style="margin-top:8px"><button class="btn sm ghost" onclick="endDeloadWeek();renderSettings()">End deload early</button></div>'
+      : '<div class="row" style="margin-top:8px">'+
+        '<div><label>Start</label><input type="date" id="deloadCustomStart"></div>'+
+        '<div><label>Through</label><input type="date" id="deloadCustomUntil"></div>'+
+        '<div style="flex:none"><button class="btn sm" onclick="startDeloadWeekCustom()">Set</button></div></div>') +
+    '</div></div>';
+
   html += '<h2>Rep Range</h2><div class="card"><div class="row">'+
     '<div><label>Low</label><input inputmode="numeric" id="repLow" value="'+S.settings.repLow+'"></div>'+
     '<div><label>High (triggers weight increase)</label><input inputmode="numeric" id="repHigh" value="'+S.settings.repHigh+'"></div>'+
@@ -3675,6 +3705,63 @@ function scheduleRow(i, name){
   Object.keys(S.split).forEach(k=>{ opts += '<option value="'+k+'"'+(S.schedule[i]===k?' selected':'')+'>'+k+' — '+esc(S.split[k].name)+'</option>'; });
   return '<div class="row" style="margin-bottom:6px;align-items:center"><div style="flex:0 0 110px" class="small"><b>'+name+'</b></div>'+
     '<div><select onchange="S.schedule['+i+']=this.value;save();setAccent();renderHeader();renderToday();">'+opts+'</select></div></div>';
+}
+/* ---- Calendar Override: exact-date schedule exceptions ---- */
+function dateOverridesEditorHTML(){
+  if(!S.dateOverrides) S.dateOverrides = {};
+  const dates = Object.keys(S.dateOverrides).sort();
+  const dayOpts = selected => {
+    let o = '<option value="REST"'+(selected==='REST'?' selected':'')+'>Rest</option>';
+    Object.keys(S.split).forEach(k=>{ o += '<option value="'+k+'"'+(selected===k?' selected':'')+'>'+k+' — '+esc(S.split[k].name)+'</option>'; });
+    if(S.tempStrengthSplit){
+      Object.keys(S.tempStrengthSplit).forEach(k=>{ o += '<option value="'+k+'"'+(selected===k?' selected':'')+'>'+k+' — '+esc(S.tempStrengthSplit[k].name)+'</option>'; });
+    }
+    return o;
+  };
+  let h = '<div style="display:flex;flex-direction:column;gap:6px">';
+  if(!dates.length) h += '<p class="small" style="color:var(--dim)">No overrides set.</p>';
+  dates.forEach(dk=>{
+    h += '<div class="row" style="align-items:center">'+
+      '<div style="flex:0 0 110px" class="small mono">'+esc(dk)+'</div>'+
+      '<div><select onchange="dateOverrideSetDay(\''+dk+'\',this.value)">'+dayOpts(S.dateOverrides[dk])+'</select></div>'+
+      '<div style="margin-left:auto"><button class="btn ghost sm" title="Remove" onclick="dateOverrideRemove(\''+dk+'\')">✕</button></div></div>';
+  });
+  h += '</div>';
+  h += '<div class="row" style="margin-top:10px;align-items:center">'+
+    '<div><input type="date" id="doAddDate"></div>'+
+    '<div><select id="doAddDay">'+dayOpts('REST')+'</select></div>'+
+    '<div style="flex:none"><button class="btn sm ghost" onclick="dateOverrideAdd()">Add</button></div></div>';
+  return h;
+}
+function dateOverrideSetDay(dk, v){
+  if(!S.dateOverrides) S.dateOverrides = {};
+  S.dateOverrides[dk] = v;
+  save(); setAccent(); renderHeader(); renderToday(); renderSettings();
+}
+function dateOverrideRemove(dk){
+  if(!S.dateOverrides) return;
+  delete S.dateOverrides[dk];
+  save(); setAccent(); renderHeader(); renderToday(); renderSettings();
+}
+function dateOverrideAdd(){
+  const dEl = document.getElementById('doAddDate');
+  const sEl = document.getElementById('doAddDay');
+  if(!dEl || !dEl.value) return;
+  if(!S.dateOverrides) S.dateOverrides = {};
+  S.dateOverrides[dEl.value] = sEl.value;
+  save(); setAccent(); renderHeader(); renderToday(); renderSettings();
+}
+let _tempStrengthGen = null;
+function tempStrengthGenClick(){
+  _tempStrengthGen = generateTempStrengthDays();
+  renderSettings();
+}
+function startDeloadWeekCustom(){
+  const sEl = document.getElementById('deloadCustomStart');
+  const uEl = document.getElementById('deloadCustomUntil');
+  if(!sEl || !uEl || !sEl.value || !uEl.value || uEl.value < sEl.value) return;
+  startDeloadWeek(uEl.value, sEl.value);
+  renderSettings();
 }
 function homeEquipInit(){
   if(!S.homeEquipment) S.homeEquipment = {dumbbells:[2,5,8,12,15,20,30,40,50], kettlebells:[18,26,35,44,53], hasBarbellRackBench:true, hasRower:true, hasBike:true};
@@ -5782,14 +5869,17 @@ function retroDecision(log, exercise){
 
 /* ===================== DELOAD WEEK ===================== */
 function deloadActive(){
-  if(S.deload && S.deload.until && todayKey() <= S.deload.until) return true;
+  if(S.deload && S.deload.until && S.deload.startedAt && todayKey() >= S.deload.startedAt && todayKey() <= S.deload.until) return true;
   const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
   return !!(mw && mw.type==='deload' && !mw.deloadEnded);
 }
-function startDeloadWeek(){
-  const end = new Date(Date.now()+6*86400000);
-  const until = end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')+'-'+String(end.getDate()).padStart(2,'0');
-  S.deload = {until, startedAt:todayKey()};
+function startDeloadWeek(untilOverride, startOverride){
+  let until = untilOverride;
+  if(!until){
+    const end = new Date(Date.now()+6*86400000);
+    until = end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')+'-'+String(end.getDate()).padStart(2,'0');
+  }
+  S.deload = {until, startedAt: startOverride || todayKey()};
   save();
   if(typeof renderLive==='function') renderLive();
   if(document.getElementById('progress') && document.getElementById('progress').innerHTML.length>50) renderProgressV2();
@@ -7303,6 +7393,21 @@ function mesoGenerateStrengthSplit(){
   }));
   const dropped = MUSCLE_GROUPS.filter(g=>g!=='Abs' && covBefore[g]>0 && cov[g]===0);
   return {split:out, rationale, dropped};
+}
+
+/* Standalone S1/S2/S3 generation for a temporary calendar exception (no meso block needed).
+   Deliberately stored outside S.split — see dayMeta()'s comment on why S1/S2/S3 must never
+   be merged into the permanent split (staleExercises/swap-candidate pools iterate S.split
+   directly and would treat a leftover ghost day as part of the ongoing program forever). */
+function generateTempStrengthDays(){
+  const gen = mesoGenerateStrengthSplit();
+  S.tempStrengthSplit = gen.split;
+  save();
+  return gen;
+}
+function clearTempStrengthDays(){
+  S.tempStrengthSplit = null;
+  save();
 }
 
 /* ---- proposal lifecycle per strength block ---- */
