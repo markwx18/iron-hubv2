@@ -355,6 +355,146 @@ setTimeout(async () => {
     ev("S.settings.ghToken=''; S.settings.gistId='';");
   }
 
+  // A push debounced by schedulePush() (2.5s after save()) can be lost entirely if the tab is
+  // backgrounded or killed before the timer fires — exactly what happens finishing a workout
+  // and then locking the phone. Nothing previously retried it, so the session sat in
+  // localStorage forever, invisible to every other device even though the local app correctly
+  // showed it as logged. S.meta.pushedAt tracks what's actually confirmed on the gist;
+  // pushUnconfirmedChanges() closes the gap on the next launch.
+  console.log('=== PUSHEDAT WATERMARK TRACKS A CONFIRMED PUSH ===');
+  try {
+    const realFetch = w.fetch;
+    w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+    // changedAt starts well behind "now" (as it does after a real debounced save()) so the
+    // push's own Math.max(changedAt, exportedAt) bump is exercised, not masked by a tie.
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1'; S.meta.pushedAt=0; S.meta.changedAt = Date.now() - 5000;");
+    await ev("syncPush(false)");
+    const exportedAt = ev('_lastPushExportedAt');
+    ok('push stamped an exportedAt', exportedAt > 0, exportedAt);
+    ok('a confirmed push advances pushedAt to exactly what it uploaded',
+      ev('S.meta.pushedAt') === exportedAt,
+      'pushedAt=' + ev('S.meta.pushedAt') + ' exportedAt=' + exportedAt);
+    ok('pushedAt catches up with changedAt so nothing looks stranded right after a push',
+      ev('S.meta.pushedAt') === ev('S.meta.changedAt'),
+      'pushedAt=' + ev('S.meta.pushedAt') + ' changedAt=' + ev('S.meta.changedAt'));
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('pushedAt watermark tracks a confirmed push', false, e.message);
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
+  console.log('=== APPLYPULLED MARKS THE CONSUMED SNAPSHOT AS PUSHED ===');
+  try {
+    ev("S.meta.changedAt = Date.now() - 100000; S.meta.pushedAt = 0;");
+    ev("window.__cuSnap = {exportedAt: Date.now() - 50000, data: JSON.parse(JSON.stringify(S))};");
+    ev("applyPulled(JSON.parse(JSON.stringify(window.__cuSnap.data)), window.__cuSnap.exportedAt)");
+    ok('consuming a pull leaves nothing pending for the boot catch-up push',
+      ev('S.meta.pushedAt') === ev('S.meta.changedAt'),
+      'pushedAt=' + ev('S.meta.pushedAt') + ' changedAt=' + ev('S.meta.changedAt'));
+  } catch (e) {
+    ok('applyPulled marks the consumed snapshot as pushed', false, e.message);
+  }
+
+  console.log('=== BOOT CATCH-UP RECOVERS A PUSH LOST TO A KILLED TAB ===');
+  try {
+    let patchCalls = [];
+    const realFetch = w.fetch;
+    w.fetch = (url, opts) => {
+      if (opts && opts.method === 'PATCH') {
+        const body = JSON.parse(opts.body);
+        patchCalls.push(JSON.parse(body.files['ironhub_data.json'].content));
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+    };
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1';");
+
+    // No pending change: pushUnconfirmedChanges must be a no-op (nothing was lost, no API call spent).
+    ev("S.meta.changedAt = 5000; S.meta.pushedAt = 5000;");
+    await ev("pushUnconfirmedChanges()");
+    ok('catch-up does nothing when nothing is pending', patchCalls.length === 0, patchCalls.length);
+
+    // Simulate the real bug: a session gets logged (save() touches changedAt and would
+    // debounce a push 2.5s later), then the tab is killed before that timer fires.
+    ev("window.__cuLogsBefore = S.logs.length;");
+    ev("S.logs.push({id:'catchuptest1', date:'2026-08-18', day:'D1', entries:[{exercise:'Catch-up Test Lift', sets:[{w:135,r:8}]}]}); save();");
+    ev("clearTimeout(_pushTimer); _pushTimer = null;"); // the timer that never got to fire
+    ok('a save() with a killed debounce leaves changedAt ahead of pushedAt',
+      ev('S.meta.changedAt > S.meta.pushedAt'),
+      'changedAt=' + ev('S.meta.changedAt') + ' pushedAt=' + ev('S.meta.pushedAt'));
+    ok('the lost push really never reached the gist', patchCalls.length === 0, patchCalls.length);
+
+    await ev("pushUnconfirmedChanges()");
+    ok('catch-up actually uploaded the stranded session',
+      patchCalls.length === 1 && patchCalls[0].data.logs.some(l => l.id === 'catchuptest1'),
+      JSON.stringify(patchCalls.map(p => p.data.logs.length)));
+    ok('catch-up closes the pushedAt gap',
+      ev('S.meta.pushedAt') === ev('S.meta.changedAt'),
+      'pushedAt=' + ev('S.meta.pushedAt') + ' changedAt=' + ev('S.meta.changedAt'));
+
+    ev("S.logs = S.logs.filter(l => l.id !== 'catchuptest1');");
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('boot catch-up recovers a push lost to a killed tab', false, e.message);
+    ev("S.logs = S.logs.filter(l => l.id !== 'catchuptest1'); S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
+  // The incident this guards against: Device A (PC) logs nothing new today and hits "Push
+  // Now". Device B (phone) logged a real session hours earlier that never made it off the
+  // device (killed debounce). A's push lands AFTER B's local edit, so it carries a fresher
+  // exportedAt despite being strictly less complete. Before this fix, B's next background
+  // sync compared timestamps only, saw A's push as "newer," and applyPulled() silently
+  // replaced B's local S — destroying the only copy of that session. The fix: push local
+  // first, always, before ever accepting an incoming pull.
+  console.log('=== BACKGROUND SYNC PUSHES LOCAL EDITS BEFORE PULLING (stale-but-fresher remote must not clobber them) ===');
+  try {
+    let mockGist = null;
+    const realFetch = w.fetch;
+    w.fetch = (url, opts) => {
+      if (opts && opts.method === 'PATCH') {
+        const body = JSON.parse(opts.body);
+        const payload = JSON.parse(body.files['ironhub_data.json'].content);
+        mockGist = { exportedAt: payload.exportedAt, data: payload.data };
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({
+        files: { 'ironhub_data.json': { content: JSON.stringify({ app: 'ironhub', v: 1, exportedAt: mockGist.exportedAt, data: mockGist.data }) } }
+      }) });
+    };
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1'; S.settings.autoSync=true;");
+
+    // Baseline: this device and the gist agree (no marker session yet).
+    ev("S.meta.changedAt = Date.now() - 20000; S.meta.pushedAt = S.meta.changedAt;");
+    mockGist = { exportedAt: ev('S.meta.changedAt'), data: JSON.parse(ev('JSON.stringify(S)')) };
+
+    // Device B: log a session locally, then the tab gets killed before the debounced push fires.
+    ev("S.logs.push({id:'clobbertest1', date:'2026-08-18', day:'D1', entries:[{exercise:'Clobber Test Lift', sets:[{w:225,r:5}]}]}); save();");
+    ev("clearTimeout(_pushTimer); _pushTimer = null;");
+    const localChangedAt = ev('S.meta.changedAt');
+
+    // Device A: a stale device without the session pushes moments later — fresh timestamp, stale content.
+    const staleData = mockGist.data;
+    mockGist = { exportedAt: localChangedAt + 50, data: staleData };
+    ok('fixture: the stale push out-times the local edit', mockGist.exportedAt > localChangedAt);
+    ok('fixture: the stale push really lacks the local session', !mockGist.data.logs.some(l => l.id === 'clobbertest1'));
+
+    await ev("bgSyncTick()");
+
+    ok('the local session survives a background sync racing a stale-but-fresher remote push',
+      ev("S.logs.some(l=>l.id==='clobbertest1')"));
+    ok('the local edit was actually pushed to the gist, not just left unpulled',
+      mockGist.data.logs.some(l => l.id === 'clobbertest1'),
+      JSON.stringify(mockGist.data.logs.map(l => l.id)));
+
+    ev("S.logs = S.logs.filter(l=>l.id!=='clobbertest1');");
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('background sync pushes local edits before pulling', false, e.message);
+    ev("S.logs = S.logs.filter(l=>l.id!=='clobbertest1'); S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
   console.log('=== LIVE DELTA + CLEAR CHAT ===');
   ok('liveDeltaPanelHTML exists', ev("typeof liveDeltaPanelHTML") === 'function');
   ok('liveDeltaContext exists', ev("typeof liveDeltaContext") === 'function');
@@ -2705,6 +2845,308 @@ setTimeout(async () => {
     ev('S.logs = ' + savedLogsO + ';');
     ev(savedAgO === 'null' ? 'delete agState().overload;' : 'agState().overload = ' + savedAgO + ';');
     ok('cleanup: logs restored after overload', ev('JSON.stringify(S.logs)') === savedLogsO);
+  }
+
+  // ============ MUSCLE MAP DATA CORE ============
+  // bmViewerData() is what both renderers draw from, so the numbers behind the
+  // colouring are asserted here rather than the pixels, which jsdom cannot see.
+  console.log('=== MUSCLE MAP DATA ===');
+  {
+    const savedLogsBM = ev('JSON.stringify(S.logs)');
+
+    ok('bmViewerData returns every muscle group',
+       ev('bmViewerData("weekly").length') === ev('BM_GROUPS.length'));
+    ok('rows keep BM_GROUPS order',
+       ev('bmViewerData("weekly").map(r=>r.key).join(",")') === ev('BM_GROUPS.join(",")'));
+    ok('every group resolves to a broad group',
+       ev('bmViewerData("weekly").every(r=>!!r.broad)'));
+    ok('every group carries a label',
+       ev('bmViewerData("weekly").every(r=>!!r.label)'));
+
+    // Primary counts a full set, secondary counts half. Bench is primary Chest and
+    // secondary Triceps, so one exercise proves both halves of the rule at once.
+    const wk = ev('weekStartKey()');
+    ev('S.logs = [];');
+    ev("S.logs.push({date:'" + wk + "', entries:[{exercise:'Barbell Bench Press', sets:[{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5}]}]});");
+    const chest = ev('bmViewerData("weekly").find(r=>r.key==="chest").volume');
+    const tri   = ev('bmViewerData("weekly").find(r=>r.key==="triceps").volume');
+    ok('primary muscle counts one per set', chest === 4, 'chest=' + chest);
+    ok('secondary muscle counts half per set', tri === 2, 'triceps=' + tri);
+
+    // A log from before the week window must not leak into "this week".
+    ev("S.logs.push({date:'2020-01-06', entries:[{exercise:'Barbell Bench Press', sets:[{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5},{w:135,r:5}]}]});");
+    const chestAfter = ev('bmViewerData("weekly").find(r=>r.key==="chest").volume');
+    ok('volume ignores logs before the week window', chestAfter === 4, 'chest=' + chestAfter);
+
+    // Threshold table: 0 -> off, <6 -> red, <10 -> yellow, >=10 -> green.
+    const setsJSON = n => JSON.stringify(Array.from({ length: n }, () => ({ w: 135, r: 5 })));
+    const chestStatus = n => {
+      ev('S.logs = [];');
+      ev("S.logs.push({date:'" + wk + "', entries:[{exercise:'Pec Deck Fly', sets:" + setsJSON(n) + "}]});");
+      return ev('bmViewerData("weekly").find(r=>r.key==="chest").status');
+    };
+    ev('S.logs = [];');
+    ok('no volume reads as not-trained',
+       ev('bmViewerData("weekly").find(r=>r.key==="chest").status') === 'off');
+    ok('5 sets reads as neglected', chestStatus(5) === 'red');
+    ok('6 sets crosses into maintaining', chestStatus(6) === 'yellow');
+    ok('9 sets still maintaining', chestStatus(9) === 'yellow');
+    ok('10 sets reads as progressing', chestStatus(10) === 'green');
+    ok('18 sets stays progressing', chestStatus(18) === 'green');
+
+    // recovery mode keys off days since the group was last trained.
+    // Build the key the way todayKey() does — LOCAL date parts. toISOString() is
+    // UTC and lands a day ahead east of Greenwich, which makes "trained today"
+    // read as a future log, get filtered out, and the test fail only in some
+    // timezones and only at some hours.
+    const dayAgo = n => ev('(function(){var d=new Date();d.setDate(d.getDate()-' + n + ');' +
+      'return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");})()');
+    const chestRecovery = n => {
+      ev('S.logs = [];');
+      ev("S.logs.push({date:'" + dayAgo(n) + "', entries:[{exercise:'Pec Deck Fly', sets:[{w:100,r:10}]}]});");
+      return ev('bmViewerData("recovery").find(r=>r.key==="chest").status');
+    };
+    // Probe the boundaries, not the middle of each band: testing 0 / 2 / 4 left
+    // the d<2 edge unpinned, and a mutant that moved it to d<1 stayed green.
+    ok('trained today needs rest', chestRecovery(0) === 'red');
+    ok('one day out still needs rest', chestRecovery(1) === 'red');
+    ok('two days out is recovering', chestRecovery(2) === 'yellow');
+    ok('three days out is still recovering', chestRecovery(3) === 'yellow');
+    ok('four days out is recovered', chestRecovery(4) === 'green');
+    ev('S.logs = [];');
+    ok('never trained reads as no data',
+       ev('bmViewerData("recovery").find(r=>r.key==="chest").status') === 'off');
+    ok('never trained reports infinite days since',
+       ev('bmViewerData("recovery").find(r=>r.key==="chest").daysSince') === Infinity);
+
+    // today mode: primary green, secondary yellow, uninvolved off
+    ev('S.overrideDay = {date: todayKey(), day:"D1"};');   // D1 = Chest + Triceps
+    const today = k => ev('bmViewerData("today").find(r=>r.key==="' + k + '").status');
+    ok('today marks a primary target', today('chest') === 'green');
+    ok('today marks a secondary target', today('triceps') === 'green');
+    ok('today leaves an untrained group off', today('calves') === 'off');
+    ev('S.overrideDay = {date: todayKey(), day:"REST"};');
+    ok('a rest day targets nothing',
+       ev('bmViewerData("today").every(r=>r.status==="off")'));
+    ev('S.overrideDay = null;');
+
+    // the exercise list behind a tap comes from his own split, primary first
+    const chestEx = ev('JSON.stringify(bmViewerData("weekly").find(r=>r.key==="chest").exercises)');
+    ok('tapping a muscle lists exercises from his split',
+       chestEx.indexOf('Barbell Bench Press') >= 0, chestEx);
+    ok('the exercise list is capped at four',
+       ev('bmViewerData("weekly").every(r=>r.exercises.length<=4)'));
+
+    ev('S.logs = ' + savedLogsBM + ';');
+    ok('cleanup: logs restored after muscle map', ev('JSON.stringify(S.logs)') === savedLogsBM);
+  }
+
+  // ============ 3D VIEWER WIRING ============
+  // The rendering itself cannot be verified here — jsdom has no WebGL and no
+  // layout engine. What IS verifiable: which renderer each surface asks for,
+  // that the 3D model covers every group the data does, and that a machine with
+  // no WebGL still gets a working map rather than an empty card.
+  console.log('=== 3D VIEWER WIRING ===');
+  {
+    ok('the Progress card asks for the 3D viewer', ev('bmUses3D("progress")') === true);
+    ok('the LIVE idle screen stays on the flat map', ev('bmUses3D("live")') === false);
+
+    // "Don't lose information in the redesign" — enforced, not hoped for.
+    const plateKeys = ev('BM3D_PLATES.map(p=>p[0]).sort().join(",")');
+    const groupKeys = ev('BM_GROUPS.slice().sort().join(",")');
+    ok('the 3D model has a plate for every muscle group the data reports',
+       plateKeys === groupKeys, plateKeys);
+
+    ok('three.js is pinned, not floating on latest', /three@\d+\.\d+\.\d+/.test(ev('BM3D_SRC')));
+    ok('three.js is fetched at runtime, not bundled', /^https:/.test(ev('BM3D_SRC')));
+    ok('the viewer is imported lazily rather than at boot',
+       /import\(/.test(ev('bm3dLoad.toString()')));
+    ok('WebGL contexts are disposed, not leaked',
+       /renderer\.dispose/.test(ev('bm3dDispose.toString()')));
+
+    // With no WebGL (this harness, and any old device), Progress must degrade to
+    // the flat bodies rather than showing an empty box.
+    ok('no WebGL is detected as unsupported', ev('bm3dSupported()') === false);
+    ev('renderProgressV2();');
+    const sec = w.document.getElementById('progress');
+    ok('fallback replaced the viewer with the flat bodies',
+       !w.document.getElementById('bm3dwrap-progress') && !!w.document.getElementById('bmfront-progress'));
+    ok('fallback still draws the anterior muscle groups',
+       w.document.querySelectorAll('#bmfront-progress .bm-mgrp').length >= 8);
+    ok('fallback still draws the posterior muscle groups',
+       w.document.querySelectorAll('#bmback-progress .bm-mgrp').length >= 8);
+    ok('fallback keeps all four modes', sec.querySelectorAll('.bm-modes button').length === 4);
+    ok('fallback keeps the legend', sec.querySelectorAll('.bm-legend .bm-sw').length === 4);
+    ok('fallback marks state as 2D so mode switches use the SVG path',
+       ev('bmState.progress.three') === false);
+
+    // Both renderers must classify identically — that is the whole point of the
+    // shared data core.
+    ok('the SVG renderer and the data core agree on status',
+       ev('BM_GROUPS.every(k => bmStatus("progress", k) === bmViewerData(bmState.progress.mode).find(r=>r.key===k).status)'));
+  }
+
+  console.log('=== PROGRESS TIERS: RAPID GATE ===');
+  // Everything the composite reads is global (every log, every weigh-in), so this section
+  // runs on an isolated S and puts the real one back at the end.
+  const savedPT = ev('JSON.stringify({logs:S.logs, weights:S.weights, prHistory:S.prHistory||[], invest:S.invest||null, schedule:S.schedule})');
+  try {
+    const ptOff = (n) => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const PT_WK = []; for (let i = 0; i <= 11; i++) PT_WK.push(-77 + i * 7);  // 12 weekly points
+    let ptId = 900000;
+    const ptPush = (date, ex, wt) => ev('S.logs.push(' + JSON.stringify(
+      { id: ptId++, date, day: 'D1', entries: [{ exercise: ex, sets: [{ w: wt, r: 1 }] }] }) + ')');
+    const ptCount = (h, needle) => h.split(needle).length - 1;
+
+    // A fixture that lands squarely in the top band with all four RAPID checks clear, built so
+    // each check can be broken on its own by one option. bench/squat are lb/week and PR_LIFTS
+    // caps them at 1.75 and 2.5, so the ratio the gate reads back out is exactly bench/1.75.
+    // r:1 keeps epley() from touching the logged weight.
+    const ptSeed = (opt) => {
+      const o = Object.assign({ bench: 2.1, squat: 2.375, bw: (i) => 170 + i * 0.8, pr: -3 }, opt || {});
+      ev('S.logs = []; S.weights = []; S.prHistory = [];');
+      ev('S.invest = {flags:[], history:[], lastAuto:{}, overrides:{}};');
+      ev("S.schedule = {1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6',0:'REST'};");  // 6 training days
+      PT_WK.forEach((d, i) => {
+        ev('S.weights.push(' + JSON.stringify({ date: ptOff(d), lbs: o.bw(i) }) + ')');
+        ptPush(ptOff(d), 'Barbell Bench Press', 200 + i * o.bench);
+        ptPush(ptOff(d), 'Barbell Back Squat', 300 + i * o.squat);
+      });
+      // Six distinct days inside the last week so consistencyScore() reads a full 6/6. A
+      // separate lift on purpose: crammed into 6 days it is too short a span to enter
+      // anBqLifts(), and too steep to read as anything but 'up' in olSignals().
+      for (let i = 0; i <= 5; i++) ptPush(ptOff(-5 + i), 'Filler Cable Row', 100 + i * 2);
+      if (o.pr !== null) ev('S.prHistory.push(' + JSON.stringify({ exercise: 'Barbell Bench Press',
+        weight: 225, reps: 1, e1rm: 225, prev: 220, gain: 5, date: ptOff(o.pr) }) + ')');
+    };
+    const unmetOf = (R) => ((R.rapid && R.rapid.unmet) || []).join(' | ');
+
+    // --- the ladder itself ---
+    ok('tier order runs low to high with rapid on top',
+      ev('TIER_ORDER').join(',') === 'none,slow,prog,accel,rapid', ev('TIER_ORDER').join(','));
+    ok('the middle tier is renamed Steady Progress', ev('TIER_LABELS').prog === 'Steady Progress',
+      ev('TIER_LABELS').prog);
+    ok('rapid is spelled in caps', ev('TIER_LABELS').rapid === 'RAPID PROGRESS', ev('TIER_LABELS').rapid);
+    // The two maps were hand-maintained duplicates and had already drifted on accel's colour.
+    const ptTiers = ev('PSTATUS_TIERS'), ptLab = ev('TIER_LABELS'), ptCol = ev('TIER_COLS');
+    ok('label and colour maps are derived from the tier list, so they cannot drift',
+      ptTiers.every(t => ptLab[t.key] === t.label && ptCol[t.key] === t.col));
+    ok('every tier colour is a token, not a literal', ptTiers.every(t => t.col.indexOf('var(--') === 0),
+      ptTiers.map(t => t.col).join(','));
+
+    // --- all four checks clear ---
+    ptSeed();
+    let R = ev('computeProgressStatus()');
+    ok('the fixture blends into the top band', R.blended >= 0.75, R.blended);
+    ok('each component is maxed', R.st.score === 1 && R.co.score === 1 && R.bu.score === 1,
+      R.st.score + '/' + R.co.score + '/' + R.bu.score);
+    ok('all four RAPID checks clear', R.rapid && R.rapid.pass === true, unmetOf(R));
+    ok('clearing the gate promotes accel to rapid', R.tier === 'rapid', R.tier);
+    // The whole premise of the gate: the blend is already pinned at accel, so it cannot be
+    // what separates the top two tiers.
+    ok('the blend is already at its ceiling, so it cannot be what promotes',
+      Math.abs(R.blended - 1) < 1e-9, R.blended);
+
+    // --- 1. at the cap rate is not past the cap rate ---
+    ptSeed({ bench: 1.75 });   // ratio exactly 1.0: still the top strength bucket, still accel
+    R = ev('computeProgressStatus()');
+    ok('a lift merely at its cap rate still blends into the top band', R.blended >= 0.75, R.blended);
+    ok('merely matching the cap rate does not earn RAPID', R.tier === 'accel', R.tier);
+    ok('...and the gate says the cap is the reason', unmetOf(R).indexOf('past its cap rate') >= 0, unmetOf(R));
+    ok('...naming the lift in full, not as its last word', unmetOf(R).indexOf('Barbell Bench Press') >= 0, unmetOf(R));
+    ok('only that one check failed', R.rapid.unmet.length === 1, unmetOf(R));
+
+    // --- 2. an acceptable scale rate is not the same as a good bulk ---
+    // bulkScore() only reads the last 28 days, so a window that opens with a fast climb and
+    // settles to +0.8 lb/wk still scores a full 1.0 there, while anBulkQuality() fits the whole
+    // 12 weeks and sees bodyweight outrunning the bar. Without check 2 this fixture is RAPID.
+    ptSeed({ bw: (i) => 170 + (i <= 7 ? i * 2.5 : 17.5 + (i - 7) * 0.8) });
+    R = ev('computeProgressStatus()');
+    ok('the recent scale rate alone still scores full marks', R.bu.score === 1, R.bu.rate);
+    ok('a bodyweight-outrunning-strength window blocks RAPID', R.tier === 'accel', R.tier);
+    ok('...and the gate names bulk quality', unmetOf(R).indexOf('Bulk quality') >= 0, unmetOf(R));
+    ok('only that one check failed', R.rapid.unmet.length === 1, unmetOf(R));
+
+    // --- 3. a favourable slope is not a PR ---
+    ptSeed({ pr: -40 });
+    R = ev('computeProgressStatus()');
+    ok('a PR older than the window does not count', R.tier === 'accel', R.tier);
+    ok('...and the gate names the PR drought', unmetOf(R).indexOf('No PR') >= 0, unmetOf(R));
+    ok('only that one check failed', R.rapid.unmet.length === 1, unmetOf(R));
+    ptSeed({ pr: null });
+    ok('no PR history at all does not count', ev('computeProgressStatus()').tier === 'accel');
+    ptSeed({ pr: -20 });
+    ok('a PR just inside the window does count', ev('computeProgressStatus()').tier === 'rapid');
+
+    // --- 4. a flagged lift blocks the top tier however good the averages look ---
+    ptSeed();
+    ev("S.invest.flags.push({key:'lift:Barbell Bench Press', severity:'red', status:'active', title:'Bench stalled', at:todayKey()})");
+    R = ev('computeProgressStatus()');
+    ok('an active red flag blocks RAPID', R.tier === 'accel', R.tier);
+    ok('...and the gate points at Overload Status', unmetOf(R).indexOf('Overload Status') >= 0, unmetOf(R));
+    ok('only that one check failed', R.rapid.unmet.length === 1, unmetOf(R));
+    // A dismissed flag is not an active one, so it must not hold the tier down forever.
+    ev("S.invest.flags[0].status = 'dismissed'");
+    ok('a dismissed flag stops blocking', ev('computeProgressStatus()').tier === 'rapid');
+
+    // --- nothing below accel reaches the gate at all ---
+    ev('S.logs = []; S.weights = []; S.prHistory = [];');
+    ok('an empty state has no tier at all', ev('computeProgressStatus()').tier === null);
+
+    // --- the cards ---
+    ptSeed();
+    let card = ev('nextLevelCardHTML(computeProgressStatus())');
+    ok('the RAPID card says excelling', card.indexOf('excelling') >= 0, card.slice(0, 160));
+    ok('the RAPID card names the tier', card.indexOf('RAPID PROGRESS') >= 0);
+    ok('the RAPID card is not the ACCELERATED card', card.indexOf('ACCELERATED') === -1);
+    ok('the RAPID card quotes the lift that beat its cap', card.indexOf('120% of its cap rate') >= 0,
+      card.slice(0, 400));
+
+    ptSeed({ pr: null });
+    card = ev('nextLevelCardHTML(computeProgressStatus())');
+    ok('the ACCELERATED card keeps its own copy', card.indexOf('doing everything right') >= 0);
+    ok('...and still says the job is consistency', card.indexOf('The job now is consistency') >= 0);
+    ok('...and appends what is still blocking RAPID', card.indexOf('Still between you and RAPID') >= 0);
+    ok('...naming the check that actually failed', card.indexOf('No PR on any lift') >= 0);
+    // A cleared gate must drop the footer entirely rather than render an empty heading.
+    ptSeed();
+    card = ev('nextLevelCardHTML(computeProgressStatus())');
+    ok('a cleared gate renders no blocking footer', card.indexOf('Still between you and RAPID') === -1);
+
+    // --- the step bar ---
+    // jsdom has no layout engine, so this asserts which steps the renderer chose to fill,
+    // not how wide they came out. Widths have to be eyeballed in a real browser.
+    let bar = ev('progressStatusCardHTML(computeProgressStatus())');
+    ok('the step bar draws one step per tier', ptCount(bar, 'ptier-seg') === 5,
+      String(ptCount(bar, 'ptier-seg')));
+    ok('the step bar marks exactly one current step', ptCount(bar, 'ptier-seg cur') === 1);
+    ok('at RAPID the bar reads step 5 of 5', bar.indexOf('Step 5 of 5') >= 0);
+    ok('the bar carries a screen-reader label', bar.indexOf('role="img"') >= 0);
+    // Filled steps carry their own tier token inline; unreached ones carry none and fall
+    // back to the flat CSS background.
+    ok('every step up to the current one is filled', ptCount(bar, 'background:var(--tier-') === 5,
+      String(ptCount(bar, 'background:var(--tier-')));
+    ptSeed({ pr: null });
+    bar = ev('progressStatusCardHTML(computeProgressStatus())');
+    ok('at ACCELERATED the bar reads step 4 of 5', bar.indexOf('Step 4 of 5') >= 0);
+    ok('...and leaves the last step unfilled', ptCount(bar, 'background:var(--tier-') === 4,
+      String(ptCount(bar, 'background:var(--tier-')));
+    ok('...and still marks exactly one current step', ptCount(bar, 'ptier-seg cur') === 1);
+
+    // --- cleanup ---
+    const ptSaved = JSON.parse(savedPT);
+    ev('S.logs = ' + JSON.stringify(ptSaved.logs) + '; S.weights = ' + JSON.stringify(ptSaved.weights) +
+       '; S.prHistory = ' + JSON.stringify(ptSaved.prHistory) + '; S.invest = ' + JSON.stringify(ptSaved.invest) +
+       '; S.schedule = ' + JSON.stringify(ptSaved.schedule) + ';');
+    ok('cleanup: real logs restored', ev('JSON.stringify(S.logs)') === JSON.stringify(ptSaved.logs));
+    ok('cleanup: real bodyweight restored', ev('JSON.stringify(S.weights)') === JSON.stringify(ptSaved.weights));
+    ok('cleanup: real schedule restored', ev('JSON.stringify(S.schedule)') === JSON.stringify(ptSaved.schedule));
+  } catch (e) {
+    ok('progress tier section', false, e.message);
+    const ptSaved = JSON.parse(savedPT);
+    ev('S.logs = ' + JSON.stringify(ptSaved.logs) + '; S.weights = ' + JSON.stringify(ptSaved.weights) +
+       '; S.prHistory = ' + JSON.stringify(ptSaved.prHistory) + '; S.invest = ' + JSON.stringify(ptSaved.invest) +
+       '; S.schedule = ' + JSON.stringify(ptSaved.schedule) + ';');
   }
 
   console.log('=== RENDER ===');

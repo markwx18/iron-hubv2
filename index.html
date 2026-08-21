@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-20-v1">
+<meta name="ironhub-build" content="2026-08-20-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,6 +22,10 @@
     --violet:#B79BFF; --violet-dim:#4b3f78;
     --text:#EAEFF4; --muted:#8B94A1; --dim:#59626E;
     --good:#46CDBA; --warn:#F6862F; --bad:#E15842;
+    /* Progress-status ladder. One token per tier so the verdict label, the step bar and the
+       next-level card can never drift apart the way the two colour maps here used to. */
+    --tier-none:#d23b3b; --tier-slow:#dfae36; --tier-prog:#3da25f;
+    --tier-accel:#2f6fd0; --tier-rapid:var(--violet);
     --glow:rgba(246,134,47,.20);
     --disp:'Saira Condensed',sans-serif; --body:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
     --accent:var(--amber); --d1:#d23b3b; --d2:#2f6fd0; --d3:#dfae36; --d4:#3da25f; --d5:#e9e7e2; --d6:#9aa0ab;
@@ -595,6 +599,15 @@
   .swap-score{font-size:11px; color:var(--dim); flex:none;}
   @media(max-width:360px){ .swap-score{display:none;} }
 
+  /* progress status tier ladder */
+  .ptier-bar{display:flex; align-items:flex-end; gap:4px; height:12px; margin:11px 0 3px;}
+  .ptier-seg{flex:1; height:6px; border-radius:2px; background:var(--line);}
+  /* The current step is the one the eye has to land on, so it carries height and a glow as
+     well as colour — read one-handed at arm's length mid-set, colour alone does not carry. */
+  .ptier-seg.cur{height:12px; box-shadow:0 0 9px -1px currentColor;}
+  .ptier-cap{font-family:var(--mono); font-size:9.5px; letter-spacing:.09em;
+    text-transform:uppercase; color:var(--dim);}
+
   /* overload status tab */
   .ol-row{display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line);}
   .ol-row:first-of-type{border-top:none;}
@@ -837,6 +850,49 @@
     .ag-prop{padding:10px 9px}
     .ag-st{font-size:9.5px}
   }
+
+  /* ---------- 3D muscle viewer (Progress tab only) ---------- */
+  .bm3d{
+    position:relative; margin:2px 0 0; border:1px solid var(--line); border-radius:4px;
+    background:var(--base); overflow:hidden; height:300px;
+    /* holds its box before three.js arrives so the card never jumps on load */
+    /* on a wide screen a full-width stage strands the figure in empty space */
+    max-width:460px; margin-inline:auto;
+  }
+  .bm3d canvas{display:block; width:100%; height:100%; touch-action:none; cursor:grab;}
+  .bm3d canvas:active{cursor:grabbing;}
+  .bm3d::before{
+    content:"Loading viewer\2026"; position:absolute; inset:0; display:flex;
+    align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:10px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--dim); pointer-events:none;
+  }
+  .bm3d.ready::before{content:none;}
+  .bm3d-badge,.bm3d-hint{
+    position:absolute; font-family:var(--mono); font-size:9px; letter-spacing:.12em;
+    text-transform:uppercase; pointer-events:none; opacity:0; transition:opacity .3s;
+  }
+  .bm3d.ready .bm3d-badge,.bm3d.ready .bm3d-hint{opacity:1;}
+  .bm3d-badge{right:9px; top:9px; color:var(--amber); border:1px solid var(--amber-dim); padding:2px 7px; border-radius:3px;}
+  .bm3d-hint{left:10px; bottom:9px; color:var(--dim);}
+  @media(max-width:400px){ .bm3d{height:270px;} }
+
+  /* ---------- narrow-screen (320px) fixes ---------- */
+  /* Two 150px bodies plus an 18px gap need 318px; a 320px phone offers about
+     256px inside the card, so the page scrolled sideways on the LIVE idle
+     screen. Let them shrink instead of forcing the width. */
+  .bm-bodies{gap:12px;}
+  .bm-bwrap{flex:0 1 150px; min-width:0;}
+  .bm-bodies svg{width:100%; height:auto; display:block;}
+
+  /* Grid items default to min-width:auto, so a 4-up stat row refuses to
+     shrink below its content and pushes the page wider than the viewport. */
+  .an-stat{min-width:0;}
+  @media(max-width:360px){ .an-stats{grid-template-columns:repeat(2,1fr);} }
+
+  /* The screenshot-import file input was never styled, so it sat at the UA's
+     intrinsic width and pushed the Log tab past the viewport on a small phone. */
+  input[type=file]{width:100%; max-width:100%; min-width:0; font-size:12px; color:var(--muted);}
 </style>
 
 
@@ -1021,7 +1077,7 @@ const DEFAULT_STATE = {
   fuel: {likes:'', dislikes:'eggs, cup yogurt, rice, cottage cheese', limits:'', calTarget:3000, proTarget:150, meals:null},
   audit: {weekStart:'', proposals:null, status:''},  // weak-group reinforcement
   settings: {apiKey:'', repLow:8, repHigh:12, ghToken:'', gistId:'', autoSync:true},
-  meta: {changedAt:0, lastSync:0}
+  meta: {changedAt:0, lastSync:0, pushedAt:0}
 };
 let S = load();
 function load(){
@@ -2183,14 +2239,20 @@ function linreg(pts){
   return {slope:num/den, intercept:my-(num/den)*mx, x0};
 }
 /* ================= PROGRESS STATUS (rule-based composite) ================= */
+/* The ladder, low to high. This array is the single source of truth for tier order, labels
+   and colours — TIER_ORDER/TIER_LABELS/TIER_COLS below are derived from it. They used to be
+   hand-maintained duplicates and had already drifted (accel was blue in one and violet in
+   the other), which a step bar drawn from one map beside a label drawn from the other would
+   have put side by side in the same card. */
 const PSTATUS_TIERS = [
-  {key:'none',   label:'Not Making Progress', col:'#d23b3b'},
-  {key:'slow',   label:'Slow Progress',       col:'#dfae36'},
-  {key:'prog',   label:'Progress',            col:'#3da25f'},
-  {key:'accel',  label:'Accelerated Progress',col:'#2f6fd0'}
+  {key:'none',   label:'Not Making Progress',  col:'var(--tier-none)'},
+  {key:'slow',   label:'Slow Progress',        col:'var(--tier-slow)'},
+  {key:'prog',   label:'Steady Progress',      col:'var(--tier-prog)'},
+  {key:'accel',  label:'Accelerated Progress', col:'var(--tier-accel)'},
+  {key:'rapid',  label:'RAPID PROGRESS',       col:'var(--tier-rapid)'}
 ];
 function strengthScore(){
-  const scores = []; const notes = [];
+  const scores = []; const notes = []; const ratios = [];
   for(const lift in PR_LIFTS){
     const cfg = PR_LIFTS[lift];
     const pts = e1rmSeries(lift);
@@ -2199,6 +2261,9 @@ function strengthScore(){
     if(!reg){ continue; }
     let slopeWk = reg.slope*7;
     const ratio = slopeWk / cfg.capPerWeek; // negative/zero if flat or declining
+    // Kept raw as well as bucketed: the 0-3 bucket cannot tell "just reached the cap" from
+    // "well past it", and that distinction is exactly what rapidProgressGate() needs.
+    ratios.push({lift, ratio, perWeek:slopeWk, cap:cfg.capPerWeek});
     let pts3;
     if(ratio <= 0)      { pts3 = 0; notes.push(lift.split(' ').slice(-1)[0]+' flat/declining'); }
     else if(ratio < 0.3){ pts3 = 1; notes.push(lift.split(' ').slice(-1)[0]+' creeping up slowly'); }
@@ -2206,9 +2271,9 @@ function strengthScore(){
     else                { pts3 = 3; notes.push(lift.split(' ').slice(-1)[0]+' climbing fast'); }
     scores.push(pts3);
   }
-  if(!scores.length) return {available:false};
+  if(!scores.length) return {available:false, ratios};
   const avg = scores.reduce((a,b)=>a+b,0)/scores.length;
-  return {available:true, score:avg/3, notes}; // normalize 0-1
+  return {available:true, score:avg/3, notes, ratios}; // normalize 0-1
 }
 function consistencyScore(){
   const scheduled = Object.values(S.schedule).filter(v=>v!=='REST').length; // out of 7 weekday slots
@@ -2243,6 +2308,61 @@ function bulkScore(){
   else { score=0.4; note='gaining quite fast \u2014 likely some fat with it'; }
   return {available:true, score, note, rate};
 }
+/* ---- the RAPID gate ----
+   RAPID is not "a higher blended score", and it cannot be. Every component here caps at 1.0
+   by design — bulkScore() actually scores *down* past 1.0 lb/wk — so the blend physically
+   cannot climb above what Accelerated already reaches. The top tier is therefore a separate
+   gate, checked only once the blend has already earned Accelerated, and read from signals
+   the 0-1 buckets throw away plus two the composite never looked at at all. That is what
+   makes it mean "provably outperforming" rather than "scored well on three averages".
+
+   Every check is evidence of a thing having happened, not of a number looking good:
+   a lift measurably past its cap rate, gain that is going to the bar rather than the scale,
+   a PR that actually landed, and nothing the app itself is already flagging.
+
+   Returns the unmet checks alongside the verdict — the Accelerated card lists them, so the
+   top tier is never a locked door with no handle on it. */
+const RAPID_OUTPERFORM = 1.15;  // share of a lift's capPerWeek that counts as beating it, not merely meeting it
+const RAPID_PR_DAYS = 21;
+function rapidProgressGate(st){
+  const unmet = [];
+  // 1. A main lift genuinely past its cap rate. strengthScore() buckets everything from 0.9x
+  //    upward into the same top score, so "just reached the cap" and "well past it" are
+  //    invisible to the blend; this reads the raw ratio back out.
+  const ratios = (st && st.ratios) || [];
+  const best = ratios.reduce((a,r)=> (!a || r.ratio > a.ratio) ? r : a, null);
+  if(!best || best.ratio < RAPID_OUTPERFORM){
+    unmet.push('No main lift is past its cap rate yet'+
+      (best && best.ratio > 0
+        ? ' \u2014 best is '+best.lift+' at '+Math.round(best.ratio*100)+'% of cap, and RAPID wants '+Math.round(RAPID_OUTPERFORM*100)+'%'
+        : '')+'.');
+  }
+  // 2. Bulk *quality*, not just an acceptable scale rate. bulkScore() only asks whether the
+  //    scale is moving at a sane speed; this asks where the gain is going. A try/catch because
+  //    anBulkQuality() fits regressions over the whole log — if it ever throws, RAPID is
+  //    withheld (the cautious direction) rather than the tab breaking.
+  let bq = null;
+  try { bq = (typeof anBulkQuality==='function') ? anBulkQuality() : null; } catch(e){ bq = null; }
+  if(!bq || !bq.ok){
+    unmet.push('Not enough bodyweight and lift history in the window to judge bulk quality yet.');
+  } else if(bq.key!=='strong' && bq.key!=='good'){
+    const lab = (typeof AN_BQ_VERDICTS!=='undefined' && AN_BQ_VERDICTS[bq.key]) ? AN_BQ_VERDICTS[bq.key].label.toLowerCase() : bq.key;
+    unmet.push('Bulk quality over the last '+bq.weeks+' weeks: '+lab+'. RAPID wants strength climbing faster than the scale.');
+  }
+  // 3. A PR that actually landed. A favourable regression slope can be produced by a run of
+  //    good-but-not-best sessions; a PR row cannot be.
+  const prCut = dateKeyOf(new Date(Date.now()-RAPID_PR_DAYS*86400000));
+  if(!(Array.isArray(S.prHistory) && S.prHistory.some(p=>p && p.date >= prCut)))
+    unmet.push('No PR on any lift in the last '+RAPID_PR_DAYS+' days.');
+  // 4. Nothing the app is already calling out. Strong averages must not paper over a lift
+  //    Overload Status has flagged, or this tab would contradict that one.
+  let flagged = [];
+  try { if(typeof olSignals==='function') flagged = olSignals().filter(x=>x.verdict==='attention'); } catch(e){ flagged = [{lift:'\u2014'}]; }
+  if(flagged.length)
+    unmet.push(flagged.length+' lift'+(flagged.length>1?'s':'')+' still needing attention in Overload Status: '+
+      flagged.slice(0,3).map(x=>x.lift).join(', ')+'.');
+  return {pass: unmet.length===0, unmet, best, bq};
+}
 function computeProgressStatus(){
   if(S.logs.length===0 && S.weights.length===0) return {tier:null, st:{available:false}, co:{available:false}, bu:{available:false}};
   const st = strengthScore(), co = consistencyScore(), bu = bulkScore();
@@ -2258,10 +2378,31 @@ function computeProgressStatus(){
   else if(blended < 0.45) tier='slow';
   else if(blended < 0.75) tier='prog';
   else tier='accel';
-  return {tier, blended, st, co, bu};
+  // RAPID sits on top of Accelerated rather than further up the same scale — see
+  // rapidProgressGate(). Only evaluated at accel, which also keeps its two extra passes
+  // over the log off every render at the lower tiers.
+  let rapid = null;
+  if(tier==='accel'){ rapid = rapidProgressGate(st); if(rapid.pass) tier='rapid'; }
+  return {tier, blended, st, co, bu, rapid};
 }
-function progressStatusCardHTML(){
-  const r = computeProgressStatus();
+/* The five-step ladder under the verdict. Each filled step wears its own tier's colour
+   rather than one gradient, so the ladder reads as five named places and not as a fuel
+   gauge; the step he is on is the tall, lit one. */
+function tierBarHTML(tier){
+  const i = TIER_ORDER.indexOf(tier);
+  const segs = PSTATUS_TIERS.map((t,n)=>
+    '<span class="ptier-seg'+(n===i?' cur':'')+'"'+
+    (n<=i ? ' style="background:'+t.col+';color:'+t.col+'"' : '')+
+    ' title="'+esc(t.label)+'"></span>').join('');
+  const cap = 'Step '+(i+1)+' of '+PSTATUS_TIERS.length+' \u2014 '+(PSTATUS_TIERS[i] ? PSTATUS_TIERS[i].label : '');
+  return '<div class="ptier-bar" role="img" aria-label="'+esc(cap)+'">'+segs+'</div>'+
+         '<div class="ptier-cap">'+esc(cap)+'</div>';
+}
+/* Takes an optional pre-computed status so the Progress tab can build both cards from one
+   pass — computeProgressStatus() now reaches into anBulkQuality() and olSignals() at the top
+   tier, and running that twice per repaint is real work for an identical answer. */
+function progressStatusCardHTML(pre){
+  const r = pre || computeProgressStatus();
   if(!r.tier){
     return '<div class="card"><p class="small">Not enough data yet for a progress verdict \u2014 log a few sessions (ideally with bench or squat) and this will populate.</p></div>';
   }
@@ -2269,7 +2410,7 @@ function progressStatusCardHTML(){
   let h = '<div class="card" style="border-left:4px solid '+t.col+'">'+
     '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
     '<b style="color:'+t.col+';font-size:15px;letter-spacing:.04em">'+t.label+'</b>'+
-    '</div><div class="stats" style="margin-top:10px">';
+    '</div>'+tierBarHTML(r.tier)+'<div class="stats" style="margin-top:10px">';
   h += '<div class="stat"><div class="v" style="color:'+(r.st.available?(r.st.score>=0.75?'var(--good)':r.st.score>=0.3?'var(--warn)':'var(--bad)'):'var(--dim)')+'">'+(r.st.available?Math.round(r.st.score*100)+'%':'\u2014')+'</div>'+
     '<div class="l">strength trend</div>'+(r.st.available?'<div class="s">'+esc(r.st.notes.join(', '))+'</div>':'<div class="s">no e1RM data yet</div>')+'</div>';
   h += '<div class="stat"><div class="v" style="color:'+(r.co.available?(r.co.score>=0.75?'var(--good)':r.co.score>=0.3?'var(--warn)':'var(--bad)'):'var(--dim)')+'">'+(r.co.available?r.co.distinctDays+'/'+r.co.expectedPerWeek:'\u2014')+'</div>'+
@@ -2281,16 +2422,36 @@ function progressStatusCardHTML(){
 }
 
 /* ================= NEXT LEVEL CARD ================= */
-const TIER_ORDER = ['none','slow','prog','accel'];
-const TIER_LABELS = {none:'Not Making Progress', slow:'Slow Progress', prog:'Progress', accel:'Accelerated Progress'};
-const TIER_COLS   = {none:'var(--bad)', slow:'var(--warn)', prog:'var(--good)', accel:'#7b6ef6'};
-function nextLevelCardHTML(){
-  const r = computeProgressStatus();
+// Derived, never hand-listed — see the note on PSTATUS_TIERS about the two maps drifting apart.
+const TIER_ORDER  = PSTATUS_TIERS.map(t=>t.key);
+const TIER_LABELS = PSTATUS_TIERS.reduce((m,t)=>{ m[t.key]=t.label; return m; },{});
+const TIER_COLS   = PSTATUS_TIERS.reduce((m,t)=>{ m[t.key]=t.col; return m; },{});
+function nextLevelCardHTML(pre){
+  const r = pre || computeProgressStatus();
   if(!r.tier) return '';
+  if(r.tier==='rapid'){
+    const c = TIER_COLS.rapid, b = r.rapid && r.rapid.best;
+    return '<div class="card" style="border-left:4px solid '+c+'">'+
+      '<b style="font-size:13px;letter-spacing:.05em;color:'+c+'">\u25c9 RAPID PROGRESS \u2014 You\u2019re excelling</b>'+
+      '<p class="small" style="margin-top:6px">Top of the ladder, and not on averages \u2014 you cleared all four checks: '+
+      (b ? 'your '+esc(b.lift)+' is running at '+Math.round(b.ratio*100)+'% of its cap rate' : 'a main lift is past its cap rate')+
+      ', the gain is going to the bar rather than the scale, a PR landed inside the last '+RAPID_PR_DAYS+' days, and nothing is flagged for attention.</p>'+
+      '<p class="small" style="margin-top:6px">Treat this as a window, not a new baseline \u2014 nobody outruns their cap rate indefinitely. Bank it: leave the food and the sleep exactly where they are, resist adding volume just because it\u2019s working, and let it run until the numbers say otherwise.</p></div>';
+  }
   if(r.tier==='accel'){
-    return '<div class="card" style="border-left:4px solid #7b6ef6">'+
-      '<b style="font-size:13px;letter-spacing:.05em;color:#7b6ef6">\u26a1 ACCELERATED \u2014 You\u2019re doing everything right</b>'+
-      '<p class="small" style="margin-top:6px">Strength is climbing, you\u2019re hitting sessions, and the scale is moving at the right rate. The job now is consistency \u2014 don\u2019t change what\u2019s working, just keep showing up and eating.</p></div>';
+    const c = TIER_COLS.accel, un = (r.rapid && r.rapid.unmet) || [];
+    let h = '<div class="card" style="border-left:4px solid '+c+'">'+
+      '<b style="font-size:13px;letter-spacing:.05em;color:'+c+'">\u26a1 ACCELERATED \u2014 You\u2019re doing everything right</b>'+
+      '<p class="small" style="margin-top:6px">Strength is climbing, you\u2019re hitting sessions, and the scale is moving at the right rate. The job now is consistency \u2014 don\u2019t change what\u2019s working, just keep showing up and eating.</p>';
+    // Accelerated is the "nothing to fix" card, so the RAPID checks go underneath as a
+    // footnote rather than as advice. The tier above should be visible from here, but not at
+    // the cost of turning a card that says "you are doing everything right" into a to-do list.
+    if(un.length){
+      h += '<div style="margin-top:9px;padding-top:8px;border-top:1px solid var(--line)">'+
+        '<div class="small" style="color:'+TIER_COLS.rapid+';font-weight:700">\u25b8 Still between you and RAPID PROGRESS</div>'+
+        un.map(u=>'<div class="small" style="padding:3px 0 0;color:var(--muted)">'+esc(u)+'</div>').join('')+'</div>';
+    }
+    return h+'</div>';
   }
   const nextTier = TIER_ORDER[TIER_ORDER.indexOf(r.tier)+1];
   const nextLabel = TIER_LABELS[nextTier];
@@ -2456,7 +2617,8 @@ function projectionCardHTML(){
 
 function renderProgress(){
   const el = $('#progress');
-  let html = '<h2>Overall Verdict</h2>' + progressStatusCardHTML() + nextLevelCardHTML();
+  const ps = computeProgressStatus();
+  let html = '<h2>Overall Verdict</h2>' + progressStatusCardHTML(ps) + nextLevelCardHTML(ps);
   html += heatmapHTML();
   html += '<h2>Trajectory \u2014 Where You\u2019re Headed</h2>' + projectionCardHTML();
   for(const lift in PR_LIFTS){
@@ -2935,8 +3097,17 @@ async function syncPush(manual){
     // (exportedAt > changedAt) reads our own push as "newer than us" and bgSyncTick
     // re-applies it a minute later — reverting anything written with save(false) since.
     // Math.max, not assignment: an edit made during the await must stay the newer side.
-    S.meta = S.meta || {changedAt:0,lastSync:0};
+    S.meta = S.meta || {changedAt:0,lastSync:0,pushedAt:0};
     S.meta.changedAt = Math.max(S.meta.changedAt||0, _lastPushExportedAt);
+    // Confirms everything up through this push is now on the gist. Boot checks this watermark
+    // to catch up a push that never fired (see BOOT below) — without it, finishing a workout
+    // and backgrounding the tab before the 2.5s debounce in schedulePush() completes silently
+    // strands that session in localStorage forever, invisible to every other device.
+    // Uses the same _lastPushExportedAt as changedAt above (not the older changedAt this
+    // snapshot carried) so the two stay equal in the common case with nothing concurrently
+    // edited during the await — if they diverge, that gap IS a genuine edit made while this
+    // push was in flight, which really is still unpushed and must stay flagged as such.
+    S.meta.pushedAt = Math.max(S.meta.pushedAt||0, _lastPushExportedAt);
     markSynced();
     if(manual) setSyncMsg('\u2713 Pushed to cloud at '+new Date().toLocaleTimeString());
   }catch(e){ if(manual) setSyncMsg(e.message, true); }
@@ -2988,6 +3159,9 @@ function applyPulled(d, exportedAt){
   // investigation flag vanish about a minute after it appeared. A genuinely newer push
   // from another device carries a larger exportedAt, so real updates still land.
   if(exportedAt) S.meta.changedAt = Math.max(S.meta.changedAt, exportedAt);
+  // We just consumed this exact snapshot, so treat it as pushed too — otherwise the boot
+  // catch-up push (see BOOT) fires needlessly on every pull, re-uploading what we only just downloaded.
+  S.meta.pushedAt = S.meta.changedAt;
   if(localAgents){
     const a = agState();
     if((localAgents.lastRun||'') > (a.lastRun||'')) a.lastRun = localAgents.lastRun;
@@ -3023,9 +3197,40 @@ function schedulePush(){
   clearTimeout(_pushTimer);
   _pushTimer = setTimeout(()=>syncPush(false), 2500);
 }
+// A backgrounded/closed tab can lose the 2.5s debounce above entirely — iOS suspends or
+// kills the page before the timer fires, which is exactly what happens when a workout is
+// finished and the phone gets locked right after. Nothing previously retried that push (see
+// the BOOT catch-up below for the other half of this fix). Flushing on hide gives the fetch a
+// chance to land while the tab is still alive in the background, instead of a timer that may
+// never get to run.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden' && _pushTimer){
+    clearTimeout(_pushTimer); _pushTimer=null;
+    syncPush(false);
+  }
+});
+// Push any local edit that hasn't been confirmed on the gist yet, before this device does
+// anything that could discard it. Two ways that matters:
+//  - A debounced push (schedulePush(), 2.5s after save()) can be lost entirely if the tab was
+//    backgrounded or killed before the timer fired — finishing a workout, then locking the
+//    phone, is exactly that. Nothing else retries it, so call this at BOOT.
+//  - Every pull (applyPulled() replaces S wholesale) too: a snapshot's exportedAt is stamped
+//    at PUSH time, not edit time, so a stale-but-just-pushed snapshot from another device can
+//    carry a fresher timestamp than this device's own older, unpushed, and more complete
+//    local edit — a Push Now from a device that never had today's session, done after today's
+//    session was logged elsewhere, outraces and silently overwrites it. Pushing local first
+//    means that edit is safely on the gist before any incoming pull gets a chance to clobber
+//    it. If this throws (e.g. offline), the caller's pull is skipped this tick rather than
+//    risking a pull over data that was never confirmed safe.
+async function pushUnconfirmedChanges(){
+  if(syncReady() && S.settings.autoSync !== false && S.meta && (S.meta.changedAt||0) > (S.meta.pushedAt||0)){
+    await syncPush(false);
+  }
+}
 async function autoPullOnLoad(){
   if(!syncReady() || S.settings.autoSync === false) return;
   try{
+    await pushUnconfirmedChanges();
     const p = await fetchGistData();
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
       applyPulled(p.data, p.exportedAt);
@@ -4684,8 +4889,7 @@ function bmProgress(broad){
   if(!any) return 'off';
   if(improved) return 'green'; if(declined) return 'red'; return 'yellow';
 }
-function bmStatus(container, key){
-  const mode = bmState[container].mode;
+function bmStatusFor(mode, key){
   const broad = BM_TO_BROAD[key];
   if(!broad) return 'off';
   if(mode==='today'){
@@ -4703,6 +4907,27 @@ function bmStatus(container, key){
   if(mode==='progress'){ return bmProgress(broad); }
   return 'off';
 }
+function bmStatus(container, key){ return bmStatusFor(bmState[container].mode, key); }
+
+/* THE single source of truth for everything the muscle map shows, in either
+   renderer. Pure -- takes a mode, reads S, returns plain data. No DOM, no
+   canvas, no container. The 3D viewer and the 2D SVG both consume this, so
+   the two can never drift apart, and the numbers behind the colouring stay
+   testable in jsdom where WebGL does not exist. */
+function bmViewerData(mode){
+  return BM_GROUPS.map(function(key){
+    const broad = BM_TO_BROAD[key];
+    return {
+      key: key,
+      label: BM_LABELS[key],
+      broad: broad,
+      status: bmStatusFor(mode, key),
+      volume: bmWeeklyVol(broad),        // weekly sets: primary 1.0, secondary 0.5
+      daysSince: bmTrainedDays(broad),   // Infinity when never trained
+      exercises: bmExercisesFor(key)
+    };
+  });
+}
 function bmExercisesFor(key){
   const broad = BM_TO_BROAD[key];
   if(!broad) return [];
@@ -4716,12 +4941,20 @@ function bmExercisesFor(key){
   inSplit.sort((a,b)=>(b.pri-a.pri)).forEach(o=>{ if(!seen.has(o.nm)){seen.add(o.nm); uniq.push(o.nm);} });
   return uniq.slice(0,4);
 }
+/* Only the Progress card gets the 3D viewer. The LIVE idle screen keeps the
+   flat SVG on purpose: it is what he sees on the way into a session, and it
+   must paint without waiting on a CDN fetch or a GPU context. */
+function bmUses3D(container){ return container === 'progress'; }
+function bmBodies2DHTML(container){
+  return '<div class="bm-bodies"><div class="bm-bwrap"><div class="bm-blabel">Anterior</div><svg id="bmfront-'+container+'" width="150" viewBox="0 0 100 230" role="img"><title>Anterior</title></svg></div>'+
+         '<div class="bm-bwrap"><div class="bm-blabel">Posterior</div><svg id="bmback-'+container+'" width="150" viewBox="0 0 100 230" role="img"><title>Posterior</title></svg></div></div>';
+}
 function bodyMapCardHTML(container){
   return '<div class="bodymap-card" id="bmcard-'+container+'"><h2 style="margin-top:0">Muscle map</h2>'+ bodyMapInner('weekly', container) +'</div>';
 }
 function bodyMapInner(mode, container){
   container = container||'live';
-  bmState[container] = {mode:mode, selected:null};
+  bmState[container] = {mode:mode, selected:null, three:bmUses3D(container)};
   const modes = container==='live'
     ? [['today','Today']]
     : [['weekly','Weekly volume'],['today','Today'],['recovery','Recovery'],['progress','Progress']];
@@ -4729,15 +4962,25 @@ function bodyMapInner(mode, container){
   if(modes.length>1){
     h += '<div class="bm-modes" id="bmmodes-'+container+'">'+modes.map(m=>'<button class="'+(m[0]===mode?'on':'')+'" data-m="'+m[0]+'" onclick="bmSetMode(\''+container+'\',\''+m[0]+'\')">'+m[1]+'</button>').join('')+'</div>';
   }
-  h += '<div class="bm-bodies"><div class="bm-bwrap"><div class="bm-blabel">Anterior</div><svg id="bmfront-'+container+'" width="150" viewBox="0 0 100 230" role="img"><title>Anterior</title></svg></div>'+
-       '<div class="bm-bwrap"><div class="bm-blabel">Posterior</div><svg id="bmback-'+container+'" width="150" viewBox="0 0 100 230" role="img"><title>Posterior</title></svg></div></div>';
+  h += bmUses3D(container)
+     ? '<div class="bm3d" id="bm3dwrap-'+container+'"><canvas id="bm3dcv-'+container+'" aria-label="Rotatable muscle map"></canvas>'+
+       '<span class="bm3d-badge">Drag to rotate</span><span class="bm3d-hint">16 muscle groups</span></div>'
+     : bmBodies2DHTML(container);
   h += '<div class="bm-tip" id="bmtip-'+container+'">Tap a muscle for top exercises</div>';
   h += '<div class="bm-excard" id="bmex-'+container+'"><div class="t"><span id="bmext-'+container+'"></span><button onclick="bmCloseCard(\''+container+'\')" style="background:none;border:none;color:var(--dim);font-size:17px;cursor:pointer">×</button></div><div id="bmexlist-'+container+'"></div></div>';
   h += '<div class="bm-legend"><span><span class="bm-sw" style="background:#3a9e6e"></span>Progressing</span><span><span class="bm-sw" style="background:#c9952a"></span>Maintaining</span><span><span class="bm-sw" style="background:#c04040"></span>Neglected</span><span><span class="bm-sw" style="background:#39424e"></span>Not trained</span></div>';
   return h;
 }
-function initBodyMap(container){ bmRender(container); }
-function bmSetMode(container, m){ bmState[container].mode=m; document.querySelectorAll('#bmmodes-'+container+' button').forEach(b=>b.classList.toggle('on',b.dataset.m===m)); bmRender(container); if(bmState[container].selected) bmShowCard(container, bmState[container].selected); }
+function initBodyMap(container){
+  if(bmUses3D(container)){ bm3dInit(container); return; }   // falls back to bmRender on its own
+  bmRender(container);
+}
+function bmSetMode(container, m){
+  bmState[container].mode=m;
+  document.querySelectorAll('#bmmodes-'+container+' button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+  if(bmState[container].three) bm3dApply(container); else bmRender(container);
+  if(bmState[container].selected) bmShowCard(container, bmState[container].selected);
+}
 
 function bmGrp(container,id,paths){
   return '<g class="bm-mgrp" data-key="'+id+'" onmouseenter="bmHover(\''+container+'\',\''+id+'\')" onmouseleave="bmClearHover(\''+container+'\')" onclick="bmClickMuscle(\''+container+'\',\''+id+'\')">'+paths+'</g>';
@@ -4801,7 +5044,284 @@ function bmShowCard(container,k){
   document.getElementById('bmex-'+container).classList.add('show');
 }
 function bmCloseCard(container){ bmState[container].selected=null; document.getElementById('bmex-'+container).classList.remove('show'); bmHighlight(container); bmClearHover(container); }
-function bmHighlight(container){ const sel=bmState[container].selected; document.querySelectorAll('#bmfront-'+container+' .bm-mgrp, #bmback-'+container+' .bm-mgrp').forEach(g=>{ g.style.filter=(!sel||g.dataset.key===sel)?'':'brightness(.45)'; }); }
+function bmHighlight(container){
+  if(bmState[container] && bmState[container].three){ bm3dApply(container); return; }
+  const sel=bmState[container].selected;
+  document.querySelectorAll('#bmfront-'+container+' .bm-mgrp, #bmback-'+container+' .bm-mgrp').forEach(g=>{ g.style.filter=(!sel||g.dataset.key===sel)?'':'brightness(.45)'; });
+}
+
+/* ===================== 3D MUSCLE VIEWER =====================
+   Progress tab only. The LIVE idle screen deliberately keeps the flat SVG:
+   it is the front door on a training day and must not wait on a CDN or a
+   GPU context before it paints.
+
+   three.js is pinned and pulled at runtime the same way the fonts are -- no
+   build step, no bundler. It is imported lazily on first view of this card,
+   so app boot never pays for it, and the browser HTTP-caches it afterwards.
+
+   Every failure path lands on the 2D renderer: no WebGL, no network, a CDN
+   outage, a captive-portal gym wifi. The tab degrades, it never breaks.
+
+   Colour and grouping come from bmViewerData() -- the same call the SVG
+   makes -- so the two renderers cannot disagree about what a muscle's
+   status is. Colours below match BM_C exactly, so the 2D and 3D pictures
+   read as the same picture, just from a different angle. */
+const BM3D_SRC = 'https://unpkg.com/three@0.160.1/build/three.module.min.js';
+let bm3dMod = null, bm3dLoading = null;
+const bm3d = {};   // container -> live scene handle
+
+function bm3dLoad(){
+  if(bm3dMod) return Promise.resolve(bm3dMod);
+  if(!bm3dLoading){
+    bm3dLoading = import(BM3D_SRC).then(function(m){ bm3dMod = m; return m; });
+    bm3dLoading.catch(function(){ bm3dLoading = null; });   // let a later visit retry
+  }
+  return bm3dLoading;
+}
+function bm3dSupported(){
+  try{
+    if(typeof document==='undefined') return false;
+    const c = document.createElement('canvas');
+    return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl')));
+  }catch(e){ return false; }
+}
+
+/* Stylised anatomy. Ellipsoid "plates" sit proud of a neutral mannequin -- the
+   same idea as the SVG's coloured shapes over a grey body, which is why the
+   two read as the same picture. [key, x, y, z, sx, sy, sz, paired] */
+const BM3D_PLATES = [
+  ['chest',       8,  52,  8.5, 7.5,  7,   3.0, 1],
+  ['abs',         0,  33,  7.6, 6.0,  8,   2.6, 0],
+  ['obliques',   10,  32,  5.5, 3.0,  7,   2.6, 1],
+  ['frontDelts', 18,  56,  3.2, 4.8,  4.6, 4.4, 1],
+  ['sideDelts',  21.5,55,  0.0, 3.8,  5.0, 5.0, 1],
+  ['rearDelts',  18,  56, -3.2, 4.8,  4.6, 4.4, 1],
+  ['traps',       0,  59, -4.5, 8.5,  4.5, 3.0, 0],
+  ['lats',       11,  46, -8.0, 5.0, 10,   3.0, 1],
+  ['lowerBack',   0,  33, -7.6, 7.0,  6,   2.6, 0],
+  ['biceps',     22,  48,  3.6, 3.6,  7,   2.6, 1],
+  ['triceps',    22,  48, -3.6, 3.6,  7,   2.6, 1],
+  ['forearms',   24.5,26,  3.2, 3.2,  7,   2.4, 1],
+  ['glutes',      7,  16, -7.5, 6.0,  5,   3.0, 1],
+  ['quads',       8.5,-6,  5.5, 5.0, 10,   2.8, 1],
+  ['hamstrings',  8.5,-6, -5.5, 5.0, 10,   2.8, 1],
+  ['calves',      8.5,-33,-4.5, 4.0,  8,   2.6, 1]
+];
+/* [kind, x, y, z, a, b, c, paired] -- sphere scales, or capsule radius/length */
+const BM3D_BODY = [
+  ['sphere',   0,  72, 0,   7.5,  9,  8.5, 0],  // head -- sat low; a gap here reads as a bobblehead
+  ['capsule',  0,  63, 0,   5.0,  5,  0,   0],  // neck
+  ['sphere',   0,  49, 0,  16,   13.5,9.5, 0],  // chest cage
+  ['sphere',   0,  31, 0,  12.5, 10,  8.5, 0],  // waist
+  ['sphere',   0,  16, 0,  14,    9.5,9,   0],  // pelvis
+  ['capsule', 22,  47, 0,   4.6, 16,  0,   1],  // upper arm -- clear of the ribcage
+  ['capsule', 24.5,26, 1,   4.0, 15,  0,   1],  // forearm
+  ['sphere',  26,  14, 1,   3.4,  4.6,2.4, 1],  // hand
+  ['capsule',  8.5,-6, 0,   6.6, 20,  0,   1],  // thigh
+  ['capsule',  8.5,-33,0,   5.0, 20,  0,   1],  // shin
+  ['sphere',   8.5,-48,4,   5,    3,  9,   1]   // foot
+];
+
+/* Hardcoded, matching BM_C and bmRender's skin tone exactly -- there is only
+   one theme now, so there is nothing to read from CSS custom properties. */
+function bm3dColors(){
+  return { green:'#3a9e6e', yellow:'#c9952a', red:'#c04040', off:'#39424e', skin:'#2a3140' };
+}
+
+function bm3dInit(container){
+  const cv = document.getElementById('bm3dcv-'+container);
+  if(!cv) return;
+  if(!bm3dSupported()){ bm3dFallback(container, 'no-webgl'); return; }
+  bm3dLoad().then(function(THREE){
+    if(!document.getElementById('bm3dcv-'+container)) return;   // card went away mid-load
+    bm3dBuild(THREE, container);
+  }).catch(function(){
+    bm3dFallback(container, 'load-failed');
+  });
+}
+
+function bm3dBuild(THREE, container){
+  const cv = document.getElementById('bm3dcv-'+container);
+  const wrap = document.getElementById('bm3dwrap-'+container);
+  if(!cv || !wrap) return;
+  bm3dDispose(container);
+
+  const C = bm3dColors();
+  const renderer = new THREE.WebGLRenderer({canvas:cv, antialias:true, alpha:true});
+  renderer.setClearAlpha(0);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));   // phones lie about DPR; 2 is plenty
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 1, 600);
+  camera.position.set(0, 14, 205);
+  camera.lookAt(0, 14, 0);
+
+  scene.add(new THREE.HemisphereLight(0xdfeaf7, 0x121a26, 1.15));
+  const key = new THREE.DirectionalLight(0xffffff, 1.5);
+  key.position.set(40, 70, 90); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x8fb6ff, 0.55);
+  rim.position.set(-60, 20, -70); scene.add(rim);
+
+  const root = new THREE.Group();
+  scene.add(root);
+
+  const sphere = new THREE.SphereGeometry(1, 22, 16);
+  const skinMat = new THREE.MeshStandardMaterial({color:new THREE.Color(C.skin), roughness:.94, metalness:.02});
+  const geoms = [sphere], mats = [skinMat];
+
+  BM3D_BODY.forEach(function(p){
+    const sides = p[7] ? [-1, 1] : [0];
+    sides.forEach(function(s){
+      let mesh;
+      if(p[0]==='capsule'){
+        const g = new THREE.CapsuleGeometry(p[4], p[5], 4, 14);
+        geoms.push(g);
+        mesh = new THREE.Mesh(g, skinMat);
+      } else {
+        mesh = new THREE.Mesh(sphere, skinMat);
+        mesh.scale.set(p[4], p[5], p[6]);
+      }
+      mesh.position.set(s===0 ? p[1] : s*p[1], p[2], p[3]);
+      root.add(mesh);
+    });
+  });
+
+  // one material per muscle group, shared by its left/right meshes, so recolouring
+  // and selection dimming are a handful of colour writes rather than a rebuild
+  const groupMats = {}, picks = [];
+  BM3D_PLATES.forEach(function(p){
+    const m = new THREE.MeshStandardMaterial({color:0x888888, roughness:.62, metalness:.05,
+                                              emissive:new THREE.Color(0x000000), emissiveIntensity:.35});
+    groupMats[p[0]] = m; mats.push(m);
+    const sides = p[7] ? [-1, 1] : [0];
+    sides.forEach(function(s){
+      const mesh = new THREE.Mesh(sphere, m);
+      mesh.scale.set(p[4], p[5], p[6]);
+      mesh.position.set(s===0 ? p[1] : s*p[1], p[2], p[3]);
+      mesh.userData.bmKey = p[0];
+      root.add(mesh); picks.push(mesh);
+    });
+  });
+
+  const h = {THREE:THREE, renderer:renderer, scene:scene, camera:camera, root:root,
+             groupMats:groupMats, picks:picks, geoms:geoms, mats:mats,
+             yaw:-0.42, pitch:0.06, spin:0.0042, spun:0, visible:false, raf:null,
+             dragging:false, moved:0, lastX:0, lastY:0, disposed:false};
+  bm3d[container] = h;
+
+  function resize(){
+    const w = wrap.clientWidth || 320, hh = wrap.clientHeight || 300;
+    renderer.setSize(w, hh, false);
+    camera.aspect = w / hh; camera.updateProjectionMatrix();
+  }
+  function draw(){
+    root.rotation.y = h.yaw; root.rotation.x = h.pitch;
+    renderer.render(scene, camera);
+  }
+  function tick(){
+    if(!h.dragging && h.spin){
+      h.yaw += h.spin;
+      // An invitation, not an animation. It drifts for a few seconds so the card
+      // reads as rotatable, then holds still -- this is a data view, and a chart
+      // you have to chase with your eyes is a worse chart.
+      if(++h.spun > 420) h.spin = 0;
+    }
+    draw();
+    h.raf = (h.visible && h.spin && !h.disposed) ? requestAnimationFrame(tick) : null;
+  }
+  h.resize = resize; h.draw = draw; h.tick = tick;
+
+  cv.addEventListener('pointerdown', function(e){
+    h.dragging = true; h.moved = 0; h.lastX = e.clientX; h.lastY = e.clientY;
+    try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  cv.addEventListener('pointermove', function(e){
+    if(!h.dragging) return;
+    const dx = e.clientX - h.lastX, dy = e.clientY - h.lastY;
+    h.moved += Math.abs(dx) + Math.abs(dy);
+    h.yaw += dx * 0.011;
+    h.pitch = Math.max(-0.5, Math.min(0.5, h.pitch + dy * 0.006));
+    h.lastX = e.clientX; h.lastY = e.clientY;
+    // once he takes hold of it, stop the idle spin -- it should not fight him
+    h.spin = 0;
+    if(!h.raf) draw();
+  });
+  ['pointerup','pointercancel'].forEach(function(ev){
+    cv.addEventListener(ev, function(e){
+      if(!h.dragging) return;
+      h.dragging = false;
+      if(h.moved < 8) bm3dPick(container, e);   // a tap, not a drag
+    });
+  });
+
+  resize();
+  window.addEventListener('resize', function(){ if(!h.disposed){ resize(); draw(); } });
+  if('IntersectionObserver' in window){
+    h.io = new IntersectionObserver(function(en){
+      h.visible = en[0].isIntersecting;
+      if(h.visible && !h.raf && h.spin && !h.disposed) h.raf = requestAnimationFrame(tick);
+    }, {threshold:.05});
+    h.io.observe(cv);
+  } else { h.visible = true; h.raf = requestAnimationFrame(tick); }
+
+  wrap.classList.add('ready');
+  bm3dApply(container);
+}
+
+/* Recolour from bmViewerData() -- the same call the SVG renderer makes. */
+function bm3dApply(container){
+  const h = bm3d[container]; if(!h || h.disposed) return;
+  const C = bm3dColors();
+  const sel = bmState[container] && bmState[container].selected;
+  const data = bmViewerData(bmState[container].mode);
+  data.forEach(function(row){
+    const m = h.groupMats[row.key]; if(!m) return;
+    const dim = sel && sel !== row.key;
+    m.color.set(C[row.status] || C.off);
+    if(dim) m.color.multiplyScalar(0.34);
+    m.emissive.set(C[row.status] || C.off);
+    m.emissiveIntensity = dim ? 0.04 : (row.status==='off' ? 0.05 : 0.28);
+  });
+  h.draw();
+}
+
+function bm3dPick(container, e){
+  const h = bm3d[container]; if(!h || h.disposed) return;
+  const cv = h.renderer.domElement, r = cv.getBoundingClientRect();
+  const pt = new h.THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
+  const ray = new h.THREE.Raycaster();
+  ray.setFromCamera(pt, h.camera);
+  const hit = ray.intersectObjects(h.picks, false)[0];
+  if(hit && hit.object.userData.bmKey) bmClickMuscle(container, hit.object.userData.bmKey);
+  else bmCloseCard(container);
+}
+
+function bm3dDispose(container){
+  const h = bm3d[container]; if(!h) return;
+  h.disposed = true;
+  if(h.raf) cancelAnimationFrame(h.raf);
+  if(h.io) h.io.disconnect();
+  // WebGL contexts are a capped resource (~16 per page); leaking one per repaint
+  // would eventually blank the card with no error worth reading
+  try{ h.geoms.forEach(function(g){ g.dispose(); }); }catch(e){}
+  try{ h.mats.forEach(function(m){ m.dispose(); }); }catch(e){}
+  try{ h.renderer.dispose(); }catch(e){}
+  delete bm3d[container];
+}
+
+/* Swap the viewer out for the flat bodies and carry on as if nothing happened. */
+function bm3dFallback(container, why){
+  const wrap = document.getElementById('bm3dwrap-'+container);
+  if(!wrap) return;
+  bm3dDispose(container);
+  const holder = document.createElement('div');
+  holder.innerHTML = bmBodies2DHTML(container);
+  wrap.parentNode.replaceChild(holder.firstElementChild, wrap);
+  if(bmState[container]) bmState[container].three = false;
+  bmRender(container);
+  const tip = document.getElementById('bmtip-'+container);
+  if(tip && why==='load-failed') tip.textContent = 'Offline -- showing the flat map. Tap a muscle for top exercises.';
+}
 
 /* ===================== PWA (single-file) ===================== */
 function setupPWA(){
@@ -9648,6 +10168,7 @@ async function bgSyncTick(){
   if(!syncReady() || S.settings.autoSync === false) return;
   _bgPulling = true;
   try{
+    await pushUnconfirmedChanges();
     const p = await fetchGistData();
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
       applyPulled(p.data, p.exportedAt);

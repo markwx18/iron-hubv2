@@ -34,7 +34,10 @@ harness and is never loaded by the app.
    will not know an update exists.
 3. Run the syntax check (below) — must pass
 4. Run the test suite (below) — must be fully green
-5. Commit and push. GitHub Pages redeploys automatically.
+5. **Copy `iron_hub.html` over `index.html`** — they are byte-identical and both
+   are committed. `index.html` is what GitHub Pages actually serves, so skipping
+   this ships nothing.
+6. Commit and push. GitHub Pages redeploys automatically.
 
 There is **no service worker**, deliberately. That means every app launch fetches
 the live file from Pages — updates land on the next open, with no cache to bust.
@@ -208,6 +211,8 @@ the next background pull.** Two rules follow:
 | Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
 | Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()` |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
+| Muscle map data | `bmViewerData()`, `bmStatusFor()`, `bmWeeklyVol()`, `bmTrainedDays()` |
+| 3D viewer | `bm3dInit()`, `bm3dBuild()`, `bm3dApply()`, `bm3dPick()`, `bm3dDispose()`, `bm3dFallback()` |
 
 **Agent system:** four agents — ZULU (lead), CHARLIE (logistics/schedule/data health),
 DELTA (training), ECHO (nutrition/bodyweight). They run one combined API call nightly
@@ -276,6 +281,19 @@ to bottom if the user was already near the bottom.
 
 **Mobile is the primary target.** Most use is on an iPhone, one-handed, mid-set.
 Check at 393px and 320px widths.
+
+**Muscle map: 2D on LIVE, 3D on Progress.** The Progress tab's muscle map is a
+rotatable three.js viewer; the LIVE idle screen keeps the flat SVG, on purpose —
+it's the front door on a training day and must not wait on a CDN fetch or a GPU
+context before it paints. `bmViewerData(mode)` is the single source of truth both
+renderers draw from, so they can never disagree about a muscle's status; the
+volume math is tested in `test_agents.js` (jsdom has no WebGL, so the 3D render
+itself isn't). three.js is pinned and lazily `import()`ed on first view of the
+card — no build step, no bundler. Every failure path (no WebGL, no network, CDN
+down) falls back to the flat bodies; the tab degrades, it never breaks. Colours
+in `bm3dColors()` are hardcoded to match `BM_C` exactly, so the 2D and 3D pictures
+read as the same picture from a different angle — there is one theme, so nothing
+here reads from a CSS custom property.
 
 ---
 
