@@ -1867,6 +1867,17 @@ setTimeout(async () => {
     ok('dayMeta no longer resolves S1 once cleared', ev('dayMeta("S1")') === null);
     ok('activeDayKeys drops S1 once cleared', ev('activeDayKeys().indexOf("S1")') === -1);
 
+    // Settings must distinguish "scheduled for a future date" from "active now" — a deload
+    // window set for next week is correctly not active yet, but must not look unset/failed.
+    const futureStart = ev("mesoAddDays(todayKey(), 5)");
+    const futureUntil = ev("mesoAddDays(todayKey(), 10)");
+    ev("S.deload = {startedAt:" + JSON.stringify(futureStart) + ", until:" + JSON.stringify(futureUntil) + "};");
+    ok('a future deload window is correctly not active yet', ev('deloadActive()') === false);
+    ev('renderSettings()');
+    const settingsHtmlScheduled = ev('document.getElementById("settings").innerHTML');
+    ok('Settings shows the window as Scheduled, not silently absent', settingsHtmlScheduled.indexOf('Scheduled:') >= 0);
+    ok('Settings does not falsely claim the deload is active', settingsHtmlScheduled.indexOf('Deload active') === -1);
+
     ev("S.dateOverrides = {}; S.tempStrengthSplit = null; S.deload = null; S.scheduleMode='dow';");
   } catch (e) {
     ok('date overrides / temp strength days / deload window', false, e.message);

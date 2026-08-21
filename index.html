@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-20-v2">
+<meta name="ironhub-build" content="2026-08-20-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3799,10 +3799,13 @@ function renderSettings(){
     (deloadActive()
       ? '<p class="small" style="margin-top:6px">Deload active '+esc(S.deload.startedAt)+' through '+esc(S.deload.until)+'.</p>'+
         '<div style="margin-top:8px"><button class="btn sm ghost" onclick="endDeloadWeek();renderSettings()">End deload early</button></div>'
-      : '<div class="row" style="margin-top:8px">'+
-        '<div><label>Start</label><input type="date" id="deloadCustomStart"></div>'+
-        '<div><label>Through</label><input type="date" id="deloadCustomUntil"></div>'+
-        '<div style="flex:none"><button class="btn sm" onclick="startDeloadWeekCustom()">Set</button></div></div>') +
+      : (S.deload && S.deload.startedAt && S.deload.until && todayKey() < S.deload.startedAt
+        ? '<p class="small" style="margin-top:6px;color:var(--cyan)">Scheduled: '+esc(S.deload.startedAt)+' through '+esc(S.deload.until)+' (not active yet).</p>'+
+          '<div style="margin-top:8px"><button class="btn sm ghost" onclick="S.deload=null;save();renderSettings()">Cancel</button></div>'
+        : '<div class="row" style="margin-top:8px">'+
+          '<div><label>Start</label><input type="date" id="deloadCustomStart"></div>'+
+          '<div><label>Through</label><input type="date" id="deloadCustomUntil"></div>'+
+          '<div style="flex:none"><button class="btn sm" onclick="startDeloadWeekCustom()">Set</button></div></div>')) +
     '</div></div>';
 
   html += '<h2>Rep Range</h2><div class="card"><div class="row">'+
