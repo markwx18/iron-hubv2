@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-20-v3">
+<meta name="ironhub-build" content="2026-08-21-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1151,6 +1151,16 @@ function toggleRepMode(dk, i){
   const x = S.split[dk].exercises[i];
   x.repMode = (x.repMode==='str') ? null : 'str';
   save(); refreshSplitEditor(); renderToday();
+}
+/* Same toggle as toggleRepMode(), but for S.tempStrengthSplit — the auto-generated S1/S2/S3
+   block never lives in S.split (see dayMeta()'s comment), so it needs its own target. */
+function toggleTempRepMode(dk, i){
+  if(!S.tempStrengthSplit || !S.tempStrengthSplit[dk]) return;
+  const list = S.tempStrengthSplit[dk].exercises || (S.tempStrengthSplit[dk].exercises = []);
+  if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:incFor(list[i])};
+  const x = list[i];
+  x.repMode = (x.repMode==='str') ? null : 'str';
+  save(); renderSettings();
 }
 
 /* ================= HELPERS ================= */
@@ -3788,7 +3798,7 @@ function renderSettings(){
     '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'+
     '<p class="small"><b style="color:var(--text)">Strength days (S1/S2/S3)</b> — auto-generated squat/press/hinge+pull days, the same logic as a meso strength block, usable as override day-keys above.</p>'+
     (S.tempStrengthSplit
-      ? '<p class="small" style="margin-top:6px">Active: '+Object.keys(S.tempStrengthSplit).map(k=>k+' ('+esc(S.tempStrengthSplit[k].name)+')').join(', ')+'</p>'+
+      ? tempStrengthEditorHTML()+
         (_tempStrengthGen ? '<div class="small" style="margin-top:6px;color:var(--dim)">'+_tempStrengthGen.rationale.map(r=>esc(r)).join('<br>')+
           (_tempStrengthGen.dropped.length ? '<br>Dropped from coverage: '+esc(_tempStrengthGen.dropped.join(', ')) : '')+'</div>' : '')+
         '<div style="margin-top:8px"><button class="btn sm ghost" onclick="clearTempStrengthDays();_tempStrengthGen=null;renderSettings()">Clear strength days</button></div>'
@@ -3963,6 +3973,27 @@ let _tempStrengthGen = null;
 function tempStrengthGenClick(){
   _tempStrengthGen = generateTempStrengthDays();
   renderSettings();
+}
+/* Per-exercise 3-6 (STR) vs accessory control for the auto-generated S1/S2/S3, mirroring the
+   STR/HYP toggle already used in the permanent Split Editor (see toggleRepMode()) — the
+   auto-classifier's compound/accessory guess is a starting point, not a guarantee. */
+function tempStrengthEditorHTML(){
+  let h = '<div style="margin-top:6px;display:flex;flex-direction:column;gap:10px">';
+  Object.keys(S.tempStrengthSplit).forEach(dk=>{
+    const d = S.tempStrengthSplit[dk];
+    h += '<div><div class="small" style="color:'+(d.hex||'#8d909a')+'"><b>'+dk+' — '+esc(d.name||'')+'</b></div>';
+    (d.exercises||[]).forEach((x,i)=>{
+      const nm = exName(x);
+      const str = typeof x==='object' && x.repMode==='str';
+      h += '<div class="row" style="align-items:center;margin-top:4px">'+
+        '<div class="small" style="flex:1">'+esc(nm)+'</div>'+
+        '<button class="ord ff-toggle" style="'+(str?'color:var(--violet);border-color:var(--violet);font-weight:800':'')+'" onclick="toggleTempRepMode(\''+dk+'\','+i+')">'+(str?'STR':'HYP')+'</button>'+
+        '</div>';
+    });
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
 }
 function startDeloadWeekCustom(){
   const sEl = document.getElementById('deloadCustomStart');

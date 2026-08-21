@@ -1863,6 +1863,25 @@ setTimeout(async () => {
     // dayMeta/activeDayKeys are the documented single choke point for day-key resolution
     ok('dayMeta resolves a temp strength day', !!ev('dayMeta("S1")'));
     ok('activeDayKeys includes the temp strength days', ev('activeDayKeys().indexOf("S1")') >= 0);
+
+    // manual 3-6 (STR) vs accessory toggle on the generated S1/S2/S3, independent of the
+    // auto-classifier's compound guess (this is what catches a mis-tagged accessory like a
+    // single-arm row that matches the compound regex but isn't meant to run heavy)
+    // index 0 is the anchor compound, which the generator already marks 'str' by design
+    // (see mesoGenerateStrengthSplit's idx<2 rule) — start from that known state rather than
+    // assuming unset, so the assertion is honest about what a toggle actually does.
+    const s1ExBefore = ev('JSON.stringify(S.tempStrengthSplit.S1.exercises)');
+    const splitBeforeToggle = ev('JSON.stringify(S.split)');
+    ok('control: the anchor exercise starts tagged STR by the generator', ev('S.tempStrengthSplit.S1.exercises[0].repMode') === 'str');
+    ev("toggleTempRepMode('S1', 0)");
+    ok('toggleTempRepMode flips repMode off', ev('S.tempStrengthSplit.S1.exercises[0].repMode') == null,
+       ev('S.tempStrengthSplit.S1.exercises[0].repMode'));
+    ev("toggleTempRepMode('S1', 0)");
+    ok('toggleTempRepMode flips repMode back on', ev('S.tempStrengthSplit.S1.exercises[0].repMode') === 'str');
+    ok('toggling only touches the targeted exercise, not the rest of S1',
+       ev('JSON.stringify(S.tempStrengthSplit.S1.exercises)') === s1ExBefore);
+    ok('toggleTempRepMode never touches the permanent split', ev('JSON.stringify(S.split)') === splitBeforeToggle);
+
     ev('clearTempStrengthDays();');
     ok('dayMeta no longer resolves S1 once cleared', ev('dayMeta("S1")') === null);
     ok('activeDayKeys drops S1 once cleared', ev('activeDayKeys().indexOf("S1")') === -1);
