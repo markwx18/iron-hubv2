@@ -1781,6 +1781,24 @@ setTimeout(async () => {
     ok('mesoEdToggleRepMode never touches the permanent split', ev('!S.split.S1') === true);
     ev('_mesoEditBlock = null;');
 
+    // the bug this fixes: Settings' "Strength days" card used to run its own independent
+    // generation (S.tempStrengthSplit), which silently drifted from whatever the user had
+    // actually hand-edited into the live meso block via the Ops tab (different exercises
+    // entirely). tempStrengthEditorHTML()/tempStrengthToggleRepMode() must now read and
+    // write the SAME active block split, not a disconnected copy.
+    ok('mesoActiveStrBlockId finds the live block', ev('mesoActiveStrBlockId()') === bid, ev('mesoActiveStrBlockId()'));
+    const settingsHtml = ev('tempStrengthEditorHTML()');
+    ok('Settings strength-days view shows the block\'s real exercises',
+       ev('mesoActive().splits["' + bid + '"].split.S1.exercises.map(x=>typeof x==="object"?x.name:x)')
+         .every(nm => settingsHtml.indexOf(nm) >= 0));
+    const beforeMirror = ev('mesoActive().splits["' + bid + '"].split.S3.exercises[0].repMode');
+    ev('tempStrengthToggleRepMode("S3", 0)');
+    ok('tempStrengthToggleRepMode flips the live block\'s exercise, not a separate copy',
+       ev('mesoActive().splits["' + bid + '"].split.S3.exercises[0].repMode') !== beforeMirror);
+    ev('tempStrengthToggleRepMode("S3", 0)'); // restore
+    ok('tempStrengthToggleRepMode never creates a standalone S.tempStrengthSplit while a block is active',
+       ev('S.tempStrengthSplit') == null, ev('S.tempStrengthSplit'));
+
     // sessions logged during the block keep their label after the block is gone
     ev("live = {date:todayKey(), day:'S1', startedAt:Date.now(), exercises:[{name:'Barbell Back Squat', sets:[{w:185,r:5}]}], curIdx:0};");
     ev('endLiveSession()');
