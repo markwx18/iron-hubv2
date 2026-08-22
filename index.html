@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-21-v3">
+<meta name="ironhub-build" content="2026-08-21-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -9854,6 +9854,23 @@ function agContext(){
         ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]+'='+S.schedule[d]).join(', ');
   const splitTxt = Object.keys(S.split).map(k=>
     k+' ('+S.split[k].name+'): '+(S.split[k].exercises||[]).map(exName).join(', ')).join('\n');
+  const activeBid = mesoActiveStrBlockId();
+  let blockTxt = '';
+  if(activeBid){
+    const rec = mesoState().active.splits[activeBid];
+    const w = mesoCurrentWeek();
+    const blockSplitTxt = Object.keys(rec.split).map(k=>
+      k+' ('+rec.split[k].name+'): '+(rec.split[k].exercises||[]).map(exName).join(', ')).join('\n');
+    blockTxt = '\n\nACTIVE MESO STRENGTH BLOCK (in force through '+w.endKey+', then reverts to the split above automatically): \n'+
+      blockSplitTxt+
+      '\nThis REPLACES the permanent split above for these dates only, on its own 3-on/2-off rotation — '+
+      'do not treat this as a deviation from his plan, and do not propose changes against the permanent split\'s '+
+      'exercises while this is in force.';
+  }
+  const deloadTxt = deloadActive()
+    ? '\n\nDELOAD ACTIVE through '+S.deload.until+' (started '+S.deload.startedAt+') — loads and sets are '+
+      'intentionally reduced; do not flag this window as a stall, regression, or missed progression.'
+    : '';
   const ov = invState().overrides;
   const ovTxt = Object.keys(ov).length
     ? Object.keys(ov).map(k=>k+' capped at '+ov[k].w+' lb until '+ov[k].until).join('; ') : 'none';
@@ -9871,6 +9888,8 @@ function agContext(){
     '. Completed '+bpLast7+' session'+(bpLast7===1?'':'s')+' in the last 7 days. Current Barbell Bench Press working weight: '+(invLastWorkingWeight('Barbell Bench Press')||'?')+' lb.';
   return '\nCURRENT SCHEDULE: '+sc+
     '\n\nSPLIT:\n'+splitTxt+
+    blockTxt+
+    deloadTxt+
     '\n\nBENCH PRACTICE (standalone frequency work, separate from tracked bench): '+bpTxt+
     '\n\nFUEL TARGETS: '+(S.fuel&&S.fuel.calTarget||'?')+' cal / '+(S.fuel&&S.fuel.proTarget||'?')+'g protein per day.'+
     '\nAvoids: '+((S.fuel&&S.fuel.dislikes)||'\u2014')+

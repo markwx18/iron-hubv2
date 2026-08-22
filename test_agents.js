@@ -1799,6 +1799,19 @@ setTimeout(async () => {
     ok('tempStrengthToggleRepMode never creates a standalone S.tempStrengthSplit while a block is active',
        ev('S.tempStrengthSplit') == null, ev('S.tempStrengthSplit'));
 
+    // agents were blind to an active strength block — the nightly context never mentioned it
+    // at all, so DELTA/ZULU would reason about his usual split while he's actually running
+    // S1/S2/S3 this week. agContext() must surface the block's real content and dates.
+    const ctxWithBlock = ev('agContext()');
+    ok('agent context flags the active meso strength block', /ACTIVE MESO STRENGTH BLOCK/.test(ctxWithBlock));
+    ok('agent context shows the block\'s actual exercises', ctxWithBlock.indexOf('Barbell Back Squat') >= 0, ctxWithBlock.slice(0, 400));
+    ok('agent context tells agents this is temporary, not a plan deviation',
+       /replaces the permanent split|REPLACES the permanent split/i.test(ctxWithBlock));
+    ev('mesoStop();');
+    ok('agent context drops the block section once it ends', !/ACTIVE MESO STRENGTH BLOCK/.test(ev('agContext()')));
+    // re-approve so the rest of this section's cleanup below runs against a real state
+    ev("mesoStart({phases:[{id:'p1',type:'str',name:'Strength',weeks:2,repLo:3,repHi:5,rpeLo:8,rpeHi:9}],repeat:false,cycles:1}, todayKey()); mesoEnsureProposals(); mesoApproveSplit(mesoActive().weeks[0].blockId);");
+
     // sessions logged during the block keep their label after the block is gone
     ev("live = {date:todayKey(), day:'S1', startedAt:Date.now(), exercises:[{name:'Barbell Back Squat', sets:[{w:185,r:5}]}], curIdx:0};");
     ev('endLiveSession()');
@@ -1878,7 +1891,14 @@ setTimeout(async () => {
     ok('deload active inside the window', fakeDeloadDay('2026-08-26T12:00:00') === true);
     ok('deload active on until (inclusive)', fakeDeloadDay('2026-08-27T12:00:00') === true);
     ok('deload NOT active the day after until', fakeDeloadDay('2026-08-28T12:00:00') === false);
+
+    // agents were blind to deload state too — nothing in the nightly context ever mentioned
+    // it, so a flat/lighter week during deload could read as a stall to DELTA/ZULU.
+    ev("S.deload = {startedAt:todayKey(), until:todayKey()};");
+    ok('agent context flags an active deload window', /DELOAD ACTIVE/.test(ev('agContext()')));
+    ok('agent context tells agents not to read it as a stall', /not flag this window as a stall/.test(ev('agContext()')));
     ev('S.deload = null;');
+    ok('agent context drops the deload line once it ends', !/DELOAD ACTIVE/.test(ev('agContext()')));
 
     // startDeloadWeek must accept explicit overrides without breaking its no-arg default use
     ev("startDeloadWeek('2026-08-27','2026-08-25')");
