@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 721 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1133 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -199,6 +199,12 @@ the next background pull.** Two rules follow:
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()` (`dow` \| `cycle`) |
 | Week windows | `weekStartKey()`, `lastCompletedWeekRange()`, `weeklyVolumeByGroup()` |
 | Progression | `classifyDecision()`, `buildOneLiveExercise()`, `intraAdvice()` |
+| Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
+| Home / strip | `renderHome()`, `renderStatusStrip()`, `readinessNow()`, `renderNotif()` |
+| Pain flags | `painAdd()`, `painFor()`, `painContext()` |
+| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopContext()`, `.github/workflows/whoop-sync.js` |
+| Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
+| Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate, used by all three tabs |
 | Live session | `renderLive()`, the dock, `liveDeltaSend()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()` |
 | Agents | `agRunAll()`, `agValidateFix()`, `agApplyFix()`, `agSendChat()`, `renderOps()` |
@@ -215,8 +221,32 @@ the next background pull.** Two rules follow:
 | 3D viewer | `bm3dInit()`, `bm3dBuild()`, `bm3dApply()`, `bm3dPick()`, `bm3dDispose()`, `bm3dFallback()` |
 
 **Agent system:** four agents — ZULU (lead), CHARLIE (logistics/schedule/data health),
-DELTA (training), ECHO (nutrition/bodyweight). They run one combined API call nightly
-at 9 PM. Model: `claude-sonnet-4-6`.
+DELTA (training), ECHO (nutrition/bodyweight). Model: `claude-sonnet-5`, declared once as
+`AI_MODEL`.
+
+Nightly at 9 PM, CHARLIE/DELTA/ECHO run **in parallel**, each with its own prompt and its
+own allowed fix shapes (`AG_ROLE_BRIEF`, `AG_FIX_MENU`), then ZULU runs on their output and
+also writes the Daily Brief. One agent failing costs only that agent. Parallel is deliberate:
+sequential would make "Run cycle now" a 2–3 minute wait, and the cost is that the three
+cannot share a prompt cache — a cache entry is only readable once the response that wrote it
+has begun streaming. Do not add `cache_control` here; it would charge the 1.25× write premium
+for a cache nothing reads.
+
+Agents have **read-only data tools** (`agDataToolDefs()`, executed by `agRunDataTool()`,
+looped by `callClaudeWithData()`): `list_lifts`, `get_lift_history`, `get_e1rm_series`,
+`get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`. There is no write
+tool and there must never be one — state still changes only through the proposal queue and
+`agApplyFix()`. The loop is bounded by `AI_TOOL_ROUNDS` (6, or 2 for mid-workout DELTA) with
+results capped at `AI_TOOL_MAXCHARS`, because it runs unattended and an unbounded loop is an
+unbounded bill.
+
+**Sonnet 5 thinks adaptively, and thinking tokens bill as output and count against
+`max_tokens`.** Two consequences to keep in mind when touching any API call: never set a
+`max_tokens` low enough for a long think to swallow the answer (nothing in the app is below
+4000, and the suite asserts it), and control spend with `output_config.effort`
+(`AI_EFFORT_DEFAULT` is `medium`; the nightly cycle raises it to `high`) rather than by
+starving the cap. `temperature`, `top_p`, `top_k`, `budget_tokens` and assistant prefills all
+return a 400 on this model — none are used, and the suite asserts that too.
 
 ---
 
@@ -259,6 +289,37 @@ is rejected in cycle mode; `cycleSchedule` is rejected in dow mode. The cycle
 because shifting it silently changes what today resolves to.
 
 ---
+
+## V4 invariants — things that will silently break if undone
+
+**The split in force is not always `S.split`.** During an approved meso strength block the
+day keys are S1/S2/S3, which do not exist in `S.split` at all. Anything resolving an exercise
+property at runtime must go through `activeSplitObj()`. `incForExercise()`, `isFormFocus()`,
+`isStrMode()`, `isMaxed()` and `agTrainedExNames()` all do. Missing one is invisible until a
+block is active — that was the `+15` increment turning into `-5`.
+
+**Card open-state must not live on the DOM node.** `rerenderActive()` regenerates the whole
+active tab every 30 s and after every sync pull, so DOM-only state is wiped on a timer with
+nothing to blame it on. `subOpen`, `sdOpen`, `sdHomeOpen` and `photoOpen` are module-scoped
+for this reason.
+
+**One bodyweight rate.** `bulkRate()` / `bulkBand()`. Three tabs used to compute this three
+ways and disagree on screen. Do not add a fourth.
+
+**Effort reads go through `effBucket()`.** It prefers the 0–100 lever (`s.ef`) and falls back
+to the legacy tag (`s.e`), which is what lets months of already-logged sessions keep working
+with no migration pass. Anything writing effort must write both fields.
+
+**The status strip never renders during LIVE**, and is painted *before* the
+`refreshBlocked()` gate. That gate stops a repaint eating half-typed input; a read-only bar
+cannot do that, and behind the gate it would go stale exactly when the app is in use.
+
+**WHOOP comes in, never out.** `syncPayload()` deletes `d.whoop`. The Action owns
+`whoop_data.json`; the app owns `ironhub_data.json`. Data not dated today is treated as
+absent — a stale recovery score is worse than none because it looks current.
+
+**Photos never go in `S`.** State holds an index; the blobs live in their own gist, fetched
+on demand. Everything in `S` is re-serialized on every save and re-uploaded on every sync.
 
 ## UI conventions
 
@@ -320,3 +381,19 @@ here reads from a CSS custom property.
   fix isn't doing what you think)
 - Anything touching health, injury, or nutrition guidance where being wrong could
   affect his actual training or wellbeing
+
+---
+
+## Cost and safety guardrails for autonomous decisions
+
+Most unspecified details (component structure, styling, minor UX choices) don't
+need approval — use good judgment and proceed.
+
+But never silently pick the more expensive or more permissive option for these —
+stop and flag the tradeoff in plain terms before writing code:
+- Any change to which model powers the in-app agents, or whether they run as one
+  combined call vs. separate calls (real, differing ongoing API cost)
+- Any change to what tools/data the agents can access (e.g. web search, scope
+  beyond fitness/training)
+- Any change letting an agent write state outside the existing agApplyFix path
+- Any new backend infrastructure where none existed before
