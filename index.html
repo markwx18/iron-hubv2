@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-24-v3">
+<meta name="ironhub-build" content="2026-08-24-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -221,6 +221,28 @@
   .dockrow .field{flex:1;}
   .dockrow .field label{margin-bottom:4px;}
   .dockrow input{text-align:center; font-size:15px; padding:9px 6px; font-weight:600; min-width:0;}
+  /* The lever. Presets stay because a slider alone is bad one-handed mid-set: the presets
+     are the fast path, the slider is there when the set was genuinely between two of them. */
+  .pain-btn{border:1px solid var(--line2); background:transparent; color:var(--muted); font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:2px; cursor:pointer;}
+  .pain-btn.on{color:var(--red); border-color:var(--red-dim);}
+  .pain-row{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:8px; padding-top:8px; border-top:1px solid var(--line);}
+  .pain-lv{display:flex; gap:4px;}
+  .pain-lv button{font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; padding:5px 8px; border:1px solid var(--line2); border-radius:2px; background:var(--base); color:var(--muted); cursor:pointer;}
+  .pain-lv button.sel{background:var(--red); border-color:var(--red); color:#fff;}
+  .pain-note{flex:1; min-width:120px;}
+  .pain-flagged{display:flex; align-items:center; gap:6px; margin-top:8px; padding:6px 8px; border-left:2px solid var(--red); background:rgba(220,80,70,.07); font-size:11px; color:var(--muted);}
+  .efflv{margin-top:9px;}
+  .efflv-top{display:flex; align-items:baseline; justify-content:space-between; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);}
+  .efflv-val{font-size:12px; font-weight:700;}
+  .efflv input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:26px; background:transparent; margin:2px 0 0;}
+  .efflv input[type=range]::-webkit-slider-runnable-track{height:4px; border-radius:2px;
+    background:linear-gradient(90deg,var(--red) 0%,var(--amber) 33%,var(--muted) 62%,var(--cyan) 100%);}
+  .efflv input[type=range]::-moz-range-track{height:4px; border-radius:2px;
+    background:linear-gradient(90deg,var(--red) 0%,var(--amber) 33%,var(--muted) 62%,var(--cyan) 100%);}
+  /* 26px thumb: this is tapped one-handed, sweaty, between sets. Smaller is not usable. */
+  .efflv input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; appearance:none; width:26px; height:26px; margin-top:-11px; border-radius:50%; background:var(--text); border:2px solid var(--base); box-shadow:0 1px 4px rgba(0,0,0,.5);}
+  .efflv input[type=range]::-moz-range-thumb{width:26px; height:26px; border-radius:50%; background:var(--text); border:2px solid var(--base); box-shadow:0 1px 4px rgba(0,0,0,.5);}
+  .efflv-ends{display:flex; justify-content:space-between; font-family:var(--mono); font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); margin-top:-2px;}
   .efftog{display:flex; gap:4px; margin-top:7px;}
   .efftog button{flex:1; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:6px 4px; border:1px solid var(--line2); border-radius:2px; background:var(--base); color:var(--muted);}
   .efftog button.sel{color:#1a0e02;}
@@ -1071,6 +1093,7 @@ const DEFAULT_STATE = {
   chat: [],                    // {role, content}
   road: [],                    // {id, exercise, target, start, deadline}
   readiness: [],               // {date, sleep, sore, energy, tier}
+  pain: [],                    // {id, date, exercise, level 1-3, note} — flagged from LIVE
   prHistory: [],               // {exercise, weight, reps, e1rm, prev, gain, date} — every e1RM PR ever hit.
                                // Written only by checkPRs()/prBackfillOnce(); read by the PR History tab.
   prBackfilled: false,         // one-time flag: existing logs have been replayed into prHistory
@@ -1505,7 +1528,7 @@ function toggleSdExHome(dk,i){
   sdHomeOpen[dk+'-'+i] = el.classList.toggle('open');   // see subOpen: survives a repaint
 }
 function sessionAllEasy(session){
-  return session.sets.length>0 && session.sets.every(s=>s.e==='easy');
+  return session.sets.length>0 && session.sets.every(s=>effBucket(s)==='easy');
 }
 function consecutiveEasyStreak(hist){
   let c=0;
@@ -1548,10 +1571,18 @@ function recommend(ex, ready){
   const ceilReps = str ? maxReps : minReps;
   let inc = incForExercise(ex);
   // effort tags from last session's top sets
-  const effs = topSets.map(s=>s.e).filter(Boolean);
+  const effs = topSets.map(effBucket).filter(Boolean);
   const hadFail   = effs.includes('fail');
   const hadGrind  = effs.includes('grind') || hadFail;
-  const allEasy   = effs.length===topSets.length && effs.length>0 && effs.every(e=>e==='easy');
+  /* The double jump used to require EVERY top set bucketed 'easy'. With a real lever we can
+     ask the better question -- how easy was the session on average -- so four sets at 95 and
+     one at 78 no longer read the same as four at 95 and one at 42. Falls back to the old
+     all-easy rule for sessions logged before the lever existed, so historical behaviour is
+     unchanged. */
+  const _mean    = effMean(topSets);
+  const allEasy   = (_mean !== null && effs.length===topSets.length)
+                    ? _mean >= 85
+                    : (effs.length===topSets.length && effs.length>0 && effs.every(e=>e==='easy'));
   const pushNote  = ready==='high' ? ' Readiness is green \u2014 good day to push.' : '';
 
   if(isBodyweight(ex)){
@@ -1611,7 +1642,7 @@ function recommend(ex, ready){
   }
   return {target:topW+' lb \u00d7 build to '+lo, detail:'Last session dipped below range ('+summ(last.sets)+'). Hold '+topW+' lb and climb back to '+lo+' reps per set before adding load.'+(ready==='low'?' Low readiness \u2014 no heroics today.':''), sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
 }
-function summ(sets){ return sets.map(s=>s.w+'×'+s.r+(s.e?(EFF_MARK[s.e]||''):'')).join(', '); }
+function summ(sets){ return sets.map(function(s){ const b = effBucket(s); return s.w+'×'+s.r+(b?(EFF_MARK[b]||''):''); }).join(', '); }
 
 
 /* ================= PLATE CALCULATOR ================= */
@@ -1904,6 +1935,122 @@ function celebrate(pr){
 const EFF_ORDER = ['', 'easy', 'solid', 'grind', 'fail'];
 const EFF_LABEL = {'':'\u2013', easy:'E', solid:'S', grind:'G', fail:'F'};
 const EFF_MARK  = {easy:'\u1d49', solid:'', grind:'\u1d4d', fail:'\u02e3'};
+/* ---- pain / injury flags ----
+   Recorded against an exercise and a date, from the LIVE screen, in one tap plus an optional
+   note. Deliberately RECORDING, not diagnosis: nothing here decides whether he should train
+   through it, and nothing auto-changes a weight. What it does is make the thing visible --
+   to him on the lift, and to the agents in their context, so DELTA stops cheerfully
+   proposing more volume on a joint he flagged three sessions running.
+
+   Anything prescriptive about an actual injury is a conversation with a physio, not an app. */
+function painState(){
+  if(!S.pain) S.pain = [];
+  return S.pain;
+}
+const PAIN_LEVELS = [
+  {v:1, label:'niggle',   desc:'noticed it, finished the set normally'},
+  {v:2, label:'sore',     desc:'uncomfortable, changed how I moved'},
+  {v:3, label:'sharp',    desc:'had to stop the set'}
+];
+function painAdd(exercise, level, note){
+  const lv = Math.max(1, Math.min(3, Math.round(+level||1)));
+  const rec = {id:'pn'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+               date:todayKey(), exercise:String(exercise||'').slice(0,80),
+               level:lv, note:String(note||'').slice(0,200)};
+  painState().unshift(rec);
+  if(S.pain.length > 200) S.pain.length = 200;   // bounded: this syncs to the gist
+  save();
+  return rec;
+}
+function painRemove(id){
+  S.pain = painState().filter(function(p){ return p.id !== id; });
+  save();
+}
+/* Flags in the last N days for one exercise, newest first. */
+function painFor(exercise, days){
+  const cut = mesoAddDays(todayKey(), -(days||30));
+  return painState().filter(function(p){ return p.exercise===exercise && p.date >= cut; });
+}
+function painRecent(days){
+  const cut = mesoAddDays(todayKey(), -(days||30));
+  return painState().filter(function(p){ return p.date >= cut; });
+}
+/* What the agents are told. Recurrence is the signal worth surfacing: one niggle is noise,
+   the same joint three sessions running is not. */
+function painContext(){
+  const recent = painRecent(30);
+  if(!recent.length) return '';
+  const byEx = {};
+  recent.forEach(function(p){ (byEx[p.exercise] = byEx[p.exercise] || []).push(p); });
+  const lines = Object.keys(byEx).map(function(nm){
+    const list = byEx[nm];
+    const worst = Math.max.apply(null, list.map(function(p){ return p.level; }));
+    const lab = (PAIN_LEVELS.find(function(x){ return x.v===worst; })||{}).label || '?';
+    const notes = list.filter(function(p){ return p.note; }).slice(0,2)
+                      .map(function(p){ return p.date+': "'+p.note+'"'; }).join('; ');
+    return '  '+nm+' \u2014 '+list.length+' flag'+(list.length===1?'':'s')+' in 30 days, worst = '+lab+
+           (notes? ' ('+notes+')' : '');
+  });
+  return '\n\nPAIN / INJURY FLAGS Mark has raised during sessions (last 30 days):\n'+lines.join('\n')+
+    '\nTreat these as reported facts, not as a diagnosis, and do NOT give medical advice. You may ' +
+    'factor a repeatedly flagged lift into exercise selection \u2014 proposing a swap to a friendlier ' +
+    'variation is reasonable and useful. Never propose adding load or volume to a lift flagged at ' +
+    '"sharp" in the last 14 days. If something looks persistent or is getting worse, say plainly ' +
+    'that it is worth a professional look rather than trying to work out what it is.\n';
+}
+
+/* ---- effort lever ----
+   Effort used to be four buttons: easy / solid / grind / fail. It is now a continuous
+   0-100 lever, 0 = went to failure, 100 = easy completion. Two reasons that is better than
+   four buckets: "solid" was doing an enormous amount of work (anything from 1 rep in
+   reserve to 4), and a bucket boundary made the difference between a double jump and no
+   jump at all, which is a big consequence for a coarse input.
+
+   Everything that reasons about effort goes through effBucket(), which reads the lever when
+   there is one and falls back to the old tag when there is not. That is what lets seven
+   months of already-logged sessions keep working untouched: there is no migration pass and
+   no rewrite of historical data, because old sets simply keep answering through s.e.
+   EFF_ANCHOR is the reverse map, used when a set logged the old way needs a number. */
+const EFF_ANCHOR = {fail:0, grind:25, solid:60, easy:90};
+/* Bucket edges. Deliberately NOT evenly spaced: the interesting distinctions live at the
+   hard end (a grind and a failure are different training events), while everything from
+   "a couple left in the tank" upward behaves the same way to the progression engine. */
+function effBucketFromLever(v){
+  const n = +v;
+  if(!isFinite(n)) return null;
+  if(n <= 15) return 'fail';
+  if(n <= 40) return 'grind';
+  if(n <= 75) return 'solid';
+  return 'easy';
+}
+/* THE accessor. Every read of a set's effort goes through here. */
+function effBucket(set){
+  if(!set) return null;
+  if(set.ef !== undefined && set.ef !== null && set.ef !== ''){
+    const b = effBucketFromLever(set.ef);
+    if(b) return b;
+  }
+  return set.e || null;
+}
+/* The lever value for a set, inferring one from an old tag when the set predates the lever.
+   Returns null when the set carries no effort information at all. */
+function effLever(set){
+  if(!set) return null;
+  if(set.ef !== undefined && set.ef !== null && set.ef !== ''){
+    const n = +set.ef;
+    if(isFinite(n)) return Math.max(0, Math.min(100, n));
+  }
+  return (set.e && EFF_ANCHOR[set.e] !== undefined) ? EFF_ANCHOR[set.e] : null;
+}
+/* Mean lever across a group of sets, ignoring untagged ones. null if none are tagged.
+   This is the finer signal the lever buys: "every set was easy" used to be the only way to
+   earn a double jump, so four sets at 95 and one at 78 looked identical to four at 95 and
+   one at 42. */
+function effMean(sets){
+  const vals = (sets||[]).map(effLever).filter(function(v){ return v !== null; });
+  if(!vals.length) return null;
+  return vals.reduce(function(t,v){ return t+v; }, 0) / vals.length;
+}
 function cycleEff(btn){
   const cur = btn.dataset.e || '';
   const next = EFF_ORDER[(EFF_ORDER.indexOf(cur)+1) % EFF_ORDER.length];
@@ -4583,7 +4730,79 @@ function intraAdvice(ex){
   return {w:w, lo:lo, hi:hi, tag:'On target', cls:'hold', msg:'Solid — repeat '+w+' lb and chase one more rep than last set.'};
 }
 
-let liveDockEff = '';  // selected effort for the in-progress set
+let liveDockEff = '';  // legacy bucket for the in-progress set, kept for the presets
+let liveDockLever = null;  // 0-100 lever for the in-progress set; null = not set yet
+
+/* The lever widget. Presets write BOTH the bucket and an anchor value so tapping "grind" is
+   still one tap and still records a number; dragging the slider writes the number and lets
+   the bucket fall out of it. Either way a logged set ends up with s.ef. */
+/* Which exercise index has the pain panel open. Module-scoped, like every other LIVE
+   open-state flag, so a repaint does not close it under his fingers. */
+let painOpenFor = null;
+let painDraftLevel = 0;
+function painToggle(i){
+  painOpenFor = (painOpenFor === i) ? null : i;
+  painDraftLevel = 0;
+  renderLive();
+}
+function painPickLevel(v){ painDraftLevel = +v; renderLive(); }
+function painSubmit(i){
+  const ex = live.exercises[i]; if(!ex) return;
+  if(!painDraftLevel){ alert('Pick how it felt first.'); return; }
+  const el = document.getElementById('painNote');
+  painAdd(ex.name, painDraftLevel, el ? el.value : '');
+  painOpenFor = null; painDraftLevel = 0;
+  saveLiveDraft(); renderLive();
+}
+function painHTML(ex, i){
+  const today = painFor(ex.name, 1).filter(function(p){ return p.date === todayKey(); });
+  let h = '';
+  if(today.length){
+    const lab = (PAIN_LEVELS.find(function(x){ return x.v === today[0].level; })||{}).label || 'flagged';
+    h += '<div class="pain-flagged"><span>\u26a0</span><span>Flagged today: <b>'+esc(lab)+'</b>'+
+         (today[0].note ? ' \u2014 '+esc(today[0].note) : '')+'</span>'+
+         '<button class="pain-btn" style="margin-left:auto" onclick="painRemove(\''+today[0].id+'\');renderLive()">undo</button></div>';
+    return h;
+  }
+  if(painOpenFor !== i){
+    h += '<div style="margin-top:8px"><button class="pain-btn" onclick="painToggle('+i+')">'+
+         '\u26a0 Flag pain</button></div>';
+    return h;
+  }
+  h += '<div class="pain-row">'+
+    '<div class="pain-lv">'+
+      PAIN_LEVELS.map(function(l){
+        return '<button class="'+(painDraftLevel===l.v?'sel':'')+'" title="'+esc(l.desc)+'" '+
+               'onclick="painPickLevel('+l.v+')">'+esc(l.label)+'</button>';
+      }).join('')+
+    '</div>'+
+    '<input class="pain-note" id="painNote" placeholder="where? (optional)" maxlength="200">'+
+    '<button class="btn sm" onclick="painSubmit('+i+')">Save</button>'+
+    '<button class="pain-btn" onclick="painToggle('+i+')">cancel</button>'+
+    '</div>'+
+    '<div class="small" style="color:var(--dim);margin-top:5px">Recorded against '+esc(ex.name)+
+    ' so you and the agents can see if it keeps coming back. This is a log, not advice \u2014 if it '+
+    'persists or gets worse, get it looked at properly.</div>';
+  return h;
+}
+
+function effLeverHTML(){
+  const v = (liveDockLever === null) ? '' : liveDockLever;
+  const b = (liveDockLever === null) ? (liveDockEff || '') : effBucketFromLever(liveDockLever);
+  const col = {fail:'var(--red)', grind:'var(--amber)', solid:'var(--muted)', easy:'var(--cyan)'}[b] || 'var(--dim)';
+  return '<div class="efflv">'+
+    '<div class="efflv-top"><span>How did that set feel?</span>'+
+      '<span class="efflv-val" style="color:'+col+'">'+(b ? esc(b.toUpperCase())+' \u00b7 '+(v===''?'':v) : 'not set')+'</span></div>'+
+    '<input type="range" min="0" max="100" step="5" value="'+(v===''?50:v)+'" '+
+      'oninput="setEffLever(this.value)" aria-label="Effort: 0 is failure, 100 is easy">'+
+    '<div class="efflv-ends"><span>failure</span><span>easy</span></div>'+
+    '</div>';
+}
+function setEffLever(v){
+  liveDockLever = Math.max(0, Math.min(100, Math.round(+v/5)*5));
+  liveDockEff = effBucketFromLever(liveDockLever) || '';
+  renderLive();
+}
 
 /* ---- render LIVE mode ---- */
 function renderLive(){
@@ -4698,8 +4917,9 @@ function smartRestSecs(ex){
   let why = comp ? (ex.repMode==='str' ? 'Heavy compound' : 'Compound') : 'Isolation';
   const last = ex.sets[ex.sets.length-1];
   if(last){
-    if(last.e==='grind' || last.e==='fail'){ secs += 30; why += ' \u00b7 hard set'; }
-    else if(last.e==='easy' && !comp){ secs -= 15; why += ' \u00b7 easy set'; }
+    const lastB = effBucket(last);
+    if(lastB==='grind' || lastB==='fail'){ secs += 30; why += ' \u00b7 hard set'; }
+    else if(lastB==='easy' && !comp){ secs -= 15; why += ' \u00b7 easy set'; }
     const best = bestE1RM(ex.name);
     if(comp && best>0 && (+last.w||0) >= best*0.9){ secs += 30; why += ' \u00b7 near-max load'; }
   }
@@ -4765,6 +4985,8 @@ function liveExHTML(ex,i){
   h += '<div class="efftog lv3-eff">'+
        ['easy','solid','grind','fail'].map(e=>'<button class="'+(liveDockEff===e?'sel e-'+e:'')+'" onclick="pickEff(\''+e+'\')">'+e+'</button>').join('')+
        '</div>';
+  h += effLeverHTML();
+  h += painHTML(ex, i);
   const sr = smartRestSecs(ex);
   h += '<div class="lv3-btns">'+
        '<button class="btn primary lv3-log" onclick="logLiveSet('+i+')">Log set</button>'+
@@ -4779,7 +5001,9 @@ function liveSetRowHTML(i,j,s,editable){
     '<span class="lsn">Set '+(j+1)+'</span><span class="lchk">\u2713</span>'+
     '<span class="lval">'+s.w+'<span class="x">\u00d7</span>'+s.r+'</span>'+
     setDeltaChip(live.exercises[i].name, j, +s.w, +s.r)+
-    (s.e?'<span class="leff e-'+s.e+'">'+s.e.toUpperCase()+'</span>':'<span class="leff">\u2014</span>')+
+    (function(){ const b=effBucket(s); const lv=effLever(s);
+       return b ? '<span class="leff e-'+b+'" title="effort '+(lv===null?'?':Math.round(lv))+'/100">'+b.toUpperCase()+'</span>'
+                : '<span class="leff">\u2014</span>'; })()+
     (editable?'<span class="lv3-edithint">\u270e</span>':'')+'</div>';
 }
 function liveSetEditHTML(i,j,s){
@@ -4789,7 +5013,7 @@ function liveSetEditHTML(i,j,s){
     '<span class="x" style="color:var(--dim)">\u00d7</span>'+
     '<input id="esR" class="lv3-edit-in" inputmode="numeric" value="'+s.r+'"></div>'+
     '<div class="efftog lv3-eff" style="margin:8px 0">'+
-      ['easy','solid','grind','fail'].map(e=>'<button class="'+(s.e===e?'sel e-'+e:'')+'" onclick="liveEditEff('+i+','+j+',\''+e+'\')">'+e+'</button>').join('')+'</div>'+
+      ['easy','solid','grind','fail'].map(e=>'<button class="'+(effBucket(s)===e?'sel e-'+e:'')+'" onclick="liveEditEff('+i+','+j+',\''+e+'\')">'+e+'</button>').join('')+'</div>'+
     '<div style="display:flex;gap:7px">'+
     '<button class="btn sm cyan" onclick="saveLiveSetEdit('+i+','+j+')">Save</button>'+
     '<button class="btn sm ghost" onclick="cancelLiveSetEdit()">Cancel</button>'+
@@ -4819,10 +5043,25 @@ function focusLiveEx(i){
   saveLiveDraft(); renderLive();
   const el = document.getElementById('liveex-'+i); if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
 }
-function pickEff(e){ liveDockEff = (liveDockEff===e?'':e); renderLive(); }
+function pickEff(e){
+  // A preset is just a shortcut to its anchor value; deselecting clears both, so a set logged
+  // with no opinion still carries no effort information rather than a misleading 50.
+  if(liveDockEff===e){ liveDockEff=''; liveDockLever=null; }
+  else { liveDockEff=e; liveDockLever = EFF_ANCHOR[e]; }
+  renderLive();
+}
 function editLiveSet(i,j){ if(liveActiveIdx!==i) return; liveEditSet = {ex:i, set:j}; renderLive(); }
 function cancelLiveSetEdit(){ liveEditSet = null; renderLive(); }
-function liveEditEff(i,j,e){ const s=live.exercises[i].sets[j]; s.e = (s.e===e?undefined:e); saveLiveDraft(); renderLive(); if(liveEditSet) renderLive(); }
+/* Editing a logged set's effort has to move BOTH fields together. Writing only s.e would
+   leave a stale s.ef behind, and effBucket() prefers s.ef -- so the tap would look like it
+   did nothing at all. */
+function liveEditEff(i,j,e){
+  const s=live.exercises[i].sets[j];
+  const on = (effBucket(s)===e);
+  s.e  = on ? undefined : e;
+  s.ef = on ? undefined : EFF_ANCHOR[e];
+  saveLiveDraft(); renderLive(); if(liveEditSet) renderLive();
+}
 function saveLiveSetEdit(i,j){
   const w = parseFloat(document.getElementById('esW').value);
   const r = parseInt(document.getElementById('esR').value);
@@ -4840,8 +5079,11 @@ function logLiveSet(i){
   const w = parseFloat(document.getElementById('dockW').value);
   const r = parseInt(document.getElementById('dockR').value);
   if(!(w>0) || !(r>0)){ alert('Enter weight and reps for this set.'); return; }
-  ex.sets.push({w:w, r:r, e:liveDockEff||undefined});
-  liveDockEff = '';
+  // Both are stored: s.e keeps every existing reader working untouched, s.ef carries the
+  // precision. effBucket() prefers s.ef and falls back to s.e, so the two can never disagree.
+  ex.sets.push({w:w, r:r, e:liveDockEff||undefined,
+                ef:(liveDockLever===null?undefined:liveDockLever)});
+  liveDockEff = ''; liveDockLever = null;
   saveLiveDraft();
   if(ex._1rm && ex._1rmRamp){
     const step = ex._1rmRamp[ex.sets.length-1];
@@ -4860,7 +5102,7 @@ function finishExercise(i){
   const next = live.exercises.findIndex((e,idx)=>idx>i && !e.done);
   liveActiveIdx = next>=0 ? next : live.exercises.findIndex(e=>!e.done);
   if(liveActiveIdx<0) liveActiveIdx = i;
-  liveDockEff=''; stopRest(); saveLiveDraft(); renderLive();
+  liveDockEff=''; liveDockLever=null; stopRest(); saveLiveDraft(); renderLive();
 }
 
 function updateSessionBar(){
@@ -5732,7 +5974,7 @@ function deloadCheck(){
   // 2) recent grind/fail density across last ~10 logged sessions
   const recentLogs=[...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
   let grind=0, total=0;
-  recentLogs.forEach(l=>l.entries.forEach(e=>e.sets.forEach(s=>{ total++; if(s.e==='grind'||s.e==='fail') grind++; })));
+  recentLogs.forEach(l=>l.entries.forEach(e=>e.sets.forEach(s=>{ total++; const b=effBucket(s); if(b==='grind'||b==='fail') grind++; })));
   if(total>=10){ const pct=grind/total; if(pct>=0.4){ reasons.push(Math.round(pct*100)+'% of recent sets tagged grind/fail \u2014 effort is creeping up'); score+=2; } else if(pct>=0.25){ reasons.push('A quarter of recent sets are grinders'); score+=1; } }
   // 3) consecutive training weeks (sessions logged) without a light week
   const weeks=new Set(S.logs.map(l=>weekKeyOf(l.date)));
@@ -6228,7 +6470,7 @@ function activate1RM(i){
   ex._1rmTarget = target;
   ex._1rmRamp = oneRMRamp(target);
   ex.sets = [];
-  liveDockEff = '';
+  liveDockEff = ''; liveDockLever = null;
   saveLiveDraft();
   renderLive();
   document.getElementById('liveex-'+i).scrollIntoView({behavior:'smooth',block:'center'});
@@ -6460,10 +6702,13 @@ function classifyDecision(ex, ready){
   const str = !ff && isStrMode(nm);
   const ceilReps = str ? maxReps : minReps;
   let inc = incForExercise(nm);
-  const effs = topSets.map(s=>s.e).filter(Boolean);
+  const effs = topSets.map(effBucket).filter(Boolean);
   const hadFail = effs.includes('fail');
   const hadGrind = effs.includes('grind') || hadFail;
-  const allEasy = effs.length===topSets.length && effs.length>0 && effs.every(e=>e==='easy');
+  const _mean = effMean(topSets);   // see the note in recommend()
+  const allEasy = (_mean !== null && effs.length===topSets.length)
+                  ? _mean >= 85
+                  : (effs.length===topSets.length && effs.length>0 && effs.every(e=>e==='easy'));
 
   if(isBodyweight(nm)) return {code:'bw', from:null, to:null, moved:false,
     reason:'Bodyweight movement \u2014 progression tracked by reps and control, not load.'};
@@ -7100,7 +7345,7 @@ function investigateLift(nm){
   // grind/fail density over last 6 sessions of this lift
   const hist = historyFor(nm).slice(0,6);
   let tagged=0, hard=0;
-  hist.forEach(h=>h.sets.forEach(s=>{ if(s.e){tagged++; if(s.e==='grind'||s.e==='fail')hard++;} }));
+  hist.forEach(h=>h.sets.forEach(s=>{ const b=effBucket(s); if(b){tagged++; if(b==='grind'||b==='fail')hard++;} }));
   const hardPct = tagged? Math.round(100*hard/tagged) : null;
   if(hardPct!=null) findings.push('Effort mix (last '+hist.length+' sessions): '+hardPct+'% of tagged sets were grind/fail.');
   // stall length: sessions at same top weight without ceiling
@@ -8951,7 +9196,7 @@ function anReadinessRows(){
       // partially-tagged session's grind rate toward zero and wash the comparison out.
       if(!s.e) return;
       tagged++;
-      if(s.e==='grind' || s.e==='fail') hard++;
+      const _b = effBucket(s); if(_b==='grind' || _b==='fail') hard++;
     }));
     if(tagged < AN_RD_MIN_TAGGED) return;
     rows.push({date:l.date, tier:rd.tier, sets, tagged, hard,
@@ -9552,7 +9797,7 @@ function olSignals(){
     const maxed = isMaxed(nm);
     // grind/fail density over this lift's last 6 sessions — the same measure investigateLift uses
     let tagged=0, hard=0;
-    historyFor(nm).slice(0,6).forEach(h=>h.sets.forEach(st=>{ if(st.e){ tagged++; if(st.e==='grind'||st.e==='fail') hard++; } }));
+    historyFor(nm).slice(0,6).forEach(h=>h.sets.forEach(st=>{ const b=effBucket(st); if(b){ tagged++; if(b==='grind'||b==='fail') hard++; } }));
     const f = flags.find(x=>x.key === 'lift:'+nm) || null;
     const s = {
       lift:nm, sessions:pts.length, cur: pts.length ? Math.max(...pts.map(p=>p.v)) : 0,
@@ -10187,6 +10432,7 @@ function agContext(){
     '\n\nBENCH PRACTICE (standalone frequency work, separate from tracked bench): '+bpTxt+
     '\n\nFUEL TARGETS: '+(S.fuel&&S.fuel.calTarget||'?')+' cal / '+(S.fuel&&S.fuel.proTarget||'?')+'g protein per day.'+
     '\nAvoids: '+((S.fuel&&S.fuel.dislikes)||'\u2014')+
+    painContext()+
     '\n\nACTIVE LIFT OVERRIDES: '+ovTxt+
     '\nMAXED OUT (at machine ceiling): '+mxTxt+
     '\nINVESTIGATION FLAGS: '+flags+

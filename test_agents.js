@@ -29,6 +29,11 @@ const dom = new JSDOM(html, {
     w.alert = () => {};
     w.confirm = () => true;
     w.matchMedia = () => ({ matches: false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){} });
+    // jsdom has no layout engine, so it does not implement scrollIntoView. The app calls it
+    // whenever it advances to the next exercise. Stub it rather than route tests around it --
+    // this is a harness gap, not app behaviour, and steering fixtures away from a real code
+    // path to keep jsdom happy is how you end up testing something other than the app.
+    w.Element.prototype.scrollIntoView = function(){};
   }
 });
 
@@ -3607,6 +3612,170 @@ setTimeout(async () => {
     ok('bodyweight fixture cleaned up', ev('S.weights.length') === JSON.parse(savedW).length);
   } catch (e) {
     ok('bulk rate section', false, e.message);
+  }
+
+  console.log('=== EFFORT LEVER ===');
+  try {
+    // buckets fall out of the lever
+    ok('0 is failure', ev('effBucketFromLever(0)') === 'fail');
+    ok('15 is still failure', ev('effBucketFromLever(15)') === 'fail');
+    ok('16 is a grind', ev('effBucketFromLever(16)') === 'grind');
+    ok('40 is still a grind', ev('effBucketFromLever(40)') === 'grind');
+    ok('41 is solid', ev('effBucketFromLever(41)') === 'solid');
+    ok('75 is still solid', ev('effBucketFromLever(75)') === 'solid');
+    ok('76 is easy', ev('effBucketFromLever(76)') === 'easy');
+    ok('100 is easy', ev('effBucketFromLever(100)') === 'easy');
+    ok('a non-number has no bucket', ev("effBucketFromLever('abc')") === null);
+
+    // THE back-compat property: seven months of sets logged with the old tags keep working
+    // untouched, with no migration pass over historical data.
+    ok('an old easy tag still reads as easy', ev("effBucket({w:100,r:10,e:'easy'})") === 'easy');
+    ok('an old grind tag still reads as grind', ev("effBucket({w:100,r:10,e:'grind'})") === 'grind');
+    ok('an old fail tag still reads as fail', ev("effBucket({w:100,r:10,e:'fail'})") === 'fail');
+    ok('an untagged set has no bucket', ev('effBucket({w:100,r:10})') === null);
+    ok('an old tag yields its anchor value', ev("effLever({w:1,r:1,e:'grind'})") === 25);
+    ok('an untagged set has no lever value', ev('effLever({w:1,r:1})') === null);
+
+    // the lever wins when both are present, because it is the more precise of the two
+    ok('the lever wins over a stale tag', ev("effBucket({w:1,r:1,e:'easy',ef:10})") === 'fail');
+    ok('lever values are clamped', ev('effLever({w:1,r:1,ef:500})') === 100 && ev('effLever({w:1,r:1,ef:-9})') === 0);
+
+    // the mean is what buys the extra precision
+    ok('mean ignores untagged sets',
+       ev('effMean([{ef:80},{w:1,r:1},{ef:100}])') === 90, String(ev('effMean([{ef:80},{w:1,r:1},{ef:100}])')));
+    ok('mean of nothing is null', ev('effMean([{w:1,r:1}])') === null);
+    ok('mean mixes old tags and new levers',
+       ev("effMean([{e:'easy'},{ef:70}])") === 80, String(ev("effMean([{e:'easy'},{ef:70}])")));
+
+    // and it changes a real decision: two sessions that used to look identical no longer do
+    const savedL = ev('JSON.stringify(S.logs)');
+    const mk = function(ef1, ef2){
+      ev("S.logs = S.logs.filter(l=>l.id!==99401);");
+      ev("S.logs.push({id:99401, date:mesoAddDays(todayKey(),-3), day:'D1', entries:[{exercise:'Barbell Bench Press'," +
+         "sets:[{w:185,r:12,ef:" + ef1 + "},{w:185,r:12,ef:" + ef2 + "}]}]});");
+      return ev("classifyDecision('Barbell Bench Press')");
+    };
+    const bothVeryEasy = mk(95, 95);
+    const oneMuchHarder = mk(95, 40);
+    ok('two genuinely easy sets earn the double jump', bothVeryEasy.code === 'double', JSON.stringify(bothVeryEasy));
+    ok('a session with one hard set does NOT', oneMuchHarder.code === 'increase', JSON.stringify(oneMuchHarder));
+    ok('the double jump is twice the single', bothVeryEasy.to - 185 === 2 * (oneMuchHarder.to - 185),
+       bothVeryEasy.to + ' vs ' + oneMuchHarder.to);
+    // THE case that separates the mean rule from the old bucket rule. 80 and 78 both bucket
+    // as 'easy' (everything over 75 does), so the four-bucket rule would call this all-easy
+    // and hand out a double jump. The mean is 79, which is not an easy session -- it is a
+    // session he only just cleared. Without this fixture the whole change is untested: 95/95
+    // and 95/40 behave identically under both rules.
+    const barelyEasy = mk(80, 78);
+    ok('barely-easy sets do NOT earn a double jump, though both bucket as easy',
+       barelyEasy.code === 'increase', JSON.stringify(barelyEasy));
+    ok('control: both of those sets really do bucket as easy',
+       ev("effBucket({ef:80})") === 'easy' && ev("effBucket({ef:78})") === 'easy');
+    // under the old four-bucket rule both of those were "easy" + "solid" -> no double either
+    // way for the second, but the first needed EVERY set tagged easy; check the old path still
+    // behaves as it always did for sets that carry only a tag
+    ev("S.logs = S.logs.filter(l=>l.id!==99401);");
+    ev("S.logs.push({id:99401, date:mesoAddDays(todayKey(),-3), day:'D1', entries:[{exercise:'Barbell Bench Press'," +
+       "sets:[{w:185,r:12,e:'easy'},{w:185,r:12,e:'easy'}]}]});");
+    ok('legacy all-easy sessions still double jump', ev("classifyDecision('Barbell Bench Press')").code === 'double');
+    ev('S.logs = ' + savedL + ';');
+    ok('effort fixture cleaned up', ev("S.logs.every(l=>l.id!==99401)"));
+
+    // summ() is what every history readout and every agent prompt goes through
+    ok('summ marks a lever-logged easy set', /\u1d49/.test(ev("summ([{w:100,r:10,ef:90}])")), ev("summ([{w:100,r:10,ef:90}])"));
+    ok('summ marks a lever-logged failure', /\u02e3/.test(ev("summ([{w:100,r:10,ef:5}])")), ev("summ([{w:100,r:10,ef:5}])"));
+    ok('summ still marks an old-tag set', /\u1d4d/.test(ev("summ([{w:100,r:10,e:'grind'}])")));
+
+    // the dock writes both fields, so nothing downstream can disagree about a set
+    ev("setEffLever(30);");
+    ok('the slider sets the lever', ev('liveDockLever') === 30);
+    ok('the slider derives the bucket', ev('liveDockEff') === 'grind', ev('liveDockEff'));
+    ev("pickEff('easy');");
+    ok('a preset sets both', ev('liveDockEff') === 'easy' && ev('liveDockLever') === 90);
+    ev("pickEff('easy');");
+    ok('deselecting a preset clears both, not just one',
+       ev('liveDockEff') === '' && ev('liveDockLever') === null,
+       ev('liveDockEff') + '/' + String(ev('liveDockLever')));
+
+    // and the value has to actually reach the logged set, not just sit in dock state
+    ev("live = {date:todayKey(), day:'D1', startedAt:Date.now(), exercises:[{name:'Barbell Bench Press'," +
+       " sets:[], done:false, planned:3, lo:8, hi:12, targetW:135, advW:135, advLo:8, advHi:12}], curIdx:0};");
+    ev('liveActiveIdx = 0; MODE = "live"; renderLive();');
+    // Order matters: setEffLever() calls renderLive(), which regenerates the dock and would
+    // wipe anything already typed into it. Set the lever first, then fill the inputs.
+    ev('setEffLever(35);');
+    ev("document.getElementById('dockW').value = '135'; document.getElementById('dockR').value = '10';");
+    ev('logLiveSet(0)');
+    const logged = ev('live.exercises[0].sets[0]');
+    ok('a logged set carries the lever value', logged && logged.ef === 35, JSON.stringify(logged));
+    ok('a logged set also carries the bucket for old readers', logged && logged.e === 'grind', JSON.stringify(logged));
+    ok('the dock resets after logging', ev('liveDockLever') === null && ev('liveDockEff') === '');
+    // editing that set must move BOTH fields, or effBucket (which prefers ef) ignores the tap
+    ev("liveEditEff(0, 0, 'easy');");
+    const edited = ev('live.exercises[0].sets[0]');
+    ok('editing effort updates the lever too, not just the tag',
+       edited.e === 'easy' && edited.ef === 90, JSON.stringify(edited));
+    ok('and effBucket agrees with what was tapped', ev("effBucket(live.exercises[0].sets[0])") === 'easy');
+    ev("live = null; MODE = 'review'; liveDockLever = null; liveDockEff = '';");
+  } catch (e) {
+    ok('effort lever section', false, e.message);
+  }
+
+  console.log('=== PAIN / INJURY FLAG ===');
+  try {
+    ev('S.pain = [];');
+    ev("painAdd('Barbell Bench Press', 2, 'left shoulder front');");
+    ok('a flag is recorded', ev('S.pain.length') === 1);
+    ok('the flag carries the exercise', ev('S.pain[0].exercise') === 'Barbell Bench Press');
+    ok('the flag carries the level', ev('S.pain[0].level') === 2);
+    ok('the flag is dated today', ev('S.pain[0].date') === ev('todayKey()'));
+    ok('level is clamped to the scale', ev("painAdd('X', 99, '').level") === 3 && ev("painAdd('Y', -4, '').level") === 1);
+    ok('notes are length-capped', ev("painAdd('Z', 1, new Array(500).join('q')).note").length === 200);
+
+    ev('S.pain = [];');
+    ev("painAdd('Leg Press', 1, '');");
+    ok('painFor finds a flag for that lift', ev("painFor('Leg Press', 30).length") === 1);
+    ok('painFor does not match a different lift', ev("painFor('Barbell Bench Press', 30).length") === 0);
+
+    // what the agents actually see
+    const pc = ev('painContext()');
+    ok('agents are told about the flag', pc.indexOf('Leg Press') >= 0, pc.slice(0, 120));
+    ok('agents are told it is a report, not a diagnosis', /reported facts, not as a diagnosis/.test(pc));
+    ok('agents are told not to give medical advice', /do NOT give medical advice/.test(pc));
+    ok('agents are barred from loading a sharply-flagged lift', /Never propose adding load/.test(pc));
+    ok('agents are told to point at a professional', /professional look/.test(pc));
+    // NOT indexOf('Leg Press'): Leg Press is in the default split, so agContext() contains
+    // that string whether or not the pain section is wired in at all.
+    ok('the flag reaches the real agent context', ev('agContext()').indexOf('PAIN / INJURY FLAGS') >= 0);
+    ok('and carries the flagged lift under that heading',
+       /PAIN \/ INJURY FLAGS[\s\S]{0,300}Leg Press/.test(ev('agContext()')));
+
+    // recurrence is the signal worth surfacing
+    ev("painAdd('Leg Press', 3, 'knee');");
+    ok('repeat flags are counted', /2 flags in 30 days/.test(ev('painContext()')), ev('painContext()').slice(0, 200));
+    ok('the worst level is what is reported', /worst = sharp/.test(ev('painContext()')));
+
+    // no flags at all must add nothing to the prompt, not an empty heading
+    ev('S.pain = [];');
+    ok('no flags means no prompt section', ev('painContext()') === '');
+    ok('and no empty heading leaks into agent context', ev('agContext()').indexOf('PAIN / INJURY') < 0);
+
+    // notes are model-visible text and user-supplied, so they must be escaped in the DOM
+    ev("painAdd('Barbell Bench Press', 1, '<img src=x onerror=alert(1)>');");
+    ev("live = {date:todayKey(), day:'D1', startedAt:Date.now(), exercises:[{name:'Barbell Bench Press', sets:[], done:false, planned:3, lo:8, hi:12, targetW:135, advW:135, advLo:8, advHi:12}], curIdx:0};");
+    ev('liveActiveIdx = 0; MODE = "live";');
+    const painMarkup = ev("painHTML(live.exercises[0], 0)");
+    ok('a flag raised today is shown on the lift', painMarkup.indexOf('Flagged today') >= 0, painMarkup.slice(0, 120));
+    ok('the note is escaped, not injected',
+       painMarkup.indexOf('<img src=x') < 0 && painMarkup.indexOf('&lt;img') >= 0, painMarkup.slice(0, 200));
+    ev("painOpenFor = 0; painDraftLevel = 0;");
+    const panel = ev("painHTML({name:'Leg Press'}, 0)");
+    ok('the panel offers all three levels', ['niggle','sore','sharp'].every(function(l){ return panel.indexOf(l) >= 0; }));
+    ok('the panel says it is a log, not advice', /log, not advice/.test(panel));
+    ev("painOpenFor = null; painDraftLevel = 0; S.pain = []; live = null; MODE = 'review';");
+  } catch (e) {
+    ok('pain flag section', false, e.message);
+    ev("S.pain = []; live = null; MODE = 'review'; painOpenFor = null;");
   }
 
   console.log('=== SUBAGENT SPLIT: FOUR FOCUSED CALLS ===');
