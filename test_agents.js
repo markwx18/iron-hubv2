@@ -3369,6 +3369,70 @@ setTimeout(async () => {
     ev('mesoStop();');
   }
 
+  console.log('=== API REQUEST SHAPE (Sonnet 5 migration) ===');
+  try {
+    const htmlSrc = require('fs').readFileSync(HTML_PATH, 'utf8');
+    ok('the model is declared exactly once', (htmlSrc.match(/const AI_MODEL =/g) || []).length === 1);
+    ok('model is claude-sonnet-5', ev('AI_MODEL') === 'claude-sonnet-5', ev('AI_MODEL'));
+    ok('no stale model literal remains anywhere', htmlSrc.indexOf('claude-sonnet-4-6') < 0);
+
+    // Capture what the app WOULD send. This is the only part of the migration testable
+    // without a live API key, so it is worth being thorough about: every one of these
+    // assertions corresponds to something that returns a 400 on Sonnet 5.
+    ev("window.__sent = []; window.__realFetch = window.fetch;");
+    ev("window.fetch = function(url, init){ window.__sent.push({url:url, init:init}); " +
+       "return Promise.resolve({ok:true, json:function(){ return Promise.resolve({content:[{type:'text', text:'{}'}]}); }}); };");
+    ev("S.settings.apiKey = 'sk-test';");
+    ev("(function(){ return callClaude([{role:'user', content:'hi'}], 'sys', 500); })()");
+    await new Promise(r => setTimeout(r, 30));
+    const sent = ev('window.__sent');
+    ok('a request was actually issued', sent.length >= 1, 'count=' + sent.length);
+    const body = JSON.parse(sent[0].init.body);
+    const hdrs = sent[0].init.headers;
+    ok('request targets the messages endpoint', String(sent[0].url).indexOf('/v1/messages') > 0, String(sent[0].url));
+    ok('body carries the shared model constant', body.model === 'claude-sonnet-5', body.model);
+    // these three were REMOVED on Sonnet 5 and 400 if present
+    ok('no temperature (removed on Sonnet 5)', body.temperature === undefined);
+    ok('no top_p (removed on Sonnet 5)', body.top_p === undefined);
+    ok('no top_k (removed on Sonnet 5)', body.top_k === undefined);
+    // budget_tokens is likewise gone; adaptive thinking is controlled via effort
+    ok('no thinking.budget_tokens', !body.thinking || body.thinking.budget_tokens === undefined);
+    ok('effort is set so adaptive thinking does not run unbounded',
+       body.output_config && typeof body.output_config.effort === 'string', JSON.stringify(body.output_config));
+    ok('default effort is medium', body.output_config.effort === 'medium', body.output_config.effort);
+    ok('browser-direct-access header present', hdrs['anthropic-dangerous-direct-browser-access'] === 'true');
+    ok('api version header present', hdrs['anthropic-version'] === '2023-06-01');
+    // a prefill (last message from the assistant) 400s on Sonnet 5
+    ok('messages do not end on an assistant turn (prefill 400s)',
+       body.messages[body.messages.length - 1].role === 'user', body.messages[body.messages.length - 1].role);
+
+    // the nightly cycle needs room for thinking AND a complete four-agent JSON object
+    ev("window.__sent = [];");
+    ev("agState().lastRun = ''; agState().status = {};");
+    await ev('agRunAll(true)');
+    const nightly = ev('window.__sent');
+    ok('nightly cycle issued a request', nightly.length >= 1, 'count=' + nightly.length);
+    const nb = JSON.parse(nightly[0].init.body);
+    ok('nightly max_tokens leaves room for thinking + full JSON', nb.max_tokens >= 8000, String(nb.max_tokens));
+    ok('nightly runs at raised effort', nb.output_config.effort === 'high', nb.output_config.effort);
+    ok('nightly still sends a single user turn', nb.messages.length === 1 && nb.messages[0].role === 'user');
+
+    // Every cap in the app must leave room for adaptive thinking. The mid-workout DELTA
+    // chat was the tight one (500), where a long think could have returned a blank reply
+    // while he was standing at the rack.
+    const caps = (htmlSrc.match(/await callClaude(?:WithTools)?\([\s\S]{0,220}?\)\s*;/g) || [])
+      .map(function(c){ var m = c.match(/(\d{3,6})\s*(?:,\s*\{[^}]*\})?\s*\)\s*;\s*$/); return m ? +m[1] : null; })
+      .filter(function(v){ return v !== null; });
+    ok('found every API call site to check', caps.length >= 6, 'found=' + caps.length + ' -> ' + caps.join(','));
+    ok('no max_tokens cap is small enough for thinking to swallow the answer',
+       caps.every(function(v){ return v >= 4000; }), caps.join(','));
+
+    ev("window.fetch = window.__realFetch; window.__sent = [];");
+  } catch (e) {
+    ok('api request shape section', false, e.message);
+    ev("if(window.__realFetch) window.fetch = window.__realFetch;");
+  }
+
   console.log('=== LIFT OVERRIDES REACH EVERY SURFACE ===');
   try {
     const savedOv = ev('JSON.stringify({logs:S.logs, inv:S.invest, live:null})');

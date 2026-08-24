@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-24-v1">
+<meta name="ironhub-build" content="2026-08-24-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2954,17 +2954,41 @@ function delGoal(id){
   S.road = S.road.filter(g=>g.id!==id); save(); renderRoad();
 }
 
-/* ================= API ================= */
-async function callClaude(messages, system, maxTokens){
-  const headers = {'Content-Type':'application/json'};
+/* ================= API =================
+   The model lives in exactly one place now. It used to be a literal inside each of the two
+   request builders below, which is two places to miss when it changes. */
+const AI_MODEL = 'claude-sonnet-5';
+/* Effort controls how hard the model thinks before answering, and thinking tokens bill as
+   OUTPUT. Sonnet 5 thinks adaptively by default, so leaving this unset would roughly double
+   the output cost of every call for reasoning a fitness log mostly does not need. 'medium'
+   is the deliberate default; agRunAll() raises it, because the nightly cycle is the one call
+   where careful reasoning is actually worth paying for. */
+const AI_EFFORT_DEFAULT = 'medium';
+const AI_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+function aiHeaders(){
+  const h = {'Content-Type':'application/json'};
   if(S.settings.apiKey){
-    headers['x-api-key'] = S.settings.apiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    headers['anthropic-dangerous-direct-browser-access'] = 'true';
+    h['x-api-key'] = S.settings.apiKey;
+    h['anthropic-version'] = '2023-06-01';
+    // Required for a browser to call the API directly. There is no server here to proxy
+    // through, and the key never leaves the device — syncPayload() strips it.
+    h['anthropic-dangerous-direct-browser-access'] = 'true';
   }
-  const body = {model:'claude-sonnet-4-6', max_tokens:maxTokens||1000, messages};
+  return h;
+}
+/* Shared request body. opts: {effort, format} */
+function aiBody(messages, system, maxTokens, opts){
+  const o = opts || {};
+  const body = {model:AI_MODEL, max_tokens:maxTokens||1000, messages};
   if(system) body.system = system;
-  const res = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers,body:JSON.stringify(body)});
+  const oc = {effort: o.effort || AI_EFFORT_DEFAULT};
+  if(o.format) oc.format = o.format;
+  body.output_config = oc;
+  return body;
+}
+async function callClaude(messages, system, maxTokens, opts){
+  const res = await fetch(AI_ENDPOINT,{method:'POST',headers:aiHeaders(),
+    body:JSON.stringify(aiBody(messages, system, maxTokens, opts))});
   if(!res.ok){ const t=await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
   const data = await res.json();
   return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
@@ -3052,7 +3076,7 @@ async function sendChat(){
       }
       return {role:m.role, content};
     });
-    const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs(), 1200);
+    const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs(), 4000);
     const msg = {role:'assistant', content:text || (actions.length?'Here\u2019s what I\u2019d change \u2014 review and apply below:':'')};
     if(actions.length) msg.proposals = coachStageProposals(actions);
     S.chat.push(msg); save(); agThinkingFor = null; renderCoach();
@@ -3079,7 +3103,7 @@ async function ingestShot(){
     const reply = await callClaude([{role:'user', content:[
       {type:'image', source:{type:'base64', media_type:f.type||'image/png', data:b64}},
       {type:'text', text:prompt}
-    ]}], null, 1500);
+    ]}], null, 6000);
     const parsed = parseLooseJSON(reply);
     window._pendingShot = parsed;
     let html = '<hr><p class="small"><b>Found '+parsed.exercises.length+' exercises'+(parsed.date?' — '+esc(parsed.date):'')+'</b>. Review, pick the day, then confirm:</p>';
@@ -3487,7 +3511,7 @@ async function maybeRunAudit(){
     const prompt = 'WEEKLY VOLUME (sets, secondary=half): '+volTxt+'\n\nUNDER-TRAINED: '+(weak.length?weak.join(', '):'(none)')+
       '\n\nSTALE ACCESSORIES (no e1RM progress 4+ wks \u2014 propose a swap for each): '+staleTxt+
       '\n\nCURRENT SPLIT:\n'+splitTxt;
-    const reply = await callClaude([{role:'user', content:prompt}], sys, 1100);
+    const reply = await callClaude([{role:'user', content:prompt}], sys, 4000);
     const parsed = parseLooseJSON(reply);
     const props = (parsed.proposals||[]).slice(0,4).map(pr=>{
       const base = {
@@ -3776,7 +3800,7 @@ async function genAllMeals(){
       'Within each slot, vary the calorie level so there is a genuine spread from a hearty high-calorie choice down to a lighter one \u2014 e.g. a snack slot might range from a big peanut-butter-and-honey sandwich down to a small handful of chips. '+
       'Respond with ONLY valid JSON, no markdown, no commentary:\n'+
       '{"slots":[{"slot":"Breakfast","options":[{"name":"short food name","cal":650,"protein":40,"how":"one-line prep, under 16 words"}]}]}';
-    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 4000);
+    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 10000);
     const parsed = parseLooseJSON(reply);
     const slots = parsed.slots || parsed.meals || [];
     if(!slots.length) throw new Error('No slots returned');
@@ -3801,7 +3825,7 @@ async function refreshMeal(i){
     const prompt = 'Give 9 distinct '+slot+' food options with a genuine spread from high-calorie down to lighter. '+
       'Make them different from these previous ones where possible: '+((f.meals[i].options||[]).map(o=>o.name).join(', ')||'(none)')+'. '+
       'Respond with ONLY valid JSON, no markdown: {"slot":"'+slot+'","options":[{"name":"...","cal":0,"protein":0,"how":"one-line prep under 16 words"}]}';
-    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 2000);
+    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 6000);
     const m = parseLooseJSON(reply);
     const opts = (m.options||[]).map(o=>({name:o.name, cal:+o.cal||0, protein:+o.protein||0, how:o.how||''}))
                   .filter(o=>o.name).sort((a,b)=>b.cal-a.cal);
@@ -4618,7 +4642,7 @@ async function liveDeltaSend(){
       'You cannot change app state from here.\n\n'+
       coachMemContext()+trainingContext()+agContext()+liveDeltaContext();
     const msgs = a.chats.delta.slice(-14).map(m=>({role:m.role, content:m.content}));
-    const {text} = await callClaudeWithTools(msgs, sys, null, 500);
+    const {text} = await callClaudeWithTools(msgs, sys, null, 4000);
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
     agState().chats.delta.push({role:'assistant', content:text||'\u2014'});
     save(); renderLive();
@@ -7653,19 +7677,14 @@ function coachExecuteAction(name, inp){
 }
 
 /* ---- tool-enabled Claude call: returns {text, actions:[{id,name,input}]} ---- */
-async function callClaudeWithTools(messages, system, tools, maxTokens){
-  const headers = {'Content-Type':'application/json'};
-  if(S.settings.apiKey){
-    headers['x-api-key'] = S.settings.apiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    headers['anthropic-dangerous-direct-browser-access'] = 'true';
-  }
-  const body = {model:'claude-sonnet-4-6', max_tokens:maxTokens||1200, messages};
-  if(system) body.system = system;
+async function callClaudeWithTools(messages, system, tools, maxTokens, opts){
+  const body = aiBody(messages, system, maxTokens||1200, opts);
   if(tools && tools.length) body.tools = tools;
-  const res = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers,body:JSON.stringify(body)});
+  const res = await fetch(AI_ENDPOINT,{method:'POST',headers:aiHeaders(),body:JSON.stringify(body)});
   if(!res.ok){ const t=await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
   const data = await res.json();
+  // Filtering by type already drops Sonnet 5's thinking blocks: they are not answer text,
+  // and this filter predates them, so nothing here needed to change for the model swap.
   const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
   const actions = (data.content||[]).filter(b=>b.type==='tool_use').map(b=>({id:b.id, name:b.name, input:b.input||{}}));
   return {text, actions};
@@ -10051,9 +10070,16 @@ async function agRunAll(manual){
     'numbers; leave tip empty rather than writing filler.\n\n'+
     coachMemContext()+trainingContext()+agContext()+olAgentContext();
   try{
+    // max_tokens raised from 4000 and effort raised above the app-wide default, both because
+    // of the same Sonnet 5 property: thinking is adaptive and thinking tokens count against
+    // max_tokens. This one response has to carry four agent summaries, their proposals AND
+    // the overload report as a single complete JSON object, so a long think against the old
+    // 4000 cap could truncate it mid-object. parseLooseJSON() repairs a cut tail, but a
+    // truncated agent block silently loses real content. This is also the one call per day
+    // where careful reasoning is worth paying for, hence 'high' rather than the default.
     const {text} = await callClaudeWithTools(
       [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
-      sys, null, 4000);
+      sys, null, 16000, {effort:'high'});
     // CRITICAL: re-resolve state AFTER the await. applyPulled() replaces S wholesale, so if a
     // background sync lands during the ~60s API call, any reference captured before the await
     // now points at an orphaned object that save() will never serialize. That is exactly why
@@ -10142,7 +10168,7 @@ async function agSendChat(id){
       'If you think something should change, say so and tell him to run a cycle.\n\n'+
       coachMemContext()+trainingContext()+agContext();
     const msgs = a.chats[id].slice(-14).map(m=>({role:m.role, content:m.content}));
-    const {text} = await callClaudeWithTools(msgs, sys, null, 1100);
+    const {text} = await callClaudeWithTools(msgs, sys, null, 4000);
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
     agState().chats[id].push({role:'assistant', content:text||'\u2014'});
     save(); agThinkingFor = null; renderOps();
