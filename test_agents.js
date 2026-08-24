@@ -604,6 +604,64 @@ setTimeout(async () => {
   try { ev('rerenderActive()'); } catch (e) { rerenderThrew = true; }
   ok('rerenderActive does not throw', !rerenderThrew);
 
+  // --- cards must not close themselves on the refresh timer ---
+  // jsdom has no layout engine, so this asserts WHICH BRANCH the markup generator took
+  // (does the emitted HTML carry the 'open' class?) rather than any measured height.
+  ev('subOpen = {}; activeMainTab = "settings"; navMemory = {settings:"settings"};');
+  const closedHTML = ev("subSection('Sleep & performance', '<i>x</i>', false)");
+  ok('a sub-section closed by default emits no open class', closedHTML.indexOf('class="sub"') >= 0, closedHTML.slice(0, 80));
+  ok('a sub-section carries its key for the toggle to find', closedHTML.indexOf('data-subkey=') >= 0);
+  // simulate the user opening it, exactly as the click handler would
+  ev("subOpen[subKey('Sleep & performance')] = true;");
+  const reopened = ev("subSection('Sleep & performance', '<i>x</i>', false)");
+  ok('a sub-section the user opened is still open on the next repaint',
+     reopened.indexOf('class="sub open"') >= 0, reopened.slice(0, 90));
+  // and an explicit close must survive too, not fall back to openByDefault
+  ev("subOpen[subKey('Notes')] = false;");
+  const reclosed = ev("subSection('Notes', '<i>x</i>', true)");
+  ok('a sub-section the user closed stays closed even if it defaults open',
+     reclosed.indexOf('class="sub"') >= 0 && reclosed.indexOf('open') < 0, reclosed.slice(0, 90));
+  // keys are per-tab, so two tabs can hold a card with the same title independently
+  ev('activeMainTab = "progress"; navMemory = {progress:"progress"};');
+  const otherTab = ev("subSection('Notes', '<i>x</i>', true)");
+  ok('the same card title on another tab keeps its own state',
+     otherTab.indexOf('class="sub open"') >= 0, otherTab.slice(0, 90));
+  ev('subOpen = {}; activeMainTab = "progress"; navMemory = {};');
+
+  // --- the split editor's expanded day, same problem, same shape of fix ---
+  ev('sdOpen = {};');
+  const sdClosed = ev('splitEditorHTML()');
+  ok('split editor days start closed', sdClosed.indexOf('class="sd-body"') >= 0);
+  ev('sdOpen["D1"] = true;');
+  const sdOpened = ev('splitEditorHTML()');
+  ok('an expanded split-editor day survives a repaint',
+     sdOpened.indexOf('class="sd-body open" id="sdbody-D1"') >= 0);
+  ok('only the expanded day is open', sdOpened.indexOf('class="sd-body open" id="sdbody-D2"') < 0);
+  ok('the chevron matches the remembered state', sdOpened.indexOf('id="chev-D1">▴') >= 0);
+  // the per-exercise HOME substitution row inside a day has the same DOM-only problem
+  ev('sdOpen = {"D1":true}; sdHomeOpen = {};');
+  ok('a home-substitution row starts closed', ev('splitEditorHTML()').indexOf('class="sd-ex-home"') >= 0);
+  ev('sdHomeOpen["D1-0"] = true;');
+  ok('an expanded home-substitution row survives a repaint',
+     ev('splitEditorHTML()').indexOf('class="sd-ex-home open" id="sdhome-D1-0"') >= 0);
+  ok('only the targeted home row is open',
+     ev('splitEditorHTML()').indexOf('class="sd-ex-home open" id="sdhome-D1-1"') < 0);
+  ev('sdOpen = {}; sdHomeOpen = {};');
+
+  // --- and the timer must not repaint at all when nothing moved ---
+  ev('MODE = "review"; activeMainTab = "settings"; navMemory = {settings:"settings"};');
+  ev('window.__renders = 0; window.__realSettings = REVIEW_RENDER.settings;');
+  ev('REVIEW_RENDER.settings = function(){ window.__renders++; };');
+  ev('_tabSig = ""; rerenderActive();');
+  ok('first call repaints', ev('window.__renders') === 1, String(ev('window.__renders')));
+  ev('rerenderActive();');
+  ok('a second call with nothing changed does NOT repaint', ev('window.__renders') === 1, String(ev('window.__renders')));
+  ev('S.meta.changedAt = Date.now() + 1234; rerenderActive();');
+  ok('a real state change does repaint', ev('window.__renders') === 2, String(ev('window.__renders')));
+  ev('rerenderActive(true);');
+  ok('force repaints regardless of the signature', ev('window.__renders') === 3, String(ev('window.__renders')));
+  ev('REVIEW_RENDER.settings = window.__realSettings; navMemory = {}; activeMainTab = "progress";');
+
   console.log('=== PULL LANDING MID-CYCLE (stale reference) ===');
   // The real-world failure: a background gist pull completes during the ~60s API call.
   // applyPulled replaces S wholesale, so anything written through a reference captured before
@@ -800,18 +858,42 @@ setTimeout(async () => {
   ok('queue contains exactly one entry (the real fix, not the advisory)', ev('agState().proposals.length') === 1,
      'count=' + ev('agState().proposals.length'));
 
-  // a malformed fix (invalid shape, not explicitly null) must still be silently dropped \u2014
-  // that's a model error, not an intentional advisory, so it should NOT get logged as one
+  // A malformed fix (invalid shape, not explicitly null) must never reach the queue, and its
+  // reasoning must never be laundered into the log AS ADVICE \u2014 that's a model error, not an
+  // intentional advisory.
+  //
+  // It must, however, leave a trace. This assertion used to forbid any mention at all, which
+  // meant a rejected fix vanished completely while the agent's free-text summary went on
+  // announcing the change ("capping Incline DB Press at 60 lb") \u2014 you'd read that, believe an
+  // override was live, and LIVE would quietly disagree. That was a real reported bug. So the
+  // rule is sharper now, not looser: no advisory laundering, but a visible rejection notice.
   ev("agState().proposals = []; agState().log = [];");
   ev(`callClaudeWithTools = async () => ({text: JSON.stringify({
         zulu:{summary:'brief2', proposals:[
-          {title:'Bad fix attempt', reasoning:'r', fix:{type:'cal', payload:{delta:99999}}}
+          {title:'Bad fix attempt', reasoning:'SHOULD_NOT_APPEAR', fix:{type:'cal', payload:{delta:99999}}}
         ]}
       }), actions:[]});`);
   await ev('agRunAll(true)');
   ok('malformed fix does not reach the queue', ev("agState().proposals.some(p=>p.title==='Bad fix attempt')") === false);
-  ok('malformed fix is NOT folded into the log as if it were an advisory', 
-     ev("!agState().log.some(l=>/Bad fix attempt/.test(l.text))"));
+  ok('malformed fix reasoning is NOT presented as advice',
+     ev("!agState().log.some(l=>/SHOULD_NOT_APPEAR/.test(l.text))"));
+  ok('malformed fix leaves a visible rejection notice instead of vanishing',
+     ev("agState().log.some(l=>/Bad fix attempt/.test(l.text) && /NOTHING was applied/.test(l.text))"),
+     JSON.stringify(ev('agState().log.map(l=>l.text)')));
+  ok('the rejection notice names why it was turned down',
+     ev("agState().log.some(l=>/out of the allowed range/.test(l.text))"),
+     JSON.stringify(ev('agState().log.map(l=>l.text)')));
+  // and a bad exercise name is named specifically, since that is the common real case
+  ev("agState().proposals = []; agState().log = [];");
+  ev(`callClaudeWithTools = async () => ({text: JSON.stringify({
+        delta:{summary:'d', proposals:[
+          {title:'Cap the trap bar', reasoning:'r', fix:{type:'liftReset', payload:{name:'Trap Bar Deadlift', w:225, days:14}}}
+        ]}
+      }), actions:[]});`);
+  await ev('agRunAll(true)');
+  ok('an unresolvable lift name is called out by name in the rejection',
+     ev("agState().log.some(l=>/Trap Bar Deadlift/.test(l.text) && /not a lift you train/.test(l.text))"),
+     JSON.stringify(ev('agState().log.map(l=>l.text)')));
 
   ev("callClaudeWithTools = window.__realCall4;");
 
@@ -3233,6 +3315,174 @@ setTimeout(async () => {
     ev('S.logs = ' + JSON.stringify(ptSaved.logs) + '; S.weights = ' + JSON.stringify(ptSaved.weights) +
        '; S.prHistory = ' + JSON.stringify(ptSaved.prHistory) + '; S.invest = ' + JSON.stringify(ptSaved.invest) +
        '; S.schedule = ' + JSON.stringify(ptSaved.schedule) + ';');
+  }
+
+  // ============================================================
+  //  V4 PHASE 1 REGRESSIONS
+  // ============================================================
+  console.log('=== INCREMENTS FOLLOW THE SPLIT IN FORCE (meso block) ===');
+  try {
+    const savedInc = ev('JSON.stringify({split:S.split, logs:S.logs})');
+    // A configured increment only proves anything if it lives in a split that ISN'T S.split.
+    // With no block active, incForExercise() reads S.split and passes either way, so this
+    // fixture has to stand up a real, APPROVED meso strength block first.
+    ev("mesoStart({phases:[{id:'pi',type:'str',name:'Strength',weeks:2,repLo:3,repHi:5,rpeLo:8,rpeHi:9}],repeat:false,cycles:1}, todayKey())");
+    ev('mesoEnsureProposals()');
+    const bid = ev('mesoActive().weeks[0].blockId');
+    ev('mesoApproveSplit(' + JSON.stringify(bid) + ')');
+    ok('control: block is actually in force', ev("Object.keys(activeSplitObj()).join(',')") === 'S1,S2,S3',
+       ev("Object.keys(activeSplitObj()).join(',')"));
+
+    // put a deliberately non-default increment on a block exercise, and make sure the name
+    // is one incFor() would otherwise guess differently for (Leg Press defaults to 10)
+    ev("mesoActive().splits[" + JSON.stringify(bid) + "].split.S1.exercises[0] = {name:'Leg Press', inc:15};");
+    ok('control: Leg Press is absent from the permanent split S1', ev('!S.split.S1') === true);
+    ok('control: incFor default for Leg Press is 10, not 15', ev("incFor('Leg Press')") === 10, String(ev("incFor('Leg Press')")));
+    ok('incForExercise reads the block increment (15), not the default',
+       ev("incForExercise('Leg Press')") === 15, String(ev("incForExercise('Leg Press')")));
+
+    // and the decrease path actually uses it: a failed set must back off by 15, not 10
+    ev("S.logs = S.logs.filter(l=>!(l.entries||[]).some(e=>e.exercise==='Leg Press'));");
+    ev("S.logs.push({id:99201, date:mesoAddDays(todayKey(),-3), day:'S1', entries:[" +
+       "{exercise:'Leg Press', sets:[{w:200,r:2,e:'fail'},{w:200,r:2,e:'fail'}]}]});");
+    // reps deliberately BELOW the range floor: at or inside the range a failed set is a 'hold'
+    // (win the reps back at the same load), and only a below-range failure triggers the back-off
+    // branch whose step size is the thing under test.
+    const dec = ev("classifyDecision('Leg Press')");
+    ok('a failed session backs off by the configured 15, not the default 10',
+       dec && dec.to === 185, JSON.stringify(dec));
+
+    // intra-session back-off reads the same number
+    const adv = ev("intraAdvice({name:'Leg Press', sets:[{w:200,r:3,e:'fail'}], lo:3, hi:6, targetW:200, recDetail:''})");
+    ok('mid-session back-off also uses 15', adv && adv.w === 185, JSON.stringify(adv));
+
+    // formFocus resolves through the same path
+    ev("mesoActive().splits[" + JSON.stringify(bid) + "].split.S1.exercises[1] = {name:'Barbell Bench Press', inc:5, formFocus:true};");
+    ok('isFormFocus sees a block exercise too', ev("isFormFocus('Barbell Bench Press')") === true);
+
+    ev('mesoStop();');
+    const restInc = JSON.parse(savedInc);
+    ev('S.split = ' + JSON.stringify(restInc.split) + '; S.logs = ' + JSON.stringify(restInc.logs) + ';');
+    ok('fixture cleaned up', ev("S.logs.every(l=>l.id!==99201)"));
+  } catch (e) {
+    ok('increment/meso section', false, e.message);
+    ev('mesoStop();');
+  }
+
+  console.log('=== LIFT OVERRIDES REACH EVERY SURFACE ===');
+  try {
+    const savedOv = ev('JSON.stringify({logs:S.logs, inv:S.invest, live:null})');
+    ev("S.logs = S.logs.filter(l=>!(l.entries||[]).some(e=>e.exercise==='Barbell Bench Press'));");
+    ev("S.logs.push({id:99301, date:mesoAddDays(todayKey(),-3), day:'D1', entries:[" +
+       "{exercise:'Barbell Bench Press', sets:[{w:185,r:12,e:'easy'},{w:185,r:12,e:'easy'}]}]});");
+    // 12 clean easy reps: the engine WANTS to jump. An override has to beat that everywhere.
+    const wantsJump = ev("recommend('Barbell Bench Press').sets[0].w");
+    ok('control: without an override the engine raises the weight above 185', +wantsJump > 185, String(wantsJump));
+
+    ev("invState().overrides['Barbell Bench Press'] = {w:155, until: mesoAddDays(todayKey(), 14), note:'test cap'};");
+    ok('control: the override resolves', ev("!!invOverrideFor('Barbell Bench Press')") === true);
+
+    // the warm-up ramp used to be built off recommend() directly and ignored the cap, so it
+    // ramped toward a top weight the session was never going to use
+    const src = ev("warmupSourceFor('D1').find(function(s){return s.name==='Barbell Bench Press';})");
+    ok('warm-up ramp is built off the override weight, not the engine suggestion',
+       src && src.w === 155, JSON.stringify(src));
+
+    // LIVE and Today already honoured it -- assert they still do, so a future refactor can't
+    // quietly regress the two surfaces that were correct
+    const built = ev("buildOneLiveExercise('Barbell Bench Press')");
+    ok('LIVE target still honours the override', built && +built.targetW === 155, JSON.stringify(built && built.targetW));
+
+    ev("invState().overrides = {};");
+    const restOv = JSON.parse(savedOv);
+    ev('S.logs = ' + JSON.stringify(restOv.logs) + '; S.invest = ' + JSON.stringify(restOv.inv) + ';');
+    ok('override fixture cleaned up', ev("S.logs.every(l=>l.id!==99301)"));
+  } catch (e) {
+    ok('override reach section', false, e.message);
+    ev("invState().overrides = {};");
+  }
+
+  console.log('=== liftReset RESOLVES AGAINST THE SPLIT IN FORCE ===');
+  try {
+    const savedLR = ev('JSON.stringify({split:S.split, logs:S.logs})');
+    ev("mesoStart({phases:[{id:'pl',type:'str',name:'Strength',weeks:2,repLo:3,repHi:5,rpeLo:8,rpeHi:9}],repeat:false,cycles:1}, todayKey())");
+    ev('mesoEnsureProposals()');
+    const lbid = ev('mesoActive().weeks[0].blockId');
+    ev('mesoApproveSplit(' + JSON.stringify(lbid) + ')');
+    // a lift that exists ONLY inside the approved block, never in S.split and never logged
+    ev("mesoActive().splits[" + JSON.stringify(lbid) + "].split.S2.exercises[0] = {name:'Safety Bar Squat', inc:10, repMode:'str'};");
+    ok('control: the lift is absent from the permanent split', ev("!agTrainedExNames.toString||true") === true);
+    ok('control: the lift was never logged', ev("!S.logs.some(l=>(l.entries||[]).some(e=>e.exercise==='Safety Bar Squat'))") === true);
+    ok('control: the lift is not in the permanent split either',
+       ev("!Object.keys(S.split).some(function(dk){return (S.split[dk].exercises||[]).some(function(x){return exName(x)==='Safety Bar Squat';});})") === true);
+
+    // Before the fix agTrainedExNames() only scanned S.split + logs, so this resolved to null
+    // and agValidateFix() discarded a perfectly legitimate proposal.
+    ok('a block-only lift is recognised as one he trains',
+       ev("agResolveExName('Safety Bar Squat')") === 'Safety Bar Squat', String(ev("agResolveExName('Safety Bar Squat')")));
+    const vfix = ev("agValidateFix({type:'liftReset', payload:{name:'Safety Bar Squat', w:225, days:14}})");
+    ok('liftReset against a block-only lift now validates', vfix && vfix.payload.name === 'Safety Bar Squat', JSON.stringify(vfix));
+    // and the boundary still holds for a genuinely unknown lift
+    ok('an invented lift is still rejected',
+       ev("agValidateFix({type:'liftReset', payload:{name:'Zercher Cable Jefferson Curl', w:225, days:14}})") === null);
+
+    ev('mesoStop();');
+    const restLR = JSON.parse(savedLR);
+    ev('S.split = ' + JSON.stringify(restLR.split) + '; S.logs = ' + JSON.stringify(restLR.logs) + ';');
+  } catch (e) {
+    ok('liftReset resolution section', false, e.message);
+    ev('mesoStop();');
+  }
+
+  console.log('=== ONE BODYWEIGHT RATE, CORRECT BANDS ===');
+  try {
+    const savedW = ev('JSON.stringify(S.weights)');
+    // The exact case he reported: a real, steady +0.15 lb/wk climb. Deliberately NOT a clean
+    // straight line — a perfectly linear series makes the weekly average equal the raw value,
+    // which would hide an anchoring bug. Fixed offsets, never random, so the suite stays
+    // deterministic.
+    const wob = [0, 0.4, -0.3, 0.2, -0.4, 0.3, -0.2, 0.1, 0.35, -0.35, 0.15, -0.15];
+    ev('S.weights = [];');
+    for (let i = 0; i < 42; i++) {
+      const lbs = (150 + i * (0.15 / 7) + wob[i % wob.length]).toFixed(1);
+      ev("S.weights.push({date: mesoAddDays(todayKey(), " + (i - 41) + "), lbs: " + lbs + "});");
+    }
+    const br = ev('bulkRate(4)');
+    ok('bulkRate returns a rate from weekly averages', br && typeof br.rate === 'number', JSON.stringify(br));
+    // Measured pace lands near +0.26 rather than the +0.15 underlying trend, because the
+    // wobble is not mean-zero across a 4-week window. That is the point: real weigh-in noise
+    // moves the number, and the band still has to be right. Bounded on both sides so a future
+    // fixture edit that drifts it into a different band fails loudly instead of silently.
+    ok('measured rate sits between the flat floor and the pocket floor', br.rate > 0.15 && br.rate < 0.5, String(br && br.rate));
+    ok('a gaining-but-below-0.5 rate bands as "under", not "pocket"', ev('bulkBand(' + br.rate + ')') === 'under',
+       ev('bulkBand(' + br.rate + ')') + ' @ ' + br.rate);
+
+    // the actual reported symptom, asserted on rendered output
+    ev('renderBulk()');
+    const bulkHTML = w.document.getElementById('bulk').innerHTML;
+    ok('Bulk tab no longer claims the lean-bulk pocket at this rate',
+       bulkHTML.indexOf('Right in the lean-bulk pocket') < 0, bulkHTML.slice(0, 300));
+    ok('Bulk tab says he is under the band instead',
+       bulkHTML.indexOf('lean-bulk pocket') >= 0 && bulkHTML.indexOf('Add ~150') >= 0, bulkHTML.slice(0, 400));
+
+    // band edges
+    ok('band: 0.0 is flat', ev('bulkBand(0.0)') === 'flat');
+    ok('band: 0.15 is under', ev('bulkBand(0.15)') === 'under');
+    ok('band: 0.49 is under', ev('bulkBand(0.49)') === 'under');
+    ok('band: 0.5 is the pocket floor', ev('bulkBand(0.5)') === 'pocket');
+    ok('band: 1.0 is the pocket ceiling', ev('bulkBand(1.0)') === 'pocket');
+    ok('band: 1.01 is hot', ev('bulkBand(1.01)') === 'hot');
+    ok('band: negative is losing', ev('bulkBand(-0.2)') === 'losing');
+
+    // all three surfaces must quote the SAME number now
+    const invRate = ev("(function(){var f=investigateBulk().findings.join(' ');var m=f.match(/Trailing rate: ([+-][0-9.]+)/);return m?parseFloat(m[1]):null;})()");
+    ok('Investigation quotes the same rate as bulkRate', invRate !== null && Math.abs(invRate - br.rate) < 0.005,
+       'inv=' + invRate + ' bulkRate=' + br.rate);
+
+    ev('S.weights = ' + savedW + ';');
+    ok('bodyweight fixture cleaned up', ev('S.weights.length') === JSON.parse(savedW).length);
+  } catch (e) {
+    ok('bulk rate section', false, e.message);
   }
 
   console.log('=== RENDER ===');

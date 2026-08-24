@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-21-v4">
+<meta name="ironhub-build" content="2026-08-24-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1304,10 +1304,17 @@ function incFor(name){
   if(/bench|row|pulldown|overhead press|dip/.test(n)) return 5;
   return 5; // machines/isolation — most stacks move in 5s
 }
-/* Look up a stored per-exercise increment by name; fall back to smart default. */
+/* Look up a stored per-exercise increment by name; fall back to smart default.
+   Reads the split IN FORCE, not S.split: during an approved meso strength block the day
+   keys are S1/S2/S3, which do not exist in S.split at all, so scanning S.split alone made
+   every increment configured inside that block invisible and silently fell back to
+   incFor()'s default — that is what turned a Leg Press set to +15 into a -5 back-off.
+   isStrMode() and isMaxed() already resolve through activeSplitObj(); this and
+   isFormFocus() were the two that did not. */
 function incForExercise(name){
-  for(const dk in S.split){
-    const list = S.split[dk].exercises || [];
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  for(const dk in src){
+    const list = src[dk].exercises || [];
     for(const x of list){
       if(typeof x === 'object' && x.name === name && x.inc != null) return x.inc;
     }
@@ -1316,8 +1323,9 @@ function incForExercise(name){
 }
 const FORM_LO = 12, FORM_HI = 20, FORM_STREAK_NEEDED = 3;
 function isFormFocus(name){
-  for(const dk in S.split){
-    const list = S.split[dk].exercises || [];
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;   // see incForExercise()
+  for(const dk in src){
+    const list = src[dk].exercises || [];
     for(const x of list){
       if(typeof x === 'object' && x.name === name && x.formFocus) return true;
     }
@@ -1490,9 +1498,11 @@ function setHomeSubEquip(dk,i,equip){
   }
   save();
 }
+let sdHomeOpen = {};
 function toggleSdExHome(dk,i){
   const el = document.getElementById('sdhome-'+dk+'-'+i);
-  if(el) el.classList.toggle('open');
+  if(!el) return;
+  sdHomeOpen[dk+'-'+i] = el.classList.toggle('open');   // see subOpen: survives a repaint
 }
 function sessionAllEasy(session){
   return session.sets.length>0 && session.sets.every(s=>s.e==='easy');
@@ -2596,6 +2606,35 @@ function bodyweightSeriesSmoothed(){
   });
   return Object.keys(byWeek).sort().map(wk=>({date:byWeek[wk].lastDate, v:Math.round((byWeek[wk].sum/byWeek[wk].n)*10)/10}));
 }
+/* THE bodyweight rate. Three tabs used to compute this three different ways and then
+   disagree with each other in front of him:
+     - renderBulk() took raw first-vs-last weigh-in over 28 days (the noisiest possible
+       estimator: two odd weigh-in mornings could swing it by half a pound a week),
+     - investigateBulk() ran linreg() over the last 4 weekly averages,
+     - the projection card used anFanProject()'s measured pace.
+   They now all come through here. Regression over WEEKLY AVERAGES, which the projection and
+   Investigation already treated as truth -- so this moves renderBulk() up onto the accurate
+   method rather than dragging the accurate ones down to it.
+   Returns null when there genuinely is not enough history to say. */
+function bulkRate(weeks){
+  const sm = bodyweightSeriesSmoothed();
+  if(sm.length < 3) return null;
+  const win = sm.slice(-Math.max(2, weeks||4));
+  const reg = linreg(win);
+  if(!reg) return null;
+  return {rate: reg.slope*7, weeks: win.length, cur: sm[sm.length-1].v};
+}
+/* The lean-bulk bands, in one place. The old renderBulk() verdict called everything from
+   +0.15 up "right in the lean-bulk pocket (0.5-1 lb/week)" -- a band it was plainly below --
+   because the branch was `rate <= 1.1` with nothing at all between 0.15 and 1.1. */
+const BULK_LO = 0.5, BULK_HI = 1.0;
+function bulkBand(rate){
+  if(rate < 0)        return 'losing';
+  if(rate < 0.15)     return 'flat';
+  if(rate < BULK_LO)  return 'under';
+  if(rate <= BULK_HI) return 'pocket';
+  return 'hot';
+}
 function projectionCardHTML(){
   const horizons = [{w:13,label:'3 months'},{w:26,label:'6 months'},{w:52,label:'1 year'}];
   const rows = [];
@@ -3275,24 +3314,20 @@ function disconnectSync(){
 function renderBulk(){
   const el = $('#bulk');
   const w = [...S.weights].sort((a,b)=>a.date.localeCompare(b.date));
-  let rate = null;
-  if(w.length>=2){
-    const span = daysBetween(w[0].date, w[w.length-1].date);
-    if(span>0) rate = (w[w.length-1].lbs - w[0].lbs)/(span/7);
-    // prefer recent 4 weeks if enough data
-    const cutD = new Date(Date.now()-28*86400000);
-    const cutKey = cutD.toISOString().slice(0,10);
-    const recent = w.filter(p=>p.date>=cutKey);
-    if(recent.length>=2){
-      const s = daysBetween(recent[0].date, recent[recent.length-1].date);
-      if(s>0) rate = (recent[recent.length-1].lbs - recent[0].lbs)/(s/7);
-    }
-  }
+  // Single source of truth, shared with Investigation and the projection card. The old
+  // endpoint-to-endpoint math here disagreed with both of them on the same screen.
+  const br = bulkRate(4);
+  const rate = br ? br.rate : null;
   let verdict = '';
   if(rate!==null){
-    if(rate < 0.15) verdict = '<span class="dn">Scale is flat — the surplus is not landing. Add ~200–300 cal/day (easiest: one more solid meal or a shake) and re-check in 2 weeks.</span>';
-    else if(rate <= 1.1) verdict = '<span class="up">Right in the lean-bulk pocket (0.5–1 lb/week). Hold this intake.</span>';
-    else verdict = '<span class="fl">Gaining faster than ~1 lb/week — some of that is likely fat. Trim ~150–200 cal/day if you want it leaner.</span>';
+    const band = bulkBand(rate);
+    const shown = (rate>=0?'+':'')+rate.toFixed(2);
+    const over = ' lb/wk over '+br.weeks+' weeks';
+    if(band==='losing')      verdict = '<span class="dn">You are <b>losing</b> weight on a bulk ('+shown+over+'). Add ~300 cal/day now — muscle gain is close to impossible in a deficit.</span>';
+    else if(band==='flat')   verdict = '<span class="dn">Scale is flat ('+shown+over+') — the surplus is not landing. Add ~200–300 cal/day (easiest: one more solid meal or a shake) and re-check in 2 weeks.</span>';
+    else if(band==='under')  verdict = '<span class="fl">Gaining, but '+shown+over+' is <b>under</b> the 0.5–1 lb/week lean-bulk pocket. Add ~150–250 cal/day to get into the band.</span>';
+    else if(band==='pocket') verdict = '<span class="up">Right in the lean-bulk pocket ('+shown+over+', target 0.5–1). Hold this intake.</span>';
+    else                     verdict = '<span class="fl">Gaining at '+shown+over+', faster than ~1 lb/week — some of that is likely fat. Trim ~150–200 cal/day if you want it leaner.</span>';
   }
   let html = '<h2>Bodyweight</h2><div class="stats" style="margin-bottom:12px">'+
     '<div class="stat"><div class="v">'+(w.length? w[w.length-1].lbs : '—')+'</div><div class="l">current (lb)</div></div>'+
@@ -4069,8 +4104,8 @@ function splitEditorHTML(){
     h += '<div class="sd-day"><div class="sd-dhead" onclick="toggleSdDay(\''+dk+'\')">'+
       '<span class="dk" style="color:'+(d.hex||'#8d909a')+'">'+dk+'</span>'+
       '<input class="dn" style="background:var(--bg);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:4px 8px;font-size:12px;flex:1;max-width:240px" value="'+esc(d.name||'')+'" onclick="event.stopPropagation()" onchange="renameDay(\''+dk+'\',this.value)">'+
-      '<span class="chev" id="chev-'+dk+'">\u25be</span></div>'+
-      '<div class="sd-body" id="sdbody-'+dk+'">';
+      '<span class="chev" id="chev-'+dk+'">'+(sdOpen[dk]?'\u25b4':'\u25be')+'</span></div>'+
+      '<div class="sd-body'+(sdOpen[dk]?' open':'')+'" id="sdbody-'+dk+'">';
     list.forEach((x,i)=>{
       const nm = exName(x), inc = exInc(x);
       const ff = typeof x === 'object' && !!x.formFocus;
@@ -4093,11 +4128,19 @@ function splitEditorHTML(){
   return h;
 }
 function refreshSplitEditor(){ const w=$('#sdWrap'); if(w) w.innerHTML = splitEditorHTML(); }
-function toggleSdDay(dk){
+/* Same story as subOpen above: splitEditorHTML() emits fresh markup on every repaint, so
+   without a remembered flag the day you were mid-way through editing closed itself. */
+let sdOpen = {};
+function sdSetOpen(dk, on){
+  sdOpen[dk] = !!on;
   const b = $('#sdbody-'+dk), c = $('#chev-'+dk);
+  if(b) b.classList.toggle('open', !!on);
+  if(c) c.textContent = on ? '\u25b4' : '\u25be';
+}
+function toggleSdDay(dk){
+  const b = $('#sdbody-'+dk);
   if(!b) return;
-  const open = b.classList.toggle('open');
-  if(c) c.textContent = open ? '\u25b4' : '\u25be';
+  sdSetOpen(dk, !b.classList.contains('open'));
 }
 function ensureObj(dk,i){
   const x = S.split[dk].exercises[i];
@@ -4110,27 +4153,27 @@ function renameEx(dk,i,v){
   if(nv) o.name = nv;
   save();
 }
-function setInc(dk,i,v){ ensureObj(dk,i).inc = v; save(); refreshSplitEditor(); $('#sdbody-'+dk).classList.add('open'); }
+function setInc(dk,i,v){ ensureObj(dk,i).inc = v; save(); refreshSplitEditor(); sdSetOpen(dk, true); }
 function toggleFormFocus(dk,i){
   const o = ensureObj(dk,i);
   o.formFocus = !o.formFocus;
-  save(); refreshSplitEditor(); $('#sdbody-'+dk).classList.add('open'); renderToday();
+  save(); refreshSplitEditor(); sdSetOpen(dk, true); renderToday();
 }
 function moveEx(dk,i,dir){
   const list = S.split[dk].exercises; const j = i+dir;
   if(j<0||j>=list.length) return;
-  [list[i],list[j]]=[list[j],list[i]]; save(); refreshSplitEditor(); $('#sdbody-'+dk).classList.add('open');
+  [list[i],list[j]]=[list[j],list[i]]; save(); refreshSplitEditor(); sdSetOpen(dk, true);
 }
 function delEx(dk,i){
   const nm = exName(S.split[dk].exercises[i]);
   if(!confirm('Remove "'+nm+'" from '+dk+'? (Your logged history for it is kept.)')) return;
-  S.split[dk].exercises.splice(i,1); save(); refreshSplitEditor(); $('#sdbody-'+dk).classList.add('open');
+  S.split[dk].exercises.splice(i,1); save(); refreshSplitEditor(); sdSetOpen(dk, true);
 }
 function addEx(dk){
   const nm = prompt('New exercise name for '+dk+':');
   if(!nm||!nm.trim()) return;
   S.split[dk].exercises.push({name:nm.trim(), inc:incFor(nm.trim())});
-  save(); refreshSplitEditor(); $('#sdbody-'+dk).classList.add('open');
+  save(); refreshSplitEditor(); sdSetOpen(dk, true);
 }
 function exportData(){
   const blob = new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
@@ -5423,10 +5466,24 @@ function renderMarkdown(raw){
    deload, comparison deltas, 1RM lab, sleep correlation
    ============================================================ */
 
-/* ---- collapsible subsection helper ---- */
-function toggleSub(head){ head.parentElement.classList.toggle('open'); }
+/* ---- collapsible subsection helper ----
+   Open/closed state lives HERE, in module scope, not on the DOM node. rerenderActive()
+   regenerates the whole active tab's HTML every 30 seconds and again after every background
+   sync pull; with the state on the node, every card you had opened snapped shut on a timer
+   with nothing to blame it on. That is the "cards randomly close without me clicking"
+   report. Keyed by tab + title so two tabs can each have a "Notes" card without sharing
+   one flag. Session-scoped on purpose, exactly like navMemory. */
+let subOpen = {};
+function subKey(title){ return (navMemory[activeMainTab] || activeReviewTab || '?') + '|' + title; }
+function toggleSub(head){
+  const on = head.parentElement.classList.toggle('open');
+  const k = head.getAttribute('data-subkey');
+  if(k) subOpen[k] = on;
+}
 function subSection(title, bodyHTML, openByDefault){
-  return '<div class="sub'+(openByDefault?' open':'')+'"><div class="sub-head" onclick="toggleSub(this)">'+
+  const k = subKey(title);
+  const open = (subOpen[k] !== undefined) ? subOpen[k] : !!openByDefault;
+  return '<div class="sub'+(open?' open':'')+'"><div class="sub-head" data-subkey="'+esc(k)+'" onclick="toggleSub(this)">'+
     '<span>'+esc(title)+'</span><span class="chev">\u25be</span></div><div class="sub-body">'+bodyHTML+'</div></div>';
 }
 
@@ -5619,9 +5676,13 @@ function bwProjectionCardHTML(){
   if(res.sd === 0) h += '<p class="small" style="margin-top:10px;color:var(--dim)">Your weigh-ins show no week-to-week variance at all against the trend, so all three paces land on the same single line. That will fan out as soon as the scale wobbles like a real one.</p>';
   h += '<p class="small" style="margin-top:10px;color:var(--dim)">Measured pace '+(pw>=0?'+':'')+pw.toFixed(2)+
     ' lb/wk · '+res.conf+' (R² '+res.r2.toFixed(2)+'). '+
-    (pw < 0.15 ? 'That is below the lean-bulk floor — the surplus is not landing.'
-     : pw <= 1.1 ? 'That sits in the 0.5–1 lb/week lean-bulk pocket.'
-     : 'That is above ~1 lb/week, so some of the projected gain is fat.')+
+    // bulkBand() rather than a second copy of the thresholds: this branch used to call
+    // anything from +0.15 up "in the 0.5-1 pocket", exactly the bug reported on the Bulk tab.
+    ({losing: 'That is negative — you are losing weight on a bulk.',
+      flat:   'That is below the lean-bulk floor — the surplus is not landing.',
+      under:  'That is under the 0.5–1 lb/week lean-bulk pocket, so gains are being left on the table.',
+      pocket: 'That sits in the 0.5–1 lb/week lean-bulk pocket.',
+      hot:    'That is above ~1 lb/week, so some of the projected gain is fat.'}[bulkBand(pw)])+
     ' The fan widens with distance because a bulk is not a straight line either.</p>';
   return h+'</div>';
 }
@@ -5760,7 +5821,13 @@ function warmupSourceFor(dk){
   if(live && live.day===dk) return live.exercises.map(e=>({name:e.name, w:+e.targetW||0, heavy:e.repMode==='str'}));
   return dayExNames(dk).map(nm=>{
     let w = 0;
-    try{ const rec = recommend(nm, currentReadinessTier()); w = +(rec.sets&&rec.sets[0]&&rec.sets[0].w)||0; }catch(e){ w = 0; }
+    // An active investigation/agent override REPLACES the progression engine's suggestion,
+    // so the ramp has to be built off the override too. buildOneLiveExercise() and
+    // exBlockHTML() both apply it; this path called recommend() raw, so on an overridden
+    // lift the warm-up ramped toward a top weight the session was never going to use.
+    const _ov = (typeof invOverrideFor==='function') ? invOverrideFor(nm) : null;
+    if(_ov) w = +_ov.w||0;
+    else try{ const rec = recommend(nm, currentReadinessTier()); w = +(rec.sets&&rec.sets[0]&&rec.sets[0].w)||0; }catch(e){ w = 0; }
     return {name:nm, w, heavy:isStrMode(nm)};
   });
 }
@@ -5983,8 +6050,8 @@ function splitEditorHTML(){
     h+='<div class="sd-day"><div class="sd-dhead" onclick="toggleSdDay(\''+dk+'\')">'+
       '<span class="dk" style="color:'+(d.hex||'#8d909a')+'">'+dk+'</span>'+
       '<input class="dn" style="background:var(--base);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:4px 8px;font-size:12px;flex:1;max-width:240px" value="'+esc(d.name||'')+'" onclick="event.stopPropagation()" onchange="renameDay(\''+dk+'\',this.value)">'+
-      '<span class="chev" id="chev-'+dk+'">\u25be</span></div>'+
-      '<div class="sd-body" id="sdbody-'+dk+'">';
+      '<span class="chev" id="chev-'+dk+'">'+(sdOpen[dk]?'\u25b4':'\u25be')+'</span></div>'+
+      '<div class="sd-body'+(sdOpen[dk]?' open':'')+'" id="sdbody-'+dk+'">';
     list.forEach((x,i)=>{
       const nm=exName(x), inc=exInc(x);
       const ff=typeof x==='object' && !!x.formFocus;
@@ -6011,7 +6078,7 @@ function splitEditorHTML(){
         '<button class="ord" title="Move down" onclick="moveEx(\''+dk+'\','+i+',1)">\u2193</button>'+
         '<button class="xx" title="Delete" onclick="delEx(\''+dk+'\','+i+')">\u00d7</button>'+
       '</div>'+
-      '<div class="sd-ex-home" id="sdhome-'+dk+'-'+i+'">'+
+      '<div class="sd-ex-home'+(sdHomeOpen[dk+'-'+i]?' open':'')+'" id="sdhome-'+dk+'-'+i+'">'+
         '<select onchange="setHomeMode(\''+dk+'\','+i+',this.value)">'+
           '<option value="unchanged"'+(hMode==='unchanged'?' selected':'')+'>Unchanged (already home-compatible)</option>'+
           '<option value="skip"'+(hMode==='skip'?' selected':'')+'>Skip at home</option>'+
@@ -6053,7 +6120,7 @@ function splitSwapPick(i){
   renameEx(s.dk, s.i, nm);   // keeps the slot's increment/flags, same as typing over the name
   closeSplitSwap();
   refreshSplitEditor();
-  const b = document.getElementById('sdbody-'+s.dk); if(b) b.classList.add('open');
+  sdSetOpen(s.dk, true);   // remembered, so the next repaint does not close it again
 }
 
 /* Progress: body map + ported progress + Trends(volume) + Fatigue check */
@@ -6936,11 +7003,12 @@ function investigateBulk(){
   if(sm.length < 3){
     return {severity:null, key:'bulk', title:'Bulk check', findings:['Fewer than 3 weeks of bodyweight data \u2014 not enough to judge a trend yet. Keep weighing in most mornings.'], fix:null};
   }
-  const recent = sm.slice(-4); // last ~4 weekly averages
-  const reg = linreg(recent);
-  const rate = reg ? reg.slope*7 : 0;
-  const cur = sm[sm.length-1].v;
-  findings.push('Trailing rate: '+(rate>=0?'+':'')+rate.toFixed(2)+' lb/week (weekly-averaged, last '+recent.length+' weeks). Current: '+cur.toFixed(1)+' lb.');
+  // Shared with renderBulk() and the projection card so all three quote the same number.
+  const br = bulkRate(4);
+  const rate = br ? br.rate : 0;
+  const cur = br ? br.cur : sm[sm.length-1].v;
+  const nWeeks = br ? br.weeks : sm.slice(-4).length;
+  findings.push('Trailing rate: '+(rate>=0?'+':'')+rate.toFixed(2)+' lb/week (weekly-averaged, last '+nWeeks+' weeks). Current: '+cur.toFixed(1)+' lb.');
   const proFloor = Math.round(cur*0.95); // ~1g/lb guideline
   let severity=null, title='Bulk on track', fix=null;
   if(rate < -0.15){
@@ -9686,6 +9754,14 @@ const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','schedul
 function agTrainedExNames(){
   const set = new Set();
   Object.keys(S.split).forEach(dk=>(S.split[dk].exercises||[]).forEach(x=>set.add(exName(x))));
+  // Also the split actually IN FORCE. An approved meso strength block trains S1/S2/S3
+  // exercises that may not appear in S.split at all, so a perfectly legitimate liftReset
+  // against one of them used to resolve to null and get discarded — the agent said it had
+  // capped the lift, and nothing was ever written.
+  try{
+    const act = (typeof activeSplitObj==='function') ? activeSplitObj() : null;
+    if(act) Object.keys(act).forEach(dk=>(act[dk].exercises||[]).forEach(x=>set.add(exName(x))));
+  }catch(e){}
   S.logs.forEach(l=>(l.entries||[]).forEach(e=>set.add(e.exercise)));
   return [...set].filter(Boolean);
 }
@@ -9776,6 +9852,22 @@ function agValidateFix(fx){
     return {type:'bpFreq', payload:{daysPerWeek, pct}};
   }
   return null;
+}
+/* Why agValidateFix() turned a fix down, in plain words rather than a code. Purely for the
+   activity log \u2014 it has no authority over the decision, which agValidateFix() alone makes. */
+function agRejectReason(fx){
+  if(!fx || !fx.type) return 'malformed';
+  if(AG_FIX_TYPES.indexOf(fx.type) < 0) return 'unknown fix type \u201c'+String(fx.type).slice(0,24)+'\u201d';
+  const p = fx.payload||{};
+  if(fx.type==='liftReset'){
+    if(p.name && !agResolveExName(p.name)) return '\u201c'+String(p.name).slice(0,40)+'\u201d is not a lift you train';
+    return 'weight or duration out of range';
+  }
+  if(fx.type==='schedule')      return scheduleMode()==='cycle' ? 'weekday map sent while a rotating cycle is active' : 'incomplete or invalid week';
+  if(fx.type==='cycleSchedule') return scheduleMode()!=='cycle' ? 'cycle pattern sent while on a weekday schedule' : 'invalid cycle pattern';
+  if(fx.type==='addEx')  return 'target day does not exist';
+  if(fx.type==='swapEx') return 'missing from/to exercise';
+  return 'value out of the allowed range';
 }
 function agFixSummary(fx){
   if(!fx) return 'Advisory only \u2014 nothing changes if you approve.';
@@ -9985,7 +10077,18 @@ async function agRunAll(manual){
         // no-op button next to text you'd already read in the summary above. Fold whatever the
         // model wanted to say into the log instead of silently dropping it, but never queue it.
         if(!fix){
-          if(!pr.fix) agLog(id, pr.title+(pr.reasoning?' \u2014 '+pr.reasoning:''));
+          if(!pr.fix){
+            agLog(id, pr.title+(pr.reasoning?' \u2014 '+pr.reasoning:''));
+          } else {
+            // A fix that FAILED validation used to vanish with no trace at all \u2014 while the
+            // agent's free-text summary still happily announced the change ("capping Incline
+            // DB Press at 60 lb for two weeks"). Reading that, you would believe an override
+            // was live when none had ever been written. Say so instead. Validation itself is
+            // unchanged: this only makes the rejection VISIBLE, it never lets one through.
+            agLog(id, 'I proposed \u201c'+pr.title+'\u201d but it did not pass validation ('+
+              agRejectReason(pr.fix)+'), so NOTHING was applied. Ignore any part of my summary '+
+              'above that says otherwise.');
+          }
           return;
         }
         a2.proposals.unshift({
@@ -10240,11 +10343,36 @@ function refreshBlocked(){
   if(MODE==='live' && live) return true;
   return false;
 }
-function rerenderActive(){
+/* Cheap fingerprint of everything a review tab draws from. Ops has had one of these for a
+   while (opsSignature); this is the same idea applied to every other tab, because a repaint
+   that changes nothing is pure downside: it drops text selection, resets scroll inside
+   cards, and interrupts whatever you were reading. changedAt catches every save() ; the
+   explicit lengths catch the save(false) writers that deliberately do not touch it. The
+   5-minute bucket lets relative timestamps refresh without thrashing the DOM every 30s. */
+let _tabSig = '';
+function tabSignature(){
+  const a = S.agents || {};
+  return [
+    MODE, activeMainTab, navMemory[activeMainTab] || activeReviewTab,
+    S.meta ? S.meta.changedAt : 0,
+    S.logs.length, S.weights.length, S.nutrition.length, S.readiness.length,
+    (a.proposals||[]).length, (a.log||[]).length,
+    (S.invest && S.invest.flags ? S.invest.flags.length : 0),
+    todayKey(),
+    Math.floor(Date.now()/300000)
+  ].join('|');
+}
+function rerenderActive(force){
   try{ invUpdateBadge(); }catch(e){}   // badge is cheap and safe to update regardless
   if(refreshBlocked()) return;
   try{
     if(MODE==='live'){ renderLive(); return; }
+    // Nothing this tab draws has moved, so redrawing it can only take things away from the
+    // user. Callers with a reason to repaint anyway (a sync pull just landed, the tab just
+    // changed) pass force.
+    const sig = tabSignature();
+    if(!force && sig === _tabSig) return;
+    _tabSig = sig;
     const sub = navMemory[activeMainTab] || activeReviewTab;
     const fn = REVIEW_RENDER[sub];
     // Operations holds a live chat transcript. Repainting it on a timer when nothing has
@@ -10267,7 +10395,7 @@ async function bgSyncTick(){
     if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
       applyPulled(p.data, p.exportedAt);
       setAccent(); renderHeader();
-      rerenderActive();
+      rerenderActive(true);   // remote state genuinely changed — redraw regardless of the signature
     }
   }catch(e){ /* transient network/rate-limit \u2014 silent, next tick retries */ }
   _bgPulling = false;
