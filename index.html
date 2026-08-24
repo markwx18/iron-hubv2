@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-24-v6">
+<meta name="ironhub-build" content="2026-08-24-v7">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10413,8 +10413,11 @@ function readinessTierV3(r){
 }
 function openReadyCheck(dk){
   _rdPendingDay = dk; _rdV3 = {};
+  // Called AFTER the WHOOP prefill below runs, so _rdV3[key] already holds any pre-filled
+  // value by the time this actually builds markup -- that's what lets it mark the matching
+  // pill 'on' instead of just quietly holding a value nothing on screen shows as selected.
   const grp = (label,key,opts)=>'<div class="rd3-group"><span class="rd3-gl">'+label+'</span><div class="rd3-pills">'+
-    opts.map(o=>'<button class="rd3-pill" data-k="'+key+'" data-v="'+o+'" onclick="rd3Pick(this)">'+o+'</button>').join('')+'</div></div>';
+    opts.map(o=>'<button class="rd3-pill'+(_rdV3[key]===o?' on':'')+'" data-k="'+key+'" data-v="'+o+'" onclick="rd3Pick(this)">'+o+'</button>').join('')+'</div></div>';
   // With a fresh WHOOP recovery score the check-in stops being a questionnaire and becomes
   // a confirmation: sleep is filled in from the measurement, and the intro says what it
   // already knows. Without one, this is exactly the screen it has always been.

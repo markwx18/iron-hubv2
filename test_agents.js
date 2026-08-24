@@ -3675,6 +3675,48 @@ setTimeout(async () => {
     ev('delete S.whoop;');
   }
 
+  console.log('=== READINESS CHECK-IN REFLECTS THE WHOOP PRE-FILL ===');
+  try {
+    // Values landing in _rdV3 is necessary but not sufficient -- the actual bug was that a
+    // set value with no visibly selected pill looks identical to nothing having happened,
+    // which contradicts the intro text telling him it was pre-filled.
+    ev("if(!document.getElementById('readyOverlay')){ var d=document.createElement('div'); d.id='readyOverlay'; document.body.appendChild(d); }");
+    ev("if(!document.getElementById('readyBody')){ var d2=document.createElement('div'); d2.id='readyBody'; document.body.appendChild(d2); }");
+    ev("applyWhoop({recovery:{date:todayKey(), score:82, hrv:90, rhr:48}, sleep:{date:todayKey(), hours:8.4, performance:91}});");
+    ev("openReadyCheck('D1')");
+
+    const classFor = (k, v) => ev(
+      "(function(){ var b = Array.prototype.find.call(document.querySelectorAll('.rd3-pill'), " +
+      "function(x){ return x.dataset.k===" + JSON.stringify(k) + " && x.dataset.v===" + JSON.stringify(v) + "; }); " +
+      "return b ? b.className : null; })()"
+    );
+
+    ok('the 8+ sleep pill carries the on class', /\bon\b/.test(classFor('sleep', '8+') || ''), classFor('sleep', '8+'));
+    ok('the high energy pill carries the on class (score 82 >= 67)', /\bon\b/.test(classFor('energy', 'high') || ''), classFor('energy', 'high'));
+    ok('a non-matching sleep pill does NOT carry it', !/\bon\b/.test(classFor('sleep', '6-7') || ''), classFor('sleep', '6-7'));
+
+    // categories WHOOP does not measure must stay untouched -- no pill pre-selected
+    ['fresh', 'mild', 'beat up'].forEach(function(v){
+      ok('soreness option "' + v + '" has no pre-selected pill', !/\bon\b/.test(classFor('sore', v) || ''), classFor('sore', v));
+    });
+
+    ok('_rdV3 itself carries the value, not just the pixel', ev('_rdV3.sleep') === '8+' && ev('_rdV3.energy') === 'high');
+
+    // and it must still be possible to override: tapping a different pill wins
+    ev(
+      "(function(){ var b = Array.prototype.find.call(document.querySelectorAll('.rd3-pill'), " +
+      "function(x){ return x.dataset.k==='sleep' && x.dataset.v==='6-7'; }); rd3Pick(b); })()"
+    );
+    ok('tapping a different pill overrides the WHOOP pre-fill', ev('_rdV3.sleep') === '6-7');
+    ok('the previously pre-filled pill loses its on class once overridden', !/\bon\b/.test(classFor('sleep', '8+') || ''));
+
+    ev('delete S.whoop; S.readiness = [];');
+    ev("document.getElementById('readyOverlay').classList.remove('show');");
+  } catch (e) {
+    ok('readiness pre-fill visibility section', false, e.message);
+    ev('delete S.whoop;');
+  }
+
   console.log('=== PROGRESS PHOTOS (index in state, blobs elsewhere) ===');
   try {
     ev("S.photos = {gistId:'', index:[]};");
