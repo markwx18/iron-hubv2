@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-24-v2">
+<meta name="ironhub-build" content="2026-08-24-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2978,6 +2978,8 @@ function aiHeaders(){
 }
 /* Shared request body. opts: {effort, format} */
 function aiBody(messages, system, maxTokens, opts){
+  // maxRounds is a local loop control, not an API field. It is read in callClaudeWithData
+  // and deliberately never copied onto the body.
   const o = opts || {};
   const body = {model:AI_MODEL, max_tokens:maxTokens||1000, messages};
   if(system) body.system = system;
@@ -4639,10 +4641,14 @@ async function liveDeltaSend(){
     const sys = agSharedBrief()+
       '\nYou are DELTA, currently being consulted mid-workout through the LIVE session quick-chat. '+
       'Keep answers short \u2014 he is standing at the rack. '+
-      'You cannot change app state from here.\n\n'+
+      'You cannot change app state from here.'+
+      '\nYou can look one thing up if you genuinely need it (get_lift_history is usually '+
+      'the one), but prefer answering from what you already have: every lookup is another few '+
+      'seconds he spends waiting between sets.\n\n'+
       coachMemContext()+trainingContext()+agContext()+liveDeltaContext();
     const msgs = a.chats.delta.slice(-14).map(m=>({role:m.role, content:m.content}));
-    const {text} = await callClaudeWithTools(msgs, sys, null, 4000);
+    // maxRounds 2 rather than the usual 6 -- see the note in callClaudeWithData.
+    const {text} = await callClaudeWithData(msgs, sys, 4000, {maxRounds:2});
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
     agState().chats.delta.push({role:'assistant', content:text||'\u2014'});
     save(); renderLive();
@@ -7690,6 +7696,182 @@ async function callClaudeWithTools(messages, system, tools, maxTokens, opts){
   return {text, actions};
 }
 
+/* ============================================================
+   READ-ONLY DATA TOOLS
+   The agents' context used to be a fixed dump: the last 12 sessions, 10 weigh-ins, 7
+   nutrition days and 5 check-ins. Everything older was invisible, which is why they could
+   give confident answers that did not match his actual history -- ask DELTA about a lift he
+   trains every 9 days and it was reasoning from two data points.
+   Rather than paste seven months of everything into every call (expensive, and most of it
+   irrelevant to any one question), the agents can now ASK for what they need.
+
+   These tools READ. There is no write tool here and there must never be one: state changes
+   go through the proposal queue and agApplyFix(), which is the only place a proposal may
+   touch state. That boundary is the whole safety model of the agent layer.
+   ============================================================ */
+const AI_TOOL_ROUNDS = 6;        // hard ceiling on tool round-trips per call, so a confused
+                                 // model cannot loop up an unbounded bill unattended at 9 PM
+const AI_TOOL_MAXCHARS = 6000;   // per-result cap, so one greedy query cannot flood context
+
+function agDataToolDefs(){
+  return [
+    {name:'list_lifts', description:'Every exercise he actually trains (split slots plus anything logged), with how many sessions each has and when it was last trained. Call this before any tool that takes an exercise name.',
+      input_schema:{type:'object', properties:{}}},
+    {name:'get_lift_history', description:'Every logged session for one exercise, newest first: date, weights, reps and effort tags. Use this instead of inferring from the recent-sessions summary, which only covers the last 12 sessions overall.',
+      input_schema:{type:'object', properties:{
+        exercise:{type:'string', description:'Exact exercise name. Call list_lifts first if unsure.'},
+        limit:{type:'number', description:'How many sessions back, newest first. Default 30.'}
+      }, required:['exercise']}},
+    {name:'get_e1rm_series', description:'Estimated 1RM over time for one exercise, oldest first. The right tool for "is this lift actually progressing".',
+      input_schema:{type:'object', properties:{
+        exercise:{type:'string', description:'Exact exercise name'}
+      }, required:['exercise']}},
+    {name:'get_bodyweight', description:'Bodyweight history as weekly averages (the same smoothed series every other surface uses), plus the current measured rate in lb/week and which lean-bulk band that falls in.',
+      input_schema:{type:'object', properties:{
+        weeks:{type:'number', description:'How many weekly averages, oldest first. Default 16.'}
+      }}},
+    {name:'get_nutrition', description:'Logged daily calories and protein, with the average over the window.',
+      input_schema:{type:'object', properties:{
+        days:{type:'number', description:'How many days back. Default 30.'}
+      }}},
+    {name:'get_readiness', description:'Readiness check-ins: sleep hours, soreness, energy, stress, motivation and the resulting tier.',
+      input_schema:{type:'object', properties:{
+        days:{type:'number', description:'How many days back. Default 30.'}
+      }}},
+    {name:'get_weekly_volume', description:'Hard sets per muscle group for a completed week. Use for volume-balance questions rather than counting sets by hand.',
+      input_schema:{type:'object', properties:{
+        weeksAgo:{type:'number', description:'0 = last completed week, 1 = the week before, and so on. Default 0.'}
+      }}}
+  ];
+}
+
+/* Execute one read-only data tool. Always returns a string, never writes, never throws. */
+function agRunDataTool(name, inp){
+  const p = inp || {};
+  try{
+    if(name==='list_lifts'){
+      const names = agTrainedExNames();
+      if(!names.length) return 'No exercises on record yet.';
+      return names.map(function(nm){
+        const h = historyFor(nm);
+        return nm+' - '+h.length+' session'+(h.length===1?'':'s')+(h.length?', last '+h[0].date:', never logged');
+      }).join('\n');
+    }
+    if(name==='get_lift_history'){
+      const nm = agResolveExName(p.exercise);
+      if(!nm) return 'No exercise called "'+String(p.exercise).slice(0,60)+'". Call list_lifts for the real names.';
+      const lim = Math.max(1, Math.min(200, Math.round(+p.limit||30)));
+      const h = historyFor(nm).slice(0, lim);
+      if(!h.length) return nm+' has never been logged.';
+      return nm+' - '+h.length+' session'+(h.length===1?'':'s')+' (newest first):'+'\n'+
+        h.map(function(sn){ return '  '+sn.date+': '+summ(sn.sets); }).join('\n')+
+        '\n'+'Effort tags: e=easy, g=grind, x=failed.';
+    }
+    if(name==='get_e1rm_series'){
+      const nm = agResolveExName(p.exercise);
+      if(!nm) return 'No exercise called "'+String(p.exercise).slice(0,60)+'". Call list_lifts for the real names.';
+      const pts = e1rmSeries(nm);
+      if(!pts.length) return nm+' has no sessions to estimate from.';
+      return nm+' estimated 1RM (oldest first):'+'\n'+
+        pts.map(function(x){ return '  '+x.date+': '+Math.round(x.v)+' lb'; }).join('\n');
+    }
+    if(name==='get_bodyweight'){
+      const n = Math.max(2, Math.min(104, Math.round(+p.weeks||16)));
+      const sm = bodyweightSeriesSmoothed().slice(-n);
+      if(!sm.length) return 'No bodyweight logged yet.';
+      const br = bulkRate(4);
+      return 'Weekly-average bodyweight (oldest first):'+'\n'+
+        sm.map(function(x){ return '  week ending '+x.date+': '+x.v+' lb'; }).join('\n')+'\n'+
+        (br ? 'Measured rate over the last '+br.weeks+' weeks: '+(br.rate>=0?'+':'')+br.rate.toFixed(2)+
+              ' lb/week ('+bulkBand(br.rate)+' relative to the 0.5-1 lb/week lean-bulk pocket).'
+            : 'Not enough weeks yet to state a rate.');
+    }
+    if(name==='get_nutrition'){
+      const n = Math.max(1, Math.min(365, Math.round(+p.days||30)));
+      const cut = mesoAddDays(todayKey(), -n);
+      const rows = S.nutrition.filter(function(x){ return x.date >= cut; })
+                              .sort(function(a,b){ return a.date.localeCompare(b.date); });
+      if(!rows.length) return 'No intake logged in that window.';
+      const avgC = Math.round(rows.reduce(function(t,x){ return t+(+x.cals||0); },0)/rows.length);
+      const avgP = Math.round(rows.reduce(function(t,x){ return t+(+x.protein||0); },0)/rows.length);
+      return rows.length+' days logged. Average '+avgC+' cal / '+avgP+'g protein.'+'\n'+
+        rows.map(function(x){ return '  '+x.date+': '+x.cals+' cal, '+x.protein+'g'; }).join('\n');
+    }
+    if(name==='get_readiness'){
+      const n = Math.max(1, Math.min(365, Math.round(+p.days||30)));
+      const cut = mesoAddDays(todayKey(), -n);
+      const rows = S.readiness.filter(function(x){ return x.date >= cut; })
+                              .sort(function(a,b){ return b.date.localeCompare(a.date); });
+      if(!rows.length) return 'No readiness check-ins in that window.';
+      return rows.map(function(r){
+        return '  '+r.date+': '+r.tier+' ('+r.sleep+'h sleep, '+r.sore+' soreness, '+r.energy+' energy'+
+               (r.stress?', '+r.stress+' stress':'')+(r.motiv?', '+r.motiv+' motivation':'')+')';
+      }).join('\n');
+    }
+    if(name==='get_weekly_volume'){
+      const back = Math.max(0, Math.min(52, Math.round(+p.weeksAgo||0)));
+      const r = lastCompletedWeekRange();
+      const start = mesoAddDays(r.start, -7*back), end = mesoAddDays(r.end, -7*back);
+      const vol = weeklyVolumeByGroup(start, end);
+      const keys = Object.keys(vol);
+      if(!keys.length) return 'No volume recorded for that week.';
+      return 'Hard sets per muscle group, '+start+' to '+end+':'+'\n'+
+        keys.map(function(g){ return '  '+g+': '+vol[g]; }).join('\n');
+    }
+    return 'Unknown tool: '+name;
+  }catch(e){
+    // A tool that throws must not take the whole cycle down with it -- hand the model the
+    // error and let it carry on with what it already has.
+    return 'That lookup failed: '+(e && e.message ? e.message : 'unknown error');
+  }
+}
+
+/* One raw request. Returns the parsed response so callers can see stop_reason and the full
+   content array, which the two wrappers above deliberately discard. */
+async function aiRequest(messages, system, tools, maxTokens, opts){
+  const body = aiBody(messages, system, maxTokens, opts);
+  if(tools && tools.length) body.tools = tools;
+  const res = await fetch(AI_ENDPOINT,{method:'POST',headers:aiHeaders(),body:JSON.stringify(body)});
+  if(!res.ok){ const t=await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
+  return await res.json();
+}
+
+/* Agentic loop over the READ-ONLY data tools. Bounded by AI_TOOL_ROUNDS, because without a
+   ceiling a model that keeps asking questions is an open-ended bill and this runs unattended.
+   onTool, if given, is called with each tool name so callers can log what was consulted. */
+async function callClaudeWithData(messages, system, maxTokens, opts, onTool){
+  const msgs = messages.slice();
+  const tools = agDataToolDefs();
+  // Mid-workout DELTA passes a smaller cap: every round is another few seconds standing
+  // at the rack, and one lookup then an answer is the right shape there.
+  const rounds = Math.max(1, Math.min(AI_TOOL_ROUNDS, (opts && opts.maxRounds) || AI_TOOL_ROUNDS));
+  let used = 0;
+  const textOf = function(content){
+    return (content||[]).filter(function(b){ return b.type==='text'; })
+                        .map(function(b){ return b.text; }).join('\n');
+  };
+  for(let round=0; round<rounds; round++){
+    const data = await aiRequest(msgs, system, tools, maxTokens, opts);
+    const content = data.content || [];
+    const calls = content.filter(function(b){ return b.type==='tool_use'; });
+    if(!calls.length) return {text:textOf(content), toolsUsed:used};
+    // Echo the assistant turn back verbatim, thinking blocks included -- they are part of
+    // that turn and dropping them corrupts the conversation on the next request.
+    msgs.push({role:'assistant', content:content});
+    msgs.push({role:'user', content: calls.map(function(c){
+      used++;
+      if(onTool){ try{ onTool(c.name, c.input||{}); }catch(e){} }
+      let out = agRunDataTool(c.name, c.input||{});
+      if(out.length > AI_TOOL_MAXCHARS) out = out.slice(0, AI_TOOL_MAXCHARS)+'\n'+'... (truncated)';
+      return {type:'tool_result', tool_use_id:c.id, content:out};
+    })});
+  }
+  // Ceiling hit. Ask once more with no tools at all, so it has to answer from what it has
+  // rather than returning nothing after all that work.
+  const finalData = await aiRequest(msgs, system, null, maxTokens, opts);
+  return {text:textOf(finalData.content), toolsUsed:used};
+}
+
 /* ---- proposal lifecycle: proposals live on the chat message they came with ---- */
 function coachStageProposals(actions){
   // returns array of proposal objects with validation state
@@ -9736,6 +9918,7 @@ function opsSignature(){
   const a = agState();
   return [
     a.proposals.length, a.log.length, a.lastRunAt||'',
+    (a.brief&&a.brief.at)||'', (a.letter&&a.letter.at)||'',
     (S.chat||[]).length,
     AG_ORDER.map(k=>(a.chats[k]||[]).length).join(','),
     Object.keys(a.status||{}).map(k=>k+':'+(a.status[k].at||'')).join(','),
@@ -10022,8 +10205,155 @@ function agSharedBrief(){
     'If two agents would pull in opposite directions, say so inside the proposal and give him the options.\n';
 }
 
-/* ---- the daily run: all four agents, one call ---- */
+/* ---- per-agent role briefs ----
+   Each specialist used to get the SAME prompt as the other three, with one shared JSON
+   envelope carrying all four replies. That had two costs. Every agent read every other
+   agent's instructions, so nothing was actually focused; and a single malformed reply took
+   all four down together, because there was only one JSON object to parse. Now each runs
+   its own call with only its own remit, and one agent failing costs only that agent. */
+const AG_ROLE_BRIEF = {
+  charlie:
+    'You are CHARLIE. Your remit is app logistics, data hygiene and the training SCHEDULE -- '+
+    'which day falls where, rest-day placement, missed or duplicated sessions, gaps in the log. '+
+    'Progression, exercise selection and nutrition belong to DELTA and ECHO; do not comment on them.',
+  delta:
+    'You are DELTA. Your remit is exercise selection, volume, rep ranges, progressive overload, '+
+    'stalls, and Bench Practice frequency (bpFreq). The schedule itself is CHARLIE\u2019s and bodyweight '+
+    'or intake is ECHO\u2019s; do not comment on those.',
+  echo:
+    'You are ECHO. Your remit is bodyweight trend, rate of gain, and calorie and protein targets. '+
+    'Training content and scheduling belong to DELTA and CHARLIE; do not comment on them.'
+};
+/* The fix shapes each agent is allowed to propose. A shape absent from an agent's list is
+   still rejected by agValidateFix() downstream -- this only keeps the prompt honest so the
+   model is not invited to produce something that will be thrown away. */
+const AG_FIX_MENU = {
+  charlie:
+    '  {"type":"schedule","payload":{"map":{"0":"REST","1":"D1","2":"D2","3":"D3","4":"D4","5":"D5","6":"REST"}}}  -- ONLY valid in day-of-week mode; discarded in cycle mode'+'\n'+
+    '  {"type":"cycleSchedule","payload":{"pattern":["D1","D2","D3","REST"]}}  -- ONLY valid in rotating-cycle mode; discarded otherwise. Full replacement, 1-14 entries, at least one non-REST. The anchor date can never be changed this way.',
+  delta:
+    '  {"type":"liftReset","payload":{"name":"<exact exercise name>","w":<lb, a REAL working weight not an e1RM>,"days":1..30}}'+'\n'+
+    '  {"type":"deload","payload":{}}'+'\n'+
+    '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}'+'\n'+
+    '  {"type":"swapEx","payload":{"from":"...","to":"..."}}'+'\n'+
+    '  {"type":"bpFreq","payload":{"daysPerWeek":1..4,"pct":60..95}}  -- Bench Practice target frequency and suggested weight as a percent of his current Barbell Bench Press working weight. Tune up if he is completing sessions and bench e1RM is trending well, down if he is missing them or grinding. Suggestion only; he still logs it himself.',
+  echo:
+    '  {"type":"cal","payload":{"delta":-500..500}}'+'\n'+
+    '  {"type":"pro","payload":{"to":80..300}}'
+};
+
+/* Shared tail: the JSON contract, identical for all three specialists. */
+function agJsonSpec(id){
+  return '\n'+'Respond with ONLY valid JSON -- no markdown fences, no commentary before or after:'+'\n'+
+    '{"summary":"...","proposals":[]}'+'\n'+
+    'summary = 1-3 sentences, first person, addressed to Mark, describing what you found this cycle. '+
+    'Observations, things worth watching, and "no action needed but here is why" all belong here.'+'\n'+
+    'proposals = ONLY things with a concrete fix attached. If you have nothing worth applying, return an '+
+    'empty array. Do not add a proposal just to have said something -- say it in summary instead. A '+
+    'proposal with fix:null is a contradiction: if there is nothing to apply, it is not a proposal.'+'\n'+
+    'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<one of>}'+'\n'+
+    (AG_FIX_MENU[id]||'')+'\n'+
+    'Anything not on that list, including null, is discarded -- do not submit it.'+'\n'+
+    'Cap: at most 2 proposals. Fewer is better; most nights the right answer is zero.'+'\n'+
+    'IMPORTANT: do not describe a change in your summary as though it were already made. Nothing you '+
+    'propose takes effect until Mark taps Approve, and a proposal that fails validation is discarded '+
+    'entirely. Say what you would change, not what you have changed.'+'\n'+
+    // DELTA alone also refreshes the Overload Status tab. Read-only and informational, so it
+    // sits outside the proposal queue entirely -- but it still has to be ASKED for, or the tab
+    // quietly keeps showing last week's commentary forever.
+    (id!=='delta' ? '' :
+      '\n'+'ALSO include a top-level "overload" key refreshing the Overload Status tab '+
+      '(informational only, nothing is applied):'+'\n'+
+      '  "overload":{"lifts":[{"lift":"<exact name from OVERLOAD STATUS below>","direction":"up|flat|down","verdict":"on-track|stalling|attention","tip":"<=200 chars, only if there is something actionable -- otherwise \"\""}]}'+'\n'+
+      '  Cover every lift listed under OVERLOAD STATUS. "direction" MUST match the dir= given there; '+
+      'a row whose direction disagrees is discarded, not shown. "verdict" may move at most one step '+
+      'from the app verdict given there (on-track < stalling < attention) -- rows that invert it are '+
+      'discarded too. Tips should cite his numbers; leave tip empty rather than writing filler.'+'\n');
+}
+
+/* Everything an agent is handed before it starts asking questions. Deliberately still a
+   summary rather than a dump -- the data tools exist so it can go and get the detail. */
+function agBaseContext(id){
+  return coachMemContext()+trainingContext()+agContext()+
+    (id==='delta' ? olAgentContext() : '');
+}
+
+function agToolNote(){
+  return '\n'+'You have read-only tools for his full history: list_lifts, get_lift_history, '+
+    'get_e1rm_series, get_bodyweight, get_nutrition, get_readiness, get_weekly_volume. The summary '+
+    'above is only the most recent slice -- if a claim depends on anything older or more precise, '+
+    'LOOK IT UP rather than inferring. Never cite a number you have not seen. Exercise names must '+
+    'come from list_lifts; a name that does not match one of those cannot be applied.'+'\n';
+}
+
+/* Run ONE specialist. Returns {summary, proposals} or null if it failed. */
+async function agRunSpecialist(id, manual){
+  const sys = agSharedBrief()+'\n'+AG_ROLE_BRIEF[id]+'\n'+agToolNote()+agJsonSpec(id)+agBaseContext(id);
+  const consulted = [];
+  const {text} = await callClaudeWithData(
+    [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
+    sys, 8000, {effort:'high'},
+    function(n){ if(consulted.indexOf(n)<0) consulted.push(n); });
+  const parsed = parseLooseJSON(text);
+  if(parsed) parsed._consulted = consulted;
+  return parsed;
+}
+
+/* ---- the daily run: three specialists, then the lead ---- */
 let _agRunning = false;   // module-scoped ON PURPOSE: see note in agRunAll
+
+/* Ingest one specialist's parsed reply into state. Split out of agRunAll so all four agents
+   go through exactly the same validation path -- there is no shortcut for the lead. */
+function agIngest(a2, id, blk){
+  if(!blk) return 0;
+  let raised = 0;
+  if(blk.summary){
+    a2.status[id] = {summary:String(blk.summary), at:new Date().toISOString(),
+                     consulted:(blk._consulted||[]).slice(0,8)};
+    agLog(id, String(blk.summary));
+  }
+  (blk.proposals||[]).slice(0,2).forEach(function(pr){
+    if(!pr || !pr.title) return;
+    const fix = agValidateFix(pr.fix);
+    // Advisory-only entries (no fix, or one that failed validation) do not belong in the
+    // approval queue -- there is nothing for Approve to apply, so it was a no-op button next
+    // to text already read in the summary above.
+    if(!fix){
+      if(!pr.fix){
+        agLog(id, pr.title+(pr.reasoning?' \u2014 '+pr.reasoning:''));
+      } else {
+        // A fix that FAILED validation used to vanish with no trace at all, while the agent's
+        // free-text summary went on announcing the change. Reading that, you would believe an
+        // override was live when none had ever been written. Validation is unchanged: this
+        // only makes the refusal VISIBLE, it never lets one through.
+        agLog(id, 'I proposed \u201c'+pr.title+'\u201d but it did not pass validation ('+
+          agRejectReason(pr.fix)+'), so NOTHING was applied. Ignore any part of my summary '+
+          'above that says otherwise.');
+      }
+      return;
+    }
+    a2.proposals.unshift({
+      id:agUid(), agent:id, title:String(pr.title),
+      reasoning:String(pr.reasoning||''), fix,
+      created:todayKey(),
+      expires:dateKeyOf(new Date(Date.now()+AG_PROP_TTL*86400000)),
+      status:'pending'
+    });
+    raised++;
+  });
+  return raised;
+}
+
+/* ---- the daily run ----
+   Three specialists in parallel, then ZULU on top of their output.
+
+   Parallel, not sequential, on purpose: this is four calls now instead of one, and run
+   back-to-back that is a two-to-three minute wait whenever he taps "Run cycle now" himself.
+   The cost of parallelism is that the three cannot share a prompt cache (a cache entry is
+   only readable once the response that wrote it has started streaming, so simultaneous
+   requests with the same prefix all pay full price). That trade is worth roughly three cents
+   a night, and it buys back the wait -- which is why there is no cache_control here. Adding
+   one would charge the 1.25x write premium for a cache nothing ever reads. */
 async function agRunAll(manual){
   const a = agState();
   if(!S.settings.apiKey){
@@ -10036,106 +10366,78 @@ async function agRunAll(manual){
   // that blocks every future run. A module-level flag has neither problem.
   if(_agRunning) return;
   _agRunning = true; renderOps();
-  const sys = agSharedBrief()+
-    '\nRespond with ONLY valid JSON \u2014 no markdown fences, no commentary before or after the JSON:\n'+
-    '{"charlie":{"summary":"...","proposals":[]},"delta":{...},"echo":{...},"zulu":{...}}\n'+
-    'summary = 1\u20133 sentences, first person, addressed to Mark, describing what you found this cycle. '+
-    'This is where observations, things worth watching, and "no action needed but here\u2019s why" belong.\n'+
-    'proposals = ONLY things with a concrete fix attached. If you have nothing worth actually applying, '+
-    'return an empty array \u2014 do not add a proposal just to have said something; say it in summary instead. '+
-    'A proposal with fix:null is a contradiction: if there is nothing to apply, it is not a proposal, it is '+
-    'part of your summary. Every entry in proposals MUST have a non-null fix from the list below.\n'+
-    'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<one of the shapes below>}\n'+
-    'Allowed fix shapes (anything else, including null, is discarded \u2014 so don\u2019t submit it as a proposal):\n'+
-    '  {"type":"cal","payload":{"delta":-500..500}}\n'+
-    '  {"type":"pro","payload":{"to":80..300}}\n'+
-    '  {"type":"liftReset","payload":{"name":"<exact exercise name>","w":<lb, a REAL working weight not an e1RM>,"days":1..30}}\n'+
-    '  {"type":"deload","payload":{}}\n'+
-    '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}\n'+
-    '  {"type":"swapEx","payload":{"from":"...","to":"..."}}\n'+
-    '  {"type":"schedule","payload":{"map":{"0":"REST","1":"D1","2":"D2","3":"D3","4":"D4","5":"D5","6":"REST"}}}  \u2014 ONLY valid if CURRENT SCHEDULE below is day-of-week mode; discarded otherwise\n'+
-    '  {"type":"cycleSchedule","payload":{"pattern":["D1","D2","D3","REST","D4","D5","D6","REST"]}}  \u2014 ONLY valid if CURRENT SCHEDULE below is a rotating cycle; discarded otherwise. Full replacement pattern, 1\u201314 entries, at least one non-REST day. The anchor date cannot be changed this way \u2014 only day content/order/count.\n'+
-    '  {"type":"bpFreq","payload":{"daysPerWeek":1..4,"pct":60..95}}  \u2014 sets Bench Practice\u2019s target frequency (standalone home bench frequency work, separate from tracked lifts) and the suggested weight as a percent of his current Barbell Bench Press working weight. DELTA only. Tune daysPerWeek up if he\u2019s consistently completing it and bench e1RM is trending well, down if he\u2019s missing sessions or grinding. This is a target/suggestion only \u2014 he still taps the button and logs it himself.\n'+
-    'ZULU should rarely have a fix of its own; its job is the brief and flagging conflicts between the others, '+
-    'almost always via summary rather than proposals.\n'+
-    'Cap: at most 2 proposals per agent. Fewer is better \u2014 most nights, most agents should have zero. '+
-    'Keep summaries tight so the JSON stays complete.\n\n'+
-    // Read-only: this refreshes the Overload Status tab. It is NOT a proposal and never
-    // changes anything, so it deliberately sits outside the per-agent proposal arrays.
-    'ALSO include a top-level "overload" key refreshing the Overload Status tab (DELTA\'s read, informational only, nothing is applied):\n'+
-    '  "overload":{"lifts":[{"lift":"<exact name from OVERLOAD STATUS below>","direction":"up|flat|down","verdict":"on-track|stalling|attention","tip":"<=200 chars, only if there is something actionable \u2014 otherwise \\"\\">"}]}\n'+
-    '  Cover every lift listed under OVERLOAD STATUS. "direction" MUST match the dir= given there; a row whose '+
-    'direction disagrees is discarded, not shown. "verdict" may move at most one step from the app verdict given there '+
-    '(on-track < stalling < attention) \u2014 rows that invert it are discarded too. Tips should be concrete and cite his '+
-    'numbers; leave tip empty rather than writing filler.\n\n'+
-    coachMemContext()+trainingContext()+agContext()+olAgentContext();
+  let raised = 0;
   try{
-    // max_tokens raised from 4000 and effort raised above the app-wide default, both because
-    // of the same Sonnet 5 property: thinking is adaptive and thinking tokens count against
-    // max_tokens. This one response has to carry four agent summaries, their proposals AND
-    // the overload report as a single complete JSON object, so a long think against the old
-    // 4000 cap could truncate it mid-object. parseLooseJSON() repairs a cut tail, but a
-    // truncated agent block silently loses real content. This is also the one call per day
-    // where careful reasoning is worth paying for, hence 'high' rather than the default.
-    const {text} = await callClaudeWithTools(
-      [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
-      sys, null, 16000, {effort:'high'});
-    // CRITICAL: re-resolve state AFTER the await. applyPulled() replaces S wholesale, so if a
-    // background sync lands during the ~60s API call, any reference captured before the await
-    // now points at an orphaned object that save() will never serialize. That is exactly why
-    // log entries survived (agLog re-resolves on every call) while status/lastRun/lastRunAt
-    // silently vanished (they were written through the stale reference) \u2014 the cycle looked like
-    // it ran, but the day never got stamped, so the next boot ran it all over again.
+    // Settled, not all: one specialist failing must not take the other two down with it.
+    // Under the old single-call design a malformed reply cost every agent its night.
+    const results = await Promise.all(AG_ORDER.map(function(id){
+      return agRunSpecialist(id, manual).then(
+        function(v){ return {id:id, ok:true, val:v}; },
+        function(e){ return {id:id, ok:false, err:e}; });
+    }));
+
+    // CRITICAL: re-resolve state AFTER the await. applyPulled() replaces S wholesale, so a
+    // reference captured before the await now points at an orphaned object that save() will
+    // never serialize. That asymmetry -- log entries surviving while status/lastRun vanished --
+    // is the fingerprint of this bug, and it has bitten this function before.
     const a2 = agState();
-    const parsed = parseLooseJSON(text);
-    let raised = 0;
-    ['zulu'].concat(AG_ORDER).forEach(id=>{
-      const blk = parsed && parsed[id]; if(!blk) return;
-      if(blk.summary){
-        a2.status[id] = {summary:String(blk.summary), at:new Date().toISOString()};
-        agLog(id, String(blk.summary));
+    const digest = [];
+    let failures = 0;
+    results.forEach(function(r){
+      if(!r.ok || !r.val){
+        failures++;
+        agLog(r.id, 'I could not complete tonight\u2019s check ('+
+          (r.ok ? 'unreadable reply' : (r.err && r.err.message) || 'error')+'). Nothing changed.');
+        return;
       }
-      (blk.proposals||[]).slice(0,2).forEach(pr=>{
-        if(!pr || !pr.title) return;
-        const fix = agValidateFix(pr.fix);
-        // Advisory-only entries (no fix, or one that failed validation) don't belong in the
-        // approval queue \u2014 there's nothing for Approve to actually apply, so it was just a
-        // no-op button next to text you'd already read in the summary above. Fold whatever the
-        // model wanted to say into the log instead of silently dropping it, but never queue it.
-        if(!fix){
-          if(!pr.fix){
-            agLog(id, pr.title+(pr.reasoning?' \u2014 '+pr.reasoning:''));
-          } else {
-            // A fix that FAILED validation used to vanish with no trace at all \u2014 while the
-            // agent's free-text summary still happily announced the change ("capping Incline
-            // DB Press at 60 lb for two weeks"). Reading that, you would believe an override
-            // was live when none had ever been written. Say so instead. Validation itself is
-            // unchanged: this only makes the rejection VISIBLE, it never lets one through.
-            agLog(id, 'I proposed \u201c'+pr.title+'\u201d but it did not pass validation ('+
-              agRejectReason(pr.fix)+'), so NOTHING was applied. Ignore any part of my summary '+
-              'above that says otherwise.');
-          }
-          return;
-        }
-        a2.proposals.unshift({
-          id:agUid(), agent:id, title:String(pr.title),
-          reasoning:String(pr.reasoning||''), fix,
-          created:todayKey(),
-          expires:dateKeyOf(new Date(Date.now()+AG_PROP_TTL*86400000)),
-          status:'pending'
-        });
-        raised++;
-      });
+      raised += agIngest(a2, r.id, r.val);
+      digest.push(AGENTS[r.id].name+': '+String(r.val.summary||'(nothing)'));
+      // DELTA alone refreshes the Overload Status tab. Read-only and informational, so it sits
+      // outside the proposal queue -- but still validated against freshly computed signals, and
+      // on failure the PREVIOUS report is kept rather than cleared. A bad night should cost the
+      // tab its newest commentary, not the commentary it already had.
+      if(r.id==='delta'){
+        try{
+          const olv = olValidateReport(r.val.overload, olSignals());
+          if(olv) a2.overload = olv;
+          else if(r.val.overload) agLog('delta','Overload status update didn\u2019t pass the sanity check \u2014 kept the previous read rather than showing it.');
+        }catch(e){ agLog('delta','Overload status update failed to parse ('+e.message+') \u2014 previous read kept.'); }
+      }
     });
-    // Overload Status refresh. Validated against freshly computed signals, and on failure the
-    // PREVIOUS report is left in place rather than cleared \u2014 a bad night should cost the tab
-    // its newest commentary, not the commentary it already had.
-    try{
-      const olv = olValidateReport(parsed && parsed.overload, olSignals());
-      if(olv) a2.overload = olv;
-      else if(parsed && parsed.overload) agLog('delta','Overload status update didn\u2019t pass the sanity check \u2014 kept the previous read rather than showing it.');
-    }catch(e){ agLog('delta','Overload status update failed to parse ('+e.message+') \u2014 previous read kept.'); }
-    if(!raised) agLog('zulu','Cycle complete \u2014 nothing needed your attention today.');
+    save();
+    renderOps();
+
+    // ZULU last, and only if at least one specialist actually reported -- synthesising three
+    // failures is a waste of a call.
+    if(digest.length){
+      try{
+        const zres = await agRunLead(digest, manual);
+        const a3 = agState();
+        raised += agIngest(a3, 'zulu', zres);
+        if(zres && zres.brief) agSetBrief(String(zres.brief));
+      }catch(e){
+        agLog('zulu','I could not write tonight\u2019s synthesis ('+e.message+'), but the specialists above still reported.');
+      }
+      // Sunday only, and its own try: a failed letter must not cost him the cycle that
+      // already succeeded above it.
+      if(agLetterDue()){
+        try{
+          const letter = await agWriteLetter(digest);
+          if(letter){ agSetLetter(letter); agLog('zulu','Your weekly letter is ready.'); }
+        }catch(e){
+          agLog('zulu','I couldn\u2019t write this week\u2019s letter ('+e.message+'). Everything else above still stands.');
+        }
+      }
+    }
+    // "Nothing needed your attention" and "every agent errored" look identical from the
+    // outside but mean opposite things, and only one of them is safe to trust. Never report
+    // silence as an all-clear when it was actually a total failure.
+    if(failures === AG_ORDER.length){
+      agLog('zulu','Cycle failed: every agent errored or came back unreadable, so nothing was '+
+        'checked tonight \u2014 no retry today. Use Run cycle now if you want another attempt.');
+    } else if(!raised){
+      agLog('zulu','Cycle complete \u2014 nothing needed your attention today.');
+    }
   }catch(e){
     agLog('zulu','Cycle failed: '+e.message+' \u2014 no retry today; use Run cycle now if you want another attempt.');
   }finally{
@@ -10143,11 +10445,93 @@ async function agRunAll(manual){
     // between the try body and here. Previously this lived at the end of the try, so a thrown
     // parse left lastRun untouched, the "already ran today" gate stayed open, and the next
     // trigger fired a fresh cycle minutes later.
-    const a3 = agState();
-    a3.lastRun = todayKey(); a3.lastRunAt = new Date().toISOString();
+    const a4 = agState();
+    a4.lastRun = todayKey(); a4.lastRunAt = new Date().toISOString();
     _agRunning = false; save(); renderOps();
   }
 }
+
+/* ZULU reads the other three and writes the synthesis plus the morning Daily Brief. It sees
+   their conclusions rather than re-deriving them, which is the whole point of a lead. */
+async function agRunLead(digest, manual){
+  const pend = agPending().map(function(p){ return AGENTS[p.agent].name+': '+p.title; });
+  const sc = currentDayKey();
+  const sys = agSharedBrief()+
+    '\n'+'You are ZULU, the lead. CHARLIE, DELTA and ECHO have each just reported. Your job is '+
+    'synthesis and conflict-spotting, not repeating them. You rarely propose a fix of your own; '+
+    'when two of them pull in opposite directions, say so and give him the options.'+
+    agToolNote()+
+    '\n'+'Respond with ONLY valid JSON:'+'\n'+
+    '{"summary":"...","brief":"...","proposals":[]}'+'\n'+
+    'summary = 1-3 sentences to Mark: what the three reports add up to, and any conflict between them.'+'\n'+
+    'brief = his morning Daily Brief. 2-4 short sentences covering how recovered he is, what is '+
+    'scheduled today, and anything actually waiting on him. Write it as something worth reading at '+
+    '7am, not a status dump. If nothing needs him, say that plainly and confidently rather than '+
+    'inventing something to fill the space \u2014 "nothing needs you today, train as planned" is a '+
+    'complete and good brief.'+'\n'+
+    'proposals = almost always []. Same rules and the same fix shapes as the specialists; anything '+
+    'else is discarded.'+'\n'+
+    'Do not describe anything as already changed. Nothing takes effect until he taps Approve.'+'\n'+
+    '\n'+'WHAT THE SPECIALISTS REPORTED TONIGHT:'+'\n'+digest.join('\n')+
+    '\n'+'\n'+'ALREADY WAITING ON HIS APPROVAL: '+(pend.length?pend.join('; '):'nothing')+
+    '\n'+'TODAY IS: '+(sc==='REST'?'a REST day':sc+' \u2014 '+dayName(sc))+
+    '\n'+agBaseContext('zulu');
+  const {text} = await callClaudeWithData(
+    [{role:'user', content:'Write tonight\u2019s synthesis and tomorrow\u2019s brief.'}],
+    sys, 8000, {effort:'high'});
+  return parseLooseJSON(text);
+}
+
+/* ---- the weekly coach letter ----
+   A written synthesis in ZULU's voice, once a week, so the week reads as a story rather than
+   four tabs of numbers he has to assemble himself. One extra call a week -- about a penny --
+   and it deliberately runs at the END of the nightly cycle so it can use everything the
+   specialists just found rather than re-deriving it. */
+function agLetterDue(){
+  const a = agState();
+  // Sunday night: the week is finished, and it is the natural moment to look back at it.
+  if(new Date().getDay() !== 0) return false;
+  const wk = weekStartKey(todayKey());
+  return !(a.letter && a.letter.week === wk);
+}
+async function agWriteLetter(digest){
+  const sys = agSharedBrief()+
+    '\n'+'You are ZULU, writing Mark\u2019s weekly coach letter. This is the one thing he reads that '+
+    'is prose rather than numbers: a few paragraphs pulling the week together -- how training '+
+    'actually went, what the bodyweight trend is really doing, what you want from him next week. '+
+    'Write it TO him, in your own voice. Be specific and cite real figures, but this is a letter, '+
+    'not a report: no bullet lists, no headings, no restating the dashboard. 200-350 words.'+
+    '\n'+'If the week was unremarkable, say so honestly and briefly rather than inflating it. A '+
+    'short honest letter beats a padded one.'+
+    '\n'+'Do not describe anything as already changed \u2014 nothing takes effect until he approves it.'+
+    agToolNote()+
+    '\n'+'WHAT THE SPECIALISTS FOUND TONIGHT:'+'\n'+(digest||[]).join('\n')+
+    '\n'+'\n'+agBaseContext('zulu');
+  const {text} = await callClaudeWithData(
+    [{role:'user', content:'Write this week\u2019s letter.'}], sys, 8000, {effort:'high'});
+  return (text||'').trim();
+}
+function agSetLetter(text){
+  const a = agState();
+  a.letter = {text:text, at:new Date().toISOString(), week:weekStartKey(todayKey())};
+}
+function agLetter(){
+  const a = agState();
+  return (a.letter && a.letter.text) ? a.letter : null;
+}
+
+/* The Daily Brief is one string with a date on it, kept where every other agent output is
+   kept so it syncs and expires the same way. Deliberately NOT a separate API call: it falls
+   out of a synthesis ZULU is already doing, so it costs nothing extra. */
+function agSetBrief(text){
+  const a = agState();
+  a.brief = {text:text, at:new Date().toISOString(), date:todayKey()};
+}
+function agBrief(){
+  const a = agState();
+  return (a.brief && a.brief.text) ? a.brief : null;
+}
+
 
 /* ---- per-agent chat (ZULU routes to the existing coach engine) ---- */
 let agActiveChat = 'zulu';
@@ -10165,10 +10549,12 @@ async function agSendChat(id){
       '\nYou are '+AGENTS[id].name+'. Answer only within your own domain ('+AGENTS[id].role+'). '+
       'If the question belongs to another agent, say which one and give a short answer anyway if you can. '+
       'You cannot change app state from this chat \u2014 structural changes come from the daily cycle or from ZULU. '+
-      'If you think something should change, say so and tell him to run a cycle.\n\n'+
+      'If you think something should change, say so and tell him to run a cycle.'+
+      agToolNote()+'\n'+
       coachMemContext()+trainingContext()+agContext();
     const msgs = a.chats[id].slice(-14).map(m=>({role:m.role, content:m.content}));
-    const {text} = await callClaudeWithTools(msgs, sys, null, 4000);
+    // Read-only tools only: this chat still cannot change anything, it can look things up.
+    const {text} = await callClaudeWithData(msgs, sys, 4000, {});
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
     agState().chats[id].push({role:'assistant', content:text||'\u2014'});
     save(); agThinkingFor = null; renderOps();
@@ -10308,6 +10694,20 @@ function renderOps(){
   // hierarchy: ZULU on top, the three reports nested beneath
   h += '<div class="ag-lead">'+agCardHTML('zulu')+
        '<div class="ag-kids">'+AG_ORDER.map(agCardHTML).join('')+'</div></div>';
+
+  const _brief = agBrief(), _letter = agLetter();
+  if(_brief){
+    h += '<div class="card" style="border-left:3px solid '+AGENTS.zulu.col+'">'+
+      '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'+
+      '<b style="color:'+AGENTS.zulu.col+';letter-spacing:.04em">DAILY BRIEF</b>'+
+      '<span class="ag-when">'+esc(fmtDate(_brief.date))+'</span></div>'+
+      '<p class="small" style="margin-top:6px">'+esc(_brief.text)+'</p></div>';
+  }
+  if(_letter){
+    h += subSection('Weekly letter \u2014 '+fmtDate(_letter.week),
+      '<div class="card flat"><p class="small" style="white-space:pre-wrap;line-height:1.55">'+
+      esc(_letter.text)+'</p></div>', false);
+  }
 
   h += '<h2>Pending proposals'+(pend.length?' ('+pend.length+')':'')+'</h2>';
   h += pend.length ? pend.map(agPropHTML).join('')

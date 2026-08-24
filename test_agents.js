@@ -35,6 +35,29 @@ const dom = new JSDOM(html, {
 const w = dom.window;
 const ev = (expr) => w.eval(expr);
 const call = (fn, ...args) => { w.__a = args; return w.eval(fn + '.apply(null, window.__a)'); };
+
+// The nightly cycle is four calls now (three specialists in parallel, then the lead), not one
+// combined call, so a stub has to answer PER AGENT instead of returning one object with four
+// keys in it. Routes on the role line in the system prompt, which is the same thing the model
+// itself keys off. Pass '__THROW__' for an agent to make its call fail.
+function stubAgents(byAgent) {
+  w.eval("window.__realData = window.__realData || callClaudeWithData;");
+  w.eval("window.__stub = " + JSON.stringify(byAgent) + ";");
+  w.eval(`callClaudeWithData = async function(msgs, sys){
+    const who = /You are CHARLIE/.test(sys) ? 'charlie'
+              : /You are DELTA/.test(sys)   ? 'delta'
+              : /You are ECHO/.test(sys)    ? 'echo'
+              : 'zulu';
+    window.__stubSeen = window.__stubSeen || [];
+    window.__stubSeen.push(who);
+    const v = window.__stub[who];
+    if (v === undefined) return {text: JSON.stringify({summary: who + ' had nothing.', proposals: []}), toolsUsed: 0};
+    if (v === '__THROW__') throw new Error('API 429: rate limited');
+    return {text: (typeof v === 'string' ? v : JSON.stringify(v)), toolsUsed: 0};
+  };`);
+  w.eval("window.__stubSeen = [];");
+}
+function unstubAgents() { w.eval("if(window.__realData) callClaudeWithData = window.__realData;"); }
 setTimeout(async () => {
   console.log('=== AGENT LAYER ===');
 
@@ -548,10 +571,12 @@ setTimeout(async () => {
   console.log('=== FAILURE CLOSES THE DAILY GATE ===');
   ev("window.__realCall = callClaudeWithTools;");
 
-  // Case 1: the API call itself throws (network, 401, rate limit)
+  // Case 1: every agent's call throws (network, 401, rate limit). All four have to fail for
+  // the cycle itself to be reported as failed -- one specialist going down is survivable now
+  // and is covered separately below.
   ev("agState().lastRun = ''; agState().lastRunAt = '';");
   ev("S.settings.apiKey = 'sk-test'");
-  ev("callClaudeWithTools = async () => { throw new Error('API 429: rate limited'); };");
+  stubAgents({charlie:'__THROW__', delta:'__THROW__', echo:'__THROW__', zulu:'__THROW__'});
   await ev('agRunAll(true)');
   ok('[api throw] lastRun still stamped', ev('agState().lastRun') === ev('todayKey()'),
      'lastRun=' + ev('agState().lastRun'));
@@ -560,7 +585,8 @@ setTimeout(async () => {
 
   // Case 2: a response with no JSON at all \u2014 genuinely unparseable, not recoverable
   ev("agState().lastRun = ''; agState().lastRunAt = '';");
-  ev("callClaudeWithTools = async () => ({text:'I could not complete that request.', actions:[]});");
+  stubAgents({charlie:'I could not complete that request.', delta:'I could not complete that request.',
+              echo:'I could not complete that request.', zulu:'I could not complete that request.'});
   await ev('agRunAll(true)');
   ok('[bad json] lastRun still stamped', ev('agState().lastRun') === ev('todayKey()'),
      'lastRun=' + ev('agState().lastRun'));
@@ -578,6 +604,22 @@ setTimeout(async () => {
   ok('manual run still works despite the closed gate', ev('window.__refired') === true);
 
   ev("agRunAll = window.__realRun; callClaudeWithTools = window.__realCall;");
+  unstubAgents();
+
+  // One specialist failing must NOT cost the other two their night. Under the old single-call
+  // design a malformed reply took all four down together, which is the reason for the split.
+  ev("agState().lastRun = ''; agState().proposals = []; agState().log = []; agState().status = {};");
+  stubAgents({charlie:'__THROW__',
+              delta:{summary:'delta still reported', proposals:[]},
+              echo:{summary:'echo still reported', proposals:[]}});
+  await ev('agRunAll(true)');
+  ok('a failing specialist does not silence the others',
+     ev("!!agState().status.delta && !!agState().status.echo"), JSON.stringify(ev('Object.keys(agState().status)')));
+  ok('the failing one is reported rather than hidden',
+     ev("agState().log.some(l=>/could not complete/.test(l.text))"));
+  ok('the survivors kept their own summaries',
+     ev("agState().status.delta.summary") === 'delta still reported', ev("agState().status.delta.summary"));
+  unstubAgents();
 
 
   console.log('=== _running NOT PERSISTED ===');
@@ -670,16 +712,23 @@ setTimeout(async () => {
   ev("agState().lastRun = ''; agState().lastRunAt = ''; agState().status = {};");
   ev("S.settings.apiKey = 'sk-test'");
   // mid-flight, simulate the pull swapping S out from under the running cycle
-  ev(`callClaudeWithTools = async () => {
-        window.__midDump = JSON.parse(JSON.stringify(S));
-        window.__midDump.agents.lastRun = '2020-01-01';
-        window.__midDump.agents.lastRunAt = '2020-01-01T00:00:00.000Z';
-        window.__midDump.agents.status = {};
-        applyPulled(window.__midDump);
-        return {text: JSON.stringify({zulu:{summary:'brief after swap',proposals:[]},
-                                      delta:{summary:'d',proposals:[]},
-                                      charlie:{summary:'c',proposals:[]},
-                                      echo:{summary:'e',proposals:[]}}), actions:[]};
+  ev("window.__realData2 = callClaudeWithData; window.__swapped = false;");
+  ev(`callClaudeWithData = async function(msgs, sys){
+        // swap S out exactly once, part-way through the fan-out
+        if(!window.__swapped){
+          window.__swapped = true;
+          window.__midDump = JSON.parse(JSON.stringify(S));
+          window.__midDump.agents.lastRun = '2020-01-01';
+          window.__midDump.agents.lastRunAt = '2020-01-01T00:00:00.000Z';
+          window.__midDump.agents.status = {};
+          applyPulled(window.__midDump);
+        }
+        const who = /You are CHARLIE/.test(sys) ? 'charlie'
+                  : /You are DELTA/.test(sys)   ? 'delta'
+                  : /You are ECHO/.test(sys)    ? 'echo'
+                  : 'zulu';
+        return {text: JSON.stringify({summary: who==='zulu' ? 'brief after swap' : who,
+                                      brief:'b', proposals:[]}), toolsUsed:0};
       };`);
   await ev('agRunAll(true)');
   ok('lastRun survives a pull landing mid-cycle', ev('agState().lastRun') === ev('todayKey()'),
@@ -696,6 +745,7 @@ setTimeout(async () => {
   ev('agMaybeAutoRun()');
   ok('no re-fire after a mid-cycle pull', ev('window.__refired2') === false);
   ev("agRunAll = window.__realRun2; callClaudeWithTools = window.__realCall2;");
+  ev("callClaudeWithData = window.__realData2;");
 
   console.log('=== ENSEMBLE PREDICTIONS ===');
   ok('anEnsembleFor exists', ev('typeof anEnsembleFor') === 'function');
@@ -816,7 +866,10 @@ setTimeout(async () => {
      'chat=' + JSON.stringify(ev('S.chat')));
   ok('ZULU assistant reply was recorded', ev("S.chat.some(m=>m.role==='assistant' && /ack from agent/.test(m.content||''))"));
 
-  // a non-lead agent through its own handler
+  // a non-lead agent through its own handler. agSendChat routes through the read-only tool
+  // loop now (it can look history up), so the stub has to sit on that seam.
+  ev("window.__realData4 = callClaudeWithData;");
+  ev("callClaudeWithData = async () => ({text:'ack from agent', toolsUsed:0});");
   ev("agSelectChat('delta'); renderOps();");
   ev("agState().chats.delta = [];");
   ev("document.getElementById('agChatIn').value = 'delta ping';");
@@ -835,21 +888,20 @@ setTimeout(async () => {
   ok('whitespace-only input is a clean no-op', !emptyThrew && ev('S.chat.length') === 0);
 
   ev("callClaudeWithTools = window.__realCall3;");
+  ev("if(window.__realData4) callClaudeWithData = window.__realData4;");
 
   console.log('=== ADVISORY PROPOSALS FOLD INTO LOG, NOT THE QUEUE ===');
   ev("agState().lastRun = ''; agState().lastRunAt = ''; agState().proposals = []; agState().log = [];");
   ev("S.settings.apiKey = 'sk-test'");
   ev("window.__realCall4 = callClaudeWithTools;");
-  ev(`callClaudeWithTools = async () => ({text: JSON.stringify({
-        zulu:{summary:'brief', proposals:[
-          {title:'Watch Thursday squat session', reasoning:'fatigue is elevated', fix:null}
-        ]},
-        delta:{summary:'d', proposals:[
-          {title:'Bump bench volume', reasoning:'trend is clean', fix:{type:'cal', payload:{delta:100}}}
-        ]},
-        charlie:{summary:'c', proposals:[]},
-        echo:{summary:'e', proposals:[]}
-      }), actions:[]});`);
+  stubAgents({
+    zulu:    {summary:'brief', brief:'nothing needs you today', proposals:[
+               {title:'Watch Thursday squat session', reasoning:'fatigue is elevated', fix:null}]},
+    delta:   {summary:'d', proposals:[
+               {title:'Bump bench volume', reasoning:'trend is clean', fix:{type:'cal', payload:{delta:100}}}]},
+    charlie: {summary:'c', proposals:[]},
+    echo:    {summary:'e', proposals:[]}
+  });
   await ev('agRunAll(true)');
   ok('advisory-only proposal is NOT in the queue', ev("agState().proposals.some(p=>p.title==='Watch Thursday squat session')") === false,
      JSON.stringify(ev('agState().proposals')));
@@ -868,11 +920,10 @@ setTimeout(async () => {
   // override was live, and LIVE would quietly disagree. That was a real reported bug. So the
   // rule is sharper now, not looser: no advisory laundering, but a visible rejection notice.
   ev("agState().proposals = []; agState().log = [];");
-  ev(`callClaudeWithTools = async () => ({text: JSON.stringify({
-        zulu:{summary:'brief2', proposals:[
-          {title:'Bad fix attempt', reasoning:'SHOULD_NOT_APPEAR', fix:{type:'cal', payload:{delta:99999}}}
-        ]}
-      }), actions:[]});`);
+  stubAgents({
+    zulu: {summary:'brief2', proposals:[
+            {title:'Bad fix attempt', reasoning:'SHOULD_NOT_APPEAR', fix:{type:'cal', payload:{delta:99999}}}]}
+  });
   await ev('agRunAll(true)');
   ok('malformed fix does not reach the queue', ev("agState().proposals.some(p=>p.title==='Bad fix attempt')") === false);
   ok('malformed fix reasoning is NOT presented as advice',
@@ -885,17 +936,17 @@ setTimeout(async () => {
      JSON.stringify(ev('agState().log.map(l=>l.text)')));
   // and a bad exercise name is named specifically, since that is the common real case
   ev("agState().proposals = []; agState().log = [];");
-  ev(`callClaudeWithTools = async () => ({text: JSON.stringify({
-        delta:{summary:'d', proposals:[
-          {title:'Cap the trap bar', reasoning:'r', fix:{type:'liftReset', payload:{name:'Trap Bar Deadlift', w:225, days:14}}}
-        ]}
-      }), actions:[]});`);
+  stubAgents({
+    delta: {summary:'d', proposals:[
+             {title:'Cap the trap bar', reasoning:'r', fix:{type:'liftReset', payload:{name:'Trap Bar Deadlift', w:225, days:14}}}]}
+  });
   await ev('agRunAll(true)');
   ok('an unresolvable lift name is called out by name in the rejection',
      ev("agState().log.some(l=>/Trap Bar Deadlift/.test(l.text) && /not a lift you train/.test(l.text))"),
      JSON.stringify(ev('agState().log.map(l=>l.text)')));
 
   ev("callClaudeWithTools = window.__realCall4;");
+  unstubAgents();
 
   // Re-resolve fresh here rather than reusing the `A` captured near the top of this file:
   // several sections since then (SYNC PULL, PULL LANDING MID-CYCLE) call applyPulled(), which
@@ -3004,11 +3055,20 @@ setTimeout(async () => {
     ok('agent context lists the tracked lifts', olCtx.indexOf('OL Climber') >= 0 && olCtx.indexOf('OL Sinker') >= 0);
     ok('agent context carries the computed verdict', /app verdict=/.test(olCtx));
     ok('agent context carries the direction', /dir=down/.test(olCtx));
-    const runSrc = ev('agRunAll.toString()');
+    // The nightly run is four calls now, so the prompt that asks for this lives in the
+    // per-agent spec and the computed signals arrive through agBaseContext. Same two claims,
+    // read across the whole pipeline instead of one function.
+    const runSrc = [ev('agRunAll.toString()'), ev('agJsonSpec.toString()'),
+                    ev('agBaseContext.toString()'), ev('agRunSpecialist.toString()')].join('\n');
     ok('the daily cycle asks for an overload block', runSrc.indexOf('"overload"') >= 0);
     ok('the daily cycle validates it before storing', /olValidateReport/.test(runSrc));
     ok('the daily cycle feeds the agents the computed signals', /olAgentContext/.test(runSrc));
     ok('a rejected report keeps the previous one', /kept the previous read|previous read kept/.test(runSrc));
+    // and only DELTA is asked for it -- the other two have no business reporting on overload
+    ok('only DELTA is asked for the overload block',
+       ev("agJsonSpec('delta')").indexOf('"overload"') >= 0 &&
+       ev("agJsonSpec('echo')").indexOf('"overload"') < 0 &&
+       ev("agJsonSpec('charlie')").indexOf('"overload"') < 0);
 
     ev('S.logs = ' + savedLogsO + ';');
     ev(savedAgO === 'null' ? 'delete agState().overload;' : 'agState().overload = ' + savedAgO + ';');
@@ -3420,10 +3480,10 @@ setTimeout(async () => {
     // Every cap in the app must leave room for adaptive thinking. The mid-workout DELTA
     // chat was the tight one (500), where a long think could have returned a blank reply
     // while he was standing at the rack.
-    const caps = (htmlSrc.match(/await callClaude(?:WithTools)?\([\s\S]{0,220}?\)\s*;/g) || [])
+    const caps = (htmlSrc.match(/await callClaude(?:WithTools|WithData)?\([\s\S]{0,220}?\)\s*;/g) || [])
       .map(function(c){ var m = c.match(/(\d{3,6})\s*(?:,\s*\{[^}]*\})?\s*\)\s*;\s*$/); return m ? +m[1] : null; })
       .filter(function(v){ return v !== null; });
-    ok('found every API call site to check', caps.length >= 6, 'found=' + caps.length + ' -> ' + caps.join(','));
+    ok('found every API call site to check', caps.length >= 7, 'found=' + caps.length + ' -> ' + caps.join(','));
     ok('no max_tokens cap is small enough for thinking to swallow the answer',
        caps.every(function(v){ return v >= 4000; }), caps.join(','));
 
@@ -3547,6 +3607,181 @@ setTimeout(async () => {
     ok('bodyweight fixture cleaned up', ev('S.weights.length') === JSON.parse(savedW).length);
   } catch (e) {
     ok('bulk rate section', false, e.message);
+  }
+
+  console.log('=== SUBAGENT SPLIT: FOUR FOCUSED CALLS ===');
+  try {
+    ev("agState().lastRun=''; agState().proposals=[]; agState().log=[]; agState().status={}; delete agState().brief;");
+    ev("S.settings.apiKey = 'sk-test';");
+    ev("window.__sysSeen = {};");
+    ev("window.__realData3 = callClaudeWithData;");
+    ev(`callClaudeWithData = async function(msgs, sys){
+          const who = /You are CHARLIE/.test(sys) ? 'charlie'
+                    : /You are DELTA/.test(sys)   ? 'delta'
+                    : /You are ECHO/.test(sys)    ? 'echo'
+                    : 'zulu';
+          window.__sysSeen[who] = sys;
+          return {text: JSON.stringify({summary: who + ' reporting', brief:'Recovered fine. D1 today. Nothing waiting on you.', proposals:[]}), toolsUsed:0};
+        };`);
+    await ev('agRunAll(true)');
+    const seen = ev('Object.keys(window.__sysSeen).sort().join(",")');
+    ok('all four agents were called', seen === 'charlie,delta,echo,zulu', seen);
+
+    // each specialist gets ONLY its own remit and its own fix menu -- the whole point of the
+    // split is that CHARLIE is no longer reading DELTA's instructions
+    const cSys = ev('window.__sysSeen.charlie'), dSys = ev('window.__sysSeen.delta'), eSys = ev('window.__sysSeen.echo');
+    ok('CHARLIE is told it is CHARLIE', cSys.indexOf('You are CHARLIE') >= 0);
+    ok('CHARLIE is not handed ECHO\u2019s calorie fix', cSys.indexOf('"type":"cal"') < 0);
+    ok('CHARLIE is not handed DELTA\u2019s liftReset', cSys.indexOf('liftReset') < 0);
+    ok('DELTA gets liftReset', dSys.indexOf('liftReset') >= 0);
+    ok('DELTA is not handed the schedule map', dSys.indexOf('cycleSchedule') < 0);
+    ok('ECHO gets the calorie and protein fixes', eSys.indexOf('"type":"cal"') >= 0 && eSys.indexOf('"type":"pro"') >= 0);
+    ok('ECHO is not handed deload', eSys.indexOf('"type":"deload"') < 0);
+    ok('every specialist is told the tools exist', [cSys, dSys, eSys].every(function(x){ return x.indexOf('get_lift_history') >= 0; }));
+    ok('every specialist is told not to claim a change already happened',
+       [cSys, dSys, eSys].every(function(x){ return /not.*already made|not.*already changed/i.test(x); }));
+
+    // the lead reads the others rather than re-deriving
+    const zSys = ev('window.__sysSeen.zulu');
+    ok('ZULU is given what the specialists said', zSys.indexOf('WHAT THE SPECIALISTS REPORTED') >= 0);
+    ok('ZULU actually sees their summaries', zSys.indexOf('charlie reporting') >= 0 && zSys.indexOf('echo reporting') >= 0);
+    ok('ZULU is told what is already pending', zSys.indexOf('ALREADY WAITING ON HIS APPROVAL') >= 0);
+
+    // all four summaries land
+    ok('every agent has a status after the cycle',
+       ev("['charlie','delta','echo','zulu'].every(k=>agState().status[k] && agState().status[k].summary)"),
+       JSON.stringify(ev('Object.keys(agState().status)')));
+
+    // the Daily Brief falls out of ZULU's call rather than costing a fifth one
+    ok('the daily brief is stored', ev('!!agBrief()'));
+    ok('the daily brief has content', ev('agBrief().text').indexOf('Nothing waiting') >= 0, ev('agBrief().text'));
+    ok('the daily brief is dated', ev('agBrief().date') === ev('todayKey()'));
+
+    ev("callClaudeWithData = window.__realData3;");
+  } catch (e) {
+    ok('subagent split section', false, e.message);
+    ev("if(window.__realData3) callClaudeWithData = window.__realData3;");
+  }
+
+  console.log('=== DAILY BRIEF + WEEKLY LETTER ===');
+  try {
+    // The letter is weekly, gated on the day of week, so this cannot be written against
+    // "today" -- on six days out of seven that assertion would be vacuously true. Drive
+    // agLetterDue() through a controlled clock instead.
+    ev("window.__realDate = Date;");
+    const withDay = function(dow, fn){
+      // pin getDay() without disturbing anything else Date is used for
+      ev("Date.prototype.__realGetDay = Date.prototype.getDay;");
+      ev("Date.prototype.getDay = function(){ return " + dow + "; };");
+      const out = fn();
+      ev("Date.prototype.getDay = Date.prototype.__realGetDay; delete Date.prototype.__realGetDay;");
+      return out;
+    };
+    ev("delete agState().letter;");
+    ok('no letter is due midweek', withDay(3, function(){ return ev('agLetterDue()'); }) === false);
+    ok('a letter IS due on Sunday', withDay(0, function(){ return ev('agLetterDue()'); }) === true);
+    ev("agSetLetter('a letter about the week');");
+    ok('the letter is stored with its week', ev('agLetter().week') === ev('weekStartKey(todayKey())'));
+    ok('a second letter is not due the same week',
+       withDay(0, function(){ return ev('agLetterDue()'); }) === false);
+
+    // both surfaces render, and the brief renders as text he would actually read
+    ev("agSetBrief('Recovered well. D3 today. Nothing waiting on you.');");
+    ev('renderOps()');
+    const opsHTML = w.document.getElementById('ops').innerHTML;
+    ok('the daily brief is rendered', opsHTML.indexOf('DAILY BRIEF') >= 0);
+    ok('the brief text is rendered', opsHTML.indexOf('Nothing waiting on you') >= 0);
+    ok('the weekly letter is rendered', opsHTML.indexOf('a letter about the week') >= 0);
+    ok('the letter is collapsible rather than dominating the tab',
+       opsHTML.indexOf('Weekly letter') >= 0 && /class="sub"[\s\S]{0,400}Weekly letter/.test(opsHTML),
+       opsHTML.slice(opsHTML.indexOf('Weekly letter') - 120, opsHTML.indexOf('Weekly letter') + 40));
+
+    // a new brief must make the Ops tab actually repaint, or he would never see it arrive
+    ev('_opsSig = opsSignature();');
+    const sigBefore = ev('opsSignature()');
+    ev("agSetBrief('a different brief');");
+    ok('a new brief changes the ops signature', ev('opsSignature()') !== sigBefore);
+    const sigMid = ev('opsSignature()');
+    ev("agSetLetter('a different letter');");
+    ok('a new letter changes the ops signature', ev('opsSignature()') !== sigMid);
+
+    // model output is escaped on the way into the DOM
+    ev("agSetBrief('<img src=x onerror=alert(1)>');");
+    ev('renderOps()');
+    const esc1 = w.document.getElementById('ops').innerHTML;
+    ok('brief text is escaped, not injected', esc1.indexOf('<img src=x') < 0 && esc1.indexOf('&lt;img') >= 0);
+    ev("agSetLetter('<script>bad()<\\/script>');");
+    ev('renderOps()');
+    const esc2 = w.document.getElementById('ops').innerHTML;
+    ok('letter text is escaped, not injected', esc2.indexOf('<script>bad()') < 0);
+
+    ev("delete agState().letter; delete agState().brief;");
+  } catch (e) {
+    ok('brief + letter section', false, e.message);
+    ev("if(Date.prototype.__realGetDay){ Date.prototype.getDay = Date.prototype.__realGetDay; delete Date.prototype.__realGetDay; }");
+  }
+
+  console.log('=== DATA TOOLS ARE READ-ONLY ===');
+  try {
+    const defs = ev('agDataToolDefs()');
+    ok('data tools are defined', Array.isArray(defs) && defs.length >= 6, 'n=' + (defs && defs.length));
+    const dataNames = defs.map(function(d){ return d.name; });
+    ok('every data tool name reads rather than writes',
+       dataNames.every(function(n){ return /^(get_|list_)/.test(n); }), dataNames.join(','));
+    // the mutating tool set is the coach's, and the two must not overlap
+    const writeNames = ev('coachToolDefs()').map(function(d){ return d.name; });
+    ok('no data tool shares a name with a mutating tool',
+       dataNames.every(function(n){ return writeNames.indexOf(n) < 0; }), dataNames.join(','));
+
+    // THE assertion: running every one of them changes nothing. agApplyFix() is the only
+    // place a proposal may touch state, and these deliberately sit outside that path.
+    const before = ev('JSON.stringify(S)');
+    dataNames.forEach(function(n){
+      ev("window.__tn = " + JSON.stringify(n) + ";");
+      ev("agRunDataTool(window.__tn, {exercise:'Barbell Bench Press', days:9999, weeks:9999, limit:9999, weeksAgo:0})");
+    });
+    ok('no data tool mutated any state', ev('JSON.stringify(S)') === before);
+    // and an unknown tool name is refused rather than ignored
+    ok('an unknown tool name is refused',
+       /Unknown tool/.test(ev("agRunDataTool('delete_everything', {})")));
+    // a tool that throws must hand back an error string, not take the cycle down
+    ok('a throwing tool returns an error string instead of propagating',
+       typeof ev("agRunDataTool('get_weekly_volume', {weeksAgo:'nonsense'})") === 'string');
+
+    // the loop has a hard ceiling -- unattended at 9pm, an unbounded loop is an unbounded bill
+    ok('tool rounds are capped', ev('AI_TOOL_ROUNDS') > 0 && ev('AI_TOOL_ROUNDS') <= 10, String(ev('AI_TOOL_ROUNDS')));
+    ok('tool results are size-capped', ev('AI_TOOL_MAXCHARS') > 0 && ev('AI_TOOL_MAXCHARS') <= 20000, String(ev('AI_TOOL_MAXCHARS')));
+
+    ev("window.__reqs = 0; window.__realReq = aiRequest;");
+    ev(`aiRequest = async function(){
+          window.__reqs++;
+          return {stop_reason:'tool_use', content:[{type:'tool_use', id:'t'+window.__reqs, name:'list_lifts', input:{}}]};
+        };`);
+    await ev("callClaudeWithData([{role:'user',content:'go'}], 'sys', 100, {})");
+    ok('a model that never stops calling tools is cut off',
+       ev('window.__reqs') === ev('AI_TOOL_ROUNDS') + 1,
+       'requests=' + ev('window.__reqs') + ' cap=' + ev('AI_TOOL_ROUNDS'));
+    ev("aiRequest = window.__realReq;");
+
+    // a long result is truncated rather than flooding context
+    ev("window.__realRun2b = agRunDataTool;");
+    ev("agRunDataTool = function(){ return new Array(50000).join('x'); };");
+    ev("window.__reqs2 = 0; window.__realReq2 = aiRequest; window.__lastMsgs = null;");
+    ev(`aiRequest = async function(msgs){
+          window.__reqs2++;
+          window.__lastMsgs = msgs;
+          if(window.__reqs2 === 1) return {stop_reason:'tool_use', content:[{type:'tool_use', id:'t1', name:'list_lifts', input:{}}]};
+          return {stop_reason:'end_turn', content:[{type:'text', text:'done'}]};
+        };`);
+    await ev("callClaudeWithData([{role:'user',content:'go'}], 'sys', 100, {})");
+    const passed = ev("window.__lastMsgs[window.__lastMsgs.length-1].content[0].content");
+    ok('an oversized tool result is truncated before it reaches the model',
+       passed.length <= ev('AI_TOOL_MAXCHARS') + 40, 'len=' + passed.length);
+    ev("agRunDataTool = window.__realRun2b; aiRequest = window.__realReq2;");
+  } catch (e) {
+    ok('data tools section', false, e.message);
+    ev("if(window.__realReq) aiRequest = window.__realReq;");
+    ev("if(window.__realRun2b) agRunDataTool = window.__realRun2b;");
   }
 
   console.log('=== RENDER ===');
