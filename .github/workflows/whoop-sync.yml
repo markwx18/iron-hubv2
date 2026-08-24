@@ -19,7 +19,7 @@
 #    and scopes: offline read:recovery read:sleep read:cycles
 #
 # 2. Do the one-time authorization locally to get a refresh token. From a terminal:
-#      node .github/workflows/whoop-auth.js
+#      node scripts/whoop/whoop-auth.js
 #    It prints a URL, you approve in the browser, and it prints your refresh token.
 #
 # 3. Add these repository secrets (Settings -> Secrets and variables -> Actions):
@@ -71,4 +71,4 @@ jobs:
           IRONHUB_GIST_ID: ${{ secrets.IRONHUB_GIST_ID }}
           IRONHUB_GIST_TOKEN: ${{ secrets.IRONHUB_GIST_TOKEN }}
           IRONHUB_STATE_GIST_ID: ${{ secrets.IRONHUB_STATE_GIST_ID }}
-        run: node .github/workflows/whoop-sync.js
+        run: node scripts/whoop/whoop-sync.js

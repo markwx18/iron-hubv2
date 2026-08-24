@@ -1,6 +1,6 @@
 /* One-time WHOOP authorization, run locally, once.
  *
- *   node .github/workflows/whoop-auth.js
+ *   node scripts/whoop/whoop-auth.js
  *
  * Prints a URL, waits for the redirect on http://localhost:8080/callback, exchanges the
  * code, and prints the refresh token to paste into the WHOOP_REFRESH_TOKEN repo secret.
@@ -21,7 +21,7 @@ const SCOPES = 'offline read:recovery read:sleep read:cycles';
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
   console.error('Set WHOOP_CLIENT_ID and WHOOP_CLIENT_SECRET first, e.g.\n' +
-    '  WHOOP_CLIENT_ID=... WHOOP_CLIENT_SECRET=... node .github/workflows/whoop-auth.js');
+    '  WHOOP_CLIENT_ID=... WHOOP_CLIENT_SECRET=... node scripts/whoop/whoop-auth.js');
   process.exit(1);
 }
 
