@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-24-v4">
+<meta name="ironhub-build" content="2026-08-24-v5">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -223,6 +223,48 @@
   .dockrow input{text-align:center; font-size:15px; padding:9px 6px; font-weight:600; min-width:0;}
   /* The lever. Presets stay because a slider alone is bad one-handed mid-set: the presets
      are the fast path, the slider is there when the set was genuinely between two of them. */
+  /* ---- status strip ---- */
+  .sstrip{display:flex; align-items:center; gap:0; border-bottom:1px solid var(--line); background:var(--panel);
+          font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; overflow-x:auto;}
+  .sstrip-cell{display:flex; align-items:baseline; gap:5px; padding:7px 12px; border-right:1px solid var(--line); white-space:nowrap; flex:0 0 auto;}
+  .sstrip-cell:last-child{border-right:none;}
+  .sstrip-l{color:var(--dim);}
+  .sstrip-v{color:var(--text); font-weight:700; font-size:11px;}
+  .sstrip-src{color:var(--dim); font-size:9px; text-transform:none; letter-spacing:0;}
+  .sstrip-cell.tap{cursor:pointer;}
+
+  /* ---- dashboard ---- */
+  .dash-hero{display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:10px; margin-bottom:14px;}
+  .dash-tile{border:1px solid var(--line2); border-radius:4px; padding:12px 13px; background:var(--panel);}
+  .dash-tile .dt-l{font-family:var(--mono); font-size:9px; letter-spacing:.09em; text-transform:uppercase; color:var(--dim);}
+  .dash-tile .dt-v{font-size:23px; font-weight:800; line-height:1.15; margin-top:3px;}
+  .dash-tile .dt-s{font-size:11px; color:var(--muted); margin-top:3px; line-height:1.4;}
+  .dash-sec{margin:16px 0 8px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);}
+  .dash-quiet{color:var(--muted); font-size:12px; line-height:1.5;}
+  .dash-jump{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;}
+
+  /* ---- notification centre ---- */
+  .notif-btn{position:relative; background:transparent; border:1px solid var(--line2); border-radius:4px;
+             color:var(--muted); width:32px; height:30px; cursor:pointer; margin-right:8px; flex:0 0 auto;}
+  .notif-btn .notif-ic{font-size:12px; line-height:1;}
+  .notif-btn.has{color:var(--amber); border-color:var(--amber-dim);}
+  .notif-badge{position:absolute; top:-5px; right:-5px; min-width:15px; height:15px; border-radius:8px;
+               background:var(--amber); color:#1a0e02; font-family:var(--mono); font-size:9px; font-weight:800;
+               line-height:15px; padding:0 4px; display:none;}
+  .notif-badge.on{display:block;}
+  .notif-panel{display:none; position:fixed; top:52px; right:10px; width:min(380px,calc(100vw - 20px));
+               max-height:min(70vh,560px); overflow-y:auto; z-index:70;
+               background:var(--panel); border:1px solid var(--line2); border-radius:5px;
+               box-shadow:0 10px 34px rgba(0,0,0,.55);}
+  .notif-panel.open{display:block;}
+  .notif-head{display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line);
+              font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);}
+  .notif-item{padding:10px 12px; border-bottom:1px solid var(--line); border-left:2px solid transparent;}
+  .notif-item:last-child{border-bottom:none;}
+  .notif-t{font-size:12px; color:var(--text); font-weight:600;}
+  .notif-b{font-size:11px; color:var(--muted); margin-top:3px; line-height:1.45;}
+  .notif-when{font-family:var(--mono); font-size:9px; color:var(--dim); margin-top:4px;}
+  .notif-empty{padding:16px 12px; font-size:12px; color:var(--muted); line-height:1.5;}
   .pain-btn{border:1px solid var(--line2); background:transparent; color:var(--muted); font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:2px; cursor:pointer;}
   .pain-btn.on{color:var(--red); border-color:var(--red-dim);}
   .pain-row{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:8px; padding-top:8px; border-top:1px solid var(--line);}
@@ -943,12 +985,19 @@
     <span class="logo-mark"></span>
     <div class="brand-txt">Iron Hub</div>
     <div class="spacer"></div>
+    <button class="notif-btn" id="notifBtn" onclick="notifToggle()" title="Notifications" aria-label="Notifications">
+      <span class="notif-ic">◉</span><span class="notif-badge" id="notifBadge"></span>
+    </button>
     <div class="modeswitch">
       <button id="mLive" class="live on" onclick="setMode('live')"><span class="pdot"></span>Live</button>
       <button id="mReview" class="review" onclick="setMode('review')">Review</button>
     </div>
   </div>
+  <div class="notif-panel" id="notifPanel"></div>
   <div id="globalInvBanner"></div>
+  <!-- Slim always-on pulse check. Rendered on every review tab and NEVER during LIVE:
+       that screen is deliberately uncluttered while actually training. -->
+  <div id="statusStrip"></div>
 
   <div id="liveMode">
     <div class="live-body" id="liveBody"></div>
@@ -958,6 +1007,7 @@
     <div class="review-body">
       <main>
         <div class="subnav" id="subnav"></div>
+        <section id="home"></section>
         <section id="progress" class="on"></section>
         <section id="road"></section>
         <section id="bulk"></section>
@@ -1079,7 +1129,6 @@ const DEFAULT_STATE = {
   split: JSON.parse(JSON.stringify(DEFAULT_SPLIT)),
   schedule: {1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6',0:'REST'}, // JS getDay(): 0=Sun
   overrideDay: null,           // {date:'YYYY-MM-DD', day:'D2'}
-  dateOverrides: {},           // {'YYYY-MM-DD':'D2'} — exact-date schedule exceptions, checked ahead of dow/cycle
   tempStrengthSplit: null,     // {S1:{name,hex,exercises},...} — generateTempStrengthDays() output; never merged into S.split
   homeToday: null,             // {date:'YYYY-MM-DD'} — auto-expires, same pattern as overrideDay
   homeEquipment: {dumbbells:[2,5,8,12,15,20,30,40,50], kettlebells:[18,26,35,44,53], hasBarbellRackBench:true, hasRower:true, hasBike:true},
@@ -1123,6 +1172,13 @@ function load(){
     }
     return out;
   }catch(e){ return JSON.parse(JSON.stringify(DEFAULT_STATE)); }
+}
+/* V4 removed exact-date schedule overrides. Nothing reads S.dateOverrides any more, but it
+   would otherwise sit in state and ride along in every gist push forever — drop it on first
+   touch, exactly as agState() does with its old `_running` flag. */
+function pruneRemovedKeys(){
+  if(S && 'dateOverrides' in S){ delete S.dateOverrides; return true; }
+  return false;
 }
 function save(touch){
   if(touch !== false){
@@ -1282,9 +1338,10 @@ function scheduledDayFor(dateKey){
   // An approved strength block overrides the schedule for its own dates only.
   const mr = (typeof mesoRotationDayFor==='function') ? mesoRotationDayFor(dateKey) : null;
   if(mr) return mr;
-  // Exact-date exceptions (e.g. a temporary calendar change) beat the recurring dow/cycle
-  // schedule for that date only — see S.dateOverrides in DEFAULT_STATE.
-  if(S.dateOverrides && S.dateOverrides[dateKey]) return S.dateOverrides[dateKey];
+  // Exact-date overrides (S.dateOverrides) used to be consulted here. Removed in V4: they
+  // were a workaround for a plan model that could only think in whole weeks, and now that a
+  // mesocycle phase can be measured in days, the thing they were papering over is gone. A
+  // three-day strength block is expressed as a three-day strength block.
   if(scheduleMode()==='cycle'){
     const pat = cyclePattern();
     return pat[cyclePosition(dateKey)] || 'REST';
@@ -4009,11 +4066,9 @@ function renderSettings(){
   }
   html += '<p class="small" style="margin-top:8px">Changes apply immediately to the Today tab.</p></div>';
 
-  html += '<h2>Calendar Override</h2><div class="card">'+
-    '<p class="small">One-off exceptions for specific dates — travel, a modified block, a missed day. These beat the recurring schedule above for their exact date only, then stop applying.</p>'+
-    dateOverridesEditorHTML() +
-    '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'+
-    '<p class="small"><b style="color:var(--text)">Strength days (S1/S2/S3)</b> — auto-generated squat/press/hinge+pull days, the same logic as a meso strength block, usable as override day-keys above.</p>'+
+  html += '<h2>Strength &amp; Deload</h2><div class="card">'+
+    '<div>'+
+    '<p class="small"><b style="color:var(--text)">Strength days (S1/S2/S3)</b> — auto-generated squat/press/hinge+pull days, the same logic as a meso strength block.</p>'+
     (mesoActiveStrBlockId()
       ? '<p class="small" style="color:var(--dim)">Mirroring your active meso strength block — editing here edits it too, same as the Ops tab\'s Edit button.</p>'+tempStrengthEditorHTML()
       : (S.tempStrengthSplit
@@ -4142,51 +4197,6 @@ function scheduleRow(i, name){
   Object.keys(S.split).forEach(k=>{ opts += '<option value="'+k+'"'+(S.schedule[i]===k?' selected':'')+'>'+k+' — '+esc(S.split[k].name)+'</option>'; });
   return '<div class="row" style="margin-bottom:6px;align-items:center"><div style="flex:0 0 110px" class="small"><b>'+name+'</b></div>'+
     '<div><select onchange="S.schedule['+i+']=this.value;save();setAccent();renderHeader();renderToday();">'+opts+'</select></div></div>';
-}
-/* ---- Calendar Override: exact-date schedule exceptions ---- */
-function dateOverridesEditorHTML(){
-  if(!S.dateOverrides) S.dateOverrides = {};
-  const dates = Object.keys(S.dateOverrides).sort();
-  const dayOpts = selected => {
-    let o = '<option value="REST"'+(selected==='REST'?' selected':'')+'>Rest</option>';
-    Object.keys(S.split).forEach(k=>{ o += '<option value="'+k+'"'+(selected===k?' selected':'')+'>'+k+' — '+esc(S.split[k].name)+'</option>'; });
-    if(S.tempStrengthSplit){
-      Object.keys(S.tempStrengthSplit).forEach(k=>{ o += '<option value="'+k+'"'+(selected===k?' selected':'')+'>'+k+' — '+esc(S.tempStrengthSplit[k].name)+'</option>'; });
-    }
-    return o;
-  };
-  let h = '<div style="display:flex;flex-direction:column;gap:6px">';
-  if(!dates.length) h += '<p class="small" style="color:var(--dim)">No overrides set.</p>';
-  dates.forEach(dk=>{
-    h += '<div class="row" style="align-items:center">'+
-      '<div style="flex:0 0 110px" class="small mono">'+esc(dk)+'</div>'+
-      '<div><select onchange="dateOverrideSetDay(\''+dk+'\',this.value)">'+dayOpts(S.dateOverrides[dk])+'</select></div>'+
-      '<div style="margin-left:auto"><button class="btn ghost sm" title="Remove" onclick="dateOverrideRemove(\''+dk+'\')">✕</button></div></div>';
-  });
-  h += '</div>';
-  h += '<div class="row" style="margin-top:10px;align-items:center">'+
-    '<div><input type="date" id="doAddDate"></div>'+
-    '<div><select id="doAddDay">'+dayOpts('REST')+'</select></div>'+
-    '<div style="flex:none"><button class="btn sm ghost" onclick="dateOverrideAdd()">Add</button></div></div>';
-  return h;
-}
-function dateOverrideSetDay(dk, v){
-  if(!S.dateOverrides) S.dateOverrides = {};
-  S.dateOverrides[dk] = v;
-  save(); setAccent(); renderHeader(); renderToday(); renderSettings();
-}
-function dateOverrideRemove(dk){
-  if(!S.dateOverrides) return;
-  delete S.dateOverrides[dk];
-  save(); setAccent(); renderHeader(); renderToday(); renderSettings();
-}
-function dateOverrideAdd(){
-  const dEl = document.getElementById('doAddDate');
-  const sEl = document.getElementById('doAddDay');
-  if(!dEl || !dEl.value) return;
-  if(!S.dateOverrides) S.dateOverrides = {};
-  S.dateOverrides[dEl.value] = sEl.value;
-  save(); setAccent(); renderHeader(); renderToday(); renderSettings();
 }
 let _tempStrengthGen = null;
 function tempStrengthGenClick(){
@@ -4404,6 +4414,8 @@ function setMode(m){
   buildBotNav();
   if(m==='live'){ renderLive(); try{ renderSidenav(); }catch(e){} }
   else { showMainTab(activeMainTab, navMemory[activeMainTab]); }
+  // The strip must vanish the instant LIVE opens, not on the next timer tick.
+  try{ renderStatusStrip(); }catch(e){}
   try{ invUpdateBadge(); }catch(e){}
   window.scrollTo({top:0, behavior:'instant'});
 }
@@ -4417,6 +4429,8 @@ const REVIEW_RENDER = {progress:renderProgressV2, road:renderRoad, bulk:renderBu
    Old tab ids keep working through the showReviewTab shim.
    ============================================================ */
 const NAV_MODEL = [
+  {id:'home',      label:'Home',        ic:'\u2302', subs:[
+    {id:'home',     label:'Today'}]},
   {id:'progress',  label:'Progress',    ic:'\u25d4', subs:[
     {id:'progress', label:'Overview'},
     {id:'log',      label:'Log'}]},
@@ -4444,6 +4458,7 @@ const NAV_MODEL = [
 ];
 /* old flat tab id -> [mainId, sectionId] */
 const NAV_LEGACY = {
+  home:['home','home'],
   progress:['progress','progress'], log:['progress','log'],
   meso:['plan','meso'],
   road:['analytics','road'], an_over:['analytics','an_over'], an_strength:['analytics','an_strength'],
@@ -4457,7 +4472,10 @@ const NAV_LEGACY = {
   coach:['ops','ops'], ops:['ops','ops'],
   settings:['settings','settings'], library:['settings','library']
 };
-let activeMainTab = 'progress';
+/* The app lands on the dashboard rather than on whatever was last open. Note this does
+   NOT demote LIVE: setMode('live') is still one tap from the strip, the dashboard, and the
+   top bar, and LIVE keeps its own idle screen exactly as it was. */
+let activeMainTab = 'home';
 let navMemory = {};   // remembers last sub per main tab, session-scoped
 
 function navMain(id){ return NAV_MODEL.find(n=>n.id===id); }
@@ -4467,6 +4485,7 @@ function showMainTab(mainId, subId){
   const sub = subId || navMemory[mainId] || m.subs[0].id;
   navMemory[mainId] = sub;
   activeReviewTab = sub;   // keep the legacy pointer accurate for boot re-renders
+  try{ renderStatusStrip(); }catch(e){}
   document.querySelectorAll('#reviewMode main section').forEach(s=>s.classList.toggle('on', s.id===sub));
   renderSidenav(); renderSubnav(); buildBotNav();
   (REVIEW_RENDER[sub]||function(){})();
@@ -6435,6 +6454,7 @@ REVIEW_RENDER.road = renderRoadV2;
 REVIEW_RENDER.bulk = renderBulkV2;
 REVIEW_RENDER.library = renderLibrary;
 REVIEW_RENDER.settings = function(){ renderSettings(); enableSplitDrag(); };
+REVIEW_RENDER.home = renderHome;
 REVIEW_RENDER.invest = renderInvestigation;
 REVIEW_RENDER.meso = renderMeso;
 REVIEW_RENDER.an_over = function(){ renderAnOverview(); };
@@ -8218,34 +8238,68 @@ function mesoAddDays(key, n){
 }
 
 /* ---- materialization: expand a template into explicit week objects ---- */
+/* ---- materialization ----
+   A phase is measured in WEEKS or in DAYS. Hypertrophy is naturally weekly -- seven weeks of
+   the same thing -- and stays one segment per week so week numbering, the deload-week
+   concept and every existing reader behave exactly as before. Strength and deload are not
+   weekly at all: an S1-S3 rotation is three days, then a rest day, then three deload days,
+   then reset, and forcing that onto a 7-day grid meant the plan on screen never matched the
+   plan being run.
+
+   Every segment keeps the same shape either way (type, name, blockId, rep/rpe range, n,
+   startKey, endKey, blockWeek, blockLen), which is what lets the seventeen callers of
+   mesoCurrentWeek() carry on untouched -- they read fields, not lengths. `days` is the only
+   new field, and it defaults to 7 so a plan saved before this change materializes
+   identically. */
+function mesoPhaseUnit(ph){ return (ph && ph.unit === 'days') ? 'days' : 'weeks'; }
+function mesoPhaseLen(ph){
+  return mesoPhaseUnit(ph) === 'days'
+    ? Math.max(1, Math.min(60, Math.round(ph.days || 3)))
+    : Math.max(1, Math.min(52, Math.round(ph.weeks || 1)));
+}
 function mesoMaterialize(tpl, startKey){
-  const weeks = [];
+  const segs = [];
   const cycles = tpl.repeat ? Math.max(1, Math.min(6, tpl.cycles||2)) : 1;
   for(let c=0; c<cycles; c++){
     (tpl.phases||[]).forEach(ph=>{
       const blockId = mesoUid();
-      const n = Math.max(1, ph.weeks||1);
-      for(let w=0; w<n; w++){
-        weeks.push({type:ph.type, name:ph.name, blockId,
-          repLo:ph.repLo, repHi:ph.repHi, rpeLo:ph.rpeLo, rpeHi:ph.rpeHi, cycle:c+1});
+      const len = mesoPhaseLen(ph);
+      const base = {type:ph.type, name:ph.name, blockId,
+        repLo:ph.repLo, repHi:ph.repHi, rpeLo:ph.rpeLo, rpeHi:ph.rpeHi, cycle:c+1};
+      if(mesoPhaseUnit(ph) === 'days'){
+        // ONE segment covering the whole run of days, not one per day: a 3-day strength
+        // block is a single block of training, not three separate blocks.
+        segs.push(Object.assign({}, base, {days:len}));
+      } else {
+        for(let w=0; w<len; w++) segs.push(Object.assign({}, base, {days:7}));
       }
     });
   }
-  return mesoResequence(weeks, startKey);
+  return mesoResequence(segs, startKey);
 }
-/* Recompute week numbers, dates, and block position. Safe to call after any edit. */
+/* Recompute numbering, dates and block position. Safe to call after any edit. */
 function mesoResequence(weeks, startKey){
   const counts = {}; weeks.forEach(w=>{ counts[w.blockId]=(counts[w.blockId]||0)+1; });
   const seen = {};
+  let off = 0;   // running day offset: segments are no longer all the same length
   weeks.forEach((w,i)=>{
+    const len = Math.max(1, Math.round(w.days || 7));
+    w.days = len;
     w.n = i+1;
-    w.startKey = mesoAddDays(startKey, i*7);
-    w.endKey   = mesoAddDays(startKey, i*7+6);
+    w.startKey = mesoAddDays(startKey, off);
+    w.endKey   = mesoAddDays(startKey, off + len - 1);
+    off += len;
     seen[w.blockId] = (seen[w.blockId]||0)+1;
     w.blockWeek = seen[w.blockId];
     w.blockLen  = counts[w.blockId];
   });
   return weeks;
+}
+/* Days from today until a segment starts. mesoWeeksUntil() used to subtract segment indices,
+   which was the same thing only while every segment was exactly a week long. */
+function mesoDaysUntil(w){
+  if(!w) return null;
+  return Math.round((new Date(w.startKey+'T00:00:00') - new Date(todayKey()+'T00:00:00'))/86400000);
 }
 
 /* ---- lifecycle ---- */
@@ -8275,7 +8329,10 @@ function mesoWeeksUntil(w){
   if(!w) return null;
   const cur = mesoCurrentWeek();
   if(!cur) return null;
-  return w.n - cur.n;
+  // Segment index differences stopped meaning "weeks" the moment segments could be 3 days
+  // long. Measure real elapsed time and convert.
+  const d = mesoDaysUntil(w);
+  return d === null ? null : Math.round(d/7);
 }
 
 /* ---- the split that is actually in force right now ----
@@ -8582,9 +8639,17 @@ function mesoDraft(){
   return _mesoDraft;
 }
 function mesoDraftReset(){ _mesoDraft = null; renderMeso(); }
-function mesoTotalWeeks(tpl){
+function mesoTotalDays(tpl){
   const cy = tpl.repeat ? Math.max(1, Math.min(6, tpl.cycles||2)) : 1;
-  return (tpl.phases||[]).reduce((s,p)=>s+Math.max(1,p.weeks||1),0) * cy;
+  return (tpl.phases||[]).reduce(function(t,p){
+    return t + (mesoPhaseUnit(p)==='days' ? mesoPhaseLen(p) : mesoPhaseLen(p)*7);
+  }, 0) * cy;
+}
+/* Kept in weeks because that is how the summary line reads, but derived from the real day
+   count now -- summing phase.weeks ignored day-mode phases entirely and under-reported the
+   plan length by however long they were. */
+function mesoTotalWeeks(tpl){
+  return Math.round(mesoTotalDays(tpl)/7);
 }
 
 /* ---- template builder ---- */
@@ -8627,11 +8692,18 @@ function mesoPhaseRowHTML(p,i){
        '<button class="meso-x" onclick="mesoRemovePhase('+i+')" title="Remove phase">&times;</button>'+
        '</div>';
   h += '<div class="meso-prow-grid">'+
-       '<div class="field"><label>Weeks</label><input type="number" min="'+ty.minW+'" max="'+ty.maxW+'" value="'+p.weeks+'" onchange="mesoSetPhaseNum('+i+',\'weeks\',this.value,'+ty.minW+','+ty.maxW+')"></div>'+
+       '<div class="field"><label>Length</label><div class="meso-pair">'+
+         '<input type="number" min="1" max="'+(mesoPhaseUnit(p)==='days'?60:ty.maxW)+'" value="'+mesoPhaseLen(p)+'" '+
+           'onchange="mesoSetPhaseLen('+i+',this.value)">'+
+         '<select onchange="mesoSetPhaseUnit('+i+',this.value)" style="width:auto">'+
+           '<option value="weeks"'+(mesoPhaseUnit(p)==='weeks'?' selected':'')+'>weeks</option>'+
+           '<option value="days"'+(mesoPhaseUnit(p)==='days'?' selected':'')+'>days</option>'+
+         '</select></div></div>'+
        '<div class="field"><label>Reps</label><div class="meso-pair"><input type="number" min="1" max="30" value="'+p.repLo+'" onchange="mesoSetPhaseNum('+i+',\'repLo\',this.value,0,30)"><span>\u2013</span><input type="number" min="1" max="30" value="'+p.repHi+'" onchange="mesoSetPhaseNum('+i+',\'repHi\',this.value,0,30)"></div></div>'+
        '<div class="field"><label>RPE</label><div class="meso-pair"><input type="number" min="0" max="10" step="0.5" value="'+p.rpeLo+'" onchange="mesoSetPhaseNum('+i+',\'rpeLo\',this.value,0,10)"><span>\u2013</span><input type="number" min="0" max="10" step="0.5" value="'+p.rpeHi+'" onchange="mesoSetPhaseNum('+i+',\'rpeHi\',this.value,0,10)"></div></div>'+
        '</div>';
-  if(p.type==='rest') h += '<p class="small" style="margin-top:6px;color:var(--dim)">Rest weeks carry no rep target \u2014 nothing is scheduled and nothing counts toward progression.</p>';
+  if(mesoPhaseUnit(p)==='days') h += '<p class="small" style="margin-top:6px;color:var(--dim)">Measured in days, so this block runs '+mesoPhaseLen(p)+' day'+(mesoPhaseLen(p)===1?'':'s')+' and then hands over \u2014 it does not get rounded up to a whole week.</p>';
+  if(p.type==='rest') h += '<p class="small" style="margin-top:6px;color:var(--dim)">Rest carries no rep target \u2014 nothing is scheduled and nothing counts toward progression.</p>';
   if(p.type==='deload') h += '<p class="small" style="margin-top:6px;color:var(--violet)">Deload weeks auto-lighten loads to ~60% and are excluded from progression and trend charts.</p>';
   h += '</div>';
   return h;
@@ -8643,6 +8715,25 @@ function mesoAddPhase(){
   t.phases.push({id:mesoUid(), type:'hyp', name:ty.label, weeks:ty.defW, repLo:ty.repLo, repHi:ty.repHi, rpeLo:ty.rpeLo, rpeHi:ty.rpeHi});
   renderMeso();
 }
+function mesoSetPhaseLen(i, v){
+  const p = mesoDraft().phases[i]; if(!p) return;
+  const unit = mesoPhaseUnit(p);
+  const max = unit==='days' ? 60 : 52;
+  const n = Math.max(1, Math.min(max, Math.round(+v||1)));
+  if(unit==='days') p.days = n; else p.weeks = n;
+  renderMeso();
+}
+function mesoSetPhaseUnit(i, u){
+  const p = mesoDraft().phases[i]; if(!p) return;
+  const wasLen = mesoPhaseLen(p);
+  p.unit = (u==='days') ? 'days' : 'weeks';
+  // Carry the number across rather than resetting it: switching a 3-week block to days
+  // almost always means "3 weeks was wrong", not "start again from 1". Clamped to the new
+  // unit's range so a 12-week phase does not become an illegal 12-day one.
+  if(p.unit==='days') p.days = Math.max(1, Math.min(60, wasLen));
+  else                p.weeks = Math.max(1, Math.min(52, wasLen));
+  renderMeso();
+}
 function mesoRemovePhase(i){
   const t = mesoDraft();
   if(t.phases.length<=1){ alert('A plan needs at least one phase.'); return; }
@@ -8652,7 +8743,10 @@ function mesoSetPhaseType(i, type){
   const t = mesoDraft(); const p = t.phases[i]; const ty = MESO_TYPES[type];
   p.type = type; p.name = ty.label;
   p.repLo = ty.repLo; p.repHi = ty.repHi; p.rpeLo = ty.rpeLo; p.rpeHi = ty.rpeHi;
-  p.weeks = Math.max(ty.minW, Math.min(ty.maxW, p.weeks||ty.defW));
+  // Only re-clamp the unit actually in use. Writing p.weeks on a days-mode phase left the
+  // number on screen unchanged while silently resetting the field the plan is built from.
+  if(mesoPhaseUnit(p)==='days') p.days = Math.max(1, Math.min(60, p.days||3));
+  else p.weeks = Math.max(ty.minW, Math.min(ty.maxW, p.weeks||ty.defW));
   renderMeso();
 }
 function mesoSetPhaseField(i, k, v){ mesoDraft().phases[i][k] = v; }
@@ -10811,6 +10905,216 @@ async function agSendChat(id){
   }
 }
 
+/* ============================================================
+   HOME  --  dashboard, status strip, notification centre
+   ============================================================ */
+
+/* THE readiness reading, in one place, so the dashboard and the strip can never disagree
+   about how recovered he is. Returns {pct, label, tone, source} or null.
+
+   WHOOP is not connected yet (it cannot be, from a browser -- see the V4 notes), so this
+   reads the self-reported check-in today and is written so that adding a WHOOP source later
+   is one branch at the top rather than a rewrite of both surfaces. Every caller already
+   renders `source`, so the day WHOOP lands the provenance is visible with no further work. */
+function readinessNow(){
+  const w = (S.whoop && S.whoop.recovery) || null;   // reserved for the WHOOP relay
+  if(w && w.date === todayKey() && typeof w.score === 'number'){
+    const p = Math.max(0, Math.min(100, Math.round(w.score)));
+    return {pct:p, label:(p>=67?'high':p>=34?'moderate':'low'), tone:(p>=67?'good':p>=34?'mid':'low'), source:'WHOOP'};
+  }
+  const r = todayReadiness();
+  if(!r) return null;
+  const pct = {high:80, med:55, low:28}[r.tier];
+  return {pct:pct, label:(r.tier==='med'?'moderate':r.tier), tone:(r.tier==='high'?'good':r.tier==='med'?'mid':'low'),
+          source:'self-reported'};
+}
+function readinessColor(tone){
+  return tone==='good' ? 'var(--cyan)' : tone==='low' ? 'var(--red)' : 'var(--amber)';
+}
+
+/* Today, in one object, shared by both surfaces. */
+function dashToday(){
+  const dk = currentDayKey();
+  const rest = (dk === 'REST');
+  return {dayKey:dk, rest:rest, name: rest ? 'Rest day' : (dayName(dk) || dk),
+          logged: S.logs.some(function(l){ return l.date === todayKey(); })};
+}
+
+/* ---- the status strip ---- */
+function statusStripHTML(){
+  const rd = readinessNow();
+  const t = dashToday();
+  const streak = streakDays();
+  const cell = function(label, value, colour, extra){
+    return '<div class="sstrip-cell"><span class="sstrip-l">'+esc(label)+'</span>'+
+      '<span class="sstrip-v"'+(colour?' style="color:'+colour+'"':'')+'>'+esc(value)+'</span>'+
+      (extra?'<span class="sstrip-src">'+esc(extra)+'</span>':'')+'</div>';
+  };
+  let h = '<div class="sstrip">';
+  h += rd ? cell('recovery', rd.label.toUpperCase(), readinessColor(rd.tone), rd.source==='WHOOP'?'whoop':'self')
+          : cell('recovery', 'not logged', 'var(--dim)', 'tap Live');
+  h += cell('streak', streak > 0 ? streak+'d' : '\u2014', streak>=3 ? 'var(--cyan)' : null);
+  h += cell('today', t.rest ? 'REST' : t.dayKey, t.rest ? 'var(--dim)' : dayColor(t.dayKey));
+  const pend = agPending().length;
+  if(pend) h += cell('waiting', pend+' to approve', 'var(--amber)');
+  return h + '</div>';
+}
+/* Painted directly rather than through a tab re-render, so the strip stays current even
+   while an input has focus -- refreshBlocked() stops full repaints, and rightly so, but this
+   is a read-only bar that cannot eat anything he has typed. */
+function renderStatusStrip(){
+  const el = document.getElementById('statusStrip');
+  if(!el) return;
+  // The one hard rule from the brief: never during a LIVE session.
+  if(MODE === 'live'){ el.innerHTML = ''; return; }
+  const html = statusStripHTML();
+  if(el.innerHTML !== html) el.innerHTML = html;   // avoid pointless DOM churn
+}
+
+/* ---- the dashboard ---- */
+function renderHome(){
+  const el = document.getElementById('home');
+  if(!el) return;
+  const rd = readinessNow();
+  const t = dashToday();
+  const brief = agBrief();
+  const pend = agPending();
+  const flags = invActiveFlags();
+  const streak = streakDays();
+
+  let h = '<h2>Today</h2>';
+
+  h += '<div class="dash-hero">';
+  h += '<div class="dash-tile"><div class="dt-l">Recovery</div>'+
+       '<div class="dt-v" style="color:'+(rd?readinessColor(rd.tone):'var(--dim)')+'">'+
+       (rd ? esc(rd.label.toUpperCase()) : '\u2014')+'</div>'+
+       '<div class="dt-s">'+(rd ? esc(rd.source==='WHOOP'?'from WHOOP':'your check-in')
+                                : 'No check-in yet \u2014 you\u2019ll be asked when you start a session.')+'</div></div>';
+  h += '<div class="dash-tile"><div class="dt-l">Scheduled</div>'+
+       '<div class="dt-v" style="color:'+(t.rest?'var(--dim)':dayColor(t.dayKey))+'">'+esc(t.rest?'REST':t.dayKey)+'</div>'+
+       '<div class="dt-s">'+esc(t.name)+(t.logged?' \u00b7 already logged':'')+'</div></div>';
+  h += '<div class="dash-tile"><div class="dt-l">Streak</div>'+
+       '<div class="dt-v" style="color:'+(streak>=3?'var(--cyan)':'var(--text)')+'">'+(streak>0?streak:'\u2014')+'</div>'+
+       '<div class="dt-s">'+(streak>0?'session'+(streak===1?'':'s')+' without a missed day':'Start one today.')+'</div></div>';
+  h += '</div>';
+
+  if(brief){
+    h += '<div class="dash-sec">Brief</div>'+
+      '<div class="card" style="border-left:3px solid '+AGENTS.zulu.col+'">'+
+      '<p class="small" style="line-height:1.55">'+esc(brief.text)+'</p>'+
+      '<p class="small" style="color:var(--dim);margin-top:6px">ZULU \u00b7 '+esc(fmtDate(brief.date))+'</p></div>';
+  }
+
+  // Fuel timing, but only when there is a workout time to hang it off -- the brief asks for
+  // it "if a workout time has been set", and an empty clock is worse than no clock.
+  fuelInit();
+  if(!t.rest && S.fuel.workoutTime){
+    h += '<div class="dash-sec">Fuel timing</div><div class="card">'+fuelTimingHTML()+'</div>';
+  }
+
+  h += '<div class="dash-sec">Waiting on you</div>';
+  if(pend.length || flags.length){
+    if(pend.length) h += pend.map(agPropHTML).join('');
+    if(flags.length){
+      h += '<div class="card"><p class="small">'+flags.length+' investigation flag'+(flags.length===1?'':'s')+
+           ' open. <button class="btn ghost sm" onclick="showReviewTab(\'invest\')">Open Investigate</button></p></div>';
+    }
+  } else {
+    // The brief is explicit that an empty day must read as a finished screen, not a hole.
+    h += '<div class="card"><p class="dash-quiet">Nothing needs a decision from you. '+
+         (t.rest ? 'It\u2019s a rest day \u2014 eat your surplus and sleep.'
+                 : 'Targets are set for '+esc(t.dayKey)+' \u2014 just train.')+'</p></div>';
+  }
+
+  h += '<div class="dash-sec">Jump to</div><div class="card"><div class="dash-jump">'+
+    '<button class="btn sm" onclick="setMode(\'live\')">\u26a1 Start / open LIVE</button>'+
+    '<button class="btn ghost sm" onclick="showReviewTab(\'ops\')">Operations</button>'+
+    '<button class="btn ghost sm" onclick="showReviewTab(\'progress\')">Progress</button>'+
+    '<button class="btn ghost sm" onclick="showReviewTab(\'an_over\')">Analytics</button>'+
+    '</div></div>';
+
+  el.innerHTML = h;
+}
+
+/* ---- notification centre ----
+   In-app only, and deliberately so. A real push notification needs a service worker (and on
+   iOS an installed PWA with one), and this app has none on purpose: there is no cache to
+   bust, so every launch picks up the newest build. That auto-update property is worth more
+   than a badge on the home screen, so this is a panel he opens rather than something that
+   buzzes his phone. */
+let notifOpen = false;
+function notifItems(){
+  const out = [];
+  const brief = agBrief();
+  if(brief && brief.date === todayKey()){
+    out.push({tone:AGENTS.zulu.col, title:'Daily brief', body:brief.text, when:brief.at});
+  }
+  const letter = agLetter();
+  if(letter){
+    out.push({tone:AGENTS.zulu.col, title:'Weekly letter',
+              body:String(letter.text).slice(0,180)+(letter.text.length>180?'\u2026':''),
+              when:letter.at, go:"showReviewTab('ops')"});
+  }
+  agPending().forEach(function(p){
+    out.push({tone:(AGENTS[p.agent]||{}).col||'var(--muted)',
+              title:(AGENTS[p.agent]||{}).name+' \u2014 '+p.title,
+              body:p.reasoning||'Waiting for your approval.', when:null, go:"showReviewTab('ops')"});
+  });
+  invActiveFlags().forEach(function(f){
+    out.push({tone:'var(--amber)', title:'Investigation \u2014 '+f.title,
+              body:(f.findings&&f.findings[0])||'Open the Investigate tab for detail.',
+              when:null, go:"showReviewTab('invest')"});
+  });
+  const wr = waterReminder();
+  if(wr) out.push({tone:'var(--cyan)', title:'Water', body:wr, when:null});
+  return out;
+}
+/* A nudge, not a tracker. He does not log water and this app is not going to start asking
+   him to; this just reminds him on the days it actually matters. */
+function waterReminder(){
+  const t = dashToday();
+  if(t.rest) return '';
+  const rd = readinessNow();
+  const hard = rd && rd.tone === 'low';
+  return 'Training day \u2014 drink through the session, not just after it.'+
+         (hard ? ' Recovery is low today, so hydration and sleep matter more than the numbers.' : '');
+}
+function notifToggle(){
+  notifOpen = !notifOpen;
+  renderNotif();
+}
+function notifCount(){
+  return agPending().length + invActiveFlags().length +
+         ((agBrief() && agBrief().date === todayKey()) ? 1 : 0);
+}
+function renderNotif(){
+  const btn = document.getElementById('notifBtn');
+  const badge = document.getElementById('notifBadge');
+  const panel = document.getElementById('notifPanel');
+  if(!btn || !panel) return;
+  const n = notifCount();
+  if(badge){
+    badge.textContent = n > 9 ? '9+' : String(n);
+    badge.className = 'notif-badge'+(n?' on':'');
+  }
+  btn.className = 'notif-btn'+(n?' has':'');
+  panel.className = 'notif-panel'+(notifOpen?' open':'');
+  if(!notifOpen){ panel.innerHTML = ''; return; }
+  const items = notifItems().filter(function(i){ return i.body || i.title; });
+  let h = '<div class="notif-head"><span>Notifications</span>'+
+          '<button class="pain-btn" style="margin-left:auto" onclick="notifToggle()">close</button></div>';
+  h += items.length ? items.map(function(i){
+        return '<div class="notif-item" style="border-left-color:'+i.tone+'"'+
+          (i.go?' onclick="notifToggle();'+i.go+'" style="cursor:pointer;border-left-color:'+i.tone+'"':'')+'>'+
+          '<div class="notif-t">'+esc(i.title)+'</div>'+
+          '<div class="notif-b">'+esc(i.body)+'</div>'+
+          (i.when?'<div class="notif-when">'+esc(agTimeAgo(i.when))+'</div>':'')+'</div>';
+      }).join('')
+    : '<div class="notif-empty">Nothing to tell you. No proposals waiting, no flags open, '+
+      'and no brief yet today.</div>';
+  panel.innerHTML = h;
+}
+
 /* ---- rendering ---- */
 function agTimeAgo(iso){
   if(!iso) return 'never';
@@ -11026,6 +11330,7 @@ function tabSignature(){
   const a = S.agents || {};
   return [
     MODE, activeMainTab, navMemory[activeMainTab] || activeReviewTab,
+    notifOpen?1:0,
     S.meta ? S.meta.changedAt : 0,
     S.logs.length, S.weights.length, S.nutrition.length, S.readiness.length,
     (a.proposals||[]).length, (a.log||[]).length,
@@ -11036,6 +11341,12 @@ function tabSignature(){
 }
 function rerenderActive(force){
   try{ invUpdateBadge(); }catch(e){}   // badge is cheap and safe to update regardless
+  // Both of these are read-only bars. They are painted BEFORE the refreshBlocked() gate on
+  // purpose: that gate exists to stop a repaint eating half-typed input, and neither of
+  // these can do that. The brief asks the strip to stay current without a manual refresh,
+  // and it would not if it sat behind the gate.
+  try{ renderStatusStrip(); }catch(e){}
+  try{ renderNotif(); }catch(e){}
   if(refreshBlocked()) return;
   try{
     if(MODE==='live'){ renderLive(); return; }
@@ -11082,6 +11393,7 @@ function startLiveRefresh(){
 }
 
 /* ===================== BOOT ===================== */
+try{ if(pruneRemovedKeys()) save(false); }catch(e){}
 setAccent();
 setupPWA();
 buildBotNav();
@@ -11090,6 +11402,13 @@ const _draft = loadLiveDraft();
 if(_draft){ live=_draft; liveActiveIdx = live.exercises.findIndex(e=>!e.done); if(liveActiveIdx<0) liveActiveIdx=0; }
 try{ invAutoRun(); }catch(e){ console.warn('invAutoRun failed', e); }
 renderLive();
+/* Land on HOME rather than straight into the rack view.
+   The one exception is a session already in progress: if he backgrounded the app mid-workout
+   and came back, he wants the dock, not a dashboard telling him what he is already doing.
+   Goes through setMode() rather than assigning MODE directly, because the two panes are shown
+   and hidden by class -- setting MODE alone would leave HOME rendered underneath a visible
+   LIVE pane. */
+try{ setMode(_draft ? 'live' : 'review'); }catch(e){ console.warn('initial mode failed', e); }
 // session clock ticker
 setInterval(()=>{ if(live && MODE==='live') updateSessionBar(); }, 1000);
 // review nav wiring

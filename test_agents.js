@@ -1967,28 +1967,36 @@ setTimeout(async () => {
     ev('S.overrideDay=null'); ev('mesoStop()'); ev('live=null');
   }
 
-  console.log('=== DATE OVERRIDES (CALENDAR EXCEPTIONS) ===');
+  console.log('=== CALENDAR OVERRIDE REMOVED (V4) ===');
   try {
-    ok('dateOverridesEditorHTML exists', ev('typeof dateOverridesEditorHTML') === 'function');
-    ok('generateTempStrengthDays exists', ev('typeof generateTempStrengthDays') === 'function');
-    ok('clearTempStrengthDays exists', ev('typeof clearTempStrengthDays') === 'function');
+    // The exact-date override is gone by request. It existed to work around a plan model that
+    // could only think in whole weeks; a mesocycle phase can be measured in days now, so the
+    // thing it papered over does not exist any more.
+    ok('the override editor is gone', ev('typeof dateOverridesEditorHTML') === 'undefined');
+    ok('its mutators are gone too',
+       ev('typeof dateOverrideAdd') === 'undefined' && ev('typeof dateOverrideSetDay') === 'undefined' &&
+       ev('typeof dateOverrideRemove') === 'undefined');
+    ok('generateTempStrengthDays survives the removal', ev('typeof generateTempStrengthDays') === 'function');
+    ok('clearTempStrengthDays survives the removal', ev('typeof clearTempStrengthDays') === 'function');
 
-    // --- exact-date override beats the dow map, for its date only ---
-    ev("S.scheduleMode='dow'; S.schedule={0:'REST',1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6'}; S.dateOverrides={};");
-    // 2026-08-21 is a Friday -> dow map gives D5 with no override present
-    ok('control: dow map gives D5 with no override', ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
-    ev("S.dateOverrides['2026-08-21'] = 'S1';");
-    ok('dateOverrides beats the dow map on its exact date', ev("scheduledDayFor('2026-08-21')") === 'S1');
-    ok('dateOverrides does not leak to the day before', ev("scheduledDayFor('2026-08-20')") === 'D4', ev("scheduledDayFor('2026-08-20')"));
-    ok('dateOverrides does not leak to the day after', ev("scheduledDayFor('2026-08-22')") === 'D6', ev("scheduledDayFor('2026-08-22')"));
-
-    // --- exact-date override beats the rotating cycle pattern too ---
+    // The schedule must ignore leftover data entirely -- his live state still contains
+    // entries written before the removal, and they must not quietly keep applying.
+    ev("S.scheduleMode='dow'; S.schedule={0:'REST',1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6'};");
+    ok('control: dow map gives D5 on that Friday', ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
+    ev("S.dateOverrides = {'2026-08-21':'S1'};");   // simulate leftover state from before V4
+    ok('a leftover override no longer changes the schedule',
+       ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
     ev("S.scheduleMode='cycle'; S.cycleSchedule={anchor:'2026-08-20', pattern:['D1','D2','D3','D4','D5','D6','REST']};");
-    ev("delete S.dateOverrides['2026-08-21'];");
-    ok('control: cycle pattern gives D2 once the override is removed', ev("scheduledDayFor('2026-08-21')") === 'D2', ev("scheduledDayFor('2026-08-21')"));
-    ev("S.dateOverrides['2026-08-21'] = 'S1';");
-    ok('dateOverrides beats the cycle pattern on its exact date', ev("scheduledDayFor('2026-08-21')") === 'S1');
-    ev("S.scheduleMode='dow'; S.dateOverrides={};");
+    ok('and it does not override the rotating cycle either',
+       ev("scheduledDayFor('2026-08-21')") === 'D2', ev("scheduledDayFor('2026-08-21')"));
+    ev("S.scheduleMode='dow';");
+
+    // and the orphaned key gets pruned rather than riding along in every gist push forever
+    ok('leftover data is present before the prune', ev("'dateOverrides' in S") === true);
+    ok('pruneRemovedKeys reports that it removed something', ev('pruneRemovedKeys()') === true);
+    ok('the orphaned key is gone', ev("'dateOverrides' in S") === false);
+    ok('pruning again is a no-op', ev('pruneRemovedKeys()') === false);
+    ok('a fresh state never has the key', ev("'dateOverrides' in DEFAULT_STATE") === false);
 
     // --- an active meso strength-block rotation still outranks a dateOverrides entry ---
     // Use the block's own start date (always position 0 of the rotation = S1), not todayKey():
@@ -2001,11 +2009,10 @@ setTimeout(async () => {
     const start2 = ev('mesoActive().weeks[0].startKey');
     const bid2 = ev('mesoActive().weeks[0].blockId');
     ev('mesoApproveSplit(' + JSON.stringify(bid2) + ')');
-    ev("S.dateOverrides[" + JSON.stringify(start2) + "] = 'D3';"); // deliberately conflicts with the active rotation
-    ok('an active meso rotation still outranks a conflicting dateOverrides entry',
+    ok('an active meso rotation drives the day on its own dates',
        ev('scheduledDayFor(' + JSON.stringify(start2) + ')') === 'S1', ev('scheduledDayFor(' + JSON.stringify(start2) + ')'));
-    ev('mesoStop(); S.dateOverrides={};');
-    ok('cleanup: schedule restored after the meso/dateOverrides conflict check',
+    ev('mesoStop();');
+    ok('cleanup: schedule restored after the meso rotation check',
        ev('scheduledDayFor(todayKey())') === before2, ev('scheduledDayFor(todayKey())'));
 
     // --- deload window: exact lower AND upper bound (the bug this task fixed) ---
@@ -3612,6 +3619,148 @@ setTimeout(async () => {
     ok('bodyweight fixture cleaned up', ev('S.weights.length') === JSON.parse(savedW).length);
   } catch (e) {
     ok('bulk rate section', false, e.message);
+  }
+
+  console.log('=== DAY-GRANULAR MESOCYCLE ===');
+  try {
+    const savedMeso = ev('JSON.stringify(mesoState())');
+    // Exactly the plan from the brief: a 7-week hypertrophy block, then strength and deload
+    // measured in DAYS -- S1-S3 is three days, a rest day, three deload days, then reset.
+    ev("mesoStart({phases:[" +
+       "{id:'h',type:'hyp',   name:'Hypertrophy',weeks:7,repLo:8,repHi:12,rpeLo:7,rpeHi:8}," +
+       "{id:'s',type:'str',   name:'Strength',   unit:'days',days:3,repLo:3,repHi:5,rpeLo:8,rpeHi:9}," +
+       "{id:'r',type:'rest',  name:'Rest',       unit:'days',days:1,repLo:0,repHi:0,rpeLo:0,rpeHi:0}," +
+       "{id:'d',type:'deload',name:'Deload',     unit:'days',days:3,repLo:8,repHi:12,rpeLo:5,rpeHi:6}" +
+       "],repeat:false,cycles:1}, '2026-03-02')");
+    const segs = ev('mesoActive().weeks');
+    ok('a weeks phase still makes one segment per week', segs.filter(function(w){ return w.type==='hyp'; }).length === 7,
+       String(segs.filter(function(w){ return w.type==='hyp'; }).length));
+    ok('a days phase makes ONE segment, not one per day',
+       segs.filter(function(w){ return w.type==='str'; }).length === 1,
+       String(segs.filter(function(w){ return w.type==='str'; }).length));
+    ok('total segments = 7 weeks + 3 day-blocks', segs.length === 10, String(segs.length));
+
+    const str = segs.find(function(w){ return w.type==='str'; });
+    const rest = segs.find(function(w){ return w.type==='rest'; });
+    const del = segs.find(function(w){ return w.type==='deload'; });
+    ok('the strength block is 3 days long', str.days === 3, String(str.days));
+    ok('and spans exactly 3 calendar days', str.startKey === '2026-04-20' && str.endKey === '2026-04-22',
+       str.startKey + '..' + str.endKey);
+    ok('the rest day is a single day', rest.days === 1 && rest.startKey === rest.endKey, rest.startKey + '..' + rest.endKey);
+    ok('it starts the day after strength ends', rest.startKey === '2026-04-23', rest.startKey);
+    ok('deload is 3 days and follows the rest day', del.days === 3 && del.startKey === '2026-04-24', del.startKey + ' x' + del.days);
+    ok('segments are contiguous with no gaps or overlaps',
+       segs.every(function(w, i){ return i === 0 || w.startKey === ev("mesoAddDays(" + JSON.stringify(segs[i-1].endKey) + ", 1)"); }));
+
+    // the day resolution everything else depends on
+    ok('a date inside the 3-day strength block resolves to it', ev("mesoWeekAt('2026-04-21').type") === 'str');
+    ok('the day after it does not', ev("mesoWeekAt('2026-04-23').type") === 'rest');
+    ok('a hypertrophy week still resolves', ev("mesoWeekAt('2026-03-09').type") === 'hyp');
+
+    // plan length has to count day-phases at their real length, not ignore them
+    const tplDays = ev("mesoTotalDays({phases:[{type:'hyp',weeks:7},{type:'str',unit:'days',days:3},{type:'rest',unit:'days',days:1},{type:'deload',unit:'days',days:3}],repeat:false,cycles:1})");
+    ok('total days = 49 + 3 + 1 + 3', tplDays === 56, String(tplDays));
+
+    // a plan saved before this change must materialize identically
+    ev("mesoStop(); mesoStart({phases:[{id:'o',type:'hyp',name:'Old',weeks:3,repLo:8,repHi:12,rpeLo:7,rpeHi:8}],repeat:false,cycles:1}, '2026-03-02')");
+    const legacy = ev('mesoActive().weeks');
+    ok('a legacy weeks-only plan still yields 7-day segments',
+       legacy.length === 3 && legacy.every(function(w){ return w.days === 7; }),
+       JSON.stringify(legacy.map(function(w){ return w.days; })));
+    ok('and its dates are unchanged', legacy[0].startKey === '2026-03-02' && legacy[0].endKey === '2026-03-08',
+       legacy[0].startKey + '..' + legacy[0].endKey);
+
+    ev('mesoStop();');
+    ev('S.meso = ' + savedMeso + ';');
+  } catch (e) {
+    ok('day-granular mesocycle section', false, e.message);
+    ev('mesoStop();');
+  }
+
+  console.log('=== DASHBOARD / STATUS STRIP / NOTIFICATIONS ===');
+  try {
+    const savedRd = ev('JSON.stringify(S.readiness)');
+    ev("S.readiness = [{date:todayKey(), tier:'high', sleep:8, sore:'mild', energy:'good'}];");
+
+    // one readiness reading, shared, so the two surfaces cannot disagree
+    const rn = ev('readinessNow()');
+    ok('readinessNow reads the check-in', rn && rn.label === 'high', JSON.stringify(rn));
+    ok('and reports where it came from', rn.source === 'self-reported', rn.source);
+    ev("S.readiness = [];");
+    ok('no check-in yields no reading rather than a fake one', ev('readinessNow()') === null);
+    ev("S.readiness = [{date:todayKey(), tier:'low', sleep:5, sore:'high', energy:'flat'}];");
+    ok('a low check-in reads as low', ev('readinessNow()').label === 'low');
+    // WHOOP is not connected yet, but the branch must already prefer it when it lands
+    ev("S.whoop = {recovery:{date:todayKey(), score:71}};");
+    const wr = ev('readinessNow()');
+    ok('a WHOOP score takes precedence when present', wr.source === 'WHOOP' && wr.pct === 71, JSON.stringify(wr));
+    ev("S.whoop = {recovery:{date:'2020-01-01', score:71}};");
+    ok('a stale WHOOP score falls back to the check-in', ev('readinessNow()').source === 'self-reported');
+    ev('delete S.whoop;');
+
+    // the strip
+    ev('MODE = "review";');
+    const strip = ev('statusStripHTML()');
+    ok('the strip shows recovery', strip.indexOf('recovery') >= 0);
+    ok('the strip shows the streak', strip.indexOf('streak') >= 0);
+    ok('the strip shows what day is on', strip.indexOf('today') >= 0);
+    ok('the strip labels the readiness source', strip.indexOf('self') >= 0, strip.slice(0, 200));
+
+    // THE rule from the brief: never during a LIVE session
+    ev('MODE = "live"; renderStatusStrip();');
+    ok('the strip is empty during LIVE', ev("document.getElementById('statusStrip').innerHTML") === '');
+    ev('rerenderActive(true);');
+    ok('and the refresh loop does not put it back', ev("document.getElementById('statusStrip').innerHTML") === '');
+    ev('MODE = "review"; renderStatusStrip();');
+    ok('it comes back on leaving LIVE', ev("document.getElementById('statusStrip').innerHTML").length > 0);
+    // it must survive the guard that blocks full repaints, or it would go stale while typing
+    ev("var _si=document.createElement('input'); _si.id='__stripfocus'; document.body.appendChild(_si); _si.focus();");
+    ok('control: a focused input blocks a full repaint', ev('refreshBlocked()') === true);
+    ev("document.getElementById('statusStrip').innerHTML = ''; rerenderActive();");
+    ok('the strip still updates while an input has focus',
+       ev("document.getElementById('statusStrip').innerHTML").length > 0);
+    ev("document.getElementById('__stripfocus').blur(); document.getElementById('__stripfocus').remove();");
+
+    // the dashboard
+    ev("agState().proposals = []; S.invest = {flags:[], history:[], overrides:{}, lastAuto:{}};");
+    ev("delete agState().brief;");
+    ev('renderHome()');
+    let home = ev("document.getElementById('home').innerHTML");
+    ok('the dashboard renders', home.length > 400, 'len=' + home.length);
+    ok('it shows recovery, today and streak',
+       home.indexOf('Recovery') >= 0 && home.indexOf('Scheduled') >= 0 && home.indexOf('Streak') >= 0);
+    // the brief is explicit that an empty day must read as finished, not as a hole
+    ok('an empty day says so plainly rather than showing a gap',
+       /Nothing needs a decision from you/.test(home), home.slice(home.indexOf('Waiting on you'), home.indexOf('Waiting on you') + 260));
+    ok('and still offers a way into the rest of the app', home.indexOf('Jump to') >= 0);
+    ok('LIVE is reachable from the dashboard', home.indexOf("setMode('live')") >= 0);
+
+    // with something waiting, the same section shows it instead
+    ev("agState().proposals = [{id:'px', agent:'delta', title:'Test proposal', reasoning:'because', fix:{type:'cal',payload:{delta:100}}, created:todayKey(), expires:mesoAddDays(todayKey(),7), status:'pending'}];");
+    ev('renderHome()');
+    home = ev("document.getElementById('home').innerHTML");
+    ok('a pending proposal appears on the dashboard', home.indexOf('Test proposal') >= 0);
+    ok('and the quiet copy is gone', /Nothing needs a decision from you/.test(home) === false);
+
+    // notifications
+    ok('the badge counts what is waiting', ev('notifCount()') >= 1, String(ev('notifCount()')));
+    ev('notifOpen = false; notifToggle();');
+    ok('the panel opens', ev("document.getElementById('notifPanel').className").indexOf('open') >= 0);
+    ok('the pending proposal is listed', ev("document.getElementById('notifPanel').innerHTML").indexOf('Test proposal') >= 0);
+    ev('notifToggle();');
+    ok('the panel closes', ev("document.getElementById('notifPanel').className").indexOf('open') < 0);
+
+    // model-supplied text must be escaped on the way into the panel
+    ev("agState().proposals[0].title = '<img src=x onerror=alert(1)>';");
+    ev('notifOpen = false; notifToggle();');
+    const np = ev("document.getElementById('notifPanel').innerHTML");
+    ok('notification text is escaped', np.indexOf('<img src=x') < 0 && np.indexOf('&lt;img') >= 0);
+    ev('notifToggle();');
+
+    ev("agState().proposals = []; S.readiness = " + savedRd + ";");
+  } catch (e) {
+    ok('dashboard section', false, e.message);
+    ev("MODE = 'review'; notifOpen = false; agState().proposals = [];");
   }
 
   console.log('=== EFFORT LEVER ===');
