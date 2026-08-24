@@ -13,17 +13,25 @@ const WHOOP_TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token';
 const WHOOP_API = 'https://api.prod.whoop.com/developer/v2';
 const GH_API = 'https://api.github.com';
 
-const env = (k) => {
-  const v = process.env[k];
-  if (!v) { console.error('Missing required secret: ' + k); process.exit(1); }
-  return v;
-};
+/* Not-configured is a SKIP, not a failure. This job is on a 2-hourly schedule, so treating
+ * missing secrets as an error would mean a red run and a notification email every two hours
+ * from the moment the workflow lands until the one-time setup is done -- which trains you to
+ * ignore exactly the notifications that matter once it IS configured. Exit 0 and say why. */
+const REQUIRED = ['WHOOP_CLIENT_ID', 'WHOOP_CLIENT_SECRET', 'IRONHUB_GIST_ID',
+                  'IRONHUB_GIST_TOKEN', 'IRONHUB_STATE_GIST_ID'];
+const missing = REQUIRED.filter((k) => !process.env[k]);
+if (missing.length) {
+  console.log('WHOOP sync is not set up yet - missing: ' + missing.join(', ') + '.');
+  console.log('See the setup notes at the top of .github/workflows/whoop-sync.yml.');
+  console.log('Nothing to do; this is not a failure.');
+  process.exit(0);
+}
 
-const CLIENT_ID = env('WHOOP_CLIENT_ID');
-const CLIENT_SECRET = env('WHOOP_CLIENT_SECRET');
-const GIST_ID = env('IRONHUB_GIST_ID');
-const GIST_TOKEN = env('IRONHUB_GIST_TOKEN');
-const STATE_GIST_ID = env('IRONHUB_STATE_GIST_ID');
+const CLIENT_ID = process.env.WHOOP_CLIENT_ID;
+const CLIENT_SECRET = process.env.WHOOP_CLIENT_SECRET;
+const GIST_ID = process.env.IRONHUB_GIST_ID;
+const GIST_TOKEN = process.env.IRONHUB_GIST_TOKEN;
+const STATE_GIST_ID = process.env.IRONHUB_STATE_GIST_ID;
 const STATE_FILE = 'whoop_token.json';
 
 const ghHeaders = {
