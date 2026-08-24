@@ -3621,6 +3621,103 @@ setTimeout(async () => {
     ok('bulk rate section', false, e.message);
   }
 
+  console.log('=== WHOOP RELAY (data in, never out) ===');
+  try {
+    ev('delete S.whoop;');
+    // applyWhoop is a validator, not a setter. The file it reads is written by a scheduled
+    // job into a gist, so it gets the same treatment as model output: take only the shapes
+    // we understand, clamp what we take, ignore the rest.
+    ok('garbage is refused', ev('applyWhoop(null)') === false && ev("applyWhoop('nope')") === false &&
+       ev('applyWhoop({})') === false);
+    ok('nothing was written by a refused payload', ev('!S.whoop') === true);
+    ok('a payload with no usable section is refused', ev("applyWhoop({fetchedAt:'x', junk:1})") === false);
+
+    ok('a valid recovery lands', ev("applyWhoop({recovery:{date:todayKey(), score:71, hrv:88, rhr:52}})") === true);
+    ok('the score is stored', ev('S.whoop.recovery.score') === 71);
+    ok('a bad date shape is refused', ev("applyWhoop({recovery:{date:'yesterday', score:71}})") === false);
+    ev('delete S.whoop;');
+    ok('an out-of-range score is clamped, not taken raw',
+       ev("applyWhoop({recovery:{date:todayKey(), score:9999}})") && ev('S.whoop.recovery.score') === 100,
+       String(ev('S.whoop && S.whoop.recovery.score')));
+    ev('delete S.whoop;');
+    ok('a non-numeric score is dropped', ev("applyWhoop({recovery:{date:todayKey(), score:'lots'}})") === false);
+    ok('sleep alone is enough to store', ev("applyWhoop({sleep:{date:todayKey(), hours:7.5, performance:88}})") === true);
+    ok('sleep hours are kept', ev('S.whoop.sleep.hours') === 7.5);
+
+    // freshness: a score from three days ago is worse than none, because it looks current
+    ev("applyWhoop({recovery:{date:todayKey(), score:60}});");
+    ok('today\u2019s data is fresh', ev('whoopFresh()') === true);
+    ev("S.whoop.recovery.date = '2020-01-01';");
+    ok('old data is not fresh', ev('whoopFresh()') === false);
+    ok('and readiness falls back to the check-in',
+       ev("(function(){ S.readiness=[{date:todayKey(),tier:'high',sleep:8,sore:'mild',energy:'good'}]; return readinessNow().source; })()") === 'self-reported');
+    ok('a stale score contributes nothing to the agent prompt', ev('whoopContext()') === '');
+
+    // fresh data reaches the agents and is labelled as measured
+    ev("applyWhoop({recovery:{date:todayKey(), score:71, hrv:88, rhr:52}, sleep:{date:todayKey(), hours:7.5, performance:88}});");
+    const wc = ev('whoopContext()');
+    ok('fresh WHOOP reaches the agent prompt', wc.indexOf('71%') >= 0, wc.slice(0, 140));
+    ok('sleep is included', wc.indexOf('7.5h') >= 0, wc);
+    ok('agents are told it is measured, not self-reported', /measured data, not self-reported/.test(wc));
+    ok('it reaches the real training context', ev('trainingContext()').indexOf('WHOOP TODAY') >= 0);
+
+    // THE sync rule: WHOOP comes in, it never goes back out
+    ev("S.settings.ghToken='t'; S.settings.gistId='g';");
+    const payload = JSON.parse(ev('syncPayload()'));
+    ok('WHOOP is stripped from the sync payload', payload.data.whoop === undefined,
+       JSON.stringify(payload.data.whoop));
+    ok('control: it is still in local state', ev('!!S.whoop') === true);
+    ok('secrets are still stripped too',
+       payload.data.settings.ghToken === undefined && payload.data.settings.apiKey === undefined);
+    ev('delete S.whoop; S.readiness = [];');
+  } catch (e) {
+    ok('whoop section', false, e.message);
+    ev('delete S.whoop;');
+  }
+
+  console.log('=== PROGRESS PHOTOS (index in state, blobs elsewhere) ===');
+  try {
+    ev("S.photos = {gistId:'', index:[]};");
+    ok('photoState initialises', Array.isArray(ev('photoState().index')));
+    ok('month keys are year-month', ev("photoMonthKey('2026-08-24')") === '2026-08');
+    ok('no photo for an empty month', ev("photoForMonth('2026-08')") === null);
+    ev("S.photos.index = [{id:'a', date:'2026-08-03', w:480, h:640, bytes:1000}];");
+    ok('a photo is found by its month', ev("photoForMonth('2026-08').id") === 'a');
+    ok('a different month does not match', ev("photoForMonth('2026-07')") === null);
+
+    // THE storage rule: state holds an index, never image data. If a blob ever lands in S it
+    // gets JSON-encoded into localStorage on every save and re-uploaded on every sync.
+    const stateStr = ev('JSON.stringify(S.photos)');
+    ok('no image data in state', stateStr.indexOf('data:image') < 0, stateStr.slice(0, 200));
+    ok('the index stays small', stateStr.length < 600, 'len=' + stateStr.length);
+    ok('the index records size so growth is visible', ev('S.photos.index[0].bytes') === 1000);
+
+    // the downscale is what keeps a phone portrait from being a megabyte
+    ok('the long edge is capped', ev('PHOTO_MAX_EDGE') <= 1024 && ev('PHOTO_MAX_EDGE') >= 320, String(ev('PHOTO_MAX_EDGE')));
+    ok('and it is re-encoded as lossy JPEG', ev('PHOTO_QUALITY') > 0 && ev('PHOTO_QUALITY') < 1, String(ev('PHOTO_QUALITY')));
+
+    // the card degrades rather than breaking when sync is not connected
+    const savedTok = ev('S.settings.ghToken');
+    ev("S.settings.ghToken = ''; photoOpen = true;");
+    const noSync = ev('photoCardHTML()');
+    ok('without sync the card explains itself instead of failing', /Connect cloud sync/.test(noSync), noSync.slice(0, 200));
+    ok('and offers no upload control it cannot honour', noSync.indexOf('type="file"') < 0);
+    ev("S.settings.ghToken = 'tok';");
+    const withSync = ev('photoCardHTML()');
+    ok('with sync it offers the upload', withSync.indexOf('type="file"') >= 0);
+    ok('an empty history says so rather than showing a gap',
+       /Nothing yet/.test(ev("(function(){ S.photos.index=[]; return photoCardHTML(); })()")));
+    ev("S.photos.index = [{id:'a', date:'2026-08-03', w:1, h:1, bytes:1}];");
+    ok('collapsed, the card renders nothing heavy',
+       ev("(function(){ photoOpen=false; var h=photoCardHTML(); photoOpen=true; return h; })()").indexOf('type="file"') < 0);
+
+    ev("photoOpen = false; S.photos = {gistId:'', index:[]};");
+    ev("S.settings.ghToken = " + JSON.stringify(savedTok) + ";");
+  } catch (e) {
+    ok('photo section', false, e.message);
+    ev("photoOpen = false; S.photos = {gistId:'', index:[]};");
+  }
+
   console.log('=== DAY-GRANULAR MESOCYCLE ===');
   try {
     const savedMeso = ev('JSON.stringify(mesoState())');

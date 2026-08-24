@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-24-v5">
+<meta name="ironhub-build" content="2026-08-24-v6">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -223,6 +223,20 @@
   .dockrow input{text-align:center; font-size:15px; padding:9px 6px; font-weight:600; min-width:0;}
   /* The lever. Presets stay because a slider alone is bad one-handed mid-set: the presets
      are the fast path, the slider is there when the set was genuinely between two of them. */
+  /* ---- progress photos ---- */
+  .ph-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:8px; margin-top:10px;}
+  .ph-cell{position:relative; border:1px solid var(--line2); border-radius:4px; overflow:hidden; background:var(--base);}
+  .ph-cell img{display:block; width:100%; height:auto; aspect-ratio:3/4; object-fit:cover;}
+  .ph-when{position:absolute; left:0; right:0; bottom:0; padding:3px 6px; font-family:var(--mono); font-size:9px;
+           letter-spacing:.05em; color:#fff; background:linear-gradient(transparent,rgba(0,0,0,.75));}
+  .ph-x{position:absolute; top:4px; right:4px; width:20px; height:20px; border-radius:50%; border:none;
+        background:rgba(0,0,0,.6); color:#fff; font-size:12px; line-height:20px; cursor:pointer; padding:0;}
+  .ph-empty{color:var(--muted); font-size:12px; line-height:1.5;}
+  .ph-cmp{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;}
+  .ph-cmp figure{margin:0;}
+  .ph-cmp img{display:block; width:100%; border:1px solid var(--line2); border-radius:4px;}
+  .ph-cmp figcaption{font-family:var(--mono); font-size:9px; letter-spacing:.06em; color:var(--dim); margin-top:4px; text-transform:uppercase;}
+
   /* ---- status strip ---- */
   .sstrip{display:flex; align-items:center; gap:0; border-bottom:1px solid var(--line); background:var(--panel);
           font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; overflow-x:auto;}
@@ -1143,6 +1157,9 @@ const DEFAULT_STATE = {
   road: [],                    // {id, exercise, target, start, deadline}
   readiness: [],               // {date, sleep, sore, energy, tier}
   pain: [],                    // {id, date, exercise, level 1-3, note} — flagged from LIVE
+  photos: {gistId:'', index:[]},  // INDEX only — the images live in their own gist, see photoState()
+  whoop: null,                 // {fetchedAt, recovery:{date,score,hrv,rhr}, sleep:{...}, strain:{...}}
+                               // written ONLY by applyWhoop() from the gist; never pushed back
   prHistory: [],               // {exercise, weight, reps, e1rm, prev, gain, date} — every e1RM PR ever hit.
                                // Written only by checkPRs()/prBackfillOnce(); read by the PR History tab.
   prBackfilled: false,         // one-time flag: existing logs have been replayed into prHistory
@@ -1992,6 +2009,203 @@ function celebrate(pr){
 const EFF_ORDER = ['', 'easy', 'solid', 'grind', 'fail'];
 const EFF_LABEL = {'':'\u2013', easy:'E', solid:'S', grind:'G', fail:'F'};
 const EFF_MARK  = {easy:'\u1d49', solid:'', grind:'\u1d4d', fail:'\u02e3'};
+/* ---- monthly progress photos ----
+   Stored in a SEPARATE gist, not in S, and deliberately so. Everything in S is JSON-encoded
+   into localStorage on every save and pushed into the sync gist on every change; a year of
+   portraits is comfortably over a megabyte, which would mean re-uploading all of it every
+   time a set is logged, on cellular, mid-workout. It would also eat a large share of the
+   ~5MB localStorage budget with no quota guard anywhere in save() to catch the overflow.
+
+   So: photos live in their own gist, fetched only when the card is actually opened, and S
+   keeps nothing but the index. Images are downscaled through a canvas before they are ever
+   encoded -- a phone portrait is several megabytes and none of that resolution survives
+   being looked at in a 104px grid cell. */
+const PHOTO_MAX_EDGE = 640;      // long edge, px
+const PHOTO_QUALITY = 0.72;      // JPEG quality after downscale
+const PHOTO_GIST_FILE = 'ironhub_photos.json';
+
+function photoState(){
+  if(!S.photos) S.photos = {gistId:'', index:[]};   // index: [{id, date, w, h, bytes}]
+  if(!S.photos.index) S.photos.index = [];
+  return S.photos;
+}
+function photoMonthKey(dateKey){ return String(dateKey||todayKey()).slice(0,7); }
+function photoForMonth(mk){
+  return photoState().index.find(function(p){ return photoMonthKey(p.date) === mk; }) || null;
+}
+/* Downscale to a data URL. Returns a promise; rejects only on a genuinely unreadable file. */
+function photoDownscale(file){
+  return new Promise(function(resolve, reject){
+    const fr = new FileReader();
+    fr.onerror = function(){ reject(new Error('Could not read that file.')); };
+    fr.onload = function(){
+      const img = new Image();
+      img.onerror = function(){ reject(new Error('That does not look like an image.')); };
+      img.onload = function(){
+        const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        try{
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve({dataUrl: c.toDataURL('image/jpeg', PHOTO_QUALITY), w:w, h:h});
+        }catch(e){ reject(new Error('Could not process that image.')); }
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+/* The photo blobs, fetched on demand. Module-scoped rather than stored: they are large and
+   there is no reason for them to survive a reload in memory. */
+let _photoBlobs = null;
+async function photoLoadAll(force){
+  if(_photoBlobs && !force) return _photoBlobs;
+  const st = photoState();
+  if(!st.gistId || !S.settings.ghToken){ _photoBlobs = {}; return _photoBlobs; }
+  try{
+    const res = await fetch('https://api.github.com/gists/'+st.gistId, {headers:ghHeaders()});
+    if(!res.ok) throw new Error('photo gist read failed ('+res.status+')');
+    const g = await res.json();
+    const f = g.files && g.files[PHOTO_GIST_FILE];
+    let content = f && f.content;
+    if(f && f.truncated) content = await (await fetch(f.raw_url)).text();
+    _photoBlobs = content ? (JSON.parse(content).photos || {}) : {};
+  }catch(e){
+    _photoBlobs = {};
+    throw e;
+  }
+  return _photoBlobs;
+}
+async function photoSaveAll(blobs){
+  const st = photoState();
+  if(!S.settings.ghToken) throw new Error('Connect cloud sync first \u2014 photos need somewhere to live.');
+  const body = JSON.stringify({app:'ironhub-photos', v:1, savedAt:new Date().toISOString(), photos:blobs});
+  if(!st.gistId){
+    const c = await fetch('https://api.github.com/gists',{method:'POST',headers:ghHeaders(),
+      body:JSON.stringify({description:'Iron Hub progress photos', public:false,
+                           files:{[PHOTO_GIST_FILE]:{content:body}}})});
+    if(!c.ok) throw new Error('Could not create the photo gist ('+c.status+')');
+    st.gistId = (await c.json()).id;
+    save();
+    return;
+  }
+  const r = await fetch('https://api.github.com/gists/'+st.gistId,{method:'PATCH',headers:ghHeaders(),
+    body:JSON.stringify({files:{[PHOTO_GIST_FILE]:{content:body}}})});
+  if(!r.ok) throw new Error('Could not save the photo ('+r.status+')');
+}
+
+/* ---- the Progress card ----
+   Open-on-demand: the blobs are only fetched when the card is expanded, so the common case
+   (opening Progress to look at a chart) costs nothing. */
+let photoOpen = false;
+let photoBusy = '';
+function photoToggleCard(){
+  photoOpen = !photoOpen;
+  renderProgressV2();
+  if(photoOpen && !_photoBlobs){
+    photoLoadAll().then(function(){ renderProgressV2(); },
+      function(e){ photoBusy = e.message; renderProgressV2(); });
+  }
+}
+function photoCardHTML(){
+  const st = photoState();
+  const idx = st.index.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+  const thisMonth = photoForMonth(photoMonthKey(todayKey()));
+  let h = '<div class="card"><div class="sub-head" onclick="photoToggleCard()" style="cursor:pointer;margin:-14px -14px 0;padding:12px 14px">'+
+    '<span>Progress photos'+(idx.length?' \u00b7 '+idx.length:'')+'</span>'+
+    '<span class="chev">'+(photoOpen?'\u25b4':'\u25be')+'</span></div>';
+  if(!photoOpen) return h + '</div>';
+
+  h += '<p class="small" style="margin-top:12px">One portrait a month, same spot and same light if you can. '+
+       'The scale and the charts miss things a photo does not.</p>';
+
+  if(!S.settings.ghToken){
+    h += '<p class="ph-empty" style="margin-top:10px">Connect cloud sync in Settings first \u2014 photos are kept '+
+         'in their own private gist rather than in the app\u2019s data, so they don\u2019t get re-uploaded '+
+         'every time you log a set.</p></div>';
+    return h;
+  }
+
+  h += '<div class="row" style="margin-top:10px;align-items:center">'+
+    '<div><label>'+(thisMonth?'Replace this month\u2019s':'Add this month\u2019s')+'</label>'+
+    '<input type="file" accept="image/*" id="phFile" onchange="photoAdd(this)"></div></div>';
+  if(photoBusy) h += '<p class="small err" style="margin-top:6px">'+esc(photoBusy)+'</p>';
+
+  if(!idx.length){
+    h += '<p class="ph-empty" style="margin-top:10px">Nothing yet. The first one is the boring one \u2014 it only '+
+         'becomes worth having once there is a second.</p></div>';
+    return h;
+  }
+
+  const blobs = _photoBlobs || {};
+  // First and latest side by side: the whole point of the feature is the comparison, and
+  // scrolling to the bottom of a grid to find the oldest one defeats it.
+  if(idx.length >= 2){
+    const newest = idx[0], oldest = idx[idx.length-1];
+    if(blobs[newest.id] && blobs[oldest.id]){
+      h += '<div class="ph-cmp">'+
+        '<figure><img src="'+esc(blobs[oldest.id])+'" alt="First progress photo"><figcaption>'+esc(fmtDate(oldest.date))+' \u00b7 first</figcaption></figure>'+
+        '<figure><img src="'+esc(blobs[newest.id])+'" alt="Latest progress photo"><figcaption>'+esc(fmtDate(newest.date))+' \u00b7 latest</figcaption></figure>'+
+        '</div>';
+    }
+  }
+
+  h += '<div class="ph-grid">';
+  idx.forEach(function(p){
+    const src = blobs[p.id];
+    h += '<div class="ph-cell">'+
+      (src ? '<img src="'+esc(src)+'" alt="Progress photo '+esc(p.date)+'" loading="lazy">'
+           : '<div style="aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:10px">loading\u2026</div>')+
+      '<span class="ph-when">'+esc(fmtDate(p.date))+'</span>'+
+      '<button class="ph-x" title="Delete" onclick="photoDelete(\''+esc(p.id)+'\')">\u00d7</button>'+
+      '</div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+async function photoAdd(input){
+  const file = input && input.files && input.files[0];
+  if(!file) return;
+  photoBusy = 'Processing\u2026'; renderProgressV2();
+  try{
+    const img = await photoDownscale(file);
+    const blobs = await photoLoadAll();
+    const st = photoState();
+    const mk = photoMonthKey(todayKey());
+    const existing = photoForMonth(mk);
+    // One per month, replaced rather than accumulated: this is a monthly tracker, and two
+    // photos from the same week are not a progress comparison.
+    if(existing){ delete blobs[existing.id]; st.index = st.index.filter(function(p){ return p.id !== existing.id; }); }
+    const id = 'ph'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    blobs[id] = img.dataUrl;
+    st.index.push({id:id, date:todayKey(), w:img.w, h:img.h, bytes:img.dataUrl.length});
+    await photoSaveAll(blobs);
+    save();
+    photoBusy = '';
+  }catch(e){
+    photoBusy = e.message || 'That did not work.';
+  }
+  if(input) input.value = '';
+  renderProgressV2();
+}
+async function photoDelete(id){
+  const p = photoState().index.find(function(x){ return x.id === id; });
+  if(!p) return;
+  if(!confirm('Delete the photo from '+fmtDate(p.date)+'? This cannot be undone.')) return;
+  photoBusy = 'Deleting\u2026'; renderProgressV2();
+  try{
+    const blobs = await photoLoadAll();
+    delete blobs[id];
+    photoState().index = photoState().index.filter(function(x){ return x.id !== id; });
+    await photoSaveAll(blobs);
+    save();
+    photoBusy = '';
+  }catch(e){ photoBusy = e.message || 'Could not delete that.'; }
+  renderProgressV2();
+}
+
 /* ---- pain / injury flags ----
    Recorded against an exercise and a date, from the LIVE screen, in one tap plus an optional
    note. Deliberately RECORDING, not diagnosis: nothing here decides whether he should train
@@ -3199,6 +3413,29 @@ async function callClaude(messages, system, maxTokens, opts){
   const data = await res.json();
   return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
 }
+/* What the agents are told about WHOOP. Silent when there is nothing fresh, so the prompt
+   does not carry an empty heading -- and so an agent is never tempted to reason about a
+   recovery score that is three days old. */
+function whoopContext(){
+  const w = S.whoop;
+  if(!w) return '';
+  const bits = [];
+  if(w.recovery && w.recovery.date === todayKey()){
+    bits.push('recovery '+w.recovery.score+'%'+
+      (w.recovery.hrv!=null? ' (HRV '+Math.round(w.recovery.hrv)+'ms':'')+
+      (w.recovery.rhr!=null? ', RHR '+Math.round(w.recovery.rhr)+'bpm)': (w.recovery.hrv!=null?')':'')));
+  }
+  if(w.sleep && w.sleep.date === todayKey() && w.sleep.hours!=null){
+    bits.push('slept '+w.sleep.hours.toFixed(1)+'h'+
+      (w.sleep.performance!=null? ' ('+Math.round(w.sleep.performance)+'% of need)':''));
+  }
+  if(w.strain && w.strain.date === todayKey() && w.strain.score!=null){
+    bits.push('yesterday\u2019s strain '+w.strain.score.toFixed(1)+'/21');
+  }
+  if(!bits.length) return '';
+  return 'WHOOP TODAY: '+bits.join('; ')+'. This is measured data, not self-reported \u2014 prefer it '+
+    'over the check-in below where they disagree, and say so if you do.\n';
+}
 function trainingContext(){
   const recent = [...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
   const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+(l.dayName||dayName(l.day))+(l.home?' · HOME':'')+']\n'+
@@ -3220,6 +3457,7 @@ function trainingContext(){
     ', Squat '+(squat.length?Math.round(squat[squat.length-1].v)+' lb':'no data')+'\n'+
     'BODYWEIGHT LOG: '+(wts||'none yet')+'\n'+
     'NUTRITION LOG: '+(nut||'none yet')+'\n'+
+    whoopContext()+
     'READINESS CHECK-INS: '+(rdHist||'none yet')+'\n'+
     'FATIGUE MODEL: '+fatLine+'\n'+
     'BENCH PRACTICE (separate from tracked sessions — informal home frequency work, manually scheduled by Mark, 2-3x/week; do NOT use this for progression, Investigation, or trend judgments, advisory commentary only): '+(bpRecent||'none logged')+'\n'+
@@ -3338,6 +3576,10 @@ let _lastPushExportedAt = 0;   // exportedAt stamp of the snapshot this device l
 function syncPayload(){
   const d = JSON.parse(JSON.stringify(S));
   delete d.settings.ghToken; delete d.settings.gistId; delete d.settings.apiKey; // secrets never leave the device
+  // WHOOP is cached locally so it survives an offline launch, but the Action owns that file
+  // and this app is not a writer of it. Pushing our copy back would duplicate it in the sync
+  // payload and let a stale local read outlive the fresh remote one.
+  delete d.whoop;
   _lastPushExportedAt = Date.now();
   return JSON.stringify({app:'ironhub', v:1, exportedAt:_lastPushExportedAt, data:d});
 }
@@ -3400,6 +3642,14 @@ async function syncPush(manual){
     if(manual) setSyncMsg('\u2713 Pushed to cloud at '+new Date().toLocaleTimeString());
   }catch(e){ if(manual) setSyncMsg(e.message, true); }
 }
+/* WHOOP lives in a SECOND file in the same gist, written by a scheduled GitHub Action.
+   It has to arrive that way: WHOOP's API sends no CORS headers on either its OAuth token
+   endpoint or its data endpoints, so a browser cannot read either response, and the token
+   exchange needs a client_secret that could never live in a public repo's HTML. The Action
+   holds the secret, does the fetching, and PATCHes only this file -- the app only ever writes
+   ironhub_data.json, so the two writers never collide.
+   Reading it costs nothing extra: it is already in the gist response the app fetches anyway. */
+const WHOOP_FILE = 'whoop_data.json';
 async function fetchGistData(){
   const res = await fetch('https://api.github.com/gists/'+S.settings.gistId,{headers:ghHeaders()});
   if(!res.ok) throw new Error('Pull failed ('+res.status+')');
@@ -3410,7 +3660,52 @@ async function fetchGistData(){
   if(f.truncated) content = await (await fetch(f.raw_url)).text();
   const p = JSON.parse(content);
   if(p.app !== 'ironhub') throw new Error('Gist content not recognized as Iron Hub data.');
+  // Best effort, always. A missing or malformed WHOOP file must never break a data sync --
+  // it is a nice-to-have on top, and everything that reads it already falls back.
+  try{
+    const wf = g.files && g.files[WHOOP_FILE];
+    if(wf && wf.content) applyWhoop(JSON.parse(wf.content));
+  }catch(e){ /* absent, truncated or malformed -- the self-reported path still works */ }
   return p;
+}
+/* Validate before storing. This is third-party data arriving through a file anyone with the
+   gist URL could in principle write to, so it gets the same treatment as model output: take
+   the shapes we understand, ignore everything else, clamp what we take. */
+function applyWhoop(raw){
+  if(!raw || typeof raw !== 'object') return false;
+  const out = {fetchedAt: typeof raw.fetchedAt === 'string' ? raw.fetchedAt : new Date().toISOString()};
+  const num = function(v, lo, hi){
+    const n = +v;
+    return isFinite(n) ? Math.max(lo, Math.min(hi, n)) : null;
+  };
+  const dateOk = function(d){ return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d); };
+  if(raw.recovery && dateOk(raw.recovery.date)){
+    const score = num(raw.recovery.score, 0, 100);
+    if(score !== null){
+      out.recovery = {date:raw.recovery.date, score:Math.round(score),
+                      hrv: num(raw.recovery.hrv, 0, 400), rhr: num(raw.recovery.rhr, 20, 200)};
+    }
+  }
+  if(raw.sleep && dateOk(raw.sleep.date)){
+    out.sleep = {date:raw.sleep.date, hours: num(raw.sleep.hours, 0, 24),
+                 performance: num(raw.sleep.performance, 0, 100)};
+  }
+  if(raw.strain && dateOk(raw.strain.date)){
+    out.strain = {date:raw.strain.date, score: num(raw.strain.score, 0, 21)};
+  }
+  if(!out.recovery && !out.sleep && !out.strain) return false;
+  S.whoop = out;
+  // save(false): this came FROM the cloud, so it is not a local change and must not bump
+  // changedAt -- doing so would make autoPullOnLoad() skip its pull and push stale local
+  // state over the phone's newer data. Same reasoning as invRaise()/invArchive().
+  save(false);
+  return true;
+}
+/* Is the WHOOP data recent enough to act on? Deliberately strict: a recovery score from
+   three days ago is worse than no score, because it looks current. */
+function whoopFresh(){
+  const w = S.whoop && S.whoop.recovery;
+  return !!(w && w.date === todayKey() && typeof w.score === 'number');
 }
 async function syncPull(force){
   if(!syncReady()){ setSyncMsg('Not connected \u2014 paste your token and hit Connect first.', true); return; }
@@ -6428,6 +6723,11 @@ function renderProgressV2(){
     extras.innerHTML = deloadCardHTML() + (vol.length>=1 ? subSection('Volume trend', '<div class="chart-h" style="font-size:11px">Weekly tonnage (lb lifted)</div>'+lineChart(vol,'#46CDBA'), false) : '');
     sec.appendChild(extras);
   }
+  // Repainted on every render rather than built once, because its contents change as blobs
+  // arrive and as photos are added or removed.
+  let phWrap = sec.querySelector('.p2-photos');
+  if(!phWrap){ phWrap = document.createElement('div'); phWrap.className = 'p2-photos'; sec.appendChild(phWrap); }
+  phWrap.innerHTML = photoCardHTML();
 }
 /* Road: goals + PR charts + 1RM lab subsection */
 function renderRoadV2(){
@@ -10115,7 +10415,24 @@ function openReadyCheck(dk){
   _rdPendingDay = dk; _rdV3 = {};
   const grp = (label,key,opts)=>'<div class="rd3-group"><span class="rd3-gl">'+label+'</span><div class="rd3-pills">'+
     opts.map(o=>'<button class="rd3-pill" data-k="'+key+'" data-v="'+o+'" onclick="rd3Pick(this)">'+o+'</button>').join('')+'</div></div>';
+  // With a fresh WHOOP recovery score the check-in stops being a questionnaire and becomes
+  // a confirmation: sleep is filled in from the measurement, and the intro says what it
+  // already knows. Without one, this is exactly the screen it has always been.
+  const _wf = (typeof whoopFresh==='function') && whoopFresh();
+  if(_wf){
+    const wr = S.whoop.recovery, ws = S.whoop.sleep;
+    if(ws && ws.date === todayKey() && ws.hours != null){
+      _rdV3.sleep = ws.hours < 6 ? '<6' : ws.hours < 7 ? '6-7' : ws.hours < 8 ? '7-8' : '8+';
+    }
+    _rdV3.energy = wr.score >= 67 ? 'high' : wr.score >= 34 ? 'ok' : 'low';
+  }
   document.getElementById('readyBody').innerHTML =
+    (_wf ? '<p class="small" style="margin-bottom:10px;color:var(--cyan)">WHOOP has you at '+
+       S.whoop.recovery.score+'% recovered'+
+       (S.whoop.sleep && S.whoop.sleep.date===todayKey() && S.whoop.sleep.hours!=null
+          ? ' on '+S.whoop.sleep.hours.toFixed(1)+'h sleep' : '')+
+       ' \u2014 pre-filled below. Change anything that doesn\u2019t match how you actually feel.</p>'
+       : '')+
     '<p class="small" style="margin-bottom:14px">Ten seconds \u2014 this tunes today\u2019s targets to how recovered you actually are.</p>'+
     grp('Sleep','sleep',['<6','6-7','7-8','8+'])+
     grp('Soreness','sore',['fresh','mild','beat up'])+

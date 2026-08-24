@@ -1,0 +1,74 @@
+# WHOOP -> Iron Hub relay
+#
+# Iron Hub is a single static HTML file with no backend, so it cannot talk to WHOOP directly:
+# WHOOP sends no CORS headers on its OAuth token endpoint or its data endpoints (a browser
+# refuses to read either response), and the token exchange requires a client_secret, which
+# could never live in this repo's HTML because the repo is public.
+#
+# So this job does the fetching instead. It holds the secret, refreshes the token, pulls
+# today's recovery/sleep/strain, and PATCHes a single file -- whoop_data.json -- into the
+# same gist the app already syncs through. The app only ever writes ironhub_data.json, so
+# the two writers never touch the same file, and the app reads this one for free out of a
+# gist response it was already fetching every 60 seconds.
+#
+# ---------------------------------------------------------------------------------------
+# ONE-TIME SETUP
+#
+# 1. Create a WHOOP app at https://developer.whoop.com with redirect URI
+#      http://localhost:8080/callback
+#    and scopes: offline read:recovery read:sleep read:cycles
+#
+# 2. Do the one-time authorization locally to get a refresh token. From a terminal:
+#      node .github/workflows/whoop-auth.js
+#    It prints a URL, you approve in the browser, and it prints your refresh token.
+#
+# 3. Add these repository secrets (Settings -> Secrets and variables -> Actions):
+#      WHOOP_CLIENT_ID
+#      WHOOP_CLIENT_SECRET
+#      WHOOP_REFRESH_TOKEN     <- from step 2
+#      IRONHUB_GIST_ID         <- the id of your existing sync gist
+#      IRONHUB_GIST_TOKEN      <- a PAT with the `gist` scope
+#      IRONHUB_STATE_GIST_ID   <- a SEPARATE private gist, any content; used to persist the
+#                                 rotating refresh token (see below)
+#
+# WHOOP rotates the refresh token on every use, so the new one has to be persisted somewhere
+# the next run can read. Repository secrets cannot be written by a workflow without a
+# PAT carrying admin rights, so this uses a small private gist instead -- fewer privileges,
+# and nothing in it is useful without the client secret.
+# ---------------------------------------------------------------------------------------
+
+name: WHOOP sync
+
+on:
+  schedule:
+    # Every 2 hours. WHOOP recovery lands in the morning and barely changes after that, so
+    # this is mostly about being current by the time he opens the app, not about resolution.
+    - cron: '17 */2 * * *'
+  workflow_dispatch:        # manual run, for testing the setup
+
+# Least privilege: this job needs nothing from the repo itself.
+permissions:
+  contents: read
+
+concurrency:
+  # Two runs at once would both spend the same refresh token, and the loser's would already
+  # have been rotated away -- one of them would fail and could clobber the stored token.
+  group: whoop-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the relay script
+        uses: actions/checkout@v4
+
+      - name: Fetch WHOOP and update the gist
+        env:
+          WHOOP_CLIENT_ID: ${{ secrets.WHOOP_CLIENT_ID }}
+          WHOOP_CLIENT_SECRET: ${{ secrets.WHOOP_CLIENT_SECRET }}
+          WHOOP_REFRESH_TOKEN: ${{ secrets.WHOOP_REFRESH_TOKEN }}
+          IRONHUB_GIST_ID: ${{ secrets.IRONHUB_GIST_ID }}
+          IRONHUB_GIST_TOKEN: ${{ secrets.IRONHUB_GIST_TOKEN }}
+          IRONHUB_STATE_GIST_ID: ${{ secrets.IRONHUB_STATE_GIST_ID }}
+        run: node .github/workflows/whoop-sync.js
