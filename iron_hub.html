@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-24-v7">
+<meta name="ironhub-build" content="2026-08-24-v8">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1144,6 +1144,8 @@ const DEFAULT_STATE = {
   schedule: {1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6',0:'REST'}, // JS getDay(): 0=Sun
   overrideDay: null,           // {date:'YYYY-MM-DD', day:'D2'}
   tempStrengthSplit: null,     // {S1:{name,hex,exercises},...} — generateTempStrengthDays() output; never merged into S.split
+  tempStrengthWindow: null,    // {start,end} — the dates that split is in force for. Without it the split is
+                                // generated and then scheduled nowhere, which is exactly how it shipped broken.
   homeToday: null,             // {date:'YYYY-MM-DD'} — auto-expires, same pattern as overrideDay
   homeEquipment: {dumbbells:[2,5,8,12,15,20,30,40,50], kettlebells:[18,26,35,44,53], hasBarbellRackBench:true, hasRower:true, hasBike:true},
   benchPractice: [],           // {date, sets:[{w,r}]} — standalone home bench frequency work, deliberately kept out
@@ -1221,7 +1223,13 @@ function dayExNames(dk){
    resolving a day key to a name, colour, or exercise list at runtime must go through here.
    S.split stays the editing target in Settings; only these read paths follow the block. */
 function activeDayKeys(){
-  return Array.from(new Set(Object.keys(activeSplitObj()).concat(Object.keys(S.tempStrengthSplit||{}))));
+  // S.split is unioned back in when the split in force is the standalone strength block:
+  // that block is an ad-hoc exception, so bailing out to a normal day mid-block has to stay
+  // one tap away in the picker. A meso block deliberately does not offer that — it is the
+  // program, not an exception to it.
+  const act = activeSplitObj();
+  const base = (act === S.tempStrengthSplit) ? Object.keys(act).concat(Object.keys(S.split)) : Object.keys(act);
+  return Array.from(new Set(base.concat(Object.keys(S.tempStrengthSplit||{}))));
 }
 function dayMeta(dk){
   const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
@@ -1355,6 +1363,11 @@ function scheduledDayFor(dateKey){
   // An approved strength block overrides the schedule for its own dates only.
   const mr = (typeof mesoRotationDayFor==='function') ? mesoRotationDayFor(dateKey) : null;
   if(mr) return mr;
+  // A standalone strength block (Settings → Strength & Deload) does the same for its own
+  // window. Ranked under the meso rotation on purpose: an approved meso block is the actual
+  // program, this is the ad-hoc exception you layer in around it.
+  const ts = (typeof tempStrengthDayFor==='function') ? tempStrengthDayFor(dateKey) : null;
+  if(ts) return ts;
   // Exact-date overrides (S.dateOverrides) used to be consulted here. Removed in V4: they
   // were a workaround for a plan model that could only think in whole weeks, and now that a
   // mesocycle phase can be measured in days, the thing they were papering over is gone. A
@@ -4370,7 +4383,8 @@ function renderSettings(){
         ? tempStrengthEditorHTML()+
           (_tempStrengthGen ? '<div class="small" style="margin-top:6px;color:var(--dim)">'+_tempStrengthGen.rationale.map(r=>esc(r)).join('<br>')+
             (_tempStrengthGen.dropped.length ? '<br>Dropped from coverage: '+esc(_tempStrengthGen.dropped.join(', ')) : '')+'</div>' : '')+
-          '<div style="margin-top:8px"><button class="btn sm ghost" onclick="clearTempStrengthDays();_tempStrengthGen=null;renderSettings()">Clear strength days</button></div>'
+          tempStrengthWindowHTML()+
+          '<div style="margin-top:8px"><button class="btn sm ghost" onclick="clearTempStrengthDays();_tempStrengthGen=null;renderSettings();afterScheduleChange()">Clear strength days</button></div>'
         : '<div style="margin-top:8px"><button class="btn sm" onclick="tempStrengthGenClick()">Generate strength days</button></div>')) +
     '</div>'+
     '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'+
@@ -4497,6 +4511,58 @@ let _tempStrengthGen = null;
 function tempStrengthGenClick(){
   _tempStrengthGen = generateTempStrengthDays();
   renderSettings();
+  afterScheduleChange();   // generating now schedules — today's day key may have just changed
+}
+/* Window editor for the standalone block. This is the half that went missing in V4: before
+   it, "Generate strength days" built S1/S2/S3 and then left them unreachable except through
+   the manual day picker, because nothing put them on a date. */
+function tempStrengthWindowHTML(){
+  const w = tempStrengthWindow();
+  let h = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">';
+  if(w){
+    const t = todayKey();
+    const dk = tempStrengthDayFor(t);
+    const pos = tempStrengthPos(t);
+    h += '<p class="small">In force <b style="color:var(--text)">'+esc(fmtDate(w.start))+'</b> through <b style="color:var(--text)">'+esc(fmtDate(w.end))+'</b>, ahead of your normal schedule.</p>';
+    h += dk
+      ? '<p class="small" style="margin-top:4px;color:'+dayColor(dk)+'"><b>Today: '+esc(dk)+' — '+esc(dayName(dk))+'</b> · '+pos.n+' of '+pos.len+
+        '</p><p class="small" style="margin-top:4px;color:var(--dim)">The order follows what you’ve logged, not the calendar — an unplanned rest day postpones the next one instead of skipping it.</p>'
+      : '<p class="small" style="margin-top:4px;color:var(--dim)">Not today — your normal schedule is running.</p>';
+    h += '<div style="margin-top:8px"><button class="btn sm ghost" onclick="tempStrengthWindowEdit()">Change dates</button></div>';
+  } else {
+    const sug = tempStrengthSuggestWindow();
+    h += '<p class="small" style="color:var(--amber)"><b>These days aren’t on your calendar yet.</b> Set the dates they run and they’ll override your normal schedule for that range only.</p>';
+    h += '<div class="row" style="margin-top:8px">'+
+      '<div><label>Start</label><input type="date" id="tsWinStart" value="'+esc(sug.start)+'"></div>'+
+      '<div><label>Through</label><input type="date" id="tsWinEnd" value="'+esc(sug.end)+'"></div>'+
+      '<div style="flex:none"><button class="btn sm" onclick="tempStrengthWindowSet()">Set</button></div></div>';
+  }
+  return h+'</div>';
+}
+/* Prefill for the window inputs. Guesses from what he has already logged rather than
+   inventing dates: start at the first session of the run in progress, and end far enough out
+   to fit the days still owed. Suggestion only — nothing is scheduled until he taps Set. */
+function tempStrengthSuggestWindow(){
+  const rot = tempStrengthRotation(); const len = rot.length || 1;
+  const t = todayKey();
+  const floor = mesoAddDays(t, -14);   // an older block's logs must not count toward this one
+  const dates = {};
+  (S.logs||[]).forEach(l=>{ if(l && l.date && l.date>=floor && l.date<=t && rot.indexOf(l.day)>=0) dates[l.date]=true; });
+  const done = Object.keys(dates).sort();
+  const start = done.length ? done[0] : t;
+  const left = Math.max(1, len - (done.length % len));   // days of the rotation still owed
+  return {start, end: mesoAddDays(t, left-1)};
+}
+function tempStrengthWindowEdit(){
+  S.tempStrengthWindow = null;   // drop back to the editor; the split itself is untouched
+  save(); renderSettings(); afterScheduleChange();
+}
+function tempStrengthWindowSet(){
+  const a = document.getElementById('tsWinStart'), b = document.getElementById('tsWinEnd');
+  if(!a || !b) return;
+  if(!setTempStrengthWindow(a.value, b.value)){ alert('Pick a start date and an end date on or after it.'); return; }
+  renderSettings();
+  afterScheduleChange();
 }
 /* Per-exercise 3-6 (STR) vs accessory control for the auto-generated S1/S2/S3, mirroring the
    STR/HYP toggle already used in the permanent Split Editor (see toggleRepMode()) — the
@@ -8647,7 +8713,13 @@ function mesoApprovedSplitFor(w){
 function mesoActiveSplit(){ return mesoApprovedSplitFor(mesoCurrentWeek()); }
 function activeSplitObj(){
   const ms = (typeof mesoActiveSplit==='function') ? mesoActiveSplit() : null;
-  return ms || S.split;
+  if(ms) return ms;
+  // Same reason as the meso block: while a standalone block is in force the day in play is
+  // S1/S2/S3, which S.split has never heard of. Miss this and incForExercise(), isStrMode(),
+  // isFormFocus() and isMaxed() all silently fall back to a D-day — that is precisely the
+  // bug that turned a +15 increment into -5.
+  const ts = (typeof tempStrengthActive==='function') ? tempStrengthActive() : null;
+  return ts || S.split;
 }
 /* blockId of the meso strength block actually in force today, or null — lets Settings'
    "Strength days" card find and edit the SAME split object the Ops-tab editor uses. */
@@ -8862,12 +8934,79 @@ function mesoGenerateStrengthSplit(){
 function generateTempStrengthDays(){
   const gen = mesoGenerateStrengthSplit();
   S.tempStrengthSplit = gen.split;
+  // Generating does NOT schedule. Which days you train is his call, so the window is set
+  // explicitly — but Settings now says loudly that a generated split with no window is going
+  // nowhere, which is the state this feature used to ship in silently.
+  S.tempStrengthWindow = null;
   save();
   return gen;
 }
 function clearTempStrengthDays(){
   S.tempStrengthSplit = null;
+  S.tempStrengthWindow = null;   // an override with no split behind it would resolve to nothing
   save();
+}
+function setTempStrengthWindow(start, end){
+  if(!S.tempStrengthSplit) return false;
+  if(!start || !end || end < start) return false;
+  S.tempStrengthWindow = {start, end};
+  save();
+  return true;
+}
+
+/* ---- standalone strength block: window + sequence-driven rotation ----
+   The meso block's rotation is anchored to the calendar (mesoRotationDayFor): day N of the
+   block is always day N of the pattern. This one deliberately is NOT. A standalone block is
+   the ad-hoc case — travel, a modified week, a mini-block squeezed in — and an unplanned
+   rest day there should postpone the sequence, not burn a slot in it. So the day is resolved
+   by how many block sessions are already logged, not by how many days have elapsed: rest for
+   two days and S3 is still what is up.
+
+   Consequence, and the reason this rotation holds only training days: a REST entry could
+   never be "logged", so progress would never advance past it and the block would deadlock on
+   REST forever. Rest is expressed by not training, which is the whole point of the model. */
+function tempStrengthRotation(){
+  return S.tempStrengthSplit ? Object.keys(S.tempStrengthSplit) : [];
+}
+function tempStrengthWindow(){
+  const w = S.tempStrengthWindow;
+  if(!S.tempStrengthSplit || !w || !w.start || !w.end || w.end < w.start) return null;
+  return w;
+}
+/* Sessions of this block already logged strictly before `dateKey`, counted once per date so
+   two logs on one day can't skip a slot. Future dates all read the same count as today —
+   the app cannot know when he will actually train, and guessing would put a day on the
+   calendar that silently moves once he does. */
+function tempStrengthProgress(dateKey){
+  const w = tempStrengthWindow(); if(!w) return 0;
+  const rot = tempStrengthRotation();
+  const seen = {};
+  (S.logs||[]).forEach(l=>{
+    if(!l || !l.date || l.date < w.start || l.date >= dateKey) return;
+    if(rot.indexOf(l.day) < 0) return;
+    seen[l.date] = true;
+  });
+  return Object.keys(seen).length;
+}
+function tempStrengthDayFor(dateKey){
+  const w = tempStrengthWindow(); if(!w) return null;
+  if(dateKey < w.start || dateKey > w.end) return null;
+  const rot = tempStrengthRotation(); const len = rot.length;
+  if(!len) return null;
+  return rot[tempStrengthProgress(dateKey) % len] || null;
+}
+/* The split in force during a standalone block, or null. Mirrors mesoActiveSplit() so
+   activeSplitObj() can treat the two the same way — S1/S2/S3 don't exist in S.split, so
+   every runtime lookup of an increment, rep mode or form-focus flag has to land here or it
+   silently reads the wrong day. */
+function tempStrengthActive(){
+  return tempStrengthDayFor(todayKey()) ? S.tempStrengthSplit : null;
+}
+/* 1-based position in the block, display only. */
+function tempStrengthPos(dateKey){
+  const rot = tempStrengthRotation();
+  if(!tempStrengthDayFor(dateKey)) return null;
+  return {n: (tempStrengthProgress(dateKey) % rot.length) + 1, len: rot.length};
 }
 
 /* ---- proposal lifecycle per strength block ---- */
@@ -8883,11 +9022,13 @@ function mesoApproveSplit(blockId){
   const a = mesoState().active; if(!a || !a.splits[blockId]) return;
   a.splits[blockId].status = 'approved';
   a.splits[blockId].approvedAt = todayKey();
-  save(); renderMeso(); mesoAfterScheduleChange();
+  save(); renderMeso(); afterScheduleChange();
 }
 /* Approving or dropping a block split changes which day today resolves to, not just which
-   exercises it holds — the header, accent, and Today tab are all stale until they repaint. */
-function mesoAfterScheduleChange(){
+   exercises it holds — the header, accent, and Today tab are all stale until they repaint.
+   Setting or clearing a standalone strength window does exactly the same thing, so it calls
+   this too; the name is no longer meso-specific. */
+function afterScheduleChange(){
   try{ setAccent(); renderHeader(); }catch(e){}
   try{ if(typeof renderToday==='function') renderToday(); }catch(e){}
   try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
@@ -8898,7 +9039,7 @@ function mesoRegenerateSplit(blockId){
 function mesoUnapproveSplit(blockId){
   const a = mesoState().active; if(!a || !a.splits[blockId]) return;
   a.splits[blockId].status = 'proposed';
-  save(); renderMeso(); mesoAfterScheduleChange();
+  save(); renderMeso(); afterScheduleChange();
 }
 /* Ensure every strength block in the calendar has a proposal ready to review. */
 function mesoEnsureProposals(){
@@ -9200,7 +9341,7 @@ function mesoEditTemplate(){
 }
 function mesoConfirmStop(){
   if(!confirm('Stop this plan? The calendar clears and your normal split resumes. Logs and history are untouched.')) return;
-  mesoStop(); _mesoDraft = null; renderMeso(); mesoAfterScheduleChange();
+  mesoStop(); _mesoDraft = null; renderMeso(); afterScheduleChange();
 }
 
 function renderMeso(){
@@ -10819,6 +10960,20 @@ function agContext(){
       '\nThis REPLACES the permanent split above for these dates only, on its own 3-on/2-off rotation — '+
       'do not treat this as a deviation from his plan, and do not propose changes against the permanent split\'s '+
       'exercises while this is in force.';
+  } else if(typeof tempStrengthActive==='function' && tempStrengthActive()){
+    // Same problem, different source: without this the agents see only D1-D6 in the split,
+    // read today's S3 as a day that doesn't exist, and score the missing accessory volume as
+    // a deviation. Deliberately an else-branch — an approved meso block outranks the window,
+    // so describing both would tell them two different things are in force at once.
+    const tw = tempStrengthWindow();
+    const tsSplitTxt = Object.keys(S.tempStrengthSplit).map(k=>
+      k+' ('+S.tempStrengthSplit[k].name+'): '+(S.tempStrengthSplit[k].exercises||[]).map(exName).join(', ')).join('\n');
+    blockTxt = '\n\nSTANDALONE STRENGTH BLOCK (in force '+tw.start+' through '+tw.end+', then reverts to the split above automatically): \n'+
+      tsSplitTxt+
+      '\nThis REPLACES the permanent split above for these dates only. Its order follows what he has logged '+
+      'rather than the calendar, so a rest day inside the window postpones the next day instead of skipping it — '+
+      'do not treat either the rest day or the reduced accessory volume as a deviation, and do not propose '+
+      'changes against the permanent split\'s exercises while this is in force.';
   }
   const deloadTxt = deloadActive()
     ? '\n\nDELOAD ACTIVE through '+S.deload.until+' (started '+S.deload.startedAt+') — loads and sets are '+

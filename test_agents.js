@@ -2104,6 +2104,121 @@ setTimeout(async () => {
     ev("S.dateOverrides = {}; S.tempStrengthSplit = null; S.deload = null; S.scheduleMode='dow'; mesoStop(); live=null;");
   }
 
+  console.log('=== STANDALONE STRENGTH BLOCK: WINDOW + SEQUENCE ===');
+  try {
+    // V4 removed exact-date overrides, which were the only thing that could put the standalone
+    // S1/S2/S3 days on a date. The generator survived the removal; nothing that scheduled its
+    // output did. So "Generate strength days" produced a split scheduledDayFor() had never
+    // heard of, reachable only by hand-picking it in the day prompt -- and the calendar kept
+    // announcing D-days straight through a strength block. This covers the window that
+    // replaces the overrides, and the sequencing rule that makes it survive a missed day.
+    ev("mesoStop(); live=null; S.tempStrengthSplit=null; S.tempStrengthWindow=null; S.overrideDay=null; S.deload=null;");
+    ev("S.scheduleMode='dow'; S.schedule={0:'REST',1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6'};");
+    // Fixed dates throughout: currentDayKey() resolves against the real calendar, so anything
+    // that leans on "today" is red on whichever weekday the suite happens to run.
+    ok('control: the dow map owns 2026-08-21 (a Friday)', ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
+
+    ev('generateTempStrengthDays();');
+    ok('generating a split does not schedule it', ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
+    ok('generating leaves the window unset', ev('S.tempStrengthWindow') == null);
+    ok('tempStrengthDayFor is null with no window', ev("tempStrengthDayFor('2026-08-21')") === null);
+
+    // The inert state must be visible instead of silent -- that is the actual reported bug.
+    ev('renderSettings()');
+    const tsHtml = ev('document.getElementById("settings").innerHTML');
+    ok('Settings says the generated days are not on the calendar yet', /aren.t on your calendar yet/.test(tsHtml));
+    ok('Settings offers the window inputs', tsHtml.indexOf('tsWinStart') >= 0 && tsHtml.indexOf('tsWinEnd') >= 0);
+    ok('the suggested start is a real date', /^\d{4}-\d{2}-\d{2}$/.test(ev('tempStrengthSuggestWindow().start')), ev('tempStrengthSuggestWindow().start'));
+
+    ok('setTempStrengthWindow rejects an end before the start', ev("setTempStrengthWindow('2026-08-24','2026-08-21')") === false);
+    ok('a rejected window is not stored', ev('S.tempStrengthWindow') == null);
+
+    ok('setTempStrengthWindow accepts a valid range', ev("setTempStrengthWindow('2026-08-21','2026-08-24')") === true);
+    ok('the window puts S1 on the calendar ahead of the dow map', ev("scheduledDayFor('2026-08-21')") === 'S1', ev("scheduledDayFor('2026-08-21')"));
+    ok('the day before the window is untouched', ev("scheduledDayFor('2026-08-20')") === 'D4', ev("scheduledDayFor('2026-08-20')"));
+    ok('the day after the window is untouched', ev("scheduledDayFor('2026-08-25')") === 'D2', ev("scheduledDayFor('2026-08-25')"));
+
+    // --- the sequencing rule ---
+    // He trained S1, rested the next day, trained S2 the day after. The day after THAT is S3.
+    // A date-anchored rotation (what the meso block uses) would be on slot 4 by then and say
+    // something else entirely -- that difference is the whole reason this path exists.
+    ev("S.logs.push({date:'2026-08-21', day:'S1', _tsw:1, entries:[]});");
+    ok('slot advances once a block session is logged', ev("scheduledDayFor('2026-08-22')") === 'S2', ev("scheduledDayFor('2026-08-22')"));
+    ok('an unplanned rest day postpones rather than consumes the slot', ev("scheduledDayFor('2026-08-23')") === 'S2', ev("scheduledDayFor('2026-08-23')"));
+    ev("S.logs.push({date:'2026-08-23', day:'S2', _tsw:1, entries:[]});");
+    ok('S3 is up on day 4 of the window after one skipped day (the reported bug)',
+       ev("scheduledDayFor('2026-08-24')") === 'S3', ev("scheduledDayFor('2026-08-24')"));
+    ok('control: a date-anchored rotation would NOT have said S3 there',
+       ev('tempStrengthRotation()[3 % tempStrengthRotation().length]') !== 'S3',
+       ev('tempStrengthRotation()[3 % tempStrengthRotation().length]'));
+    ev("S.logs.push({date:'2026-08-23', day:'S2', _tsw:1, entries:[]});");
+    ok('two logs on one date cannot skip a slot', ev("scheduledDayFor('2026-08-24')") === 'S3', ev("scheduledDayFor('2026-08-24')"));
+    ok('progress is reported 1-based for display', ev("tempStrengthPos('2026-08-24').n") === 3 && ev("tempStrengthPos('2026-08-24').len") === 3);
+    ok('a date outside the window has no position', ev("tempStrengthPos('2026-08-25')") === null);
+    // logs must not leak into later sections' assertions
+    ev("S.logs = S.logs.filter(l=>!l._tsw);");
+    ok('cleanup: synthetic block logs removed', ev("S.logs.filter(l=>l._tsw).length") === 0);
+    ok('with the logs gone the window restarts at S1', ev("scheduledDayFor('2026-08-24')") === 'S1', ev("scheduledDayFor('2026-08-24')"));
+
+    // --- the split in force ---
+    // S1/S2/S3 do not exist in S.split, so every runtime property lookup has to follow the
+    // block. Missing this is what turned a +15 increment into -5 when a meso block was live.
+    ev("setTempStrengthWindow(todayKey(), mesoAddDays(todayKey(), 2));");
+    ok('activeSplitObj follows the standalone block while it is in force',
+       ev('activeSplitObj() === S.tempStrengthSplit') === true);
+    ev("S.tempStrengthSplit.S1.exercises[0] = {name:'Window Probe Lift', inc:15, repMode:'str'};");
+    ok('incForExercise reads the block increment, not incFor guesswork',
+       ev("incForExercise('Window Probe Lift')") === 15, ev("incForExercise('Window Probe Lift')"));
+    ok('isStrMode sees the block STR tag', ev("isStrMode('Window Probe Lift')") === true);
+    ok('the picker still offers a normal day mid-block', ev('activeDayKeys().indexOf("D1")') >= 0);
+    ok('the picker offers the block days too', ev('activeDayKeys().indexOf("S3")') >= 0);
+    ev("setTempStrengthWindow(mesoAddDays(todayKey(), 5), mesoAddDays(todayKey(), 7));");
+    ok('activeSplitObj drops back to S.split outside the window',
+       ev('activeSplitObj() === S.split') === true);
+    ok('incForExercise stops seeing the block once it is not in force',
+       ev("incForExercise('Window Probe Lift')") !== 15, ev("incForExercise('Window Probe Lift')"));
+
+    // --- the nightly agents have to be told which split is in force ---
+    // Without this they see only D1-D6, read today's S3 as a day that does not exist, and
+    // score the block's deliberately thinner accessory volume as a deviation.
+    ev("setTempStrengthWindow(todayKey(), mesoAddDays(todayKey(), 2));");
+    const tswCtx = ev('agContext()');
+    ok('agent context names the standalone block', /STANDALONE STRENGTH BLOCK/.test(tswCtx));
+    ok('agent context carries the block dates', tswCtx.indexOf(ev('S.tempStrengthWindow.start')) >= 0);
+    ok('agent context explains the log-driven order', /follows what he has logged/.test(tswCtx));
+    ok('agent context lists the block’s own days', /S3 \(/.test(tswCtx));
+    ev("setTempStrengthWindow(mesoAddDays(todayKey(), 5), mesoAddDays(todayKey(), 7));");
+    ok('agent context drops the block once it is not in force', !/STANDALONE STRENGTH BLOCK/.test(ev('agContext()')));
+
+    // --- ranking against the meso rotation ---
+    // An approved meso block is the program; the standalone window is an exception layered
+    // around it. Checked on the rotation's REST slot, where the two genuinely disagree: the
+    // standalone path never yields REST, so slot 0 would prove nothing.
+    ev("mesoStart({phases:[{id:'ptsw',type:'str',name:'Strength',weeks:1,repLo:3,repHi:5,rpeLo:8,rpeHi:9}],repeat:false,cycles:1}, todayKey());");
+    ev('mesoEnsureProposals();');
+    const tswBid = ev('mesoActive().weeks[0].blockId');
+    const tswStart = ev('mesoActive().weeks[0].startKey');
+    ev('mesoApproveSplit(' + JSON.stringify(tswBid) + ');');
+    ev("setTempStrengthWindow(" + JSON.stringify(tswStart) + ", mesoAddDays(" + JSON.stringify(tswStart) + ", 4));");
+    ok('control: the standalone window alone would say S1 on that date',
+       ev('tempStrengthDayFor(mesoAddDays(' + JSON.stringify(tswStart) + ',3))') === 'S1',
+       ev('tempStrengthDayFor(mesoAddDays(' + JSON.stringify(tswStart) + ',3))'));
+    ok('an approved meso rotation outranks the standalone window',
+       ev('scheduledDayFor(mesoAddDays(' + JSON.stringify(tswStart) + ',3))') === 'REST',
+       ev('scheduledDayFor(mesoAddDays(' + JSON.stringify(tswStart) + ',3))'));
+    ev('mesoStop();');
+
+    // --- teardown ---
+    ev('clearTempStrengthDays();');
+    ok('clearing the days clears the window with them', ev('S.tempStrengthWindow') == null);
+    ok('the normal schedule resumes once cleared', ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
+    ok('a fresh state carries the window key', ev("'tempStrengthWindow' in DEFAULT_STATE") === true);
+    ev("S.tempStrengthSplit=null; S.tempStrengthWindow=null; S.scheduleMode='dow';");
+  } catch (e) {
+    ok('standalone strength block window', false, e.message);
+    ev("S.logs = S.logs.filter(l=>!l._tsw); S.tempStrengthSplit=null; S.tempStrengthWindow=null; S.scheduleMode='dow'; mesoStop(); live=null;");
+  }
+
   console.log('=== SESSION WARM-UP ===');
   try {
     const EXW = 'Warmup Probe Squat';

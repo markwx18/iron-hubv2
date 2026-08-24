@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1133 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1181 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -197,6 +197,7 @@ the next background pull.** Two rules follow:
 | State | `S`, `load()`, `save()`, `LS_KEY = 'ironhub:v1'` |
 | Sync | `autoPullOnLoad()`, `applyPulled()`, `fetchGistData()`, `schedulePush()` |
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()` (`dow` \| `cycle`) |
+| Standalone strength block | `tempStrengthDayFor()`, `tempStrengthProgress()`, `tempStrengthActive()`, `setTempStrengthWindow()` |
 | Week windows | `weekStartKey()`, `lastCompletedWeekRange()`, `weeklyVolumeByGroup()` |
 | Progression | `classifyDecision()`, `buildOneLiveExercise()`, `intraAdvice()` |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
@@ -292,11 +293,31 @@ because shifting it silently changes what today resolves to.
 
 ## V4 invariants — things that will silently break if undone
 
-**The split in force is not always `S.split`.** During an approved meso strength block the
-day keys are S1/S2/S3, which do not exist in `S.split` at all. Anything resolving an exercise
-property at runtime must go through `activeSplitObj()`. `incForExercise()`, `isFormFocus()`,
-`isStrMode()`, `isMaxed()` and `agTrainedExNames()` all do. Missing one is invisible until a
-block is active — that was the `+15` increment turning into `-5`.
+**The split in force is not always `S.split`.** During an approved meso strength block —
+*or* a standalone strength window — the day keys are S1/S2/S3, which do not exist in `S.split`
+at all. Anything resolving an exercise property at runtime must go through `activeSplitObj()`.
+`incForExercise()`, `isFormFocus()`, `isStrMode()`, `isMaxed()` and `agTrainedExNames()` all
+do. Missing one is invisible until a block is active — that was the `+15` increment turning
+into `-5`.
+
+**Generating a split is not scheduling it.** There are two ways S1/S2/S3 reach the calendar and
+they resolve differently on purpose, both ahead of the dow/cycle map in `scheduledDayFor()`:
+
+- **Meso block** — `mesoRotationDayFor()`, anchored to the *calendar*. Day N of the block is
+  always slot N of `['S1','S2','S3','REST','REST']`. It is the program, so it outranks the
+  standalone window.
+- **Standalone window** — `tempStrengthDayFor()`, anchored to what he has *logged*
+  (`tempStrengthProgress()` counts block sessions before the date, one per date). A missed day
+  postpones the sequence instead of burning a slot. Its rotation therefore holds training days
+  only: a REST entry could never be logged, so progress would never advance past it and the
+  block would deadlock on REST forever.
+
+V4 removed exact-date overrides (`S.dateOverrides`) — which were the only thing that could put
+the *standalone* days on a date — but kept `generateTempStrengthDays()`. For four days the
+Settings card built S1/S2/S3 and scheduled them nowhere; the calendar announced D-days straight
+through a strength block and the only way to reach one was the manual day picker. Hence
+`S.tempStrengthWindow`, and hence the loud "these days aren't on your calendar yet" state in
+Settings. If you ever remove a scheduling mechanism, check what else was relying on it.
 
 **Card open-state must not live on the DOM node.** `rerenderActive()` regenerates the whole
 active tab every 30 s and after every sync pull, so DOM-only state is wiped on a timer with
