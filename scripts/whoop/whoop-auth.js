@@ -45,7 +45,11 @@ const server = http.createServer(async (req, res) => {
 
   const code = url.searchParams.get('code');
   const got = url.searchParams.get('state');
-  const finish = (msg) => { res.writeHead(200, { 'Content-Type': 'text/plain' }).end(msg); };
+  // Connection: close, not keep-alive: without it the socket can linger past the response,
+  // and the process below was exiting almost immediately after -- which is what tore the
+  // tab's confirmation page down mid-render and showed as "refused to connect" even though
+  // the exchange itself had already succeeded.
+  const finish = (msg) => { res.writeHead(200, { 'Content-Type': 'text/plain', Connection: 'close' }); res.end(msg); };
 
   if (got !== state) { finish('State mismatch - ignored.'); console.error('State mismatch; ignoring this callback.'); return; }
   if (!code) { finish('No code in the callback.'); console.error('No code in the callback.'); return; }
@@ -70,7 +74,9 @@ const server = http.createServer(async (req, res) => {
     }
     finish('Done. You can close this tab and go back to the terminal.');
     console.log('\nRefresh token (paste into the WHOOP_REFRESH_TOKEN repo secret):\n\n' + j.refresh_token + '\n');
-    server.close(() => process.exit(0));
+    // A short delay, not an immediate exit: res.end() only guarantees the data was handed to
+    // the OS's send buffer, not that the browser has received and rendered it yet.
+    setTimeout(() => server.close(() => process.exit(0)), 300);
   } catch (e) {
     finish('Error - check the terminal.');
     console.error(e.message);
