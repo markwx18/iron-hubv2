@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-25-v1">
+<meta name="ironhub-build" content="2026-08-25-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1080,13 +1080,6 @@
   </div>
 </div>
 
-<div class="overlay" id="bpOverlay" onclick="if(event.target===this)closeBenchPractice()">
-  <div class="exinfo-modal" style="max-width:460px">
-    <div class="exinfo-top"><span class="exinfo-title">Bench Practice</span><button onclick="closeBenchPractice()" class="exinfo-x">&times;</button></div>
-    <div id="bpBody" style="padding:16px"></div>
-  </div>
-</div>
-
 <div class="overlay" id="swapOverlay" onclick="if(event.target===this)closeSplitSwap()">
   <div class="exinfo-modal" style="max-width:480px">
     <div class="exinfo-top"><span class="exinfo-title" id="swapTitle">Replace exercise</span><button onclick="closeSplitSwap()" class="exinfo-x">&times;</button></div>
@@ -1145,10 +1138,6 @@ const DEFAULT_STATE = {
   overrideDay: null,           // {date:'YYYY-MM-DD', day:'D2'}
   homeToday: null,             // {date:'YYYY-MM-DD'} — auto-expires, same pattern as overrideDay
   homeEquipment: {dumbbells:[2,5,8,12,15,20,30,40,50], kettlebells:[18,26,35,44,53], hasBarbellRackBench:true, hasRower:true, hasBike:true},
-  benchPractice: [],           // {date, sets:[{w,r}]} — standalone home bench frequency work, deliberately kept out
-                                // of S.logs so it never touches progression, Investigation, or trend analytics.
-  benchPracticeFreq: null,     // {daysPerWeek, pct, setBy:'agent'|'manual', note, setAt} — DELTA-tunable target;
-                                // null means no target is active and the modal behaves exactly as before.
   logs: [],                    // {id, date, day, entries:[{exercise, sets:[{w,r}]}]}
   weights: [],                 // {date, lbs}
   nutrition: [],               // {date, cals, protein}
@@ -1197,12 +1186,25 @@ function load(){
      tempStrengthWindow  — the dates that block ran on. This one matters more than tidiness:
                            an older build still open on another device would keep resolving
                            the calendar through the window, and there is no longer any UI
-                           that could turn it off. */
-const REMOVED_STATE_KEYS = ['dateOverrides','tempStrengthSplit','tempStrengthWindow'];
+                           that could turn it off.
+     benchPractice       — the standalone home bench-frequency log, removed with its modal.
+     benchPracticeFreq   — DELTA’s frequency target for it, set through the retired bpFreq fix. */
+const REMOVED_STATE_KEYS = ['dateOverrides','tempStrengthSplit','tempStrengthWindow','benchPractice','benchPracticeFreq'];
 function pruneRemovedKeys(){
   let hit = false;
   if(!S) return false;
   REMOVED_STATE_KEYS.forEach(k=>{ if(k in S){ delete S[k]; hit = true; } });
+  /* A bpFreq proposal DELTA raised before the feature came out would still be sitting in the
+     queue with an Approve button that can now only fail — agValidateFix() no longer knows the
+     type, so approving it would mark the card 'failed' with nothing to explain it. Drop the
+     pending ones; already-decided ones stay as history. */
+  const props = S.agents && S.agents.proposals;
+  if(Array.isArray(props)){
+    for(let i=props.length-1; i>=0; i--){
+      const pr = props[i];
+      if(pr && pr.fix && pr.fix.type==='bpFreq' && pr.status==='pending'){ props.splice(i,1); hit = true; }
+    }
+  }
   return hit;
 }
 function save(touch){
@@ -3438,7 +3440,6 @@ function trainingContext(){
   const wts = S.weights.slice(-10).map(w=>w.date+': '+w.lbs+' lb').join(', ');
   const nut = S.nutrition.slice(-7).map(n=>n.date+': '+n.cals+' cal / '+n.protein+'g protein').join(', ');
   const bench = e1rmSeries('Barbell Bench Press'); const squat = e1rmSeries('Barbell Back Squat');
-  const bpRecent = bpSorted().slice(-5).map(e=>e.date+': '+bpSummary(e)).join('; ');
   const rdHist = [...S.readiness].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(r=>r.date+': '+r.tier+' ('+r.sleep+'h, '+r.sore+', '+r.energy+' energy'+(r.stress?', '+r.stress:'')+(r.motiv?', '+r.motiv+' motivation':'')+')').join('; ');
   let fatLine = 'not enough history yet';
   try{
@@ -3455,7 +3456,6 @@ function trainingContext(){
     whoopContext()+
     'READINESS CHECK-INS: '+(rdHist||'none yet')+'\n'+
     'FATIGUE MODEL: '+fatLine+'\n'+
-    'BENCH PRACTICE (separate from tracked sessions — informal home frequency work, manually scheduled by Mark, 2-3x/week; do NOT use this for progression, Investigation, or trend judgments, advisory commentary only): '+(bpRecent||'none logged')+'\n'+
     'NOTE: set notation may carry effort tags — \u1d49=easy, \u1d4d=grind, \u02e3=failed.\n\n'+
     mesoCoachContext()+
     'RECENT SESSIONS (newest first):\n'+(logTxt||'No sessions logged yet.');
@@ -4848,12 +4848,8 @@ function welcomeHTML(){
   const homeOn = homeActiveToday();
   const homeToggle = '<button class="btn ghost sm" style="margin-top:8px'+(homeOn?';color:var(--good);border-color:var(--good);font-weight:800':'')+'" onclick="toggleHomeToday()" title="Substitutes/skips per exercise from the split editor, rounds weights to your home dumbbells/kettlebells, and keeps Investigation from misreading a lighter session as a decline.">'+
     (homeOn?'✓ Training at home today':'Train at home today')+'</button>';
-  const bpDone = !!bpTodayEntry();
-  const bpFreqTxt = S.benchPracticeFreq ? ' ('+bpWeekCount()+'/'+S.benchPracticeFreq.daysPerWeek+' this week)' : '';
-  const bpBtn = '<button class="btn ghost sm" style="margin-top:8px" onclick="openBenchPractice()" title="Standalone home bench frequency work — a few quick sets, kept separate from your tracked split, progression, and Investigation.">'+
-    (bpDone?'✓ Bench practice logged':'Bench Practice'+bpFreqTxt)+'</button>';
   return '<div class="welcome"><div class="greet">'+greetWord()+', <span class="accent">'+esc(name)+'</span></div>'+
-    '<div class="submsg">'+sub+'</div>'+coachPlanBannerHTML()+'<div class="wcta">'+cta+'</div>'+homeToggle+bpBtn+'</div>';
+    '<div class="submsg">'+sub+'</div>'+coachPlanBannerHTML()+'<div class="wcta">'+cta+'</div>'+homeToggle+'</div>';
 }
 
 /* ===================== LIVE SESSION ENGINE ===================== */
@@ -6877,77 +6873,6 @@ function saveEditSession(id){
   // re-render progress if open
   const prog = document.getElementById('progress');
   if(prog && prog.innerHTML.length > 50) renderProgressV2();
-}
-
-/* ===================== BENCH PRACTICE ===================== */
-/* A standalone, home-only frequency tool: extra barbell bench sets logged outside
-   the tracked split entirely. It intentionally does NOT touch S.logs, the live
-   session engine, HOME mode (S.homeToday), or the progression/Investigation/trend
-   functions that read S.logs — the whole point is it's "just practice" and can't
-   skew a real working-set trend or trigger a false decline. It's manually opened
-   any day, any frequency; nothing in the schedule engine knows it exists. */
-function bpSorted(){ return [...(S.benchPractice||[])].sort((a,b)=>a.date.localeCompare(b.date)); }
-function bpLastEntry(){ const s = bpSorted(); return s.length ? s[s.length-1] : null; }
-function bpTodayEntry(){ return (S.benchPractice||[]).find(e=>e.date===todayKey()) || null; }
-function bpSummary(entry){
-  return entry.sets.map(s=>s.w+'×'+s.r).join(', ');
-}
-/* Agent-tunable suggestion: a % of the tracked Barbell Bench Press working weight, rounded to
-   the nearest 5 lb plate increment. Returns null if no bpFreq target is active (falls back to
-   the old "repeat last practice weight" seed) or if bench has no logged working weight yet. */
-function bpSuggestedWeight(){
-  const f = S.benchPracticeFreq;
-  if(!f) return null;
-  const base = invLastWorkingWeight('Barbell Bench Press');
-  if(!base) return null;
-  return Math.max(5, Math.round((base*f.pct/100)/5)*5);
-}
-function bpWeekCount(){ return (S.benchPractice||[]).filter(e=>e.date>=mesoAddDays(todayKey(),-6)).length; }
-function openBenchPractice(){
-  const today = bpTodayEntry();
-  const last = bpLastEntry();
-  const sets = today ? today.sets.slice() : [];
-  const rows = Math.max(sets.length + 3, 3);
-  let h = '<p class="small" style="margin-bottom:10px">Barbell Bench Press only — a quick, home, frequency session. Not counted toward progression, Investigation, or trend charts.</p>';
-  const f = S.benchPracticeFreq;
-  if(f){
-    h += '<p class="small" style="color:var(--amber);margin-bottom:10px">DELTA target: '+f.daysPerWeek+'x/week at '+f.pct+'% of working bench — '+bpWeekCount()+'/'+f.daysPerWeek+' logged this week.</p>';
-  }
-  if(last && last.date !== todayKey()){
-    h += '<p class="small" style="color:var(--dim);margin-bottom:10px">Last practice '+fmtDate(last.date)+': '+esc(bpSummary(last))+'</p>';
-  }
-  const sugW = bpSuggestedWeight();
-  const seedW = sets.length ? '' : (sugW!=null ? sugW : (last ? last.sets[last.sets.length-1].w : ''));
-  for(let si=0; si<rows; si++){
-    const s = sets[si];
-    h += '<div class="row" style="gap:6px;margin-bottom:5px">'+
-      '<div style="flex:none;width:42px;display:flex;align-items:center;font-family:var(--mono);font-size:10px;color:var(--dim)">S'+(si+1)+'</div>'+
-      '<div class="field" style="flex:1"><input inputmode="decimal" placeholder="lb" id="bp-w-'+si+'" value="'+esc(s?s.w:(si===0?seedW:''))+'"></div>'+
-      '<div style="flex:none;display:flex;align-items:center;font-size:12px;color:var(--dim)">&times;</div>'+
-      '<div class="field" style="flex:1"><input inputmode="numeric" placeholder="reps" id="bp-r-'+si+'" value="'+esc(s?s.r:'')+'"></div>'+
-      '</div>';
-  }
-  h += '<div style="display:flex;gap:8px;margin-top:8px">'+
-    '<button class="btn" onclick="saveBenchPractice()">Save</button>'+
-    '<button class="btn ghost" onclick="closeBenchPractice()">Cancel</button>'+
-    '</div>';
-  document.getElementById('bpBody').innerHTML = h;
-  document.getElementById('bpOverlay').classList.add('show');
-}
-function closeBenchPractice(){
-  document.getElementById('bpOverlay').classList.remove('show');
-}
-function saveBenchPractice(){
-  const sets = [];
-  for(let si=0; ; si++){
-    const wEl = document.getElementById('bp-w-'+si), rEl = document.getElementById('bp-r-'+si);
-    if(!wEl || !rEl) break;
-    const w = parseFloat(wEl.value), r = parseInt(rEl.value);
-    if(w>0 && r>0) sets.push({w, r});
-  }
-  S.benchPractice = (S.benchPractice||[]).filter(e=>e.date!==todayKey());
-  if(sets.length) S.benchPractice.push({date:todayKey(), sets});
-  save(); closeBenchPractice(); renderLive();
 }
 
 /* ============================================================
@@ -10542,7 +10467,7 @@ function agSweepExpired(){
 }
 
 /* ---- fix validation: never trust model output straight into state ---- */
-const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','schedule','cycleSchedule','bpFreq'];
+const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','schedule','cycleSchedule'];
 /* Every exercise Mark actually trains — split slots plus anything he has logged. NOT
    allKnownExerciseNames(), which folds in the whole EX_LIBRARY: an override on a lift he
    has never performed is inert by construction, so accepting one would just be a different
@@ -10640,13 +10565,6 @@ function agValidateFix(fx){
     // manual-only, via Settings.
     return {type:'cycleSchedule', payload:{pattern: out}};
   }
-  if(fx.type==='bpFreq'){
-    const daysPerWeek = Math.round(+p.daysPerWeek||0);
-    const pct = Math.round(+p.pct||0);
-    if(daysPerWeek<1 || daysPerWeek>4) return null;
-    if(pct<60 || pct>95) return null;
-    return {type:'bpFreq', payload:{daysPerWeek, pct}};
-  }
   return null;
 }
 /* Why agValidateFix() turned a fix down, in plain words rather than a code. Purely for the
@@ -10676,7 +10594,6 @@ function agFixSummary(fx){
   if(fx.type==='swapEx')   return p.from+' \u2192 '+p.to;
   if(fx.type==='schedule') return 'reschedule the training week';
   if(fx.type==='cycleSchedule') return 'rotating cycle \u2192 '+p.pattern.join(' \u2192 ');
-  if(fx.type==='bpFreq') return 'bench practice \u2192 '+p.daysPerWeek+'x/week at '+p.pct+'% of working bench';
   return fx.type;
 }
 /* ---- the only place an agent proposal is allowed to touch state ---- */
@@ -10705,10 +10622,6 @@ function agApplyFix(fx){
   }
   if(fx.type==='schedule'){ S.schedule = Object.assign({}, p.map); return true; }
   if(fx.type==='cycleSchedule'){ scheduleInit(); S.cycleSchedule.pattern = p.pattern.slice(); return true; }
-  if(fx.type==='bpFreq'){
-    S.benchPracticeFreq = {daysPerWeek:p.daysPerWeek, pct:p.pct, setBy:'agent', setAt:todayKey()};
-    return true;
-  }
   return false;
 }
 function agApprove(pid){
@@ -10770,15 +10683,10 @@ function agContext(){
     : 'none';
   const recentRejects = agState().proposals.filter(p=>p.status==='rejected').slice(-6)
     .map(p=>p.agent.toUpperCase()+': '+p.title).join('; ') || 'none';
-  const bpf = S.benchPracticeFreq;
-  const bpLast7 = (S.benchPractice||[]).filter(e=>e.date>=mesoAddDays(todayKey(),-6)).length;
-  const bpTxt = (bpf ? bpf.daysPerWeek+'x/week target at '+bpf.pct+'% of working bench (set by '+bpf.setBy+' on '+bpf.setAt+')' : 'no target set \u2014 fully manual right now')+
-    '. Completed '+bpLast7+' session'+(bpLast7===1?'':'s')+' in the last 7 days. Current Barbell Bench Press working weight: '+(invLastWorkingWeight('Barbell Bench Press')||'?')+' lb.';
   return '\nCURRENT SCHEDULE: '+sc+
     '\n\nSPLIT:\n'+splitTxt+
     blockTxt+
     deloadTxt+
-    '\n\nBENCH PRACTICE (standalone frequency work, separate from tracked bench): '+bpTxt+
     '\n\nFUEL TARGETS: '+(S.fuel&&S.fuel.calTarget||'?')+' cal / '+(S.fuel&&S.fuel.proTarget||'?')+'g protein per day.'+
     '\nAvoids: '+((S.fuel&&S.fuel.dislikes)||'\u2014')+
     painContext()+
@@ -10791,7 +10699,7 @@ function agSharedBrief(){
   return 'You are the agent team inside Iron Hub, a training app built by and for Mark (18, lean bulking, '+
     'trains 5\u20136x/week, interested in a federal law-enforcement career). Four agents:\n'+
     '- CHARLIE: app logistics, data hygiene and the weekly training SCHEDULE (which day falls on which weekday, rest-day placement).\n'+
-    '- DELTA: exercise selection, volume, rep ranges, progressive overload, and Bench Practice frequency (bpFreq).\n'+
+    '- DELTA: exercise selection, volume, rep ranges and progressive overload.\n'+
     '- ECHO: bodyweight trend, rate of gain, calorie and protein targets.\n'+
     '- ZULU: lead \u2014 oversight, coaching, and cross-domain synthesis.\n\n'+
     'Be specific and numeric. Cite the actual figures from his data rather than generalities. '+
@@ -10813,7 +10721,7 @@ const AG_ROLE_BRIEF = {
     'Progression, exercise selection and nutrition belong to DELTA and ECHO; do not comment on them.',
   delta:
     'You are DELTA. Your remit is exercise selection, volume, rep ranges, progressive overload, '+
-    'stalls, and Bench Practice frequency (bpFreq). The schedule itself is CHARLIE\u2019s and bodyweight '+
+    'stalls and progression. The schedule itself is CHARLIE\u2019s and bodyweight '+
     'or intake is ECHO\u2019s; do not comment on those.',
   echo:
     'You are ECHO. Your remit is bodyweight trend, rate of gain, and calorie and protein targets. '+
@@ -10830,8 +10738,7 @@ const AG_FIX_MENU = {
     '  {"type":"liftReset","payload":{"name":"<exact exercise name>","w":<lb, a REAL working weight not an e1RM>,"days":1..30}}'+'\n'+
     '  {"type":"deload","payload":{}}'+'\n'+
     '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}'+'\n'+
-    '  {"type":"swapEx","payload":{"from":"...","to":"..."}}'+'\n'+
-    '  {"type":"bpFreq","payload":{"daysPerWeek":1..4,"pct":60..95}}  -- Bench Practice target frequency and suggested weight as a percent of his current Barbell Bench Press working weight. Tune up if he is completing sessions and bench e1RM is trending well, down if he is missing them or grinding. Suggestion only; he still logs it himself.',
+    '  {"type":"swapEx","payload":{"from":"...","to":"..."}}',
   echo:
     '  {"type":"cal","payload":{"delta":-500..500}}'+'\n'+
     '  {"type":"pro","payload":{"to":80..300}}'
