@@ -1919,23 +1919,7 @@ setTimeout(async () => {
     ok('mesoEdToggleRepMode never touches the permanent split', ev('!S.split.S1') === true);
     ev('_mesoEditBlock = null;');
 
-    // the bug this fixes: Settings' "Strength days" card used to run its own independent
-    // generation (S.tempStrengthSplit), which silently drifted from whatever the user had
-    // actually hand-edited into the live meso block via the Ops tab (different exercises
-    // entirely). tempStrengthEditorHTML()/tempStrengthToggleRepMode() must now read and
-    // write the SAME active block split, not a disconnected copy.
     ok('mesoActiveStrBlockId finds the live block', ev('mesoActiveStrBlockId()') === bid, ev('mesoActiveStrBlockId()'));
-    const settingsHtml = ev('tempStrengthEditorHTML()');
-    ok('Settings strength-days view shows the block\'s real exercises',
-       ev('mesoActive().splits["' + bid + '"].split.S1.exercises.map(x=>typeof x==="object"?x.name:x)')
-         .every(nm => settingsHtml.indexOf(nm) >= 0));
-    const beforeMirror = ev('mesoActive().splits["' + bid + '"].split.S3.exercises[0].repMode');
-    ev('tempStrengthToggleRepMode("S3", 0)');
-    ok('tempStrengthToggleRepMode flips the live block\'s exercise, not a separate copy',
-       ev('mesoActive().splits["' + bid + '"].split.S3.exercises[0].repMode') !== beforeMirror);
-    ev('tempStrengthToggleRepMode("S3", 0)'); // restore
-    ok('tempStrengthToggleRepMode never creates a standalone S.tempStrengthSplit while a block is active',
-       ev('S.tempStrengthSplit') == null, ev('S.tempStrengthSplit'));
 
     // agents were blind to an active strength block — the nightly context never mentioned it
     // at all, so DELTA/ZULU would reason about his usual split while he's actually running
@@ -1976,8 +1960,6 @@ setTimeout(async () => {
     ok('its mutators are gone too',
        ev('typeof dateOverrideAdd') === 'undefined' && ev('typeof dateOverrideSetDay') === 'undefined' &&
        ev('typeof dateOverrideRemove') === 'undefined');
-    ok('generateTempStrengthDays survives the removal', ev('typeof generateTempStrengthDays') === 'function');
-    ok('clearTempStrengthDays survives the removal', ev('typeof clearTempStrengthDays') === 'function');
 
     // The schedule must ignore leftover data entirely -- his live state still contains
     // entries written before the removal, and they must not quietly keep applying.
@@ -2051,41 +2033,12 @@ setTimeout(async () => {
        ev('S.deload.startedAt') === '2026-08-25' && ev('S.deload.until') === '2026-08-27', JSON.stringify(ev('S.deload')));
     ev('S.deload = null;');
 
-    // --- S1/S2/S3 generation must never pollute the permanent split ---
-    ev('S.tempStrengthSplit = null;');
-    const splitBefore = ev('JSON.stringify(S.split)');
-    const gen = ev('generateTempStrengthDays()');
-    ok('generateTempStrengthDays returns exactly S1/S2/S3',
-       JSON.stringify(Object.keys(gen.split).sort()) === JSON.stringify(['S1', 'S2', 'S3']), JSON.stringify(Object.keys(gen.split)));
-    ok('every generated day has exercises', Object.keys(gen.split).every(k => gen.split[k].exercises && gen.split[k].exercises.length > 0));
-    ok('S.split is byte-for-byte unchanged by generation', ev('JSON.stringify(S.split)') === splitBefore);
-    ok('S.tempStrengthSplit is populated after generation', !!ev('S.tempStrengthSplit'));
-
-    // dayMeta/activeDayKeys are the documented single choke point for day-key resolution
-    ok('dayMeta resolves a temp strength day', !!ev('dayMeta("S1")'));
-    ok('activeDayKeys includes the temp strength days', ev('activeDayKeys().indexOf("S1")') >= 0);
-
-    // manual 3-6 (STR) vs accessory toggle on the generated S1/S2/S3, independent of the
-    // auto-classifier's compound guess (this is what catches a mis-tagged accessory like a
-    // single-arm row that matches the compound regex but isn't meant to run heavy)
-    // index 0 is the anchor compound, which the generator already marks 'str' by design
-    // (see mesoGenerateStrengthSplit's idx<2 rule) — start from that known state rather than
-    // assuming unset, so the assertion is honest about what a toggle actually does.
-    const s1ExBefore = ev('JSON.stringify(S.tempStrengthSplit.S1.exercises)');
-    const splitBeforeToggle = ev('JSON.stringify(S.split)');
-    ok('control: the anchor exercise starts tagged STR by the generator', ev('S.tempStrengthSplit.S1.exercises[0].repMode') === 'str');
-    ev("toggleTempRepMode('S1', 0)");
-    ok('toggleTempRepMode flips repMode off', ev('S.tempStrengthSplit.S1.exercises[0].repMode') == null,
-       ev('S.tempStrengthSplit.S1.exercises[0].repMode'));
-    ev("toggleTempRepMode('S1', 0)");
-    ok('toggleTempRepMode flips repMode back on', ev('S.tempStrengthSplit.S1.exercises[0].repMode') === 'str');
-    ok('toggling only touches the targeted exercise, not the rest of S1',
-       ev('JSON.stringify(S.tempStrengthSplit.S1.exercises)') === s1ExBefore);
-    ok('toggleTempRepMode never touches the permanent split', ev('JSON.stringify(S.split)') === splitBeforeToggle);
-
-    ev('clearTempStrengthDays();');
-    ok('dayMeta no longer resolves S1 once cleared', ev('dayMeta("S1")') === null);
-    ok('activeDayKeys drops S1 once cleared', ev('activeDayKeys().indexOf("S1")') === -1);
+    // With the standalone block gone, S.split is the only day map outside an approved meso
+    // block -- dayMeta()/activeDayKeys() must not resolve an S-day from anywhere else.
+    ok('dayMeta does not resolve an S-day with no block in force', ev('dayMeta("S1")') === null);
+    ok('activeDayKeys offers only the permanent split',
+       ev('activeDayKeys().join(",")') === ev('Object.keys(S.split).join(",")'),
+       ev('activeDayKeys().join(",")'));
 
     // Settings must distinguish "scheduled for a future date" from "active now" — a deload
     // window set for next week is correctly not active yet, but must not look unset/failed.
@@ -2098,125 +2051,71 @@ setTimeout(async () => {
     ok('Settings shows the window as Scheduled, not silently absent', settingsHtmlScheduled.indexOf('Scheduled:') >= 0);
     ok('Settings does not falsely claim the deload is active', settingsHtmlScheduled.indexOf('Deload active') === -1);
 
-    ev("S.dateOverrides = {}; S.tempStrengthSplit = null; S.deload = null; S.scheduleMode='dow';");
+    ev("S.dateOverrides = {}; S.deload = null; S.scheduleMode='dow';");
   } catch (e) {
-    ok('date overrides / temp strength days / deload window', false, e.message);
-    ev("S.dateOverrides = {}; S.tempStrengthSplit = null; S.deload = null; S.scheduleMode='dow'; mesoStop(); live=null;");
+    ok('date overrides / deload window', false, e.message);
+    ev("S.dateOverrides = {}; S.deload = null; S.scheduleMode='dow'; mesoStop(); live=null;");
   }
 
-  console.log('=== STANDALONE STRENGTH BLOCK: WINDOW + SEQUENCE ===');
+  console.log('=== STANDALONE STRENGTH BLOCK REMOVED ===');
   try {
-    // V4 removed exact-date overrides, which were the only thing that could put the standalone
-    // S1/S2/S3 days on a date. The generator survived the removal; nothing that scheduled its
-    // output did. So "Generate strength days" produced a split scheduledDayFor() had never
-    // heard of, reachable only by hand-picking it in the day prompt -- and the calendar kept
-    // announcing D-days straight through a strength block. This covers the window that
-    // replaces the overrides, and the sequencing rule that makes it survive a missed day.
-    ev("mesoStop(); live=null; S.tempStrengthSplit=null; S.tempStrengthWindow=null; S.overrideDay=null; S.deload=null;");
+    // The Settings card that generated a standalone S1/S2/S3 window is gone by request: it was
+    // a one-off, and a meso strength block already expresses the same thing as part of a plan.
+    // Two things have to hold. Every entry point must be gone -- and, because that card was the
+    // ONLY way to turn a window off, a window still sitting in his saved state must stop
+    // resolving rather than override the calendar with no UI left that could clear it.
+    ok('the generator is gone', ev('typeof generateTempStrengthDays') === 'undefined');
+    ok('the window mutators are gone too',
+       ev('typeof setTempStrengthWindow') === 'undefined' && ev('typeof clearTempStrengthDays') === 'undefined' &&
+       ev('typeof tempStrengthDayFor') === 'undefined' && ev('typeof tempStrengthActive') === 'undefined');
+    ok('the Settings editor and its rep-mode toggles are gone',
+       ev('typeof tempStrengthEditorHTML') === 'undefined' && ev('typeof tempStrengthToggleRepMode') === 'undefined' &&
+       ev('typeof toggleTempRepMode') === 'undefined');
+
+    ev("mesoStop(); live=null; S.overrideDay=null; S.deload=null;");
     ev("S.scheduleMode='dow'; S.schedule={0:'REST',1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6'};");
-    // Fixed dates throughout: currentDayKey() resolves against the real calendar, so anything
-    // that leans on "today" is red on whichever weekday the suite happens to run.
+    // Fixed dates: currentDayKey() resolves against the real calendar, so anything leaning on
+    // "today" is red on whichever weekday the suite happens to run.
     ok('control: the dow map owns 2026-08-21 (a Friday)', ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
 
-    ev('generateTempStrengthDays();');
-    ok('generating a split does not schedule it', ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
-    ok('generating leaves the window unset', ev('S.tempStrengthWindow') == null);
-    ok('tempStrengthDayFor is null with no window', ev("tempStrengthDayFor('2026-08-21')") === null);
+    // exactly what his phone is still carrying: a generated block AND a window covering today
+    ev("S.tempStrengthSplit = {S1:{name:'Squat Day',hex:'#F6862F',exercises:[{name:'Leftover Block Lift',inc:15,repMode:'str'}]}," +
+       "S2:{name:'Press Day',hex:'#46CDBA',exercises:[{name:'Leftover Press',inc:10}]}," +
+       "S3:{name:'Pull Day',hex:'#B79BFF',exercises:[{name:'Leftover Pull',inc:10}]}};");
+    ev("S.tempStrengthWindow = {start:'2026-08-19', end:'2026-08-26'};");
+    ok('a leftover window no longer puts S1 on the calendar',
+       ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
+    ev("S.scheduleMode='cycle'; S.cycleSchedule={anchor:'2026-08-20', pattern:['D1','D2','D3','D4','D5','D6','REST']};");
+    ok('and it does not override the rotating cycle either',
+       ev("scheduledDayFor('2026-08-21')") === 'D2', ev("scheduledDayFor('2026-08-21')"));
+    ev("S.scheduleMode='dow';");
+    ok('activeSplitObj stays on the permanent split', ev('activeSplitObj() === S.split') === true);
+    ok('dayMeta cannot resolve the orphaned S1', ev('dayMeta("S1")') === null);
+    ok('activeDayKeys does not offer it in the picker', ev('activeDayKeys().indexOf("S1")') === -1);
+    // the property-lookup path that caused the +15-turned-into-5 bug, in reverse: nothing may
+    // read a rep mode or an increment out of the orphaned block any more
+    ok('isStrMode cannot see the orphaned block STR tag', ev("isStrMode('Leftover Block Lift')") === false);
+    ok('agent context never mentions a standalone block', !/STANDALONE STRENGTH BLOCK/.test(ev('agContext()')));
 
-    // The inert state must be visible instead of silent -- that is the actual reported bug.
+    // and the orphaned keys get pruned rather than riding along in every gist push forever
+    ok('the leftover keys are present before the prune',
+       ev("'tempStrengthSplit' in S") === true && ev("'tempStrengthWindow' in S") === true);
+    ok('pruneRemovedKeys reports that it removed something', ev('pruneRemovedKeys()') === true);
+    ok('both orphaned keys are gone', ev("'tempStrengthSplit' in S") === false && ev("'tempStrengthWindow' in S") === false);
+    ok('pruning again is a no-op', ev('pruneRemovedKeys()') === false);
+    ok('a fresh state carries neither key',
+       ev("'tempStrengthSplit' in DEFAULT_STATE") === false && ev("'tempStrengthWindow' in DEFAULT_STATE") === false);
+
+    // Settings must not offer any of it, while the deload half of that card survives intact
     ev('renderSettings()');
-    const tsHtml = ev('document.getElementById("settings").innerHTML');
-    ok('Settings says the generated days are not on the calendar yet', /aren.t on your calendar yet/.test(tsHtml));
-    ok('Settings offers the window inputs', tsHtml.indexOf('tsWinStart') >= 0 && tsHtml.indexOf('tsWinEnd') >= 0);
-    ok('the suggested start is a real date', /^\d{4}-\d{2}-\d{2}$/.test(ev('tempStrengthSuggestWindow().start')), ev('tempStrengthSuggestWindow().start'));
-
-    ok('setTempStrengthWindow rejects an end before the start', ev("setTempStrengthWindow('2026-08-24','2026-08-21')") === false);
-    ok('a rejected window is not stored', ev('S.tempStrengthWindow') == null);
-
-    ok('setTempStrengthWindow accepts a valid range', ev("setTempStrengthWindow('2026-08-21','2026-08-24')") === true);
-    ok('the window puts S1 on the calendar ahead of the dow map', ev("scheduledDayFor('2026-08-21')") === 'S1', ev("scheduledDayFor('2026-08-21')"));
-    ok('the day before the window is untouched', ev("scheduledDayFor('2026-08-20')") === 'D4', ev("scheduledDayFor('2026-08-20')"));
-    ok('the day after the window is untouched', ev("scheduledDayFor('2026-08-25')") === 'D2', ev("scheduledDayFor('2026-08-25')"));
-
-    // --- the sequencing rule ---
-    // He trained S1, rested the next day, trained S2 the day after. The day after THAT is S3.
-    // A date-anchored rotation (what the meso block uses) would be on slot 4 by then and say
-    // something else entirely -- that difference is the whole reason this path exists.
-    ev("S.logs.push({date:'2026-08-21', day:'S1', _tsw:1, entries:[]});");
-    ok('slot advances once a block session is logged', ev("scheduledDayFor('2026-08-22')") === 'S2', ev("scheduledDayFor('2026-08-22')"));
-    ok('an unplanned rest day postpones rather than consumes the slot', ev("scheduledDayFor('2026-08-23')") === 'S2', ev("scheduledDayFor('2026-08-23')"));
-    ev("S.logs.push({date:'2026-08-23', day:'S2', _tsw:1, entries:[]});");
-    ok('S3 is up on day 4 of the window after one skipped day (the reported bug)',
-       ev("scheduledDayFor('2026-08-24')") === 'S3', ev("scheduledDayFor('2026-08-24')"));
-    ok('control: a date-anchored rotation would NOT have said S3 there',
-       ev('tempStrengthRotation()[3 % tempStrengthRotation().length]') !== 'S3',
-       ev('tempStrengthRotation()[3 % tempStrengthRotation().length]'));
-    ev("S.logs.push({date:'2026-08-23', day:'S2', _tsw:1, entries:[]});");
-    ok('two logs on one date cannot skip a slot', ev("scheduledDayFor('2026-08-24')") === 'S3', ev("scheduledDayFor('2026-08-24')"));
-    ok('progress is reported 1-based for display', ev("tempStrengthPos('2026-08-24').n") === 3 && ev("tempStrengthPos('2026-08-24').len") === 3);
-    ok('a date outside the window has no position', ev("tempStrengthPos('2026-08-25')") === null);
-    // logs must not leak into later sections' assertions
-    ev("S.logs = S.logs.filter(l=>!l._tsw);");
-    ok('cleanup: synthetic block logs removed', ev("S.logs.filter(l=>l._tsw).length") === 0);
-    ok('with the logs gone the window restarts at S1', ev("scheduledDayFor('2026-08-24')") === 'S1', ev("scheduledDayFor('2026-08-24')"));
-
-    // --- the split in force ---
-    // S1/S2/S3 do not exist in S.split, so every runtime property lookup has to follow the
-    // block. Missing this is what turned a +15 increment into -5 when a meso block was live.
-    ev("setTempStrengthWindow(todayKey(), mesoAddDays(todayKey(), 2));");
-    ok('activeSplitObj follows the standalone block while it is in force',
-       ev('activeSplitObj() === S.tempStrengthSplit') === true);
-    ev("S.tempStrengthSplit.S1.exercises[0] = {name:'Window Probe Lift', inc:15, repMode:'str'};");
-    ok('incForExercise reads the block increment, not incFor guesswork',
-       ev("incForExercise('Window Probe Lift')") === 15, ev("incForExercise('Window Probe Lift')"));
-    ok('isStrMode sees the block STR tag', ev("isStrMode('Window Probe Lift')") === true);
-    ok('the picker still offers a normal day mid-block', ev('activeDayKeys().indexOf("D1")') >= 0);
-    ok('the picker offers the block days too', ev('activeDayKeys().indexOf("S3")') >= 0);
-    ev("setTempStrengthWindow(mesoAddDays(todayKey(), 5), mesoAddDays(todayKey(), 7));");
-    ok('activeSplitObj drops back to S.split outside the window',
-       ev('activeSplitObj() === S.split') === true);
-    ok('incForExercise stops seeing the block once it is not in force',
-       ev("incForExercise('Window Probe Lift')") !== 15, ev("incForExercise('Window Probe Lift')"));
-
-    // --- the nightly agents have to be told which split is in force ---
-    // Without this they see only D1-D6, read today's S3 as a day that does not exist, and
-    // score the block's deliberately thinner accessory volume as a deviation.
-    ev("setTempStrengthWindow(todayKey(), mesoAddDays(todayKey(), 2));");
-    const tswCtx = ev('agContext()');
-    ok('agent context names the standalone block', /STANDALONE STRENGTH BLOCK/.test(tswCtx));
-    ok('agent context carries the block dates', tswCtx.indexOf(ev('S.tempStrengthWindow.start')) >= 0);
-    ok('agent context explains the log-driven order', /follows what he has logged/.test(tswCtx));
-    ok('agent context lists the block’s own days', /S3 \(/.test(tswCtx));
-    ev("setTempStrengthWindow(mesoAddDays(todayKey(), 5), mesoAddDays(todayKey(), 7));");
-    ok('agent context drops the block once it is not in force', !/STANDALONE STRENGTH BLOCK/.test(ev('agContext()')));
-
-    // --- ranking against the meso rotation ---
-    // An approved meso block is the program; the standalone window is an exception layered
-    // around it. Checked on the rotation's REST slot, where the two genuinely disagree: the
-    // standalone path never yields REST, so slot 0 would prove nothing.
-    ev("mesoStart({phases:[{id:'ptsw',type:'str',name:'Strength',weeks:1,repLo:3,repHi:5,rpeLo:8,rpeHi:9}],repeat:false,cycles:1}, todayKey());");
-    ev('mesoEnsureProposals();');
-    const tswBid = ev('mesoActive().weeks[0].blockId');
-    const tswStart = ev('mesoActive().weeks[0].startKey');
-    ev('mesoApproveSplit(' + JSON.stringify(tswBid) + ');');
-    ev("setTempStrengthWindow(" + JSON.stringify(tswStart) + ", mesoAddDays(" + JSON.stringify(tswStart) + ", 4));");
-    ok('control: the standalone window alone would say S1 on that date',
-       ev('tempStrengthDayFor(mesoAddDays(' + JSON.stringify(tswStart) + ',3))') === 'S1',
-       ev('tempStrengthDayFor(mesoAddDays(' + JSON.stringify(tswStart) + ',3))'));
-    ok('an approved meso rotation outranks the standalone window',
-       ev('scheduledDayFor(mesoAddDays(' + JSON.stringify(tswStart) + ',3))') === 'REST',
-       ev('scheduledDayFor(mesoAddDays(' + JSON.stringify(tswStart) + ',3))'));
-    ev('mesoStop();');
-
-    // --- teardown ---
-    ev('clearTempStrengthDays();');
-    ok('clearing the days clears the window with them', ev('S.tempStrengthWindow') == null);
-    ok('the normal schedule resumes once cleared', ev("scheduledDayFor('2026-08-21')") === 'D5', ev("scheduledDayFor('2026-08-21')"));
-    ok('a fresh state carries the window key', ev("'tempStrengthWindow' in DEFAULT_STATE") === true);
-    ev("S.tempStrengthSplit=null; S.tempStrengthWindow=null; S.scheduleMode='dow';");
+    const rmHtml = ev('document.getElementById("settings").innerHTML');
+    ok('Settings no longer offers strength-day generation', rmHtml.indexOf('Generate strength days') === -1);
+    ok('Settings no longer offers the window inputs', rmHtml.indexOf('tsWinStart') === -1 && rmHtml.indexOf('tsWinEnd') === -1);
+    ok('the custom deload control is untouched', rmHtml.indexOf('Custom deload window') >= 0);
   } catch (e) {
-    ok('standalone strength block window', false, e.message);
-    ev("S.logs = S.logs.filter(l=>!l._tsw); S.tempStrengthSplit=null; S.tempStrengthWindow=null; S.scheduleMode='dow'; mesoStop(); live=null;");
+    ok('standalone strength block removal', false, e.message);
+    ev("S.scheduleMode='dow'; mesoStop(); live=null;");
+    ev('try{ pruneRemovedKeys(); }catch(_){}');
   }
 
   console.log('=== SESSION WARM-UP ===');
@@ -3730,6 +3629,23 @@ setTimeout(async () => {
     ok('Investigation quotes the same rate as bulkRate', invRate !== null && Math.abs(invRate - br.rate) < 0.005,
        'inv=' + invRate + ' bulkRate=' + br.rate);
 
+    // The fourth surface, and the one he caught disagreeing on screen: the Progress verdict's
+    // "bulk rate" stat ran its OWN raw first-vs-last weigh-in over 28 days, so it read one
+    // number while the Bulk tab read another off the identical weigh-ins on the same day.
+    const bu = ev('bulkScore()');
+    ok('the Progress verdict is available on this fixture', bu && bu.available === true, JSON.stringify(bu));
+    ok('the Progress verdict quotes the same rate as bulkRate',
+       Math.abs(bu.rate - br.rate) < 0.005, 'progress=' + (bu && bu.rate) + ' bulkRate=' + br.rate);
+    // and the words under the number have to agree with the band, not contradict it -- at this
+    // rate the Bulk tab says "under the pocket, add calories", so the verdict cannot say
+    // "right in the lean-bulk range"
+    ok('the Progress note agrees with the band', ev('bulkScore().note').indexOf('under the') >= 0, ev('bulkScore().note'));
+    ok('an under-pocket rate does not score as a full-credit bulk', bu.score < 0.75, String(bu.score));
+    const shownRate = (br.rate >= 0 ? '+' : '') + br.rate.toFixed(2) + ' lb/wk';
+    const progHTML = ev('progressStatusCardHTML()');
+    ok('the Progress card prints the same lb/wk figure the Bulk tab does',
+       progHTML.indexOf(shownRate) >= 0, shownRate + ' | ' + progHTML.slice(0, 500));
+
     ev('S.weights = ' + savedW + ';');
     ok('bodyweight fixture cleaned up', ev('S.weights.length') === JSON.parse(savedW).length);
   } catch (e) {
@@ -4252,8 +4168,10 @@ setTimeout(async () => {
     ev("delete agState().letter;");
     ok('no letter is due midweek', withDay(3, function(){ return ev('agLetterDue()'); }) === false);
     ok('a letter IS due on Sunday', withDay(0, function(){ return ev('agLetterDue()'); }) === true);
-    ev("agSetLetter('a letter about the week');");
-    ok('the letter is stored with its week', ev('agLetter().week') === ev('weekStartKey(todayKey())'));
+    withDay(0, function(){ ev("agSetLetter('a letter about the week');"); });
+    ok('the letter is stored with its week',
+       ev('agLetter().week') === withDay(0, function(){ return ev('weekStartKey(todayKey())'); }),
+       ev('agLetter().week'));
     ok('a second letter is not due the same week',
        withDay(0, function(){ return ev('agLetterDue()'); }) === false);
 

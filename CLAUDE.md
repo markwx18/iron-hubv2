@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1181 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1150 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -197,7 +197,6 @@ the next background pull.** Two rules follow:
 | State | `S`, `load()`, `save()`, `LS_KEY = 'ironhub:v1'` |
 | Sync | `autoPullOnLoad()`, `applyPulled()`, `fetchGistData()`, `schedulePush()` |
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()` (`dow` \| `cycle`) |
-| Standalone strength block | `tempStrengthDayFor()`, `tempStrengthProgress()`, `tempStrengthActive()`, `setTempStrengthWindow()` |
 | Week windows | `weekStartKey()`, `lastCompletedWeekRange()`, `weeklyVolumeByGroup()` |
 | Progression | `classifyDecision()`, `buildOneLiveExercise()`, `intraAdvice()` |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
@@ -205,7 +204,7 @@ the next background pull.** Two rules follow:
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
 | WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopContext()`, `.github/workflows/whoop-sync.js` |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
-| Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate, used by all three tabs |
+| Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock, `liveDeltaSend()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()` |
 | Agents | `agRunAll()`, `agValidateFix()`, `agApplyFix()`, `agSendChat()`, `renderOps()` |
@@ -293,39 +292,46 @@ because shifting it silently changes what today resolves to.
 
 ## V4 invariants — things that will silently break if undone
 
-**The split in force is not always `S.split`.** During an approved meso strength block —
-*or* a standalone strength window — the day keys are S1/S2/S3, which do not exist in `S.split`
-at all. Anything resolving an exercise property at runtime must go through `activeSplitObj()`.
+**The split in force is not always `S.split`.** During an approved meso strength block the day
+keys are S1/S2/S3, which do not exist in `S.split` at all. Anything resolving an exercise
+property at runtime must go through `activeSplitObj()`.
 `incForExercise()`, `isFormFocus()`, `isStrMode()`, `isMaxed()` and `agTrainedExNames()` all
 do. Missing one is invisible until a block is active — that was the `+15` increment turning
 into `-5`.
 
-**Generating a split is not scheduling it.** There are two ways S1/S2/S3 reach the calendar and
-they resolve differently on purpose, both ahead of the dow/cycle map in `scheduledDayFor()`:
+**Generating a split is not scheduling it.** A meso block reaches the calendar through
+`mesoRotationDayFor()`, anchored to the *calendar* and consulted ahead of the dow/cycle map in
+`scheduledDayFor()`: day N of the block is always slot N of `['S1','S2','S3','REST','REST']`.
+That is now the only way S1/S2/S3 land on a date.
 
-- **Meso block** — `mesoRotationDayFor()`, anchored to the *calendar*. Day N of the block is
-  always slot N of `['S1','S2','S3','REST','REST']`. It is the program, so it outranks the
-  standalone window.
-- **Standalone window** — `tempStrengthDayFor()`, anchored to what he has *logged*
-  (`tempStrengthProgress()` counts block sessions before the date, one per date). A missed day
-  postpones the sequence instead of burning a slot. Its rotation therefore holds training days
-  only: a REST entry could never be logged, so progress would never advance past it and the
-  block would deadlock on REST forever.
+There used to be a second way — a **standalone strength window** (`S.tempStrengthSplit` +
+`S.tempStrengthWindow`), generated from a Settings card and sequenced by what he had *logged*
+rather than by the calendar. Removed 2026-08-25 at his request: it was a one-off, and a meso
+strength block already expresses the same thing as part of a plan. Two things that removal
+had to get right, and that any future removal here should copy:
 
-V4 removed exact-date overrides (`S.dateOverrides`) — which were the only thing that could put
-the *standalone* days on a date — but kept `generateTempStrengthDays()`. For four days the
-Settings card built S1/S2/S3 and scheduled them nowhere; the calendar announced D-days straight
-through a strength block and the only way to reach one was the manual day picker. Hence
-`S.tempStrengthWindow`, and hence the loud "these days aren't on your calendar yet" state in
-Settings. If you ever remove a scheduling mechanism, check what else was relying on it.
+- **The card was the only entry point _and_ the only exit.** A window already sitting in his
+  saved state would have gone on overriding the calendar with no UI left that could clear it.
+  Hence `REMOVED_STATE_KEYS` / `pruneRemovedKeys()`, which now drops `tempStrengthSplit` and
+  `tempStrengthWindow` alongside V4's `dateOverrides` on first touch.
+- **Check what else was leaning on the mechanism you are pulling.** V4 removed exact-date
+  overrides (`S.dateOverrides`) — the only thing that could put the *standalone* days on a
+  date — but kept `generateTempStrengthDays()`. For four days the Settings card built S1/S2/S3
+  and scheduled them nowhere; the calendar announced D-days straight through a strength block
+  and the only way to reach one was the manual day picker.
 
 **Card open-state must not live on the DOM node.** `rerenderActive()` regenerates the whole
 active tab every 30 s and after every sync pull, so DOM-only state is wiped on a timer with
 nothing to blame it on. `subOpen`, `sdOpen`, `sdHomeOpen` and `photoOpen` are module-scoped
 for this reason.
 
-**One bodyweight rate.** `bulkRate()` / `bulkBand()`. Three tabs used to compute this three
-ways and disagree on screen. Do not add a fourth.
+**One bodyweight rate.** `bulkRate()` / `bulkBand()`, over weekly averages. Every surface that
+quotes a lb/wk figure goes through it: the Bulk tab, the projection card, `investigateBulk()`,
+and `bulkScore()` (the Progress verdict). That last one was missed the first time and kept its
+own raw first-vs-last-weigh-in math, so Progress read +0.35 lb/wk on the same day the Bulk tab
+read 0.00 off the identical weigh-ins. The *bands* are shared too — a rate the Bulk tab calls
+"under the pocket, add calories" must not read as "right in the lean-bulk range" two tabs over.
+Do not add a fifth.
 
 **Effort reads go through `effBucket()`.** It prefers the 0–100 lever (`s.ef`) and falls back
 to the legacy tag (`s.e`), which is what lets months of already-logged sessions keep working
