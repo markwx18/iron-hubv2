@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-26-v1">
+<meta name="ironhub-build" content="2026-08-26-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3989,7 +3989,6 @@ function renderBulk(){
     '<div style="flex:none"><button class="btn sm" onclick="addWeight()">Log Weight</button></div></div>'+
     '<p class="small" style="margin-top:8px">Weigh first thing in the morning, after the bathroom, before food — same conditions every time or the trend means nothing.</p></div>';
   if(w.length) html += '<div class="card">'+lineChart(w.map(p=>({date:p.date, v:p.lbs})), '#3da25f')+'</div>';
-  html += bwProjectionCardHTML();
 
   const ct = calTarget(), pt = proTarget();
   html += '<h2>Daily Intake (from Cal AI)</h2><div class="card"><div class="row">'+
@@ -4006,6 +4005,7 @@ function renderBulk(){
   }
   html += '<div style="margin-top:11px"><button class="btn sm" onclick="addNutrition()">Log Intake</button> '+
     '<span class="small err" id="nMsg"></span></div></div>';
+  html += bwProjectionCardHTML();
   html += nutWeekCard();
   const nut = [...S.nutrition].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
   if(nut.length){
