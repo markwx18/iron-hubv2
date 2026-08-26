@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-26-v3">
+<meta name="ironhub-build" content="2026-08-26-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4006,7 +4006,6 @@ function renderBulk(){
   html += '<div style="margin-top:11px"><button class="btn sm" onclick="addNutrition()">Log Intake</button> '+
     '<span class="small err" id="nMsg"></span></div></div>';
   html += nutWeekCard();
-  html += bwProjectionCardHTML();
   const nut = [...S.nutrition].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
   if(nut.length){
     html += '<div class="card">'+nut.map(n=>'<div class="h-ex"><b>'+fmtDate(n.date)+'</b> — '+
@@ -4014,6 +4013,7 @@ function renderBulk(){
       (n.est?'~':'')+n.protein+'g protein'+nutBadge(nutTierPro(n.protein, pt))+'</div>').join('')+
       '<p class="small" style="margin-top:8px;color:var(--dim)">~ marks a tapped range — the stored number is that range’s midpoint.</p></div>';
   }
+  html += bwProjectionCardHTML();
   html += '<div class="card"><p class="small"><b>Protein note:</b> your target is '+pt+'g. Calories drive the scale; protein decides how much of it is muscle — so a day that hits calories and misses protein is not a day that went well.</p></div>';
   el.innerHTML = html;
 }
