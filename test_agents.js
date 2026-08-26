@@ -4167,6 +4167,156 @@ setTimeout(async () => {
     ev("if(window.__realRun2b) agRunDataTool = window.__realRun2b;");
   }
 
+  console.log('=== INTAKE BUCKETS: TAP A RANGE, TARGETS DRIVE THE VERDICT ===');
+  try {
+    const savedNut = ev('JSON.stringify(S.nutrition)');
+    const savedFuel = ev('JSON.stringify(S.fuel)');
+    const reset = () => ev("S.fuel = S.fuel||{}; S.fuel.calTarget = 3000; S.fuel.proTarget = 150;");
+    reset();
+
+    // --- tier classification: four tiers for calories, three for protein ---
+    ok('calories far under target read way under', ev('nutTierCal(2450)') === 'way', ev('nutTierCal(2450)'));
+    ok('calories just under target read under', ev('nutTierCal(2999)') === 'slight', ev('nutTierCal(2999)'));
+    ok('calories at target read on target', ev('nutTierCal(3000)') === 'on', ev('nutTierCal(3000)'));
+    ok('calories well over target read over', ev('nutTierCal(3400)') === 'over', ev('nutTierCal(3400)'));
+    ok('protein far under target reads way under', ev('nutTierPro(105)') === 'way', ev('nutTierPro(105)'));
+    ok('protein a little under target reads under', ev('nutTierPro(139)') === 'slight', ev('nutTierPro(139)'));
+    ok('protein at target reads on target', ev('nutTierPro(140)') === 'on', ev('nutTierPro(140)'));
+    // Protein has a floor, not a ceiling -- there is deliberately no 'over' tier to land in.
+    ok('protein far above target still reads on target', ev('nutTierPro(300)') === 'on', ev('nutTierPro(300)'));
+
+    // --- the bug this replaced: the verdict used to be a hardcoded 3000/130 that ignored
+    //     whatever the Fuel tab was actually set to. 2700 cal / 115g protein is "below target"
+    //     under the old constants and a hit under these targets. ---
+    ev("S.fuel.calTarget = 2600; S.fuel.proTarget = 120;");
+    ok('the calorie verdict follows the configured target, not a hardcoded 3000',
+       ev('nutTierCal(2700)') === 'on', ev('nutTierCal(2700)'));
+    ok('the protein verdict follows the configured target, not a hardcoded 130',
+       ev('nutTierPro(115)') === 'on', ev('nutTierPro(115)'));
+    ok('the ladder re-centres on the configured target', ev("nutBuckets('cal')[0].hi") === 2000,
+       'lowEdge=' + ev("nutBuckets('cal')[0].hi"));
+    reset();
+    ok('and re-centres back when the target moves back', ev("nutBuckets('cal')[0].hi") === 2400,
+       'lowEdge=' + ev("nutBuckets('cal')[0].hi"));
+
+    // --- ladder shape ---
+    ok('calorie ladder is seven buckets', ev("nutBuckets('cal').length") === 7, 'n=' + ev("nutBuckets('cal').length"));
+    ok('protein ladder is eight buckets', ev("nutBuckets('pro').length") === 8, 'n=' + ev("nutBuckets('pro').length"));
+    // The invariant that keeps a pill's colour and the history badge it produces in agreement:
+    // both come from the same two classifiers, so a bucket must classify as its own tier.
+    ok('every calorie bucket midpoint classifies as that bucket’s own tier',
+       ev("nutBuckets('cal').every(b=>nutTierCal(b.mid)===b.tier)"));
+    ok('every protein bucket midpoint classifies as that bucket’s own tier',
+       ev("nutBuckets('pro').every(b=>nutTierPro(b.mid)===b.tier)"));
+    ok('the target is a bucket boundary, so no bucket straddles the verdict line',
+       ev("nutBuckets('cal').some(b=>b.lo===calTarget()) && nutBuckets('pro').some(b=>b.lo===proTarget())"));
+    ok('the calorie ladder offers all four tiers',
+       ev("[...new Set(nutBuckets('cal').map(b=>b.tier))].sort().join(',')") === 'on,over,slight,way',
+       ev("[...new Set(nutBuckets('cal').map(b=>b.tier))].sort().join(',')"));
+    ok('the protein ladder never offers an over bucket',
+       ev("nutBuckets('pro').every(b=>b.tier!=='over')"));
+
+    // --- round trip: tap a range, log it, read the badge back ---
+    ev("S.nutrition = []; nutExact = false; nutPick = {cal:null, pro:null};");
+    ev('renderBulk')();
+    ok('the ladder renders as tappable pills',
+       ev("document.querySelectorAll('#bulk .nut-pill').length") === 15,
+       'n=' + ev("document.querySelectorAll('#bulk .nut-pill').length"));
+    ev(`(function(){
+          var g = document.querySelectorAll('#bulk .nut-grp');
+          g[0].querySelectorAll('.nut-pill')[4].click();
+          g[1].querySelectorAll('.nut-pill')[6].click();
+        })()`);
+    ok('tapping a range records its midpoint',
+       ev('nutPick.cal') === 3100 && ev('nutPick.pro') === 155,
+       'cal=' + ev('nutPick.cal') + ' pro=' + ev('nutPick.pro'));
+    ok('only the tapped pill is marked selected in its row',
+       ev("document.querySelectorAll('#bulk .nut-grp')[0].querySelectorAll('.nut-pill.sel').length") === 1);
+    ev("document.getElementById('nDate').value = '2026-02-10';");
+    ev('addNutrition')();
+    const tapped = ev("S.nutrition.find(n=>n.date==='2026-02-10')");
+    ok('logging stores the tapped midpoints', tapped && tapped.cals === 3100 && tapped.protein === 155,
+       JSON.stringify(tapped));
+    ok('a tapped entry is marked an estimate', tapped && tapped.est === true, JSON.stringify(tapped));
+    ok('the selection clears after logging so the next day starts blank',
+       ev('nutPick.cal') === null && ev('nutPick.pro') === null);
+
+    // --- the exact-entry escape hatch ---
+    ev("nutExact = true;");
+    ev('renderBulk')();
+    ok('exact mode swaps the ladder for number inputs',
+       !!w.document.getElementById('nCals') && !w.document.querySelector('#bulk .nut-pill'));
+    ev("document.getElementById('nDate').value='2026-02-11';" +
+       "document.getElementById('nCals').value='3123'; document.getElementById('nProt').value='161';");
+    ev('addNutrition')();
+    const exact = ev("S.nutrition.find(n=>n.date==='2026-02-11')");
+    ok('exact entry stores the typed number', exact && exact.cals === 3123 && exact.protein === 161,
+       JSON.stringify(exact));
+    ok('an exactly-typed entry is not marked an estimate', exact && exact.est === undefined,
+       JSON.stringify(exact));
+    ev("nutExact = false;");
+
+    // --- history badges are per-macro and follow the configured target ---
+    ev("S.fuel.calTarget = 2600; S.fuel.proTarget = 120;");
+    ev("S.nutrition = [{date:'2026-01-05', cals:2700, protein:125}];");
+    ev('renderBulk')();
+    let out = w.document.getElementById('bulk').innerHTML;
+    ok('a day clearing the configured target shows a hit badge on both macros',
+       (out.match(/nut-badge[^>]*var\(--good\)[^>]*>✓/g) || []).length === 2,
+       'hits=' + (out.match(/nut-badge[^>]*var\(--good\)[^>]*>✓/g) || []).length);
+    ok('the old single below-target label is gone', out.indexOf('below target') === -1);
+    // Same day, stricter targets: what read as a hit now reads as a miss on both macros.
+    reset();
+    ev('renderBulk')();
+    out = w.document.getElementById('bulk').innerHTML;
+    ok('tightening the target flips the same day from a hit to under on both macros',
+       (out.match(/nut-badge[^>]*var\(--warn\)[^>]*>under/g) || []).length === 2,
+       'under=' + (out.match(/nut-badge[^>]*var\(--warn\)[^>]*>under/g) || []).length);
+    // The two macros must be able to disagree. The old AND-ed check-mark collapsed a day that
+    // hit calories and badly missed protein into the same "below target" as missing both.
+    ev("S.nutrition = [{date:'2026-01-06', cals:3100, protein:105}];");
+    ev('renderBulk')();
+    out = w.document.getElementById('bulk').innerHTML;
+    ok('calories can read on target while protein reads way under, on the same row',
+       /nut-badge[^>]*var\(--good\)[^>]*>✓/.test(out) &&
+       /nut-badge[^>]*var\(--bad\)[^>]*>way under/.test(out));
+
+    // --- weekly rollup ---
+    const dk = n => ev("dateKeyOf(new Date(Date.now()-" + n + "*86400000))");
+    ev("S.nutrition = [" +
+       "{date:'" + dk(1) + "', cals:3100, protein:155}," +   // both on      -> hit
+       "{date:'" + dk(2) + "', cals:3100, protein:120}," +   // protein under -> miss
+       "{date:'" + dk(3) + "', cals:2500, protein:155}," +   // cal way under -> miss
+       "{date:'" + dk(4) + "', cals:3500, protein:160}]");   // cal over, pro on -> hit
+    const wk = ev('nutWeekCard')();
+    ok('the weekly card counts only days clearing both macros', wk.indexOf('>2/4<') >= 0, wk.slice(0, 300));
+    ok('the weekly card averages the week rather than quoting the last day',
+       wk.indexOf('>148g<') >= 0, wk.slice(0, 300));
+    ok('a day over the calorie target still counts as fed',
+       ev("nutTierCal(3500)") === 'over' && wk.indexOf('>2/4<') >= 0);
+    ev("S.nutrition = [{date:'" + dk(1) + "', cals:2400, protein:100}]");
+    ok('a way-under week says so plainly rather than just failing a check',
+       /surplus itself missing/.test(ev('nutWeekCard')()), ev('nutWeekCard')().slice(0, 300));
+    ok('the weekly card stays silent with nothing logged',
+       ev("(function(){var s=S.nutrition; S.nutrition=[]; var r=nutWeekCard(); S.nutrition=s; return r;})()") === '');
+
+    // --- the agent context quotes the configured target, not the old constants ---
+    ev("S.fuel.calTarget = 2800; S.fuel.proTarget = 165;");
+    const tctx = ev('trainingContext')();
+    ok('trainingContext quotes the configured nutrition target',
+       tctx.indexOf('2800+ cal, 165g+ protein') >= 0,
+       (tctx.match(/Nutrition target:[^\n]*/) || [''])[0]);
+    ev("S.nutrition = [{date:'2026-03-01', cals:3100, protein:150, est:true}]");
+    ok('an estimated entry reaches the model marked as an estimate',
+       /~3100 cal \/ ~150g protein/.test(ev('trainingContext')()),
+       (ev('trainingContext')().match(/NUTRITION LOG:[^\n]*/) || [''])[0]);
+
+    // Fixtures must not leak into later sections.
+    ev("S.nutrition = " + savedNut + "; S.fuel = " + savedFuel + "; nutExact = false; nutPick = {cal:null, pro:null};");
+  } catch (e) {
+    ok('intake buckets section', false, e.message);
+  }
+
   console.log('=== RENDER ===');
   try {
     ev('renderOps')();

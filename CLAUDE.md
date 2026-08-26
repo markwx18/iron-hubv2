@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1150 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1167 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -332,6 +332,21 @@ own raw first-vs-last-weigh-in math, so Progress read +0.35 lb/wk on the same da
 read 0.00 off the identical weigh-ins. The *bands* are shared too — a rate the Bulk tab calls
 "under the pocket, add calories" must not read as "right in the lean-bulk range" two tabs over.
 Do not add a fifth.
+
+**One intake target, and nothing hardcodes it.** `calTarget()` / `proTarget()` read
+`S.fuel.calTarget` / `proTarget`; `nutTierCal()` / `nutTierPro()` are the only classifiers, and
+`nutBuckets()` derives the tap ladder from them so the ranges re-centre when the target moves.
+Every intake verdict goes through those two functions — the pill colours, the per-day history
+badges, and the weekly rollup — which is what keeps a pill that says "on target" from producing
+a row that says otherwise. The Bulk tab used to test a literal `cals>=3000 && protein>=130` and
+ignore the Fuel tab entirely, so changing the target changed nothing the check-mark did. If you
+add a surface that judges intake, call the classifiers; do not re-derive thresholds.
+
+Calories carry four tiers (way under / under / on target / over), protein three — protein has a
+floor, not a ceiling, so at-or-above target is one bucket and there is deliberately no `over`.
+`est:true` on a `S.nutrition` row means the number is a bucket midpoint, not a measured total;
+it is absent on everything logged before the ladder, and `trainingContext()` marks it `~` so the
+model does not read an estimate as precise.
 
 **Effort reads go through `effBucket()`.** It prefers the 0–100 lever (`s.ef`) and falls back
 to the legacy tag (`s.e`), which is what lets months of already-logged sessions keep working

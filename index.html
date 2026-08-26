@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-25-v2">
+<meta name="ironhub-build" content="2026-08-26-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -154,6 +154,30 @@
   .fh{padding:11px 13px; background:var(--panel2); cursor:pointer; display:flex; align-items:center; gap:9px;}
   .fm{padding:11px 13px; display:none;} .hist.open .fm{display:block;}
   .h-ex{font-size:13px; padding:3px 0;}
+
+  /* Intake buckets. Tapping a range beats typing four digits mid-day, and the colour is the
+     verdict -- he sees "way under" before he commits, not after. Tier colours are the same
+     --bad/--warn/--good/--violet ladder the rest of the app uses for severity. */
+  .nut-grp{margin-top:11px;}
+  .nut-gl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); display:block; margin-bottom:6px;}
+  /* Grid, not flex-wrap: columns are sized once for the whole ladder, so every pill is the same
+     width and a last-row orphan stays pill-sized instead of stretching across the card. */
+  .nut-pills{display:grid; grid-template-columns:repeat(auto-fit,minmax(74px,1fr)); gap:6px;}
+  .nut-pill{font-family:var(--mono); font-size:11.5px; padding:8px 4px; border:1px solid var(--line2); border-radius:3px; background:var(--base); color:var(--muted); white-space:nowrap;}
+  .nut-pill .nt{display:block; font-size:8.5px; letter-spacing:.1em; text-transform:uppercase; margin-top:2px; opacity:.75;}
+  .nut-pill.t-way{border-color:var(--red-dim); color:var(--bad);}
+  .nut-pill.t-slight{border-color:var(--amber-dim); color:var(--warn);}
+  .nut-pill.t-on{border-color:var(--cyan-dim); color:var(--good);}
+  .nut-pill.t-over{border-color:var(--violet-dim); color:var(--violet);}
+  .nut-pill.sel{font-weight:700; color:var(--base);}
+  .nut-pill.sel.t-way{background:var(--bad); border-color:var(--bad); color:#fff;}
+  .nut-pill.sel.t-slight{background:var(--warn); border-color:var(--warn);}
+  .nut-pill.sel.t-on{background:var(--good); border-color:var(--good);}
+  .nut-pill.sel.t-over{background:var(--violet); border-color:var(--violet);}
+  .nut-badge{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; padding:1px 6px; border-radius:2px; margin-left:4px; white-space:nowrap;}
+  /* The row is inline text that wraps; a flex container would fight the wrap. Keeping the badge
+     unbreakable is enough to stop "way under" splitting across two lines mid-badge. */
+  .h-ex .nut-badge{display:inline-block;}
 
   .fuel-slot{margin:10px 0; border:1px solid var(--line); border-radius:4px; overflow:hidden;}
   .fuel-shead{padding:11px 13px; background:var(--panel2); display:flex; align-items:center; gap:9px;}
@@ -1140,7 +1164,8 @@ const DEFAULT_STATE = {
   homeEquipment: {dumbbells:[2,5,8,12,15,20,30,40,50], kettlebells:[18,26,35,44,53], hasBarbellRackBench:true, hasRower:true, hasBike:true},
   logs: [],                    // {id, date, day, entries:[{exercise, sets:[{w,r}]}]}
   weights: [],                 // {date, lbs}
-  nutrition: [],               // {date, cals, protein}
+  nutrition: [],               // {date, cals, protein, est?} — est:true means cals/protein are the
+                               // midpoint of a tapped range, not a measured total. See nutBuckets().
   chat: [],                    // {role, content}
   road: [],                    // {id, exercise, target, start, deadline}
   readiness: [],               // {date, sleep, sore, energy, tier}
@@ -3438,7 +3463,9 @@ function trainingContext(){
   const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+(l.dayName||dayName(l.day))+(l.home?' · HOME':'')+']\n'+
     l.entries.map(e=>'  '+e.exercise+': '+summ(e.sets)).join('\n')).join('\n');
   const wts = S.weights.slice(-10).map(w=>w.date+': '+w.lbs+' lb').join(', ');
-  const nut = S.nutrition.slice(-7).map(n=>n.date+': '+n.cals+' cal / '+n.protein+'g protein').join(', ');
+  // '~' marks a value logged by tapping a range rather than typed exactly, so the model does
+  // not read a bucket midpoint as a precise measurement.
+  const nut = S.nutrition.slice(-7).map(n=>n.date+': '+(n.est?'~':'')+n.cals+' cal / '+(n.est?'~':'')+n.protein+'g protein').join(', ');
   const bench = e1rmSeries('Barbell Bench Press'); const squat = e1rmSeries('Barbell Back Squat');
   const rdHist = [...S.readiness].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(r=>r.date+': '+r.tier+' ('+r.sleep+'h, '+r.sore+', '+r.energy+' energy'+(r.stress?', '+r.stress:'')+(r.motiv?', '+r.motiv+' motivation':'')+')').join('; ');
   let fatLine = 'not enough history yet';
@@ -3448,7 +3475,7 @@ function trainingContext(){
   }catch(e){}
   return 'ATHLETE PROFILE:\n- Mark, 18, male, ~150 lb, goal: gain size and strength (bulk), accelerate bench/squat PRs.\n'+
     '- Trains 5-6x/week at a commercial gym, 6-day split (D1 Chest+Tri, D2 Back+Bi, D3 Legs squat-focus, D4 Shoulders+Arms, D5 Chest+Back accessory, D6 Legs press-focus).\n'+
-    '- Nutrition target: 3000+ cal, 130g+ protein daily, tracked via Cal AI.\n\n'+
+    '- Nutrition target: '+calTarget()+'+ cal, '+proTarget()+'g+ protein daily, tracked via Cal AI.\n\n'+
     'CURRENT e1RM: Bench '+(bench.length?Math.round(bench[bench.length-1].v)+' lb':'no data')+
     ', Squat '+(squat.length?Math.round(squat[squat.length-1].v)+' lb':'no data')+'\n'+
     'BODYWEIGHT LOG: '+(wts||'none yet')+'\n'+
@@ -3831,6 +3858,108 @@ function disconnectSync(){
 }
 
 /* ================= BULK TAB ================= */
+
+/* ---- Intake buckets ----
+   Logging intake is a tap on a range, not four typed digits. Every range boundary and every
+   verdict is derived from S.fuel.calTarget / proTarget, so moving the target in the Fuel tab
+   moves the whole ladder with it. That was a real bug before: the per-day check-mark tested a
+   hardcoded `cals>=3000 && protein>=130` and silently ignored the configured target, so the
+   Bulk tab could call a day "below target" that the Fuel tab considered a hit.
+
+   Calories carry four tiers (way under / under / on target / over) — overshooting a lean bulk
+   is a genuine signal, not just an absence of a problem. Protein carries three: it has a floor,
+   not a ceiling, so at-or-above target collapses into one good bucket. */
+const NUT_TIER = {
+  way:    {label:'way under', col:'var(--bad)'},
+  slight: {label:'under',     col:'var(--warn)'},
+  on:     {label:'on target', col:'var(--good)'},
+  over:   {label:'over',      col:'var(--violet)'}
+};
+function calTarget(){ return (S.fuel && +S.fuel.calTarget) || 3000; }
+function proTarget(){ return (S.fuel && +S.fuel.proTarget) || 150; }
+/* Classify any intake value, not just a bucket midpoint — the history badges run arbitrary
+   already-logged numbers through the same two functions the ladder colours itself with, so a
+   pill and the row it produces can never disagree about what tier a day was. */
+function nutTierCal(v, t){
+  t = t || calTarget(); v = +v || 0;
+  if(v < t-400) return 'way';
+  if(v < t)     return 'slight';
+  if(v < t+400) return 'on';
+  return 'over';
+}
+function nutTierPro(v, t){
+  t = t || proTarget(); v = +v || 0;
+  if(v < t-40) return 'way';
+  if(v < t-10) return 'slight';
+  return 'on';
+}
+/* The tap ladder: an open bucket at each end, fixed-width buckets in between, aligned so the
+   target itself is a bucket boundary. Stored value is the midpoint — a representative number
+   that keeps get_nutrition averages, the weekly rollup and ECHO working unchanged. */
+function nutBuckets(kind){
+  const isCal = kind === 'cal';
+  const t    = isCal ? calTarget() : proTarget();
+  const step = isCal ? 200 : 10;
+  const offs = isCal ? [-600,-400,-200,0,200] : [-50,-40,-30,-20,-10,0];
+  const tier = isCal ? nutTierCal : nutTierPro;
+  const lowEdge = t + offs[0];
+  const hiEdge  = t + offs[offs.length-1] + step;
+  const out = [{lo:null, hi:lowEdge, mid:lowEdge-step/2, label:'<'+lowEdge}];
+  offs.forEach(o=>{ const lo = t+o; out.push({lo:lo, hi:lo+step, mid:lo+step/2, label:lo+'–'+(lo+step)}); });
+  out.push({lo:hiEdge, hi:null, mid:hiEdge+step/2, label:hiEdge+'+'});
+  out.forEach(b=>{ b.tier = tier(b.mid, t); });
+  return out;
+}
+/* Module-scoped, not on the DOM node: rerenderActive() regenerates the whole active tab every
+   30s and after every sync pull, so a half-made selection parked on the markup would vanish on
+   a timer with nothing to blame it on. */
+let nutPick = {cal:null, pro:null};
+let nutExact = false;
+function pickNut(btn, kind, mid){
+  nutPick[kind] = mid;
+  btn.parentElement.querySelectorAll('.nut-pill').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+}
+function toggleNutExact(){ nutExact = !nutExact; renderBulk(); }
+function nutLadderHTML(kind, label){
+  const sel = nutPick[kind];
+  return '<div class="nut-grp"><span class="nut-gl">'+label+'</span><div class="nut-pills">'+
+    nutBuckets(kind).map(b=>'<button class="nut-pill t-'+b.tier+(sel===b.mid?' sel':'')+'" '+
+      'onclick="pickNut(this,\''+kind+'\','+b.mid+')">'+b.label+
+      '<span class="nt">'+NUT_TIER[b.tier].label+'</span></button>').join('')+'</div></div>';
+}
+function nutBadge(tier){
+  const t = NUT_TIER[tier];
+  return '<span class="nut-badge" style="color:'+t.col+';border:1px solid '+t.col+'">'+
+    (tier==='on' ? '✓' : t.label)+'</span>';
+}
+/* Last 7 days against target. The per-day rows answer "did I hit it today"; this answers the
+   question that actually drives the scale, which is what the week averaged. */
+function nutWeekCard(){
+  const ct = calTarget(), pt = proTarget();
+  const cutKey = dateKeyOf(new Date(Date.now()-6*86400000));
+  const days = S.nutrition.filter(n=>n.date >= cutKey);
+  if(!days.length) return '';
+  const avgC = Math.round(days.reduce((s,n)=>s+(+n.cals||0),0)/days.length);
+  const avgP = Math.round(days.reduce((s,n)=>s+(+n.protein||0),0)/days.length);
+  const tc = nutTierCal(avgC, ct), tp = nutTierPro(avgP, pt);
+  const hits = days.filter(n=>['on','over'].indexOf(nutTierCal(n.cals, ct))>=0 && nutTierPro(n.protein, pt)==='on').length;
+  const cls = t => t==='on' ? 'good' : t==='slight' ? 'warn' : t==='way' ? 'bad' : '';
+  let note = tc==='way'   ? 'Averaging <b>'+(ct-avgC)+' cal/day under</b> target — that is the surplus itself missing, not a rounding error. The scale will not move on this.'
+           : tc==='slight'? 'Averaging '+(ct-avgC)+' cal/day under target. Small daily, but that is '+((ct-avgC)*7).toLocaleString()+' cal over the week.'
+           : tc==='over'  ? 'Averaging '+(avgC-ct)+' cal/day over target — fine short-term, but watch the lb/wk rate above for fat gain.'
+           : 'Calories are landing where they should.';
+  note += ' ' + (tp==='way'   ? 'Protein is <b>'+(pt-avgP)+'g/day under</b> target — that is the part deciding how much of the gain is muscle.'
+               : tp==='slight'? 'Protein is '+(pt-avgP)+'g/day under target.'
+               : 'Protein is where it needs to be.');
+  return '<h2>Intake — Last 7 Days</h2><div class="stats">'+
+    '<div class="stat"><div class="v '+cls(tc)+'">'+avgC.toLocaleString()+'</div><div class="l">avg cal / day</div></div>'+
+    '<div class="stat"><div class="v '+cls(tp)+'">'+avgP+'g</div><div class="l">avg protein / day</div></div>'+
+    '<div class="stat"><div class="v">'+hits+'/'+days.length+'</div><div class="l">days on target</div></div>'+
+    '<div class="stat"><div class="v">'+days.length+'/7</div><div class="l">days logged</div></div></div>'+
+    '<div class="card"><p class="small">'+note+'</p></div>';
+}
+
 function renderBulk(){
   const el = $('#bulk');
   const w = [...S.weights].sort((a,b)=>a.date.localeCompare(b.date));
@@ -3862,17 +3991,30 @@ function renderBulk(){
   if(w.length) html += '<div class="card">'+lineChart(w.map(p=>({date:p.date, v:p.lbs})), '#3da25f')+'</div>';
   html += bwProjectionCardHTML();
 
+  const ct = calTarget(), pt = proTarget();
   html += '<h2>Daily Intake (from Cal AI)</h2><div class="card"><div class="row">'+
     '<div><label>Date</label><input type="date" id="nDate" value="'+todayKey()+'"></div>'+
-    '<div><label>Calories</label><input inputmode="numeric" id="nCals" placeholder="3100"></div>'+
-    '<div><label>Protein (g)</label><input inputmode="numeric" id="nProt" placeholder="140"></div>'+
-    '<div style="flex:none"><button class="btn sm" onclick="addNutrition()">Log Intake</button></div></div></div>';
+    '<div style="flex:none;align-self:flex-end"><button class="btn sm ghost" onclick="toggleNutExact()">'+
+      (nutExact?'Use ranges':'Enter exact')+'</button></div></div>';
+  if(nutExact){
+    html += '<div class="row" style="margin-top:10px">'+
+      '<div><label>Calories</label><input inputmode="numeric" id="nCals" placeholder="'+ct+'"></div>'+
+      '<div><label>Protein (g)</label><input inputmode="numeric" id="nProt" placeholder="'+pt+'"></div></div>';
+  } else {
+    html += nutLadderHTML('cal','Calories — target '+ct.toLocaleString())+
+            nutLadderHTML('pro','Protein (g) — target '+pt);
+  }
+  html += '<div style="margin-top:11px"><button class="btn sm" onclick="addNutrition()">Log Intake</button> '+
+    '<span class="small err" id="nMsg"></span></div></div>';
+  html += nutWeekCard();
   const nut = [...S.nutrition].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
   if(nut.length){
-    html += '<div class="card">'+nut.map(n=>'<div class="h-ex"><b>'+fmtDate(n.date)+'</b> — '+n.cals+' cal · '+n.protein+'g protein '+
-      (n.cals>=3000&&n.protein>=130?'<span class="ok">✓</span>':'<span class="fl">below target</span>')+'</div>').join('')+'</div>';
+    html += '<div class="card">'+nut.map(n=>'<div class="h-ex"><b>'+fmtDate(n.date)+'</b> — '+
+      (n.est?'~':'')+n.cals+' cal'+nutBadge(nutTierCal(n.cals, ct))+' · '+
+      (n.est?'~':'')+n.protein+'g protein'+nutBadge(nutTierPro(n.protein, pt))+'</div>').join('')+
+      '<p class="small" style="margin-top:8px;color:var(--dim)">~ marks a tapped range — the stored number is that range’s midpoint.</p></div>';
   }
-  html += '<div class="card"><p class="small"><b>Protein note:</b> at 150 lb on a bulk, 130g is the floor — pushing toward 150–160g/day gives you margin. Calories drive the scale; protein decides how much of it is muscle.</p></div>';
+  html += '<div class="card"><p class="small"><b>Protein note:</b> your target is '+pt+'g. Calories drive the scale; protein decides how much of it is muscle — so a day that hits calories and misses protein is not a day that went well.</p></div>';
   el.innerHTML = html;
 }
 function addWeight(){
@@ -3882,10 +4024,22 @@ function addWeight(){
   S.weights.push({date:d, lbs:v}); save(); renderBulk();
 }
 function addNutrition(){
-  const d=$('#nDate').value, c=parseInt($('#nCals').value), p=parseInt($('#nProt').value);
-  if(!d||!c) return;
+  const d = $('#nDate').value;
+  const c = nutExact ? parseInt($('#nCals').value) : nutPick.cal;
+  const p = nutExact ? parseInt($('#nProt').value) : nutPick.pro;
+  const msg = $('#nMsg');
+  if(!d || !c){
+    if(msg) msg.textContent = nutExact ? 'Enter calories.' : 'Tap a calorie range.';
+    return;
+  }
   S.nutrition = S.nutrition.filter(n=>n.date!==d);
-  S.nutrition.push({date:d, cals:c, protein:p||0}); save(); renderBulk();
+  const rec = {date:d, cals:c, protein:p||0};
+  // Flags the stored number as a range midpoint rather than a measured total. Absent on every
+  // row logged before the ladder existed, which is correct — those were typed exactly.
+  if(!nutExact) rec.est = true;
+  S.nutrition.push(rec);
+  nutPick = {cal:null, pro:null};
+  save(); renderBulk();
 }
 
 
