@@ -4036,12 +4036,100 @@ setTimeout(async () => {
     // the Daily Brief falls out of ZULU's call rather than costing a fifth one
     ok('the daily brief is stored', ev('!!agBrief()'));
     ok('the daily brief has content', ev('agBrief().text').indexOf('Nothing waiting') >= 0, ev('agBrief().text'));
-    ok('the daily brief is dated', ev('agBrief().date') === ev('todayKey()'));
+    // Dated the MORNING IT IS FOR, not the evening it was composed. agBriefDateFor() reads the
+    // wall hour, so this has to drive a pinned clock -- run unpinned, the same assertion would
+    // pass before 5 PM and fail after it, which is exactly the day-dependence this suite bans.
+    const withHour = function(h, fn){
+      ev("Date.prototype.__realGetHours = Date.prototype.getHours;");
+      ev("Date.prototype.getHours = function(){ return " + h + "; };");
+      const out = fn();
+      ev("Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours;");
+      return out;
+    };
+    const tomorrowKey = ev("dateKeyOf(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()+1))");
+    ok('tomorrow is not today', tomorrowKey !== ev('todayKey()'), tomorrowKey);
+
+    withHour(21, function(){ ev("agSetBrief('written by the 9 PM cycle');"); });
+    ok('a brief written by the 9 PM cycle is dated tomorrow morning',
+       ev('agBrief().date') === tomorrowKey, ev('agBrief().date') + ' vs ' + tomorrowKey);
+    ok('so it is NOT on tonight\u2019s dashboard', ev('agBriefToday()') === null);
+    ok('and does not fire tonight\u2019s notification',
+       ev("notifItems().some(function(i){ return i.title === 'Daily brief'; })") === false);
+    ev('renderHome()');
+    ok('the dashboard does not paint tomorrow\u2019s brief tonight',
+       w.document.getElementById('home').innerHTML.indexOf('written by the 9 PM cycle') < 0);
+
+    withHour(9, function(){ ev("agSetBrief('run manually over breakfast');"); });
+    ok('a brief written during the day is dated today', ev('agBrief().date') === ev('todayKey()'));
+    ok('and that one is live', ev('agBriefToday() && agBriefToday().text') === 'run manually over breakfast');
+    ok('and it does fire the notification',
+       ev("notifItems().some(function(i){ return i.title === 'Daily brief'; })") === true);
+    ev('renderHome()');
+    ok('and the dashboard paints it',
+       w.document.getElementById('home').innerHTML.indexOf('run manually over breakfast') >= 0);
+
+    // ZULU has to be told WHICH morning it is writing for and what is scheduled then. It used to
+    // get only today's day key, so a 9 PM brief opened "Today is D2" about a finished session.
+    ok('ZULU is told which morning the brief is for', /THE BRIEF IS FOR /.test(zSys));
+    ok('ZULU is told what is scheduled that morning', /THE BRIEF IS FOR [^\n]*WHICH IS: /.test(zSys));
+    ok('ZULU still knows which day it is reviewing', /THE DAY BEING REVIEWED/.test(zSys));
 
     ev("callClaudeWithData = window.__realData3;");
   } catch (e) {
     ok('subagent split section', false, e.message);
     ev("if(window.__realData3) callClaudeWithData = window.__realData3;");
+  }
+
+  console.log('=== A TRUNCATED REPLY IS A FAILURE, NOT A SUMMARY ===');
+  try {
+    ev("agState().lastRun=''; agState().proposals=[]; agState().log=[]; agState().status={}; delete agState().brief;");
+    ev("S.settings.apiKey = 'sk-test';");
+    ev("window.__realData4 = callClaudeWithData;");
+    // Exactly what the API returns when adaptive thinking eats max_tokens: stop_reason
+    // 'max_tokens' and a body cut off mid-string. parseLooseJSON's last-resort repair closes the
+    // unterminated string and the open brace, so WITHOUT the stop_reason check this parses into
+    // a perfectly valid object holding half a word -- which is how an 11-character CHARLIE
+    // summary, "Today (Wed,", reached the activity log looking like a real report.
+    ev(`callClaudeWithData = async function(msgs, sys){
+          if(/You are CHARLIE/.test(sys)) return {text:'{"summary":"Today (Wed,', toolsUsed:0, stop:'max_tokens'};
+          const who = /You are DELTA/.test(sys) ? 'delta' : /You are ECHO/.test(sys) ? 'echo' : 'zulu';
+          return {text: JSON.stringify({summary: who+' reported in full', brief:'All good.', proposals:[]}),
+                  toolsUsed:0, stop:'end_turn'};
+        };`);
+    await ev('agRunAll(true)');
+
+    // the fragment itself must reach nothing
+    ok('a truncated fragment never becomes a summary',
+       ev("!(agState().status.charlie && agState().status.charlie.summary)"),
+       JSON.stringify(ev('agState().status.charlie || null')));
+    ok('and never reaches the log as CHARLIE\u2019s words',
+       ev("agState().log.every(function(e){ return e.text.indexOf('Today (Wed,') < 0; })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.agent+':'+e.text.slice(0,40);})")));
+    // silence and failure must not look the same -- he has to be able to tell that CHARLIE
+    // did not report, rather than reading a half sentence as a finding
+    ok('CHARLIE is reported as having failed',
+       ev("agState().log.some(function(e){ return e.agent==='charlie' && /could not complete/.test(e.text); })"));
+    ok('and the reason names the token ceiling',
+       ev("agState().log.some(function(e){ return e.agent==='charlie' && /token ceiling/.test(e.text); })"));
+    // one agent running out of room must still not cost the other three their night
+    ok('the agents that did finish still reported',
+       ev("!!(agState().status.delta && agState().status.echo && agState().status.zulu)"),
+       JSON.stringify(ev('Object.keys(agState().status)')));
+
+    // the salvage path is still there for the thing it was actually written for
+    ok('a merely sloppy reply is still repaired',
+       ev(`(function(){ const o = parseLooseJSON('{"summary":"fine",}'); return !!o && o.summary === 'fine'; })()`));
+    // and headroom, so the squeeze is rare rather than merely caught
+    ok('the nightly ceiling leaves room for a long think', ev('AG_MAXTOK') >= 16000, String(ev('AG_MAXTOK')));
+    ok('stop_reason actually survives the tool loop',
+       /stop:\s*(data|finalData)\.stop_reason/.test(ev('String(callClaudeWithData)')) ||
+       /stop_reason/.test(ev('String(window.__realData4)')));
+
+    ev("callClaudeWithData = window.__realData4;");
+    ev("agState().log=[]; agState().status={}; delete agState().brief;");
+  } catch (e) {
+    ok('truncated reply section', false, e.message);
+    ev("if(window.__realData4) callClaudeWithData = window.__realData4;");
   }
 
   console.log('=== DAILY BRIEF + WEEKLY LETTER ===');

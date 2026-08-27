@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-26-v4">
+<meta name="ironhub-build" content="2026-08-26-v5">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -8431,6 +8431,16 @@ async function aiRequest(messages, system, tools, maxTokens, opts){
   return await res.json();
 }
 
+/* A reply that ran out of room is NOT a reply. Sonnet 5 thinks adaptively and thinking bills
+   against max_tokens, so a long think can leave only a few tokens for the answer -- CHARLIE
+   once returned an 11-character summary ("Today (Wed,") that reached the activity log looking
+   like a real report. parseLooseJSON's last-resort repair is what made it look real: it closes
+   an unterminated string and any open braces, so a response cut off mid-sentence parses into a
+   perfectly valid object holding half a word. That salvage is right for a trailing comma and
+   wrong for a truncation, and it cannot tell the two apart from the text alone -- stop_reason
+   can, so the check belongs here, before the parse. */
+function aiTruncated(r){ return !!(r && r.stop === 'max_tokens'); }
+
 /* Agentic loop over the READ-ONLY data tools. Bounded by AI_TOOL_ROUNDS, because without a
    ceiling a model that keeps asking questions is an open-ended bill and this runs unattended.
    onTool, if given, is called with each tool name so callers can log what was consulted. */
@@ -8449,7 +8459,7 @@ async function callClaudeWithData(messages, system, maxTokens, opts, onTool){
     const data = await aiRequest(msgs, system, tools, maxTokens, opts);
     const content = data.content || [];
     const calls = content.filter(function(b){ return b.type==='tool_use'; });
-    if(!calls.length) return {text:textOf(content), toolsUsed:used};
+    if(!calls.length) return {text:textOf(content), toolsUsed:used, stop:data.stop_reason||''};
     // Echo the assistant turn back verbatim, thinking blocks included -- they are part of
     // that turn and dropping them corrupts the conversation on the next request.
     msgs.push({role:'assistant', content:content});
@@ -8464,7 +8474,7 @@ async function callClaudeWithData(messages, system, maxTokens, opts, onTool){
   // Ceiling hit. Ask once more with no tools at all, so it has to answer from what it has
   // rather than returning nothing after all that work.
   const finalData = await aiRequest(msgs, system, null, maxTokens, opts);
-  return {text:textOf(finalData.content), toolsUsed:used};
+  return {text:textOf(finalData.content), toolsUsed:used, stop:finalData.stop_reason||''};
 }
 
 /* ---- proposal lifecycle: proposals live on the chat message they came with ---- */
@@ -10567,6 +10577,13 @@ const AGENTS = {
 };
 const AG_ORDER = ['charlie','delta','echo'];
 const AG_PROP_TTL = 7; // days before a pending proposal auto-expires
+/* Ceiling for the nightly calls. It is a CEILING, not a budget -- only tokens actually
+   generated are billed, so raising it does not raise the bill; spend is steered by
+   output_config.effort, which stays 'high' here. It was 8000, and at effort 'high' a long think
+   ate nearly all of it and left CHARLIE about eleven tokens to answer in. Headroom is the cheap
+   half of that fix; aiTruncated() is the half that guarantees a squeeze can never again reach
+   the activity log dressed as a report. */
+const AG_MAXTOK = 16000;
 
 function agState(){
   if(!S.agents) S.agents = {};
@@ -10946,11 +10963,14 @@ function agToolNote(){
 async function agRunSpecialist(id, manual){
   const sys = agSharedBrief()+'\n'+AG_ROLE_BRIEF[id]+'\n'+agToolNote()+agJsonSpec(id)+agBaseContext(id);
   const consulted = [];
-  const {text} = await callClaudeWithData(
+  const res = await callClaudeWithData(
     [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
-    sys, 8000, {effort:'high'},
+    sys, AG_MAXTOK, {effort:'high'},
     function(n){ if(consulted.indexOf(n)<0) consulted.push(n); });
-  const parsed = parseLooseJSON(text);
+  // Throw rather than salvage: agRunAll already has a failure path that says plainly this agent
+  // did not report, which is the truth. Half a sentence stored as a summary is not.
+  if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
+  const parsed = parseLooseJSON(res.text);
   if(parsed) parsed._consulted = consulted;
   return parsed;
 }
@@ -11112,6 +11132,12 @@ async function agRunAll(manual){
 async function agRunLead(digest, manual){
   const pend = agPending().map(function(p){ return AGENTS[p.agent].name+': '+p.title; });
   const sc = currentDayKey();
+  // The synthesis is about the day that just happened; the brief is read the NEXT morning, and
+  // that is usually a different training day. The brief used to be handed today's schedule and
+  // so opened "Today is D2, Back + Biceps" about a session he had finished hours earlier.
+  const bDate = agBriefDateFor();
+  const bSame = bDate === todayKey();
+  const bd = bSame ? sc : scheduledDayFor(bDate);
   const sys = agSharedBrief()+
     '\n'+'You are ZULU, the lead. CHARLIE, DELTA and ECHO have each just reported. Your job is '+
     'synthesis and conflict-spotting, not repeating them. You rarely propose a fix of your own; '+
@@ -11120,22 +11146,29 @@ async function agRunLead(digest, manual){
     '\n'+'Respond with ONLY valid JSON:'+'\n'+
     '{"summary":"...","brief":"...","proposals":[]}'+'\n'+
     'summary = 1-3 sentences to Mark: what the three reports add up to, and any conflict between them.'+'\n'+
-    'brief = his morning Daily Brief. 2-4 short sentences covering how recovered he is, what is '+
-    'scheduled today, and anything actually waiting on him. Write it as something worth reading at '+
-    '7am, not a status dump. If nothing needs him, say that plainly and confidently rather than '+
-    'inventing something to fill the space \u2014 "nothing needs you today, train as planned" is a '+
-    'complete and good brief.'+'\n'+
+    'brief = the Daily Brief he opens on the morning of '+fmtDate(bDate)+
+      (bSame?'':', which has not arrived yet')+'. 2-4 short sentences covering how recovered he '+
+    'is, what is scheduled that morning, and anything actually waiting on him. Write it as '+
+    'something worth reading at 7am, not a status dump. Write it in the present tense of THAT '+
+    'morning \u2014 "today is '+(bd==='REST'?'a rest day':bd)+'" \u2014 and never about the session '+
+    'reviewed below, which is already behind him by then. If nothing needs him, say that plainly '+
+    'and confidently rather than inventing something to fill the space \u2014 "nothing needs you '+
+    'today, train as planned" is a complete and good brief.'+'\n'+
     'proposals = almost always []. Same rules and the same fix shapes as the specialists; anything '+
     'else is discarded.'+'\n'+
     'Do not describe anything as already changed. Nothing takes effect until he taps Approve.'+'\n'+
     '\n'+'WHAT THE SPECIALISTS REPORTED TONIGHT:'+'\n'+digest.join('\n')+
     '\n'+'\n'+'ALREADY WAITING ON HIS APPROVAL: '+(pend.length?pend.join('; '):'nothing')+
-    '\n'+'TODAY IS: '+(sc==='REST'?'a REST day':sc+' \u2014 '+dayName(sc))+
+    '\n'+'TODAY, THE DAY BEING REVIEWED, IS: '+(sc==='REST'?'a REST day':sc+' \u2014 '+dayName(sc))+
+    '\n'+'THE BRIEF IS FOR '+fmtDate(bDate)+', WHICH IS: '+
+      (bd==='REST'?'a REST day':bd+' \u2014 '+dayName(bd))+
     '\n'+agBaseContext('zulu');
-  const {text} = await callClaudeWithData(
-    [{role:'user', content:'Write tonight\u2019s synthesis and tomorrow\u2019s brief.'}],
-    sys, 8000, {effort:'high'});
-  return parseLooseJSON(text);
+  const res = await callClaudeWithData(
+    [{role:'user', content:'Write '+(bSame?'today\u2019s':'tonight\u2019s')+' synthesis and the '+
+      'brief for '+fmtDate(bDate)+'.'}],
+    sys, AG_MAXTOK, {effort:'high'});
+  if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
+  return parseLooseJSON(res.text);
 }
 
 /* ---- the weekly coach letter ----
@@ -11163,9 +11196,10 @@ async function agWriteLetter(digest){
     agToolNote()+
     '\n'+'WHAT THE SPECIALISTS FOUND TONIGHT:'+'\n'+(digest||[]).join('\n')+
     '\n'+'\n'+agBaseContext('zulu');
-  const {text} = await callClaudeWithData(
-    [{role:'user', content:'Write this week\u2019s letter.'}], sys, 8000, {effort:'high'});
-  return (text||'').trim();
+  const res = await callClaudeWithData(
+    [{role:'user', content:'Write this week\u2019s letter.'}], sys, AG_MAXTOK, {effort:'high'});
+  if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
+  return (res.text||'').trim();
 }
 function agSetLetter(text){
   const a = agState();
@@ -11176,16 +11210,44 @@ function agLetter(){
   return (a.letter && a.letter.text) ? a.letter : null;
 }
 
+/* At or past this hour a cycle is writing for TOMORROW morning rather than for the day it is
+   sitting in. The nightly run fires at 21:00, so anything this late is that cycle; a manual
+   "Run cycle now" over breakfast is still about the day he is standing in. */
+const AG_BRIEF_EVENING_HOUR = 17;
+
+/* Which morning a brief is FOR -- which is not the day it was written on. ZULU has always been
+   asked for "his morning Daily Brief" and the cycle has always run at 9 PM, but agSetBrief
+   stamped it todayKey(), the evening it was composed. Every surface gates on
+   date === todayKey(), so a brief written to be read at 7am appeared only for the three hours
+   he was least likely to open the app and expired at midnight -- exactly when it became the
+   thing it was written to be. Stamping the morning it belongs to is the whole fix. Nothing else
+   moves; in particular the cycle stays at 9 PM, where it can still see the day's training. */
+function agBriefDateFor(){
+  const now = new Date();
+  if(now.getHours() < AG_BRIEF_EVENING_HOUR) return todayKey();
+  // Roll the calendar date, not the clock: +86400000 ms lands an hour either side across a DST
+  // boundary, and a date boundary is the one thing this must never get wrong.
+  return dateKeyOf(new Date(now.getFullYear(), now.getMonth(), now.getDate()+1));
+}
+
 /* The Daily Brief is one string with a date on it, kept where every other agent output is
    kept so it syncs and expires the same way. Deliberately NOT a separate API call: it falls
-   out of a synthesis ZULU is already doing, so it costs nothing extra. */
+   out of a synthesis ZULU is already doing, so it costs nothing extra -- which is also why
+   morning delivery is a date stamp here rather than a second call at 7am. */
 function agSetBrief(text){
   const a = agState();
-  a.brief = {text:text, at:new Date().toISOString(), date:todayKey()};
+  a.brief = {text:text, at:new Date().toISOString(), date:agBriefDateFor()};
 }
 function agBrief(){
   const a = agState();
   return (a.brief && a.brief.text) ? a.brief : null;
+}
+/* The brief for the morning he is actually standing in. Tonight's brief is deliberately
+   invisible on tonight's dashboard: it describes tomorrow, so showing it now would be wrong.
+   agBrief() stays unfiltered for the Ops tab, which is a record of what ZULU wrote. */
+function agBriefToday(){
+  const b = agBrief();
+  return (b && b.date === todayKey()) ? b : null;
 }
 
 
@@ -11293,7 +11355,7 @@ function renderHome(){
   if(!el) return;
   const rd = readinessNow();
   const t = dashToday();
-  const brief = agBrief();
+  const brief = agBriefToday();
   const pend = agPending();
   const flags = invActiveFlags();
   const streak = streakDays();
@@ -11361,8 +11423,8 @@ function renderHome(){
 let notifOpen = false;
 function notifItems(){
   const out = [];
-  const brief = agBrief();
-  if(brief && brief.date === todayKey()){
+  const brief = agBriefToday();
+  if(brief){
     out.push({tone:AGENTS.zulu.col, title:'Daily brief', body:brief.text, when:brief.at});
   }
   const letter = agLetter();
@@ -11555,7 +11617,11 @@ function renderOps(){
     '<button class="btn sm" onclick="agRunAll(true)"'+(_agRunning?' disabled':'')+'>'+(_agRunning?'Running\u2026':'Run cycle now')+'</button>'+
     '<label class="ag-when" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
       '<input type="checkbox" '+(a.autoRun?'checked':'')+' onchange="agState().autoRun=this.checked;save();renderOps()" style="width:auto"> auto-run daily at 9 PM</label>'+
-    '<span class="ag-when" style="margin-left:auto">last cycle: '+(a.lastRunAt?agTimeAgo(a.lastRunAt):'never')+'</span></div>';
+    '<span class="ag-when" style="margin-left:auto">last cycle: '+(a.lastRunAt?agTimeAgo(a.lastRunAt):'never')+'</span>'+
+    // Says out loud where the brief actually lands, because the cycle time and the delivery
+    // time are deliberately not the same thing any more.
+    '<span class="ag-when" style="flex-basis:100%;color:var(--dim)">Tonight\u2019s cycle writes '+
+      'tomorrow morning\u2019s brief.</span></div>';
 
   // hierarchy: ZULU on top, the three reports nested beneath
   h += '<div class="ag-lead">'+agCardHTML('zulu')+
@@ -11566,7 +11632,8 @@ function renderOps(){
     h += '<div class="card" style="border-left:3px solid '+AGENTS.zulu.col+'">'+
       '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'+
       '<b style="color:'+AGENTS.zulu.col+';letter-spacing:.04em">DAILY BRIEF</b>'+
-      '<span class="ag-when">'+esc(fmtDate(_brief.date))+'</span></div>'+
+      '<span class="ag-when">'+esc(fmtDate(_brief.date))+
+        (_brief.date>todayKey()?' \u00b7 lands tomorrow morning':'')+'</span></div>'+
       '<p class="small" style="margin-top:6px">'+esc(_brief.text)+'</p></div>';
   }
   if(_letter){
