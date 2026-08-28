@@ -4623,8 +4623,12 @@ setTimeout(async () => {
 
   /* A snapshot can reach the gist long after it was built: a push fired as the tab is
      backgrounded gets frozen with the request in flight and lands when the app is next
-     foregrounded. Observed in the wild at 240 and 808 minutes of delivery lag, and the 808m
-     one reverted the cloud copy to the previous night, destroying that morning's weigh-in.
+     foregrounded. Observed in the wild once, at 808 minutes of delivery lag: it reverted the
+     cloud copy to the previous night and destroyed that morning's weigh-in.
+     Measuring this needs care. The WHOOP relay PATCHes whoop_data.json into the same gist, and
+     that creates a revision in which ironhub_data.json is carried forward untouched -- so its
+     exportedAt looks hours stale and the revision reads as a big lag that never happened. Lag
+     alone is not the signal; only a revision where ironhub_data.json actually CHANGED counts.
      Whole-snapshot last-writer-wins cannot distinguish "the writer has not heard about this
      record yet" from "some device deleted this record"; the per-record write stamp can. */
   console.log('=== SYNC: A STALE SNAPSHOT CANNOT DELETE NEWER RECORDS ===');
