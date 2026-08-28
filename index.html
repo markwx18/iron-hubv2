@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-27-v1">
+<meta name="ironhub-build" content="2026-08-27-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10641,6 +10641,18 @@ function agState(){
   // v4c and earlier persisted the in-flight flag onto S. Nothing reads it now, but it would
   // otherwise ride along in every gist push forever \u2014 drop it on first touch.
   if('_running' in a) delete a._running;
+  // A brief the OLD path wrote at 9 PM for the next morning is still sitting in saved state,
+  // and it is the exact thing this release exists to stop shipping: its recovery figure is the
+  // previous day's. Worse, it would BLOCK the fix \u2014 agMaybeMorningBrief() skips a morning whose
+  // brief already exists, so a leftover tomorrow-dated one means the first real morning call
+  // never fires and he reads the stale one instead. A brief is now always written ON the morning
+  // it is for, so its at-date equals its date; anything else came from the removed path. Same
+  // shape as pruneRemovedKeys(): when you take a mechanism out, clear what it left behind,
+  // because nothing else ever will.
+  // dateKeyOf(new Date(at)), NOT at.slice(0,10): `at` is a UTC ISO string and `date` is a LOCAL
+  // calendar day, so a raw string compare calls every brief written after ~8 PM local stale
+  // (UTC has already rolled over) and deletes good ones. The suite caught exactly that.
+  if(a.brief && a.brief.at && dateKeyOf(new Date(a.brief.at)) !== a.brief.date) delete a.brief;
   return a;
 }
 function agUid(){ return 'ag'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }

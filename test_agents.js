@@ -4224,6 +4224,38 @@ setTimeout(async () => {
     ok('the manual button writes one at any hour', ev('window.__briefCalls') === 1);
     ok('and it lands as today’s brief', ev('agBriefToday() && agBriefToday().text') === 'written on demand');
 
+    // --- the leftover the OLD path left in his saved state ---
+    // A 9 PM brief stamped for the next morning would otherwise sit there and BLOCK the first
+    // real morning call, so he would read the stale one instead of the fix.
+    // The shape that actually bites: written at 9 PM YESTERDAY, stamped for this morning. On
+    // the morning it names it satisfies `b.date === todayKey()`, so unpruned it makes
+    // agMaybeMorningBrief() decide the morning is already handled and he reads the stale one.
+    const leftover = "S.agents.brief = {text:'written at 9pm last night', date: todayKey(), " +
+      "at: (function(){ var d=new Date(); d.setDate(d.getDate()-1); d.setHours(21,0,0,0); return d.toISOString(); })()};";
+    ev("delete agState().brief;"); ev(leftover);
+    ok('a night-written brief is dropped on first touch', ev('agState().brief') === undefined,
+       JSON.stringify(ev('S.agents.brief || null')));
+    ev(whoopToday); ev('window.__briefCalls = 0;');
+    ev(`callClaudeWithData = async function(){
+          window.__briefCalls++;
+          return {text: JSON.stringify({brief:'fresh morning brief'}), toolsUsed:0, stop:'end_turn'};
+        };`);
+    // put the leftover straight back on S, WITHOUT going through agState(), so the prune is the
+    // only thing that can clear it -- deleting it here first would let this pass unpruned
+    ev(leftover);
+    await withHour(7, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('so the morning call is no longer blocked by it', ev('window.__briefCalls') === 1,
+       'calls=' + ev('window.__briefCalls'));
+    ok('and what he reads is the fresh one', ev('agBriefToday() && agBriefToday().text') === 'fresh morning brief');
+
+    // ...and a brief written THIS morning survives, including when UTC has already rolled over
+    // to the next day. `at` is UTC and `date` is local, so a raw string compare would bin it.
+    ev("delete agState().brief;");
+    ev("(function(){ var d=new Date(); d.setHours(23,30,0,0); S.agents.brief = {text:'late but todays', date: todayKey(), at: d.toISOString()}; })();");
+    ok('a same-local-day brief survives even when UTC has rolled over',
+       ev('agState().brief && agState().brief.text') === 'late but todays',
+       JSON.stringify(ev('S.agents.brief || null')));
+
     ev("callClaudeWithData = window.__realDataB;");
     ev("delete agState().brief; agState().log = []; agState().status = {}; delete S.whoop;");
   } catch (e) {
