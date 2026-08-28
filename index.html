@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-26-v5">
+<meta name="ironhub-build" content="2026-08-27-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1630,15 +1630,31 @@ function consecutiveEasyStreak(hist){
 function isBodyweight(name){ return /hanging leg raise/i.test(name); }
 
 /* last sessions containing an exercise, newest first */
-function historyFor(ex){
+function historyFor(ex, opts){
   const out = [];
+  const withDeload = !!(opts && opts.includeDeload);
   const sorted = [...S.logs].sort((a,b)=> b.date.localeCompare(a.date));
   for(const lg of sorted){
-    if(lg.deload) continue; // deload sessions never drive the next target
+    // A deload session must never drive the next target, so the recommendation engine keeps
+    // skipping them -- that is what this guard was written for. The AGENTS are a different
+    // caller with the opposite need: get_lift_history promises "every logged session", and
+    // dropping the deload silently made his two most recent training days (8/25, 8/26)
+    // invisible to DELTA while the prompt summary above still listed them. An analysis tool
+    // that hides the newest data is worse than no tool. Opt-in, so nothing else moves.
+    if(lg.deload && !withDeload) continue;
     const e = lg.entries.find(en => en.exercise===ex);
-    if(e && e.sets.length) out.push({date:lg.date, sets:e.sets});
+    if(e && e.sets.length) out.push({date:lg.date, sets:e.sets, deload:!!lg.deload});
   }
   return out;
+}
+/* Dates on which this lift was trained inside a deload. e1rmSeries() leaves those points out
+   on purpose -- a deliberately light week is not a regression, and every chart in the app
+   agrees on that -- but leaving them out SILENTLY hands a model an unexplained gap in the
+   dates. Naming them lets the omission be stated instead of guessed at. */
+function deloadDatesFor(ex){
+  return [...S.logs].filter(function(l){
+    return l.deload && (l.entries||[]).some(function(e){ return e.exercise===ex && e.sets && e.sets.length; });
+  }).map(function(l){ return l.date; }).sort();
 }
 
 /* ================= RECOMMENDATION ENGINE ================= */
@@ -3460,7 +3476,10 @@ function whoopContext(){
 }
 function trainingContext(){
   const recent = [...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
-  const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+(l.dayName||dayName(l.day))+(l.home?' · HOME':'')+']\n'+
+  // ' DELOAD' matters as much as ' HOME': agContext() announces only a deload that is active
+  // RIGHT NOW, so a finished one showed up here as an unexplained drop in load with nothing to
+  // attribute it to, which reads as a stall.
+  const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+(l.dayName||dayName(l.day))+(l.home?' · HOME':'')+(l.deload?' · DELOAD (intentionally light)':'')+']\n'+
     l.entries.map(e=>'  '+e.exercise+': '+summ(e.sets)).join('\n')).join('\n');
   const wts = S.weights.slice(-10).map(w=>w.date+': '+w.lbs+' lb').join(', ');
   // '~' marks a value logged by tapping a range rather than typed exactly, so the model does
@@ -3473,8 +3492,22 @@ function trainingContext(){
     const _fi = fatigueIndex();
     if(_fi.ok) fatLine = _fi.status+' (ratio '+_fi.ratio+' \u2014 this week '+_fi.acute+' effort-weighted sets vs a 4-week norm of '+_fi.chronic+'/wk)';
   }catch(e){}
-  return 'ATHLETE PROFILE:\n- Mark, 18, male, ~150 lb, goal: gain size and strength (bulk), accelerate bench/squat PRs.\n'+
-    '- Trains 5-6x/week at a commercial gym, 6-day split (D1 Chest+Tri, D2 Back+Bi, D3 Legs squat-focus, D4 Shoulders+Arms, D5 Chest+Back accessory, D6 Legs press-focus).\n'+
+  // Derived, never written down. A literal describing state that changes is a bug with a
+  // delay on it: this one said ~150 lb against a 158.8 lb weigh-in, and had D3 and D6 swapped.
+  const _lw = (S.weights||[])[S.weights.length-1];
+  const _bw = _lw ? _lw.lbs+' lb (weighed '+_lw.date+')' : 'not logged yet';
+  const _splitTxt = Object.keys(S.split).sort().map(function(k){ return k+' '+S.split[k].name; }).join(', ');
+  let _freq = '5-6x/week';
+  try{
+    if(scheduleMode()==='cycle'){
+      const _pat = cyclePattern();
+      _freq = _pat.filter(function(d){ return d!=='REST'; }).length+' training days in every '+_pat.length;
+    } else {
+      _freq = Object.keys(S.schedule||{}).filter(function(d){ return S.schedule[d] && S.schedule[d]!=='REST'; }).length+'x/week';
+    }
+  }catch(e){}
+  return 'ATHLETE PROFILE:\n- Mark, 18, male, '+_bw+', goal: gain size and strength (bulk), accelerate bench/squat PRs.\n'+
+    '- Trains '+_freq+' at a commercial gym. Split: '+_splitTxt+'.\n'+
     '- Nutrition target: '+calTarget()+'+ cal, '+proTarget()+'g+ protein daily, tracked via Cal AI.\n\n'+
     'CURRENT e1RM: Bench '+(bench.length?Math.round(bench[bench.length-1].v)+' lb':'no data')+
     ', Squat '+(squat.length?Math.round(squat[squat.length-1].v)+' lb':'no data')+'\n'+
@@ -8348,7 +8381,7 @@ function agRunDataTool(name, inp){
       const names = agTrainedExNames();
       if(!names.length) return 'No exercises on record yet.';
       return names.map(function(nm){
-        const h = historyFor(nm);
+        const h = historyFor(nm, {includeDeload:true});
         return nm+' - '+h.length+' session'+(h.length===1?'':'s')+(h.length?', last '+h[0].date:', never logged');
       }).join('\n');
     }
@@ -8356,10 +8389,10 @@ function agRunDataTool(name, inp){
       const nm = agResolveExName(p.exercise);
       if(!nm) return 'No exercise called "'+String(p.exercise).slice(0,60)+'". Call list_lifts for the real names.';
       const lim = Math.max(1, Math.min(200, Math.round(+p.limit||30)));
-      const h = historyFor(nm).slice(0, lim);
+      const h = historyFor(nm, {includeDeload:true}).slice(0, lim);
       if(!h.length) return nm+' has never been logged.';
       return nm+' - '+h.length+' session'+(h.length===1?'':'s')+' (newest first):'+'\n'+
-        h.map(function(sn){ return '  '+sn.date+': '+summ(sn.sets); }).join('\n')+
+        h.map(function(sn){ return '  '+sn.date+': '+summ(sn.sets)+(sn.deload?'  [DELOAD week \u2014 intentionally light, not a regression]':''); }).join('\n')+
         '\n'+'Effort tags: e=easy, g=grind, x=failed.';
     }
     if(name==='get_e1rm_series'){
@@ -8367,8 +8400,13 @@ function agRunDataTool(name, inp){
       if(!nm) return 'No exercise called "'+String(p.exercise).slice(0,60)+'". Call list_lifts for the real names.';
       const pts = e1rmSeries(nm);
       if(!pts.length) return nm+' has no sessions to estimate from.';
+      // State the exclusion rather than leaving a hole in the dates for the model to explain
+      // to itself. get_lift_history DOES show these sessions.
+      const dl = deloadDatesFor(nm);
       return nm+' estimated 1RM (oldest first):'+'\n'+
-        pts.map(function(x){ return '  '+x.date+': '+Math.round(x.v)+' lb'; }).join('\n');
+        pts.map(function(x){ return '  '+x.date+': '+Math.round(x.v)+' lb'; }).join('\n')+
+        (dl.length ? '\n'+'Excluded from this trend (deload weeks, deliberately light): '+dl.join(', ')+
+                     '. Use get_lift_history to see what was actually lifted on those days.' : '');
     }
     if(name==='get_bodyweight'){
       const n = Math.max(2, Math.min(104, Math.round(+p.weeks||16)));
@@ -8389,8 +8427,13 @@ function agRunDataTool(name, inp){
       if(!rows.length) return 'No intake logged in that window.';
       const avgC = Math.round(rows.reduce(function(t,x){ return t+(+x.cals||0); },0)/rows.length);
       const avgP = Math.round(rows.reduce(function(t,x){ return t+(+x.protein||0); },0)/rows.length);
-      return rows.length+' days logged. Average '+avgC+' cal / '+avgP+'g protein.'+'\n'+
-        rows.map(function(x){ return '  '+x.date+': '+x.cals+' cal, '+x.protein+'g'; }).join('\n');
+      // '~' marks a bucket midpoint logged by tapping a range rather than a measured total.
+      // trainingContext() has always marked these; this tool did not, and the agents are told
+      // to prefer the tool over the summary -- so an estimate arrived here looking exact.
+      const anyEst = rows.some(function(x){ return !!x.est; });
+      return rows.length+' days logged. Average '+avgC+' cal / '+avgP+'g protein.'+
+        (anyEst?' ("~" = logged by tapping a range, so it is a bucket midpoint, not a measured total.)':'')+'\n'+
+        rows.map(function(x){ const m = x.est?'~':''; return '  '+x.date+': '+m+x.cals+' cal, '+m+x.protein+'g'; }).join('\n');
     }
     if(name==='get_readiness'){
       const n = Math.max(1, Math.min(365, Math.round(+p.days||30)));
@@ -10612,7 +10655,10 @@ function opsSignature(){
     (S.chat||[]).length,
     AG_ORDER.map(k=>(a.chats[k]||[]).length).join(','),
     Object.keys(a.status||{}).map(k=>k+':'+(a.status[k].at||'')).join(','),
-    _agRunning?1:0, a.autoRun?1:0,
+    // _agBriefRunning belongs here for the same reason _agRunning does: the card shows a
+    // "Writing..." state, and without it in the fingerprint the live-refresh loop has no
+    // reason to repaint when the brief starts or finishes.
+    _agRunning?1:0, _agBriefRunning?1:0, a.autoRun?1:0,
     agActiveChat, agChatTall?1:0, agThinkingFor||'', agChatErr?agChatErr.id:'',
     Math.floor(Date.now()/300000)
   ].join('|');
@@ -11090,7 +11136,6 @@ async function agRunAll(manual){
         const zres = await agRunLead(digest, manual);
         const a3 = agState();
         raised += agIngest(a3, 'zulu', zres);
-        if(zres && zres.brief) agSetBrief(String(zres.brief));
       }catch(e){
         agLog('zulu','I could not write tonight\u2019s synthesis ('+e.message+'), but the specialists above still reported.');
       }
@@ -11132,40 +11177,26 @@ async function agRunAll(manual){
 async function agRunLead(digest, manual){
   const pend = agPending().map(function(p){ return AGENTS[p.agent].name+': '+p.title; });
   const sc = currentDayKey();
-  // The synthesis is about the day that just happened; the brief is read the NEXT morning, and
-  // that is usually a different training day. The brief used to be handed today's schedule and
-  // so opened "Today is D2, Back + Biceps" about a session he had finished hours earlier.
-  const bDate = agBriefDateFor();
-  const bSame = bDate === todayKey();
-  const bd = bSame ? sc : scheduledDayFor(bDate);
   const sys = agSharedBrief()+
     '\n'+'You are ZULU, the lead. CHARLIE, DELTA and ECHO have each just reported. Your job is '+
     'synthesis and conflict-spotting, not repeating them. You rarely propose a fix of your own; '+
     'when two of them pull in opposite directions, say so and give him the options.'+
     agToolNote()+
     '\n'+'Respond with ONLY valid JSON:'+'\n'+
-    '{"summary":"...","brief":"...","proposals":[]}'+'\n'+
+    '{"summary":"...","proposals":[]}'+'\n'+
     'summary = 1-3 sentences to Mark: what the three reports add up to, and any conflict between them.'+'\n'+
-    'brief = the Daily Brief he opens on the morning of '+fmtDate(bDate)+
-      (bSame?'':', which has not arrived yet')+'. 2-4 short sentences covering how recovered he '+
-    'is, what is scheduled that morning, and anything actually waiting on him. Write it as '+
-    'something worth reading at 7am, not a status dump. Write it in the present tense of THAT '+
-    'morning \u2014 "today is '+(bd==='REST'?'a rest day':bd)+'" \u2014 and never about the session '+
-    'reviewed below, which is already behind him by then. If nothing needs him, say that plainly '+
-    'and confidently rather than inventing something to fill the space \u2014 "nothing needs you '+
-    'today, train as planned" is a complete and good brief.'+'\n'+
+    'Do NOT write a daily brief here. That is written separately the next morning, once his '+
+    'WHOOP recovery for that day has actually landed \u2014 anything you wrote about how recovered '+
+    'he is would be a day out of date by the time he read it.'+'\n'+
     'proposals = almost always []. Same rules and the same fix shapes as the specialists; anything '+
     'else is discarded.'+'\n'+
     'Do not describe anything as already changed. Nothing takes effect until he taps Approve.'+'\n'+
     '\n'+'WHAT THE SPECIALISTS REPORTED TONIGHT:'+'\n'+digest.join('\n')+
     '\n'+'\n'+'ALREADY WAITING ON HIS APPROVAL: '+(pend.length?pend.join('; '):'nothing')+
     '\n'+'TODAY, THE DAY BEING REVIEWED, IS: '+(sc==='REST'?'a REST day':sc+' \u2014 '+dayName(sc))+
-    '\n'+'THE BRIEF IS FOR '+fmtDate(bDate)+', WHICH IS: '+
-      (bd==='REST'?'a REST day':bd+' \u2014 '+dayName(bd))+
     '\n'+agBaseContext('zulu');
   const res = await callClaudeWithData(
-    [{role:'user', content:'Write '+(bSame?'today\u2019s':'tonight\u2019s')+' synthesis and the '+
-      'brief for '+fmtDate(bDate)+'.'}],
+    [{role:'user', content:'Write tonight\u2019s synthesis.'}],
     sys, AG_MAXTOK, {effort:'high'});
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   return parseLooseJSON(res.text);
@@ -11210,33 +11241,33 @@ function agLetter(){
   return (a.letter && a.letter.text) ? a.letter : null;
 }
 
-/* At or past this hour a cycle is writing for TOMORROW morning rather than for the day it is
-   sitting in. The nightly run fires at 21:00, so anything this late is that cycle; a manual
-   "Run cycle now" over breakfast is still about the day he is standing in. */
-const AG_BRIEF_EVENING_HOUR = 17;
-
-/* Which morning a brief is FOR -- which is not the day it was written on. ZULU has always been
-   asked for "his morning Daily Brief" and the cycle has always run at 9 PM, but agSetBrief
-   stamped it todayKey(), the evening it was composed. Every surface gates on
-   date === todayKey(), so a brief written to be read at 7am appeared only for the three hours
-   he was least likely to open the app and expired at midnight -- exactly when it became the
-   thing it was written to be. Stamping the morning it belongs to is the whole fix. Nothing else
-   moves; in particular the cycle stays at 9 PM, where it can still see the day's training. */
-function agBriefDateFor(){
-  const now = new Date();
-  if(now.getHours() < AG_BRIEF_EVENING_HOUR) return todayKey();
-  // Roll the calendar date, not the clock: +86400000 ms lands an hour either side across a DST
-  // boundary, and a date boundary is the one thing this must never get wrong.
-  return dateKeyOf(new Date(now.getFullYear(), now.getMonth(), now.getDate()+1));
-}
+/* Not before this hour, and past the WHOOP wait cutoff the brief is written regardless.
+   WHOOP recovery lands in the morning (the sync Action polls every two hours), and the brief
+   opens on it -- so writing before it arrives produces exactly the wrong thing: a confident
+   recovery number that is actually yesterday's. */
+const AG_BRIEF_HOUR = 6;          // earliest a morning brief may be written
+const AG_BRIEF_WHOOP_CUTOFF = 10; // past this, write it even if WHOOP never showed up
+/* And a LATE bound, which matters as much as the early one: without it, opening the app at
+   9 PM on a day he never opened it finds no brief for today, passes every other gate, and
+   spends a call writing "this morning" about a morning that is twelve hours gone. A day with
+   no brief is the correct outcome there -- the 9 PM cycle is about to run anyway. The manual
+   button bypasses this, because that is him asking for it on purpose. */
+const AG_BRIEF_LATEST = 18;
 
 /* The Daily Brief is one string with a date on it, kept where every other agent output is
-   kept so it syncs and expires the same way. Deliberately NOT a separate API call: it falls
-   out of a synthesis ZULU is already doing, so it costs nothing extra -- which is also why
-   morning delivery is a date stamp here rather than a second call at 7am. */
+   kept so it syncs and expires the same way.
+
+   It used to fall out of ZULU's nightly synthesis, which cost nothing extra but composed it
+   at 9 PM -- and its first sentence is about how recovered he is, which at 9 PM is a fact
+   that does not exist yet. Delivering a night-written brief in the morning (the previous fix)
+   put it in front of him at the right time still quoting the WRONG DAY's recovery. So it is
+   now its own small ZULU call in the morning, over last night's findings plus a recovery
+   score that has actually landed. That is a fifth call a day; it runs at effort 'medium'
+   rather than the cycle's 'high' because it is summarising findings the specialists already
+   did the thinking for, not deriving them. */
 function agSetBrief(text){
   const a = agState();
-  a.brief = {text:text, at:new Date().toISOString(), date:agBriefDateFor()};
+  a.brief = {text:text, at:new Date().toISOString(), date:todayKey()};
 }
 function agBrief(){
   const a = agState();
@@ -11618,23 +11649,39 @@ function renderOps(){
     '<label class="ag-when" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
       '<input type="checkbox" '+(a.autoRun?'checked':'')+' onchange="agState().autoRun=this.checked;save();renderOps()" style="width:auto"> auto-run daily at 9 PM</label>'+
     '<span class="ag-when" style="margin-left:auto">last cycle: '+(a.lastRunAt?agTimeAgo(a.lastRunAt):'never')+'</span>'+
-    // Says out loud where the brief actually lands, because the cycle time and the delivery
-    // time are deliberately not the same thing any more.
-    '<span class="ag-when" style="flex-basis:100%;color:var(--dim)">Tonight\u2019s cycle writes '+
-      'tomorrow morning\u2019s brief.</span></div>';
+    // Two schedules now, and they are easy to confuse from the outside: the cycle reviews the
+    // day at 9 PM, the brief is written fresh the next morning once WHOOP has reported.
+    '<span class="ag-when" style="flex-basis:100%;color:var(--dim)">Cycle runs at 9 PM. '+
+      'The brief is written separately each morning, once your WHOOP recovery lands.</span></div>';
 
   // hierarchy: ZULU on top, the three reports nested beneath
   h += '<div class="ag-lead">'+agCardHTML('zulu')+
        '<div class="ag-kids">'+AG_ORDER.map(agCardHTML).join('')+'</div></div>';
 
   const _brief = agBrief(), _letter = agLetter();
+  const _briefToday = agBriefToday();
   if(_brief){
     h += '<div class="card" style="border-left:3px solid '+AGENTS.zulu.col+'">'+
       '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'+
       '<b style="color:'+AGENTS.zulu.col+';letter-spacing:.04em">DAILY BRIEF</b>'+
       '<span class="ag-when">'+esc(fmtDate(_brief.date))+
-        (_brief.date>todayKey()?' \u00b7 lands tomorrow morning':'')+'</span></div>'+
+        (_briefToday?'':' \u00b7 yesterday\u2019s')+'</span>'+
+      (_briefToday?'':'<button class="btn ghost sm" style="margin-left:auto" '+
+        (_agBriefRunning?'disabled':'')+' onclick="agRunBrief(true)">'+
+        (_agBriefRunning?'Writing'+String.fromCharCode(8230):'Write today'+String.fromCharCode(8217)+'s')+'</button>')+
+      '</div>'+
       '<p class="small" style="margin-top:6px">'+esc(_brief.text)+'</p></div>';
+  } else {
+    // No brief at all is a normal state before the first morning run, not an error -- say which
+    // it is rather than showing nothing and letting a missing card read as a failure.
+    h += '<div class="card" style="border-left:3px solid '+AGENTS.zulu.col+'">'+
+      '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'+
+      '<b style="color:'+AGENTS.zulu.col+';letter-spacing:.04em">DAILY BRIEF</b>'+
+      '<button class="btn ghost sm" style="margin-left:auto" '+(_agBriefRunning?'disabled':'')+
+        ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing'+String.fromCharCode(8230):'Write it now')+'</button></div>'+
+      '<p class="ag-empty" style="margin-top:6px">'+
+      (_agBriefRunning?'ZULU is writing this morning'+String.fromCharCode(8217)+'s brief'+String.fromCharCode(8230)
+        :'Not written yet today \u2014 it goes out each morning once your WHOOP recovery lands.')+'</p></div>';
   }
   if(_letter){
     h += subSection('Weekly letter \u2014 '+fmtDate(_letter.week),
@@ -11675,6 +11722,103 @@ REVIEW_RENDER.ops = renderOps;
 /* Coach is gone as a tab; anything that still calls renderCoach now repaints OPERATIONS.
    Declared last so hoisting makes this the live definition. */
 function renderCoach(){ renderOps(); }
+
+
+/* ---- the morning Daily Brief ----
+   Its own call, deliberately. Everything in a brief except the recovery line could be written
+   the night before; the recovery line cannot, because WHOOP has not measured it yet. Since the
+   recovery line is the one he reads first, the call moves to the morning rather than the line
+   moving out of the brief.
+
+   It is cheap by construction: the specialists already did the analysis at 9 PM and their
+   conclusions are sitting in agState().status, so this is a summarisation over findings plus
+   fresh readiness, not a fresh investigation. Hence effort 'medium' and no data tools -- an
+   unattended tool loop is what AI_TOOL_ROUNDS exists to bound, and there is nothing here worth
+   looking up that agBaseContext() has not already handed it. */
+function agBriefDigest(){
+  const st = agState().status || {};
+  const cut = mesoAddDays(todayKey(), -2);   // last night's cycle, not a week-old one
+  return AG_ORDER.filter(function(id){
+    return st[id] && st[id].summary && String(st[id].at||'').slice(0,10) >= cut;
+  }).map(function(id){ return AGENTS[id].name+': '+st[id].summary; });
+}
+
+async function agWriteBrief(manual){
+  const sc = currentDayKey();
+  const digest = agBriefDigest();
+  const pend = agPending().map(function(p){ return AGENTS[p.agent].name+': '+p.title; });
+  const wc = whoopContext();
+  const sys = agSharedBrief()+
+    '\n'+'You are ZULU, writing Mark\u2019s Daily Brief for this morning. He is reading this '+
+    'now, with the day in front of him.'+
+    '\n'+'Respond with ONLY valid JSON:'+'\n'+
+    '{"brief":"..."}'+'\n'+
+    'brief = 2-4 short sentences: how recovered he is THIS MORNING, what is scheduled today, and '+
+    'anything actually waiting on him. Present tense, written to him, worth reading at 7am '+
+    'rather than a status dump. Lead with the recovery figure below if there is one and say what '+
+    'it means for today\u2019s session specifically. If nothing needs him, say so plainly and '+
+    'confidently rather than inventing something to fill the space \u2014 "nothing needs you today, '+
+    'train as planned" is a complete and good brief.'+'\n'+
+    'Do not describe anything as already changed. Nothing takes effect until he taps Approve.'+'\n'+
+    (wc ? '\n'+'These are TODAY\u2019s measured numbers, taken this morning \u2014 quote them, do not hedge '+
+          'them as stale.'+'\n'
+        : '\n'+'NOTE: WHOOP has not reported a recovery score for today. Do NOT invent one and do '+
+          'not quote an older one as though it were this morning\u2019s \u2014 write the brief without it.'+'\n')+
+    '\n'+'TODAY IS: '+(sc==='REST'?'a REST day':sc+' \u2014 '+dayName(sc))+
+    '\n'+'WAITING ON HIS APPROVAL: '+(pend.length?pend.join('; '):'nothing')+
+    '\n'+'WHAT THE SPECIALISTS FOUND LAST NIGHT:'+'\n'+(digest.length?digest.join('\n'):'(no cycle ran)')+
+    '\n'+'\n'+agBaseContext('zulu');
+  const res = await callClaudeWithData(
+    [{role:'user', content:'Write this morning\u2019s brief.'}], sys, AG_MAXTOK, {effort:'medium', maxRounds:1});
+  if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
+  const parsed = parseLooseJSON(res.text);
+  return parsed && parsed.brief ? String(parsed.brief) : null;
+}
+
+let _agBriefRunning = false;  // module-scoped for the same reason as _agRunning: S is replaced
+                              // wholesale by applyPulled(), and a flag on it would be wiped
+                              // mid-flight and let a second call start on top of the first.
+async function agRunBrief(manual){
+  if(_agBriefRunning || _agRunning) return;
+  if(!S.settings.apiKey){
+    if(manual) alert('Add your API key in Settings first \u2014 ZULU needs it to write the brief.');
+    return;
+  }
+  _agBriefRunning = true; renderOps();
+  try{
+    const text = await agWriteBrief(manual);
+    // Re-resolve AFTER the await. applyPulled() may have replaced S while the request was in
+    // flight, and agSetBrief() resolves through agState() internally, so this is safe -- but
+    // the save() below must not be reached through anything captured before the await.
+    if(text){ agSetBrief(text); agLog('zulu','Wrote this morning\u2019s brief.'); }
+    else agLog('zulu','I couldn\u2019t write this morning\u2019s brief (unreadable reply). Nothing else changed.');
+  }catch(e){
+    agLog('zulu','I couldn\u2019t write this morning\u2019s brief ('+e.message+'). Nothing else changed.');
+  }finally{
+    _agBriefRunning = false; save(); renderOps();
+    try{ if(MODE==='review' && activeReviewTab==='home') renderHome(); }catch(e){}
+  }
+}
+
+/* Fires on the first app open of the morning. There is no backend and no service worker, so
+   "in the morning" can only mean "the first time he opens it after AG_BRIEF_HOUR" -- which is
+   the moment he would read it anyway. */
+function agMaybeMorningBrief(){
+  const a = agState();
+  if(!a.autoRun || _agBriefRunning || _agRunning) return;
+  if(!S.settings.apiKey) return;
+  const b = agBrief();
+  if(b && b.date === todayKey()) return;        // already written for this morning
+  const h = new Date().getHours();
+  if(h < AG_BRIEF_HOUR || h >= AG_BRIEF_LATEST) return;
+  // Wait for WHOOP rather than spend the call on a brief that has to open "no recovery data".
+  // Only up to the cutoff, though: a day WHOOP never reports must still get a brief.
+  const w = S.whoop && S.whoop.recovery;
+  if(!(w && w.date === todayKey()) && h < AG_BRIEF_WHOOP_CUTOFF) return;
+  // Returned rather than fired and forgotten, so a caller (and the suite) can await the write
+  // instead of racing the _agBriefRunning guard on the next tick.
+  return agRunBrief(false);
+}
 
 /* ---- 9 PM daily scheduler ---- */
 function agMaybeAutoRun(){
@@ -11808,7 +11952,12 @@ try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progres
 try{ if(agSweepExpired()) save(false); }catch(e){}
 _bootPull.then(()=>{
   try{ agMaybeAutoRun(); }catch(e){}
+  try{ agMaybeMorningBrief(); }catch(e){}
   try{ setInterval(agMaybeAutoRun, 15*60*1000); }catch(e){}
+  // Polled as well as run at boot: WHOOP lands on a two-hourly cron, so on a morning he opens
+  // the app before it reports, the brief is written by the tick that follows rather than
+  // waiting for him to reload.
+  try{ setInterval(agMaybeMorningBrief, 15*60*1000); }catch(e){}
 });
 try{ startLiveRefresh(); }catch(e){}
 </script>

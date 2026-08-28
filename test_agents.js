@@ -3480,15 +3480,27 @@ setTimeout(async () => {
   console.log('=== ONE BODYWEIGHT RATE, CORRECT BANDS ===');
   try {
     const savedW = ev('JSON.stringify(S.weights)');
-    // The exact case he reported: a real, steady +0.15 lb/wk climb. Deliberately NOT a clean
-    // straight line — a perfectly linear series makes the weekly average equal the raw value,
-    // which would hide an anchoring bug. Fixed offsets, never random, so the suite stays
-    // deterministic.
+    // The case he reported: a real, steady climb that is still short of the 0.5 lb/wk pocket
+    // floor, which renderBulk() used to call "right in the lean-bulk pocket" anyway.
+    // Deliberately NOT a clean straight line — a perfectly linear series makes the weekly
+    // average equal the raw value, which would hide an anchoring bug. Fixed offsets, never
+    // random, so the suite stays deterministic.
+    // The trend is +0.30 rather than the +0.15 he actually reported ON PURPOSE: 0.15 is
+    // exactly the flat/under band EDGE, so a fixture aimed there decides the band on rounding
+    // noise and flips to 'flat' on any change to the bucketing. Mid-band proves the same
+    // claim (below the pocket floor, and not called 'pocket') without balancing on a knife.
     const wob = [0, 0.4, -0.3, 0.2, -0.4, 0.3, -0.2, 0.1, 0.35, -0.35, 0.15, -0.15];
     ev('S.weights = [];');
+    // End the series on a SUNDAY, not on "today". bodyweightSeriesSmoothed() buckets into
+    // Monday-anchored weeks, so a fixture ending on today leaves a final partial week whose
+    // size is whatever weekday the suite happens to run on -- and the 4-week regression over
+    // those averages moves with it. This exact fixture read +0.26 lb/wk on a Wednesday and
+    // +0.13 (a different BAND, so four red assertions) on the Thursday, with no code change
+    // between them. Anchoring to Sunday makes every bucket a full seven days on every day.
+    const backToSun = ev("new Date(todayKey()+'T00:00:00').getDay()");
     for (let i = 0; i < 42; i++) {
-      const lbs = (150 + i * (0.15 / 7) + wob[i % wob.length]).toFixed(1);
-      ev("S.weights.push({date: mesoAddDays(todayKey(), " + (i - 41) + "), lbs: " + lbs + "});");
+      const lbs = (150 + i * (0.30 / 7) + wob[i % wob.length]).toFixed(1);
+      ev("S.weights.push({date: mesoAddDays(todayKey(), " + (i - 41 - backToSun) + "), lbs: " + lbs + "});");
     }
     const br = ev('bulkRate(4)');
     ok('bulkRate returns a rate from weekly averages', br && typeof br.rate === 'number', JSON.stringify(br));
@@ -3496,7 +3508,7 @@ setTimeout(async () => {
     // wobble is not mean-zero across a 4-week window. That is the point: real weigh-in noise
     // moves the number, and the band still has to be right. Bounded on both sides so a future
     // fixture edit that drifts it into a different band fails loudly instead of silently.
-    ok('measured rate sits between the flat floor and the pocket floor', br.rate > 0.15 && br.rate < 0.5, String(br && br.rate));
+    ok('measured rate sits between the flat floor and the pocket floor', br.rate > 0.2 && br.rate < 0.45, String(br && br.rate));
     ok('a gaining-but-below-0.5 rate bands as "under", not "pocket"', ev('bulkBand(' + br.rate + ')') === 'under',
        ev('bulkBand(' + br.rate + ')') + ' @ ' + br.rate);
 
@@ -4033,45 +4045,14 @@ setTimeout(async () => {
        ev("['charlie','delta','echo','zulu'].every(k=>agState().status[k] && agState().status[k].summary)"),
        JSON.stringify(ev('Object.keys(agState().status)')));
 
-    // the Daily Brief falls out of ZULU's call rather than costing a fifth one
-    ok('the daily brief is stored', ev('!!agBrief()'));
-    ok('the daily brief has content', ev('agBrief().text').indexOf('Nothing waiting') >= 0, ev('agBrief().text'));
-    // Dated the MORNING IT IS FOR, not the evening it was composed. agBriefDateFor() reads the
-    // wall hour, so this has to drive a pinned clock -- run unpinned, the same assertion would
-    // pass before 5 PM and fail after it, which is exactly the day-dependence this suite bans.
-    const withHour = function(h, fn){
-      ev("Date.prototype.__realGetHours = Date.prototype.getHours;");
-      ev("Date.prototype.getHours = function(){ return " + h + "; };");
-      const out = fn();
-      ev("Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours;");
-      return out;
-    };
-    const tomorrowKey = ev("dateKeyOf(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()+1))");
-    ok('tomorrow is not today', tomorrowKey !== ev('todayKey()'), tomorrowKey);
-
-    withHour(21, function(){ ev("agSetBrief('written by the 9 PM cycle');"); });
-    ok('a brief written by the 9 PM cycle is dated tomorrow morning',
-       ev('agBrief().date') === tomorrowKey, ev('agBrief().date') + ' vs ' + tomorrowKey);
-    ok('so it is NOT on tonight\u2019s dashboard', ev('agBriefToday()') === null);
-    ok('and does not fire tonight\u2019s notification',
-       ev("notifItems().some(function(i){ return i.title === 'Daily brief'; })") === false);
-    ev('renderHome()');
-    ok('the dashboard does not paint tomorrow\u2019s brief tonight',
-       w.document.getElementById('home').innerHTML.indexOf('written by the 9 PM cycle') < 0);
-
-    withHour(9, function(){ ev("agSetBrief('run manually over breakfast');"); });
-    ok('a brief written during the day is dated today', ev('agBrief().date') === ev('todayKey()'));
-    ok('and that one is live', ev('agBriefToday() && agBriefToday().text') === 'run manually over breakfast');
-    ok('and it does fire the notification',
-       ev("notifItems().some(function(i){ return i.title === 'Daily brief'; })") === true);
-    ev('renderHome()');
-    ok('and the dashboard paints it',
-       w.document.getElementById('home').innerHTML.indexOf('run manually over breakfast') >= 0);
-
-    // ZULU has to be told WHICH morning it is writing for and what is scheduled then. It used to
-    // get only today's day key, so a 9 PM brief opened "Today is D2" about a finished session.
-    ok('ZULU is told which morning the brief is for', /THE BRIEF IS FOR /.test(zSys));
-    ok('ZULU is told what is scheduled that morning', /THE BRIEF IS FOR [^\n]*WHICH IS: /.test(zSys));
+    // The brief is NOT written here any more. At 9 PM the recovery score it opens on has not
+    // been measured yet, so a night-written brief quotes the wrong day's recovery no matter
+    // what morning it is delivered on. It is its own call the next morning -- see the
+    // morning-brief section below.
+    ok('the nightly cycle writes no brief', ev('agBrief()') === null, JSON.stringify(ev('agState().brief || null')));
+    ok('and ZULU is told not to write one here', /Do NOT write a daily brief here/.test(zSys));
+    ok('with the reason, so it does not smuggle one into the summary',
+       /would be a day out of date/.test(zSys));
     ok('ZULU still knows which day it is reviewing', /THE DAY BEING REVIEWED/.test(zSys));
 
     ev("callClaudeWithData = window.__realData3;");
@@ -4132,6 +4113,125 @@ setTimeout(async () => {
     ev("if(window.__realData4) callClaudeWithData = window.__realData4;");
   }
 
+  console.log('=== THE MORNING BRIEF IS ITS OWN CALL, AFTER WHOOP ===');
+  try {
+    ev("S.settings.apiKey = 'sk-test';");
+    ev("agState().autoRun = true; agState().log = []; delete agState().brief;");
+    ev("agState().status = {charlie:{summary:'schedule clean', at:new Date().toISOString()}," +
+       "delta:{summary:'lat pulldown oscillating', at:new Date().toISOString()}," +
+       "echo:{summary:'bodyweight flat at 158', at:new Date().toISOString()}};");
+    ev("window.__realDataB = callClaudeWithData;");
+    ev("window.__briefCalls = 0; window.__briefSys = '';");
+    ev(`callClaudeWithData = async function(msgs, sys){
+          window.__briefCalls++; window.__briefSys = sys;
+          return {text: JSON.stringify({brief:'94% recovery this morning. D3 legs, go.'}),
+                  toolsUsed:0, stop:'end_turn'};
+        };`);
+    const withHour = function(h, fn){
+      ev("Date.prototype.__realGetHours = Date.prototype.getHours;");
+      ev("Date.prototype.getHours = function(){ return " + h + "; };");
+      const out = fn();
+      ev("Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours;");
+      return out;
+    };
+    const noWhoop    = "delete S.whoop;";
+    const whoopToday = "S.whoop = {recovery:{date:todayKey(), score:94, hrv:121, rhr:57}, sleep:{date:todayKey(), hours:7.9, performance:90}};";
+    const staleWhoop = "S.whoop = {recovery:{date: mesoAddDays(todayKey(),-1), score:71, hrv:99, rhr:61}};";
+
+    // --- the gate ---
+    // The hour floor has to be tested with WHOOP ALREADY PRESENT, or the WHOOP gate below is
+    // what stops the call and this assertion passes with the floor deleted (it did).
+    ev(whoopToday); ev('window.__briefCalls = 0;');
+    withHour(4, function(){ ev('agMaybeMorningBrief()'); });
+    ok('nothing is written before the morning window opens, even with WHOOP in hand',
+       ev('window.__briefCalls') === 0);
+
+    // ...and the same with the LATE bound. Opening the app at 9 PM on a day he never opened it
+    // must not spend a call writing "this morning" about a morning that is long gone.
+    withHour(21, function(){ ev('agMaybeMorningBrief()'); });
+    ok('and nothing is auto-written in the evening either', ev('window.__briefCalls') === 0);
+
+    ev(noWhoop);
+    withHour(7, function(){ ev('agMaybeMorningBrief()'); });
+    ok('and nothing is written while WHOOP has not reported yet', ev('window.__briefCalls') === 0);
+
+    ev(staleWhoop);
+    withHour(7, function(){ ev('agMaybeMorningBrief()'); });
+    ok('yesterday’s recovery does not count as WHOOP having reported', ev('window.__briefCalls') === 0);
+
+    // past the cutoff a brief is written anyway -- a day WHOOP never reports still gets one
+    // awaited: agMaybeMorningBrief() returns the write, and leaving it in flight would leave
+    // _agBriefRunning set and make the NEXT gate assertion pass for the wrong reason
+    await withHour(11, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('past the cutoff it stops waiting and writes one', ev('window.__briefCalls') === 1);
+    ok('and with no recovery it is told not to invent one',
+       /has not reported a recovery score for today/.test(ev('window.__briefSys')));
+    ok('and not to pass off an older one as this morning’s',
+       /not quote an older one/.test(ev('window.__briefSys')));
+
+    // --- the normal path ---
+    ev("delete agState().brief;"); ev(whoopToday); ev('window.__briefCalls = 0;');
+    await withHour(7, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('once WHOOP has reported for today, the brief is written', ev('window.__briefCalls') === 1);
+    ok('and it is handed this morning’s measured numbers',
+       /WHOOP TODAY: recovery 94%/.test(ev('window.__briefSys')), ev('window.__briefSys').slice(0, 0));
+    ok('and told they are today’s, not to be hedged as stale',
+       /taken this morning/.test(ev('window.__briefSys')));
+    ok('and given what the specialists found last night',
+       /WHAT THE SPECIALISTS FOUND LAST NIGHT/.test(ev('window.__briefSys')) &&
+       ev('window.__briefSys').indexOf('bodyweight flat at 158') >= 0);
+    ok('and today’s schedule', /TODAY IS: /.test(ev('window.__briefSys')));
+    ok('and what is waiting on him', /WAITING ON HIS APPROVAL/.test(ev('window.__briefSys')));
+
+    await ev('agRunBrief(true)');
+    ok('the brief is stored', ev('!!agBrief()'));
+    ok('stamped for the morning it was written on', ev('agBrief().date') === ev('todayKey()'));
+    ok('and is live on the dashboard immediately', ev('agBriefToday() && agBriefToday().text').indexOf('94% recovery') >= 0);
+    ev('renderHome()');
+    ok('the dashboard paints it', w.document.getElementById('home').innerHTML.indexOf('94% recovery this morning') >= 0);
+    ok('and it fires the notification',
+       ev("notifItems().some(function(i){ return i.title === 'Daily brief'; })") === true);
+
+    // --- it runs once a day, and only when he wants it to ---
+    ev('window.__briefCalls = 0;');
+    withHour(8, function(){ ev('agMaybeMorningBrief()'); });
+    ok('a brief already written this morning is not rewritten', ev('window.__briefCalls') === 0);
+
+    ev("delete agState().brief; agState().autoRun = false;");
+    withHour(8, function(){ ev('agMaybeMorningBrief()'); });
+    ok('auto-run off suppresses the morning call too', ev('window.__briefCalls') === 0);
+    ev("agState().autoRun = true;");
+
+    // --- a squeezed reply must not land as a brief ---
+    ev("delete agState().brief; agState().log = [];");
+    ev(`callClaudeWithData = async function(){
+          return {text:'{"brief":"94% recovery this morn', toolsUsed:0, stop:'max_tokens'};
+        };`);
+    await ev('agRunBrief(true)');
+    ok('a truncated brief is discarded, not stored', ev('agBrief()') === null,
+       JSON.stringify(ev('agState().brief || null')));
+    ok('and the failure is logged against ZULU',
+       ev("agState().log.some(function(e){ return e.agent==='zulu' && /token ceiling/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.agent+':'+e.text.slice(0,60);})")));
+
+    // the manual button is him asking on purpose, so it ignores every clock gate
+    ev("delete agState().brief; agState().log = [];"); ev(whoopToday); ev('window.__briefCalls = 0;');
+    ev(`callClaudeWithData = async function(){
+          window.__briefCalls++;
+          return {text: JSON.stringify({brief:'written on demand'}), toolsUsed:0, stop:'end_turn'};
+        };`);
+    await withHour(23, function(){ return ev('agRunBrief(true)'); });
+    ok('the manual button writes one at any hour', ev('window.__briefCalls') === 1);
+    ok('and it lands as today’s brief', ev('agBriefToday() && agBriefToday().text') === 'written on demand');
+
+    ev("callClaudeWithData = window.__realDataB;");
+    ev("delete agState().brief; agState().log = []; agState().status = {}; delete S.whoop;");
+  } catch (e) {
+    ok('morning brief section', false, e.message);
+    ev("if(window.__realDataB) callClaudeWithData = window.__realDataB;");
+    ev("if(Date.prototype.__realGetHours){ Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours; }");
+  }
+
   console.log('=== DAILY BRIEF + WEEKLY LETTER ===');
   try {
     // The letter is weekly, gated on the day of week, so this cannot be written against
@@ -4190,6 +4290,75 @@ setTimeout(async () => {
   } catch (e) {
     ok('brief + letter section', false, e.message);
     ev("if(Date.prototype.__realGetDay){ Date.prototype.getDay = Date.prototype.__realGetDay; delete Date.prototype.__realGetDay; }");
+  }
+
+  console.log('=== AGENTS SEE EVERY SESSION, AND SEE IT STRAIGHT ===');
+  try {
+    const savedLogsD = ev('JSON.stringify(S.logs)');
+    const savedWD    = ev('JSON.stringify(S.weights)');
+    const savedND    = ev('JSON.stringify(S.nutrition)');
+    const savedSpD   = ev('JSON.stringify(S.split)');
+    const EXD = 'Barbell Bench Press';
+
+    // Three normal sessions and then a DELOAD as the NEWEST one -- his actual shape on
+    // 2026-08-27, where the two most recent training days were both inside a deload window.
+    ev("S.logs = S.logs.concat([" +
+       "{date: mesoAddDays(todayKey(),-9), day:'D1', entries:[{exercise:'" + EXD + "', sets:[{w:185,r:5},{w:185,r:5}]}]}," +
+       "{date: mesoAddDays(todayKey(),-6), day:'D1', entries:[{exercise:'" + EXD + "', sets:[{w:190,r:5},{w:190,r:5}]}]}," +
+       "{date: mesoAddDays(todayKey(),-3), day:'D1', entries:[{exercise:'" + EXD + "', sets:[{w:195,r:5},{w:195,r:5}]}]}," +
+       "{date: mesoAddDays(todayKey(),-1), day:'D1', deload:true, entries:[{exercise:'" + EXD + "', sets:[{w:135,r:8}]}]}" +
+       "]);");
+    const dlDate = ev("mesoAddDays(todayKey(),-1)");
+
+    // --- the tool must show it ---
+    const histD = ev("agRunDataTool('get_lift_history',{exercise:'" + EXD + "'})");
+    ok('get_lift_history returns the deload session it used to drop',
+       histD.indexOf(dlDate) >= 0, histD.slice(0, 220));
+    ok('and labels it so a light day does not read as a collapse',
+       /DELOAD week/.test(histD), histD.slice(0, 220));
+    ok('list_lifts reports the deload day as the last time he trained the lift',
+       ev("agRunDataTool('list_lifts')").split('\n').filter(function(l){ return l.indexOf(EXD) === 0; })[0].indexOf('last ' + dlDate) >= 0,
+       ev("agRunDataTool('list_lifts')").split('\n').filter(function(l){ return l.indexOf(EXD) === 0; })[0]);
+
+    // --- but the recommendation engine must be untouched: a deload never sets the next target ---
+    ok('historyFor() still hides deloads from the recommendation engine',
+       ev("historyFor('" + EXD + "').some(function(h){ return h.date === '" + dlDate + "'; })") === false);
+    ok('and includeDeload is what changes that, nothing else',
+       ev("historyFor('" + EXD + "', {includeDeload:true}).length") ===
+       ev("historyFor('" + EXD + "').length") + 1);
+
+    // --- the e1RM trend still excludes them (every chart agrees), but SAYS so ---
+    ok('e1rmSeries keeps deload points out of the strength trend',
+       ev("e1rmSeries('" + EXD + "').some(function(pt){ return pt.date === '" + dlDate + "'; })") === false);
+    const serD = ev("agRunDataTool('get_e1rm_series',{exercise:'" + EXD + "'})");
+    ok('and the tool names the excluded dates instead of leaving a silent gap',
+       serD.indexOf('Excluded from this trend') >= 0 && serD.indexOf(dlDate) >= 0, serD.slice(-200));
+
+    // --- an estimate must not arrive looking like a measurement ---
+    ev("S.nutrition = S.nutrition.concat([{date: mesoAddDays(todayKey(),-2), cals:3200, protein:150, est:true}]);");
+    const nutD = ev("agRunDataTool('get_nutrition',{days:5})");
+    ok('get_nutrition marks a tapped-range estimate as an estimate',
+       /~3200 cal/.test(nutD) && /~150g/.test(nutD), nutD.slice(0, 240));
+    ok('and says what the marker means', /bucket midpoint/.test(nutD));
+
+    // --- the athlete profile is derived, not written down ---
+    ev("S.weights = [{date: mesoAddDays(todayKey(),-1), lbs: 158.8}];");
+    ev("S.split.D3.name = 'Legs + Abs (Leg Press)'; S.split.D6.name = 'Legs + Abs (Squat)';");
+    const tcD = ev('trainingContext()');
+    ok('the profile quotes his real weigh-in', /158\.8 lb \(weighed /.test(tcD),
+       tcD.split('\n').filter(function(l){ return l.indexOf('Mark, 18') >= 0; })[0]);
+    ok('the stale hardcoded bodyweight is gone', tcD.indexOf('~150 lb') < 0);
+    ok('the split line follows the real split',
+       tcD.indexOf('D3 Legs + Abs (Leg Press)') >= 0 && tcD.indexOf('D6 Legs + Abs (Squat)') >= 0,
+       tcD.split('\n').filter(function(l){ return l.indexOf('Split:') >= 0; })[0]);
+    ok('the inverted hardcoded split description is gone',
+       tcD.indexOf('D3 Legs squat-focus') < 0 && tcD.indexOf('D6 Legs press-focus') < 0);
+    ok('a finished deload is labelled in the recent-sessions block',
+       /DELOAD \(intentionally light\)/.test(tcD), tcD.slice(tcD.indexOf('RECENT SESSIONS'), tcD.indexOf('RECENT SESSIONS') + 200));
+
+    ev('S.logs = ' + savedLogsD + '; S.weights = ' + savedWD + '; S.nutrition = ' + savedND + '; S.split = ' + savedSpD + ';');
+  } catch (e) {
+    ok('agents see every session section', false, e.message);
   }
 
   console.log('=== DATA TOOLS ARE READ-ONLY ===');
