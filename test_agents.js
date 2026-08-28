@@ -4621,6 +4621,96 @@ setTimeout(async () => {
   try { ev('renderCoach')(); ok('renderCoach alias safe', true); }
   catch (e) { ok('renderCoach alias safe', false, e.message); }
 
+  /* A snapshot can reach the gist long after it was built: a push fired as the tab is
+     backgrounded gets frozen with the request in flight and lands when the app is next
+     foregrounded. Observed in the wild at 240 and 808 minutes of delivery lag, and the 808m
+     one reverted the cloud copy to the previous night, destroying that morning's weigh-in.
+     Whole-snapshot last-writer-wins cannot distinguish "the writer has not heard about this
+     record yet" from "some device deleted this record"; the per-record write stamp can. */
+  console.log('=== SYNC: A STALE SNAPSHOT CANNOT DELETE NEWER RECORDS ===');
+  const syncSaved = ev('JSON.stringify(S)');
+  try {
+    const T_STALE = 1787900000000;              // the instant the incoming snapshot was exported
+    const NEWER   = T_STALE + 60 * 60 * 1000;   // written an hour AFTER it - writer never saw this
+    const OLDER   = T_STALE - 60 * 60 * 1000;   // written an hour BEFORE it - absence means deleted
+
+    ev('S.weights = ' + JSON.stringify([
+      { date: '2026-08-26', lbs: 158.6, t: OLDER },  // older than snapshot -> deliberately deleted
+      { date: '2026-08-27', lbs: 158.8 },            // legacy, unstamped   -> treated as old
+      { date: '2026-08-28', lbs: 159,   t: NEWER }   // the weigh-in that was lost for real
+    ]) + ';');
+    ev('S.logs = ' + JSON.stringify([
+      { id: 111, date: '2026-08-28', day: 'D1', entries: [], t: NEWER }
+    ]) + ';');
+    // Pain is flagged mid-workout on the phone, which is exactly when this bug bites.
+    ev('S.pain = ' + JSON.stringify([
+      { id: 'pnNEW', date: '2026-08-28', exercise: 'Barbell Bench Press', level: 2, note: '', t: NEWER },
+      { id: 'pnOLD', date: '2026-08-20', exercise: 'Barbell Back Squat',  level: 1, note: '', t: OLDER }
+    ]) + ';');
+    ev('S.meta = { changedAt: ' + (T_STALE - 1000) + ', lastSync: 0, pushedAt: ' + (T_STALE - 1000) + ' };');
+
+    const stale = JSON.parse(ev('JSON.stringify(S)'));
+    stale.weights = [{ date: '2026-08-25', lbs: 157, t: OLDER }];
+    stale.logs = [];
+    stale.pain = [];
+    stale.meta = { changedAt: T_STALE - 5000, lastSync: 0, pushedAt: 0 };
+    ev('window.__stale = ' + JSON.stringify(stale) + ';');
+    ev('applyPulled(window.__stale, ' + T_STALE + ');');
+
+    const wOut = JSON.parse(ev('JSON.stringify(S.weights)'));
+    const dates = wOut.map(x => x.date);
+    const painIds = JSON.parse(ev('JSON.stringify(S.pain)')).map(p => p.id);
+    ok('newer-than-snapshot weigh-in survives the pull', dates.indexOf('2026-08-28') >= 0, dates.join(','));
+    ok('...with its value intact', (wOut.find(x => x.date === '2026-08-28') || {}).lbs === 159);
+    ok('newer-than-snapshot log survives the pull',
+       JSON.parse(ev('JSON.stringify(S.logs)')).some(l => l.id === 111));
+    ok('newer-than-snapshot pain flag survives the pull', painIds.indexOf('pnNEW') >= 0, painIds.join(','));
+    ok('records from the snapshot itself still land', dates.indexOf('2026-08-25') >= 0, dates.join(','));
+    ok('older-than-snapshot record stays deleted (no resurrection)',
+       dates.indexOf('2026-08-26') === -1, dates.join(','));
+    ok('unstamped legacy record stays deleted (no resurrection)',
+       dates.indexOf('2026-08-27') === -1, dates.join(','));
+    ok('older-than-snapshot pain flag stays deleted', painIds.indexOf('pnOLD') === -1, painIds.join(','));
+    ok('merged weights stay chronological', dates.join(',') === [...dates].sort().join(','), dates.join(','));
+    ok('recovery marks state unpushed so the union reaches the gist',
+       ev('S.meta.pushedAt') < ev('S.meta.changedAt'),
+       ev('S.meta.pushedAt') + ' vs ' + ev('S.meta.changedAt'));
+
+    // A pull with nothing local to recover must NOT flag the state as unpushed, or every pull
+    // would re-upload exactly what it just downloaded.
+    ev('S.weights = []; S.logs = []; S.readiness = []; S.nutrition = []; S.pain = []; S.prHistory = [];');
+    ev('window.__clean = ' + JSON.stringify(stale) + ';');
+    ev('applyPulled(window.__clean, ' + (T_STALE + 5000) + ');');
+    ok('clean pull leaves the push watermark alone',
+       ev('S.meta.pushedAt') === ev('S.meta.changedAt'),
+       ev('S.meta.pushedAt') + ' vs ' + ev('S.meta.changedAt'));
+
+    // The merge is inert unless writes are actually stamped, so exercise the real entry points.
+    ev('S.weights = [];');
+    // The Bulk tab already owns #wDate / #wLbs. Appending copies would leave addWeight reading
+    // the original empty pair and bailing out before it ever writes, so drive the real inputs.
+    if (!w.document.getElementById('wDate')) {
+      w.document.body.insertAdjacentHTML('beforeend', '<input id="wDate"><input id="wLbs">');
+    }
+    w.document.getElementById('wDate').value = '2026-08-28';
+    w.document.getElementById('wLbs').value = '161';
+    // renderBulk may need DOM the harness lacks; the push and stamp both happen before it,
+    // which is what these assertions are about.
+    try { ev('addWeight()'); } catch (e) {}
+    const stamped = JSON.parse(ev('JSON.stringify(S.weights)'))[0] || {};
+    ok('addWeight stamps the record with a write time', typeof stamped.t === 'number', JSON.stringify(stamped));
+    ok('...stamped at roughly now', Math.abs(Date.now() - (stamped.t || 0)) < 60000);
+
+    ev('S.pain = [];');
+    try { call('painAdd', 'Barbell Bench Press', 2, 'twinge'); } catch (e) {}
+    const painRec = JSON.parse(ev('JSON.stringify(S.pain)'))[0] || {};
+    ok('painAdd stamps the record with a write time', typeof painRec.t === 'number', JSON.stringify(painRec));
+  } catch (e) {
+    ok('stale-snapshot section', false, e.message);
+  }
+  ev('S = ' + syncSaved + ';');
+  ok('cleanup: real state restored after sync section', ev('JSON.stringify(S)') === syncSaved);
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

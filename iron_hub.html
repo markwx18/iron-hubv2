@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-27-v2">
+<meta name="ironhub-build" content="2026-08-28-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1240,6 +1240,55 @@ function save(touch){
   }
   localStorage.setItem(LS_KEY, JSON.stringify(S));
 }
+/* The append-only history collections, with a stable key identifying the same logical record on
+   every device, the order the collection is normally kept in, and its cap where it has one.
+   photos is deliberately absent: its images live in their own gist behind photoState(), so it
+   does not ride this payload. whoop is absent too — syncPayload() strips it and only
+   applyWhoop() ever writes it. */
+const SYNC_HISTORY = {
+  weights:   {key: r=>'w|'+r.date, ord: r=>String(r.date||'')},
+  nutrition: {key: r=>'n|'+r.date, ord: r=>String(r.date||'')},
+  readiness: {key: r=>'r|'+r.date, ord: r=>String(r.date||'')},
+  logs:      {key: r=>'l|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||'')},
+  prHistory: {key: r=>'p|'+r.exercise+'|'+r.date+'|'+r.e1rm, ord: r=>String(r.date||''), cap:()=>PR_HISTORY_MAX},
+  pain:      {key: r=>'x|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||''), desc:true, cap:()=>200}
+};
+/* Write time of a history record. The merge needs it to tell "the other device has not heard
+   about this yet" apart from "some device deliberately deleted this", which are otherwise the
+   same observation: a record present here and absent there. */
+function stampRec(r){ if(r && typeof r === 'object') r.t = Date.now(); return r; }
+/* Keep a local record only if it was written AFTER the snapshot was exported — the writer
+   provably could not have known about it. A record OLDER than the snapshot that the snapshot
+   lacks was deleted on purpose somewhere, so it must stay deleted rather than resurrect.
+   Records written before stamping existed carry no t and are treated as old, which is exactly
+   the pre-existing behaviour: existing history is untouched by this change.
+   This is what a stale push can no longer destroy — see the incident note in applyPulled(). */
+function mergeUnseenHistory(local, exportedAt){
+  if(!local || !exportedAt) return 0;
+  let recovered = 0;
+  Object.keys(SYNC_HISTORY).forEach(coll=>{
+    const mine = local[coll];
+    if(!Array.isArray(mine) || !mine.length) return;
+    if(!Array.isArray(S[coll])) S[coll] = [];
+    const spec = SYNC_HISTORY[coll], have = {};
+    let touched = false;
+    S[coll].forEach(r=>{ try{ have[spec.key(r)] = 1; }catch(e){} });
+    mine.forEach(r=>{
+      if(!r || !(r.t > exportedAt)) return;
+      let k; try{ k = spec.key(r); }catch(e){ return; }
+      if(have[k]) return;
+      S[coll].push(r); have[k] = 1; recovered++; touched = true;
+    });
+    if(!touched) return;
+    // Recovered records land at the end; these arrays are otherwise kept in order, and pain is
+    // newest-first because the UI reads it that way.
+    S[coll].sort((a,b)=> spec.desc ? spec.ord(b).localeCompare(spec.ord(a))
+                                   : spec.ord(a).localeCompare(spec.ord(b)));
+    // Re-apply the collection's own cap: the merge can push it over.
+    if(spec.cap){ const m = spec.cap(); if(S[coll].length > m) S[coll] = spec.desc ? S[coll].slice(0, m) : S[coll].slice(-m); }
+  });
+  return recovered;
+}
 /* Exercises may be stored as strings (legacy) or {name, inc} objects.
    These accessors normalize access everywhere without a destructive migration. */
 function exName(x){ return typeof x === 'string' ? x : (x && x.name) || ''; }
@@ -1960,8 +2009,8 @@ function prAppend(ex, now, prev){
   const e1 = Math.round(now*10)/10;
   if(!Array.isArray(S.prHistory)) S.prHistory = [];
   if(S.prHistory.some(p=>p.exercise===ex && p.date===bs.date && Math.abs(p.e1rm-e1)<0.05)) return false;
-  S.prHistory.push({exercise:ex, weight:bs.w, reps:bs.r, e1rm:e1,
-                    prev:Math.round(prev*10)/10, gain:Math.round((now-prev)*10)/10, date:bs.date});
+  S.prHistory.push(stampRec({exercise:ex, weight:bs.w, reps:bs.r, e1rm:e1,
+                    prev:Math.round(prev*10)/10, gain:Math.round((now-prev)*10)/10, date:bs.date}));
   if(S.prHistory.length > PR_HISTORY_MAX) S.prHistory = S.prHistory.slice(-PR_HISTORY_MAX);
   return true;
 }
@@ -2262,7 +2311,7 @@ function painAdd(exercise, level, note){
   const rec = {id:'pn'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
                date:todayKey(), exercise:String(exercise||'').slice(0,80),
                level:lv, note:String(note||'').slice(0,200)};
-  painState().unshift(rec);
+  painState().unshift(stampRec(rec));
   if(S.pain.length > 200) S.pain.length = 200;   // bounded: this syncs to the gist
   save();
   return rec;
@@ -2389,7 +2438,7 @@ function saveReadiness(){
   const entry = {date:todayKey(), sleep:r.sleep, sore:r.sore, energy:r.energy};
   entry.tier = readinessTier(entry);
   S.readiness = S.readiness.filter(x=>x.date!==todayKey());
-  S.readiness.push(entry);
+  S.readiness.push(stampRec(entry));
   save(); window._rd = {}; renderToday();
 }
 function redoReadiness(){
@@ -2590,7 +2639,7 @@ function saveToday(){
   });
   if(!entries.length){ $('#saveMsg').textContent='Nothing entered yet — fill in at least one set.'; return; }
   const beforePR = snapshotPRs();
-  S.logs.push({id:Date.now(), date:todayKey(), day:dk, entries});
+  S.logs.push(stampRec({id:Date.now(), date:todayKey(), day:dk, entries}));
   save();
   checkPRs(beforePR);
   todaySwaps = {};
@@ -2683,7 +2732,7 @@ function saveManual(){
   });
   if(!entries.length){ $('#mMsg').textContent='Fill in at least one set.'; return; }
   const beforePR = snapshotPRs();
-  S.logs.push({id:Date.now(), date, day:dk, entries});
+  S.logs.push(stampRec({id:Date.now(), date, day:dk, entries}));
   save(); checkPRs(beforePR); renderLog(); renderProgress();
 }
 
@@ -3618,7 +3667,7 @@ function confirmShot(){
   const p = window._pendingShot; if(!p) return;
   const entries = p.exercises.filter(e=>e.sets&&e.sets.length).map(e=>({exercise:e.name, sets:e.sets.map(s=>({w:+s.weight_lbs||0, r:+s.reps||0}))}));
   const beforePR = snapshotPRs();
-  S.logs.push({id:Date.now(), date:$('#shotDate').value||todayKey(), day:$('#shotDay').value, entries});
+  S.logs.push(stampRec({id:Date.now(), date:$('#shotDate').value||todayKey(), day:$('#shotDay').value, entries}));
   save(); checkPRs(beforePR); window._pendingShot=null; renderLog(); renderProgress();
 }
 
@@ -3785,6 +3834,10 @@ function applyPulled(d, exportedAt){
   // newer side back in, rather than re-running after the fact (which would just re-trigger).
   const localAgents = S.agents ? JSON.parse(JSON.stringify(S.agents)) : null;
   const localLastAuto = (S.invest && S.invest.lastAuto) ? JSON.parse(JSON.stringify(S.invest.lastAuto)) : null;
+  // The swap below rebinds S to a new object, so this reference keeps the pre-pull history
+  // arrays alive for mergeUnseenHistory(). No deep copy needed: d's arrays are freshly parsed
+  // and never alias these.
+  const localPrev = S;
   S = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), d);
   S.settings = Object.assign({}, DEFAULT_STATE.settings, d.settings||{}, keep);
   S.meta = S.meta || {changedAt:0,lastSync:0};
@@ -3821,6 +3874,22 @@ function applyPulled(d, exportedAt){
     Object.keys(localLastAuto).forEach(k=>{
       if((localLastAuto[k]||'') > (iv.lastAuto[k]||'')) iv.lastAuto[k] = localLastAuto[k];
     });
+  }
+  // A pull replaces S wholesale, so a record written locally since this snapshot was exported
+  // would be silently discarded. That is exactly how a weigh-in logged on the phone at 07:39
+  // vanished: a push frozen in a backgrounded tab since 22:08 the night before finally reached
+  // the gist 13.5 hours later and reverted the cloud copy to a snapshot predating the weigh-in.
+  // Whole-snapshot last-writer-wins cannot tell "not seen yet" from "deliberately deleted";
+  // the per-record write stamp can. See mergeUnseenHistory().
+  const recovered = mergeUnseenHistory(localPrev, exportedAt);
+  if(recovered){
+    // The merged state is now a strict superset of the snapshot we just consumed, so the gist
+    // does NOT hold these records. changedAt has to stay put (it is the pull watermark, and
+    // bumping it here would make the next pull gate skip genuine updates), so mark pushedAt
+    // behind instead - the existing vocabulary for "local holds content the gist lacks".
+    // pushUnconfirmedChanges() then uploads the union on the next tick or boot.
+    S.meta.pushedAt = S.meta.changedAt - 1;
+    schedulePush();
   }
   save(false);
   // A pull replaces S wholesale \u2014 S.invest included. Any banner already painted from the
@@ -4054,7 +4123,7 @@ function addWeight(){
   const d=$('#wDate').value, v=parseFloat($('#wLbs').value);
   if(!d||!v) return;
   S.weights = S.weights.filter(w=>w.date!==d);
-  S.weights.push({date:d, lbs:v}); save(); renderBulk();
+  S.weights.push(stampRec({date:d, lbs:v})); save(); renderBulk();
 }
 function addNutrition(){
   const d = $('#nDate').value;
@@ -4070,7 +4139,7 @@ function addNutrition(){
   // Flags the stored number as a range midpoint rather than a measured total. Absent on every
   // row logged before the ladder existed, which is correct — those were typed exactly.
   if(!nutExact) rec.est = true;
-  S.nutrition.push(rec);
+  S.nutrition.push(stampRec(rec));
   nutPick = {cal:null, pro:null};
   save(); renderBulk();
 }
@@ -5582,7 +5651,7 @@ function endLiveSession(){
   // full-plan sessions, and "field missing" has to stay distinguishable from
   // "answered no" — every log written before this existed is genuinely unknown.
   logRec.trimmed = !!live.trimmed;
-  S.logs.push(logRec);
+  S.logs.push(stampRec(logRec));
   save();
   // compute summary
   const totalSets = entries.reduce((a,e)=>a+e.sets.length,0);
@@ -6672,7 +6741,7 @@ const SLEEP_SCORE={'<6':1,'6-7':2,'7-8':3,'8+':4};
 function quickLogSleep(bucket){
   const k=todayKey();
   let rd=S.readiness.find(r=>r.date===k);
-  if(rd){ rd.sleep=bucket; } else { S.readiness.push({date:k, sleep:bucket, sore:'', energy:'', tier:'ok'}); }
+  if(rd){ rd.sleep=bucket; stampRec(rd); } else { S.readiness.push(stampRec({date:k, sleep:bucket, sore:'', energy:'', tier:'ok'})); }
   save(); renderSleep();
 }
 function sleepPerfData(){
@@ -10532,7 +10601,7 @@ function rd3Lock(){
   const entry = {date:todayKey(), sleep:_rdV3.sleep, sore:_rdV3.sore, energy:_rdV3.energy, stress:_rdV3.stress, motiv:_rdV3.motiv};
   entry.tier = readinessTierV3(entry);
   S.readiness = S.readiness.filter(x=>x.date!==todayKey());
-  S.readiness.push(entry); save();
+  S.readiness.push(stampRec(entry)); save();
   if(entry.tier==='low'){ rd3ShowTrimPrompt(entry); return; }   // active choice, never silent
   closeReadyOverlay(); _startLiveNow(_rdPendingDay, false);
 }
