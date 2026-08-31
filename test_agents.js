@@ -4113,6 +4113,138 @@ setTimeout(async () => {
     ev("if(window.__realData4) callClaudeWithData = window.__realData4;");
   }
 
+  console.log('=== A DROPPED CONNECTION MUST NOT BURN THE NIGHT ===');
+  try {
+    // Aug 30: CHARLIE, DELTA and ECHO all logged "Failed to fetch" inside the same minute, the
+    // finally stamped lastRun anyway, and the night was gone with no retry. A request that never
+    // left the device is not a failed check -- it is no check at all, and it is the one failure
+    // shape worth attempting again.
+    ev("S.settings.apiKey = 'sk-test'; agState().autoRun = true;");
+    ev("window.__realDataN = callClaudeWithData;");
+    ev("window.__netFail = function(){ callClaudeWithData = async function(){ throw new TypeError('Failed to fetch'); }; };");
+    const withHourN = function(h, fn){
+      ev("Date.prototype.__realGH2 = Date.prototype.getHours;");
+      ev("Date.prototype.getHours = function(){ return " + h + "; };");
+      const out = fn();
+      ev("Date.prototype.getHours = Date.prototype.__realGH2; delete Date.prototype.__realGH2;");
+      return out;
+    };
+    const reset = "agState().lastRun=''; agState().log=[]; agState().status={}; delete agState().retry; delete agState().brief;";
+
+    // --- classification: what came back vs what never went out ---
+    ok('a bare fetch rejection reads as a dropped connection',
+       ev("agIsNetworkErr(new TypeError('Failed to fetch'))") === true);
+    ok('and so does the Safari/iOS wording for the same thing',
+       ev("agIsNetworkErr(new TypeError('Load failed'))") === true);
+    // An HTTP error REPLY arrived and will arrive again identically; retrying it only spends
+    // money to be told the same thing. Only a request that never completed is worth repeating.
+    ok('an API error reply does not', ev("agIsNetworkErr(new Error('API 429: rate limited'))") === false);
+    ok('nor does a 500', ev("agIsNetworkErr(new Error('API 500: overloaded'))") === false);
+    ok('nor does a truncated reply',
+       ev("agIsNetworkErr(new Error('reply hit the 16000-token ceiling before it finished'))") === false);
+    // The status prefix has to win over the wording, or an error body that merely mentions a
+    // connection gets retried as though nothing had been sent. The API says things like this.
+    ok('and an API error is not reclassified by wording inside its body',
+       ev("agIsNetworkErr(new Error('API 502: upstream connection reset'))") === false);
+    ok('nor by a body that names a network error',
+       ev("agIsNetworkErr(new Error('API 503: network error talking to upstream'))") === false);
+
+    // --- attempt 1: the daily gate must stay OPEN ---
+    ev(reset); ev("window.__netFail();");
+    await ev('agRunAll(false)');
+    ok('a network wipeout does not stamp the day',
+       ev("agState().lastRun") === '', JSON.stringify(ev('agState().lastRun')));
+    ok('and it is counted as attempt 1',
+       ev('(agState().retry||{}).n') === 1, JSON.stringify(ev('agState().retry || null')));
+    ok('against today, so the budget resets on its own',
+       ev("(agState().retry||{}).date === todayKey()"));
+    ok('the log says the connection dropped rather than that the check ran',
+       ev("agState().log.some(function(e){ return e.agent==='zulu' && /reach the API/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.agent+':'+e.text.slice(0,45);})")));
+    // The failure that started all this looked like silence. It must never read as an all-clear.
+    ok('and never reports a total failure as nothing-to-report',
+       ev("agState().log.every(function(e){ return !/nothing needed your attention/.test(e.text); })"));
+
+    // An open gate is worth nothing unless the scheduler actually fires back through it, so
+    // assert the real caller re-enters -- not merely that lastRun is falsy.
+    ev("window.__ranAgain = 0; window.__realRunAll = agRunAll;");
+    ev("agRunAll = function(){ window.__ranAgain++; };");
+    withHourN(22, function(){ ev('agMaybeAutoRun()'); });
+    ok('the 9 PM scheduler re-fires after a dropped connection', ev('window.__ranAgain') === 1,
+       String(ev('window.__ranAgain')));
+    ev("agRunAll = window.__realRunAll;");
+
+    // --- the budget is bounded: a dead connection cannot spin all night ---
+    ev("window.__netFail();");
+    await ev('agRunAll(false)');
+    ok('a second wipeout still leaves the day open', ev("agState().lastRun") === '');
+    ok('and counts up', ev('(agState().retry||{}).n') === 2, String(ev('(agState().retry||{}).n')));
+    ev("agState().log=[];");
+    await ev('agRunAll(false)');
+    ok('the third attempt is the last, and it closes the day',
+       ev("agState().lastRun") === ev('todayKey()'), JSON.stringify(ev('agState().lastRun')));
+    ok('the budget is spent, not overrun', ev('(agState().retry||{}).n') === 3, String(ev('(agState().retry||{}).n')));
+    ok('and he is told retrying has stopped',
+       ev("agState().log.some(function(e){ return /last automatic attempt today/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.text.slice(0,45);})")));
+    // and now the gate really is shut
+    ev("window.__ranAgain = 0; window.__realRunAll = agRunAll; agRunAll = function(){ window.__ranAgain++; };");
+    withHourN(22, function(){ ev('agMaybeAutoRun()'); });
+    ok('the scheduler stops firing once the budget is spent', ev('window.__ranAgain') === 0);
+    ev("agRunAll = window.__realRunAll;");
+
+    // --- a genuine failure still burns the day, exactly as before ---
+    ev(reset);
+    ev("callClaudeWithData = async function(){ throw new Error('API 500: overloaded'); };");
+    await ev('agRunAll(false)');
+    ok('an API-error wipeout closes the day immediately',
+       ev("agState().lastRun") === ev('todayKey()'), JSON.stringify(ev('agState().lastRun')));
+    ok('and opens no retry budget', ev("!agState().retry"), JSON.stringify(ev('agState().retry || null')));
+    ok('and keeps the original wording', ev("agState().log.some(function(e){ return /no retry today/.test(e.text); })"));
+
+    // --- mixed causes are NOT retryable ---
+    // If even one agent reached the API, the connection was up; the others failed for their own
+    // reasons and a retry would just re-run them into the same wall.
+    ev(reset);
+    ev("callClaudeWithData = async function(msgs, sys){" +
+       "  if(/You are CHARLIE/.test(sys)) throw new TypeError('Failed to fetch');" +
+       "  throw new Error('API 500: overloaded');" +
+       "};");
+    await ev('agRunAll(false)');
+    ok('a mixed wipeout is not treated as a dropped connection',
+       ev("agState().lastRun") === ev('todayKey()'), JSON.stringify(ev('agState().lastRun')));
+    ok('and opens no retry budget either', ev("!agState().retry"));
+
+    // --- a partial success is untouched by any of this ---
+    ev(reset);
+    ev("callClaudeWithData = async function(msgs, sys){" +
+       "  if(/You are CHARLIE/.test(sys)) throw new TypeError('Failed to fetch');" +
+       "  const who = /You are DELTA/.test(sys) ? 'delta' : /You are ECHO/.test(sys) ? 'echo' : 'zulu';" +
+       "  return {text: JSON.stringify({summary: who + ' reported', proposals: []}), toolsUsed: 0, stop: 'end_turn'};" +
+       "};");
+    await ev('agRunAll(false)');
+    ok('one agent losing its connection does not reopen the day for the other two',
+       ev("agState().lastRun") === ev('todayKey()'), JSON.stringify(ev('agState().lastRun')));
+    ok('and the two that did report are kept',
+       ev("!!(agState().status.delta && agState().status.echo)"),
+       JSON.stringify(ev('Object.keys(agState().status)')));
+
+    // --- the budget belongs to the day, not to the install ---
+    ev("agState().retry = {date: mesoAddDays(todayKey(), -1), n: 3};");
+    ok('yesterday’s spent budget does not block tonight',
+       ev("agBumpRetry(agState())") === true && ev('(agState().retry||{}).n') === 1 &&
+       ev("(agState().retry||{}).date === todayKey()"));
+    ok('the retry ceiling is small enough to stay unattended', ev('AG_MAX_RETRIES') <= 5,
+       String(ev('AG_MAX_RETRIES')));
+
+    ev("callClaudeWithData = window.__realDataN;");
+    ev(reset);
+  } catch (e) {
+    ok('dropped connection section', false, e.message);
+    ev("if(window.__realRunAll) agRunAll = window.__realRunAll;");
+    ev("if(window.__realDataN) callClaudeWithData = window.__realDataN;");
+  }
+
   console.log('=== THE MORNING BRIEF IS ITS OWN CALL, AFTER WHOOP ===');
   try {
     ev("S.settings.apiKey = 'sk-test';");
@@ -4168,6 +4300,26 @@ setTimeout(async () => {
        /has not reported a recovery score for today/.test(ev('window.__briefSys')));
     ok('and not to pass off an older one as this morning’s',
        /not quote an older one/.test(ev('window.__briefSys')));
+
+    // --- WHOOP lands AFTER a cutoff-forced write: the brief and the strip must reconcile ---
+    // The brief above just went out with no recovery line because the cutoff forced it. If
+    // WHOOP reports a few hours later, the status strip starts showing a number while the
+    // brief he already read still says nothing landed -- the split Mark hit in practice
+    // (recovery showing up around 1pm with an unrelated brief from earlier). One rewrite
+    // should close that gap, and only once.
+    ev(whoopToday); ev('window.__briefCalls = 0;');
+    await withHour(13, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('once WHOOP lands later the same day, the WHOOP-less brief is rewritten',
+       ev('window.__briefCalls') === 1);
+    ok('and the rewrite carries this morning’s measured numbers',
+       /WHOOP TODAY: recovery 94%/.test(ev('window.__briefSys')));
+    ok('and the stored brief is now marked as having WHOOP',
+       ev('agState().brief.hadWhoop') === true);
+
+    ev('window.__briefCalls = 0;');
+    await withHour(14, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('and it does not rewrite again once WHOOP is already reflected',
+       ev('window.__briefCalls') === 0);
 
     // --- the normal path ---
     ev("delete agState().brief;"); ev(whoopToday); ev('window.__briefCalls = 0;');

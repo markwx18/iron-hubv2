@@ -41,9 +41,13 @@ name: WHOOP sync
 
 on:
   schedule:
-    # Every 2 hours. WHOOP recovery lands in the morning and barely changes after that, so
-    # this is mostly about being current by the time he opens the app, not about resolution.
-    - cron: '17 */2 * * *'
+    # Every 15 minutes. Used to be every 2 hours -- fine once WHOOP had reported, but recovery
+    # can land anywhere in that 2-hour window depending on where his wake-up falls relative to
+    # the tick, and the app's morning brief (see AG_BRIEF_WHOOP_CUTOFF in iron_hub.html) had
+    # already given up waiting by the time WHOOP showed up some mornings. His wake time isn't
+    # fixed enough to poll a narrower window instead, and this repo is public, so the extra
+    # runs cost nothing.
+    - cron: '*/15 * * * *'
   workflow_dispatch:        # manual run, for testing the setup
 
 # Least privilege: this job needs nothing from the repo itself.

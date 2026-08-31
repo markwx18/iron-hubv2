@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-28-v1">
+<meta name="ironhub-build" content="2026-08-31-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10697,6 +10697,39 @@ const AG_PROP_TTL = 7; // days before a pending proposal auto-expires
    the activity log dressed as a report. */
 const AG_MAXTOK = 16000;
 
+/* A totally failed cycle used to burn the day: the finally below stamps lastRun even on
+   failure (deliberately -- a parse error repeats identically, and re-firing every 15 minutes
+   would be an unattended bill for nothing). But a cycle that never reached the API at all is
+   a different case, and on the night of Aug 30 it cost him the whole check: all three agents
+   came back "Failed to fetch" within the same minute, which is fetch() rejecting before any
+   request completed -- offline, DNS, or (most likely here) iOS suspending a backgrounded tab
+   mid-flight. Nothing was wrong with the request; it simply never went out. That deserves
+   another attempt, so a network-only wipeout leaves the daily gate OPEN and the 15-minute
+   scheduler picks it up again -- bounded, so a genuinely dead connection cannot loop. */
+const AG_MAX_RETRIES = 3;
+/* True only when the request never completed. callClaude() turns an HTTP error reply into
+   'API <status>: ...', so anything carrying a status came BACK and would come back the same
+   way -- that is not retryable. A bare fetch() rejection is a TypeError whose wording is
+   engine-specific: Chrome says "Failed to fetch", Safari/iOS says "Load failed". */
+function agIsNetworkErr(e){
+  if(!e) return false;
+  const m = String(e.message || e);
+  if(/^API \d/.test(m)) return false;
+  return (typeof TypeError !== 'undefined' && e instanceof TypeError) ||
+         /failed to fetch|load failed|network ?error|networkerror|connection|err_internet/i.test(m);
+}
+/* Count today's wipeouts and report whether another attempt is still allowed. Keyed by day so
+   the budget resets on its own, and stored on state (not a module flag) because the retry has
+   to survive the app being closed and reopened -- which is exactly the situation it exists for. */
+function agBumpRetry(a){
+  const t = todayKey();
+  if(!a.retry || a.retry.date !== t) a.retry = {date:t, n:0};
+  a.retry.n++;
+  // Strictly less: the Nth attempt is the last one, so it closes the day itself rather than
+  // leaving the gate open for an (N+1)th that only exists to discover the budget is spent.
+  return a.retry.n < AG_MAX_RETRIES;
+}
+
 function agState(){
   if(!S.agents) S.agents = {};
   const a = S.agents;
@@ -11170,6 +11203,7 @@ async function agRunAll(manual){
   if(_agRunning) return;
   _agRunning = true; renderOps();
   let raised = 0;
+  let retryable = false;   // set only by a network-only wipeout; read by the finally
   try{
     // Settled, not all: one specialist failing must not take the other two down with it.
     // Under the old single-call design a malformed reply cost every agent its night.
@@ -11235,20 +11269,43 @@ async function agRunAll(manual){
     // outside but mean opposite things, and only one of them is safe to trust. Never report
     // silence as an all-clear when it was actually a total failure.
     if(failures === AG_ORDER.length){
-      agLog('zulu','Cycle failed: every agent errored or came back unreadable, so nothing was '+
-        'checked tonight \u2014 no retry today. Use Run cycle now if you want another attempt.');
+      // Every agent down for the same network reason means the connection was the problem, not
+      // the work -- worth another go. Mixed causes are not: if even one agent got a real reply,
+      // a retry would re-run the ones that legitimately failed to parse.
+      retryable = results.every(function(r){ return !r.ok && agIsNetworkErr(r.err); });
+      if(retryable){
+        agLog('zulu','Cycle failed: couldn\u2019t reach the API at all \u2014 no request got '+
+          'through, so nothing was checked. That looks like a dropped connection rather than a '+
+          'real failure, so I\u2019ll try again on my own while the app is open.');
+      } else {
+        agLog('zulu','Cycle failed: every agent errored or came back unreadable, so nothing was '+
+          'checked tonight \u2014 no retry today. Use Run cycle now if you want another attempt.');
+      }
     } else if(!raised){
       agLog('zulu','Cycle complete \u2014 nothing needed your attention today.');
     }
   }catch(e){
     agLog('zulu','Cycle failed: '+e.message+' \u2014 no retry today; use Run cycle now if you want another attempt.');
   }finally{
-    // Stamp the day even on failure, and again resolve fresh \u2014 the pull may have landed
+    // Stamp the day on failure too, and again resolve fresh \u2014 the pull may have landed
     // between the try body and here. Previously this lived at the end of the try, so a thrown
     // parse left lastRun untouched, the "already ran today" gate stayed open, and the next
-    // trigger fired a fresh cycle minutes later.
+    // trigger fired a fresh cycle minutes later. The one exception is the bounded network
+    // retry below: that deliberately reopens the gate, which is safe only because the attempt
+    // count is what closes it rather than the outcome.
     const a4 = agState();
-    a4.lastRun = todayKey(); a4.lastRunAt = new Date().toISOString();
+    a4.lastRunAt = new Date().toISOString();
+    // A network-only wipeout leaves lastRun UNSTAMPED so the scheduler fires again, but only
+    // while the day's retry budget lasts -- once it is spent the day is stamped and closed like
+    // any other failure, so a genuinely dead connection cannot spin.
+    if(retryable && agBumpRetry(a4)){
+      agLog('zulu','That was attempt '+a4.retry.n+' of '+AG_MAX_RETRIES+' \u2014 I\u2019ll '+
+        'retry within 15 minutes if the app is open.');
+    } else {
+      if(retryable) agLog('zulu','That was my last automatic attempt today. Use Run cycle now if '+
+        'you want another.');
+      a4.lastRun = todayKey();
+    }
     _agRunning = false; save(); renderOps();
   }
 }
@@ -11346,9 +11403,9 @@ const AG_BRIEF_LATEST = 18;
    score that has actually landed. That is a fifth call a day; it runs at effort 'medium'
    rather than the cycle's 'high' because it is summarising findings the specialists already
    did the thinking for, not deriving them. */
-function agSetBrief(text){
+function agSetBrief(text, hadWhoop){
   const a = agState();
-  a.brief = {text:text, at:new Date().toISOString(), date:todayKey()};
+  a.brief = {text:text, at:new Date().toISOString(), date:todayKey(), hadWhoop:!!hadWhoop};
 }
 function agBrief(){
   const a = agState();
@@ -11871,7 +11928,8 @@ async function agRunBrief(manual){
     // Re-resolve AFTER the await. applyPulled() may have replaced S while the request was in
     // flight, and agSetBrief() resolves through agState() internally, so this is safe -- but
     // the save() below must not be reached through anything captured before the await.
-    if(text){ agSetBrief(text); agLog('zulu','Wrote this morning\u2019s brief.'); }
+    const hadWhoop = !!(S.whoop && S.whoop.recovery && S.whoop.recovery.date === todayKey());
+    if(text){ agSetBrief(text, hadWhoop); agLog('zulu','Wrote this morning\u2019s brief.'); }
     else agLog('zulu','I couldn\u2019t write this morning\u2019s brief (unreadable reply). Nothing else changed.');
   }catch(e){
     agLog('zulu','I couldn\u2019t write this morning\u2019s brief ('+e.message+'). Nothing else changed.');
@@ -11889,13 +11947,20 @@ function agMaybeMorningBrief(){
   if(!a.autoRun || _agBriefRunning || _agRunning) return;
   if(!S.settings.apiKey) return;
   const b = agBrief();
-  if(b && b.date === todayKey()) return;        // already written for this morning
+  const w = S.whoop && S.whoop.recovery;
+  const whoopIn = !!(w && w.date === todayKey());
+  // Already written for this morning -- UNLESS it went out before WHOOP had reported (the
+  // 10am cutoff forces that) and WHOOP has since landed. That brief opened with "no recovery
+  // data" while the status strip now shows a real number a few hours later -- the exact split
+  // Mark flagged: the brief and the strip telling two different stories about the same day.
+  // One reconciling rewrite closes the gap; a brief that already had WHOOP, or a day WHOOP
+  // never reports at all, is untouched.
+  if(b && b.date === todayKey() && (b.hadWhoop || !whoopIn)) return;
   const h = new Date().getHours();
   if(h < AG_BRIEF_HOUR || h >= AG_BRIEF_LATEST) return;
   // Wait for WHOOP rather than spend the call on a brief that has to open "no recovery data".
   // Only up to the cutoff, though: a day WHOOP never reports must still get a brief.
-  const w = S.whoop && S.whoop.recovery;
-  if(!(w && w.date === todayKey()) && h < AG_BRIEF_WHOOP_CUTOFF) return;
+  if(!whoopIn && h < AG_BRIEF_WHOOP_CUTOFF) return;
   // Returned rather than fired and forgotten, so a caller (and the suite) can await the write
   // instead of racing the _agBriefRunning guard on the next tick.
   return agRunBrief(false);
