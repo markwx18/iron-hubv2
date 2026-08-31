@@ -3838,6 +3838,73 @@ setTimeout(async () => {
     ev("MODE = 'review'; notifOpen = false; agState().proposals = [];");
   }
 
+  console.log('=== CLEAR NOTIFICATIONS ===');
+  try {
+    ev("delete S.notifCleared; agState().proposals = []; S.invest = {flags:[], history:[], overrides:{}, lastAuto:{}};");
+    ev("agState().proposals = [{id:'pxa', agent:'delta', title:'Clear-test proposal', reasoning:'r', " +
+       "fix:{type:'cal',payload:{delta:100}}, created:todayKey(), expires:mesoAddDays(todayKey(),7), status:'pending'}];");
+    ok('starts with nothing cleared', ev('notifClearedIds()').length === 0);
+    ok('the item is visible before any clear', ev("notifVisible().some(function(i){ return i.id === 'prop:pxa'; })"));
+    ok('and counted', ev('notifCount()') >= 1, String(ev('notifCount()')));
+
+    ev('notifOpen = false; notifToggle();');
+    let panel = ev("document.getElementById('notifPanel').innerHTML");
+    ok('a clear button is offered while something is showing', panel.indexOf('notifClear()') >= 0);
+
+    // the actual clear
+    ev('notifClear()');
+    ok('clearing empties what is visible', ev('notifVisible().length') === 0, String(ev('notifVisible().length')));
+    ok('and the badge follows it to zero', ev('notifCount()') === 0, String(ev('notifCount()')));
+    panel = ev("document.getElementById('notifPanel').innerHTML");
+    ok('the panel reflects the clear without a manual reopen', panel.indexOf('Clear-test proposal') < 0, panel.slice(0, 200));
+    ok('and says something was cleared, not that nothing was ever there',
+       /Cleared/.test(panel), panel.slice(0, 200));
+
+    // clearing is a display filter, never a mutation of the thing being cleared -- Approve/
+    // reject and Dismiss are still the only paths that touch a proposal or a flag
+    ok('the underlying proposal is untouched by clearing it out of the panel',
+       ev("agPending().some(function(p){ return p.id === 'pxa'; })") === true);
+    ok('it still shows up on the dashboard, just not in the bell', (function(){
+         const home = w.eval("renderHome(); document.getElementById('home').innerHTML");
+         return home.indexOf('Clear-test proposal') >= 0;
+       })());
+
+    // a genuinely NEW item is not swallowed by an old clear
+    ev("agState().proposals.push({id:'pxb', agent:'charlie', title:'Second proposal', reasoning:'r2', " +
+       "fix:{type:'incBase',payload:{exercise:'Barbell Bench Press',delta:5}}, created:todayKey(), " +
+       "expires:mesoAddDays(todayKey(),7), status:'pending'});");
+    ok('a new proposal raised after a clear is not pre-cleared',
+       ev("notifVisible().some(function(i){ return i.id === 'prop:pxb'; })"));
+    ok('while the earlier, cleared one stays hidden',
+       ev("notifVisible().some(function(i){ return i.id === 'prop:pxa'; })") === false);
+
+    // clearing again is self-bounding: it replaces the list with exactly what is on screen,
+    // it does not keep appending ids from every clear that has ever happened
+    ev('notifClear()');
+    ok('the cleared list is exactly the current item set, not an accumulation across clears',
+       ev('notifClearedIds().length === notifItems().length'), JSON.stringify(ev('notifClearedIds()')));
+    ok('and the id that was actually just cleared is in it',
+       ev("notifClearedIds().indexOf('prop:pxb') >= 0"), JSON.stringify(ev('notifClearedIds()')));
+
+    // resolving the flagged item removes it from notifItems() entirely -- its cleared id then
+    // simply points at nothing and is never read again, rather than needing to be pruned
+    ev("agState().proposals = agState().proposals.filter(function(p){ return p.id !== 'pxb'; });");
+    ok('once approved/rejected, a cleared id has nothing left to match',
+       ev("notifItems().some(function(i){ return i.id === 'prop:pxb'; })") === false);
+
+    // clearing is a real user action and must sync like one, not vanish on the next pull
+    ev("S.meta.changedAt = 0;");
+    ev('notifClear()');
+    ok('clearing touches the sync watermark like any other user action',
+       ev('S.meta.changedAt') > 0, String(ev('S.meta.changedAt')));
+
+    ev('notifToggle();');
+    ev("agState().proposals = []; delete S.notifCleared;");
+  } catch (e) {
+    ok('clear notifications section', false, e.message);
+    ev("MODE = 'review'; notifOpen = false; agState().proposals = []; delete S.notifCleared;");
+  }
+
   console.log('=== EFFORT LEVER ===');
   try {
     // buckets fall out of the lever

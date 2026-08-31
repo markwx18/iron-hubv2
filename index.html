@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-31-v1">
+<meta name="ironhub-build" content="2026-08-31-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11594,27 +11594,48 @@ function notifItems(){
   const out = [];
   const brief = agBriefToday();
   if(brief){
-    out.push({tone:AGENTS.zulu.col, title:'Daily brief', body:brief.text, when:brief.at});
+    out.push({id:'brief:'+brief.date, tone:AGENTS.zulu.col, title:'Daily brief', body:brief.text, when:brief.at});
   }
   const letter = agLetter();
   if(letter){
-    out.push({tone:AGENTS.zulu.col, title:'Weekly letter',
+    out.push({id:'letter:'+letter.at, tone:AGENTS.zulu.col, title:'Weekly letter',
               body:String(letter.text).slice(0,180)+(letter.text.length>180?'\u2026':''),
               when:letter.at, go:"showReviewTab('ops')"});
   }
   agPending().forEach(function(p){
-    out.push({tone:(AGENTS[p.agent]||{}).col||'var(--muted)',
+    out.push({id:'prop:'+p.id, tone:(AGENTS[p.agent]||{}).col||'var(--muted)',
               title:(AGENTS[p.agent]||{}).name+' \u2014 '+p.title,
               body:p.reasoning||'Waiting for your approval.', when:null, go:"showReviewTab('ops')"});
   });
   invActiveFlags().forEach(function(f){
-    out.push({tone:'var(--amber)', title:'Investigation \u2014 '+f.title,
+    out.push({id:'flag:'+f.id, tone:'var(--amber)', title:'Investigation \u2014 '+f.title,
               body:(f.findings&&f.findings[0])||'Open the Investigate tab for detail.',
               when:null, go:"showReviewTab('invest')"});
   });
   const wr = waterReminder();
-  if(wr) out.push({tone:'var(--cyan)', title:'Water', body:wr, when:null});
+  if(wr) out.push({id:'water:'+todayKey(), tone:'var(--cyan)', title:'Water', body:wr, when:null});
   return out;
+}
+/* Cleared ids, not a "cleared before this time" watermark: proposals and investigation flags
+   only carry a day-granular created date, so a timestamp cutoff could not tell a flag raised
+   an hour after a same-day clear from one that was already dismissed. Self-bounding by
+   design -- notifClear() replaces the list with exactly the ids visible at that moment, so it
+   never grows past what is currently on screen, and an id for a resolved proposal or an
+   archived flag simply falls out of notifItems() and is never looked at again. */
+function notifClearedIds(){
+  if(!Array.isArray(S.notifCleared)) S.notifCleared = [];
+  return S.notifCleared;
+}
+function notifVisible(){
+  const cleared = notifClearedIds();
+  return notifItems().filter(function(i){ return cleared.indexOf(i.id) < 0; });
+}
+/* Clearing is a real user action -- it should not resurface on his other device just because
+   this one has not synced yet -- so it touches+pushes like any other entry point. */
+function notifClear(){
+  S.notifCleared = notifItems().map(function(i){ return i.id; });
+  save();
+  renderNotif();
 }
 /* A nudge, not a tracker. He does not log water and this app is not going to start asking
    him to; this just reminds him on the days it actually matters. */
@@ -11631,8 +11652,7 @@ function notifToggle(){
   renderNotif();
 }
 function notifCount(){
-  return agPending().length + invActiveFlags().length +
-         ((agBrief() && agBrief().date === todayKey()) ? 1 : 0);
+  return notifVisible().length;
 }
 function renderNotif(){
   const btn = document.getElementById('notifBtn');
@@ -11647,9 +11667,10 @@ function renderNotif(){
   btn.className = 'notif-btn'+(n?' has':'');
   panel.className = 'notif-panel'+(notifOpen?' open':'');
   if(!notifOpen){ panel.innerHTML = ''; return; }
-  const items = notifItems().filter(function(i){ return i.body || i.title; });
+  const items = notifVisible().filter(function(i){ return i.body || i.title; });
   let h = '<div class="notif-head"><span>Notifications</span>'+
-          '<button class="pain-btn" style="margin-left:auto" onclick="notifToggle()">close</button></div>';
+          (items.length ? '<button class="pain-btn" style="margin-left:auto" onclick="notifClear()">clear</button>' : '')+
+          '<button class="pain-btn"'+(items.length?'':' style="margin-left:auto"')+' onclick="notifToggle()">close</button></div>';
   h += items.length ? items.map(function(i){
         return '<div class="notif-item" style="border-left-color:'+i.tone+'"'+
           (i.go?' onclick="notifToggle();'+i.go+'" style="cursor:pointer;border-left-color:'+i.tone+'"':'')+'>'+
@@ -11657,8 +11678,11 @@ function renderNotif(){
           '<div class="notif-b">'+esc(i.body)+'</div>'+
           (i.when?'<div class="notif-when">'+esc(agTimeAgo(i.when))+'</div>':'')+'</div>';
       }).join('')
-    : '<div class="notif-empty">Nothing to tell you. No proposals waiting, no flags open, '+
-      'and no brief yet today.</div>';
+    : (notifItems().length
+        ? '<div class="notif-empty">Cleared — anything still open (proposals, flags) is still '+
+          'waiting in Ops or Investigate, just not listed here.</div>'
+        : '<div class="notif-empty">Nothing to tell you. No proposals waiting, no flags open, '+
+          'and no brief yet today.</div>');
   panel.innerHTML = h;
 }
 
