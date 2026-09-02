@@ -4198,6 +4198,13 @@ setTimeout(async () => {
     };
     const reset = "agState().lastRun=''; agState().log=[]; agState().status={}; delete agState().retry; delete agState().brief;";
 
+    // agMaybeAutoRun() now confirms the daily gate against the gist before spending a cycle, so
+    // it is async whenever sync is configured -- and it is here, from an earlier section. Nothing
+    // in this section is about that round-trip, so serve a snapshot too old to be applied: the
+    // LOCAL gate stays the thing under test, and no real request leaves the suite.
+    ev("window.__realFetchGist = fetchGistData;");
+    ev("fetchGistData = async function(){ return {exportedAt: 1, data: JSON.parse(JSON.stringify(S))}; };");
+
     // --- classification: what came back vs what never went out ---
     ok('a bare fetch rejection reads as a dropped connection',
        ev("agIsNetworkErr(new TypeError('Failed to fetch'))") === true);
@@ -4236,7 +4243,7 @@ setTimeout(async () => {
     // assert the real caller re-enters -- not merely that lastRun is falsy.
     ev("window.__ranAgain = 0; window.__realRunAll = agRunAll;");
     ev("agRunAll = function(){ window.__ranAgain++; };");
-    withHourN(22, function(){ ev('agMaybeAutoRun()'); });
+    await withHourN(22, function(){ return ev('agMaybeAutoRun()'); });
     ok('the 9 PM scheduler re-fires after a dropped connection', ev('window.__ranAgain') === 1,
        String(ev('window.__ranAgain')));
     ev("agRunAll = window.__realRunAll;");
@@ -4256,7 +4263,7 @@ setTimeout(async () => {
        JSON.stringify(ev("agState().log.map(function(e){return e.text.slice(0,45);})")));
     // and now the gate really is shut
     ev("window.__ranAgain = 0; window.__realRunAll = agRunAll; agRunAll = function(){ window.__ranAgain++; };");
-    withHourN(22, function(){ ev('agMaybeAutoRun()'); });
+    await withHourN(22, function(){ return ev('agMaybeAutoRun()'); });
     ok('the scheduler stops firing once the budget is spent', ev('window.__ranAgain') === 0);
     ev("agRunAll = window.__realRunAll;");
 
@@ -4297,6 +4304,7 @@ setTimeout(async () => {
        JSON.stringify(ev('Object.keys(agState().status)')));
 
     // --- the budget belongs to the day, not to the install ---
+    ev("fetchGistData = window.__realFetchGist;");
     ev("agState().retry = {date: mesoAddDays(todayKey(), -1), n: 3};");
     ok('yesterday’s spent budget does not block tonight',
        ev("agBumpRetry(agState())") === true && ev('(agState().retry||{}).n') === 1 &&
@@ -4310,6 +4318,155 @@ setTimeout(async () => {
     ok('dropped connection section', false, e.message);
     ev("if(window.__realRunAll) agRunAll = window.__realRunAll;");
     ev("if(window.__realDataN) callClaudeWithData = window.__realDataN;");
+  }
+
+  console.log('=== A PARTIAL CYCLE IS NEVER AN ALL-CLEAR ===');
+  try {
+    // Sep 1, 9:14 PM. DELTA and ECHO both died on a dropped connection ("Load failed"), CHARLIE
+    // reported clean, and ZULU wrote "Cycle complete - nothing needed your attention today" on
+    // top of a synthesis claiming Delta and Echo "didn't raise anything actionable". Both were
+    // statements about two checks that never ran, and both were wrong: when the pair did run 15
+    // minutes later, DELTA had a bench progression trigger waiting and ECHO had a calorie
+    // adherence gap. A failed agent was simply absent from ZULU's digest, so ZULU -- told flatly
+    // that all three had just reported -- reasoned its way to a clean bill for the hole.
+    ev("S.settings.apiKey = 'sk-test'; agState().autoRun = true;");
+    ev("window.__realDataP = callClaudeWithData; window.__zuluSys = '';");
+    const partialStub =
+      "callClaudeWithData = async function(msgs, sys){" +
+      "  if(/You are DELTA/.test(sys) || /You are ECHO/.test(sys)) throw new TypeError('Load failed');" +
+      "  if(/You are ZULU/.test(sys)) window.__zuluSys = sys;" +
+      "  return {text: JSON.stringify({summary:'nothing to flag', proposals:[]}), toolsUsed:0, stop:'end_turn'};" +
+      "};";
+    const wipe = "agState().lastRun=''; agState().log=[]; agState().status={}; agState().proposals=[]; delete agState().retry;";
+    ev(partialStub); ev(wipe);
+    await ev('agRunAll(false)');
+
+    const plog = ev("agState().log.map(function(e){ return e.agent + '|' + e.text; })");
+
+    ok('a partial cycle is never reported as nothing-to-report',
+       !plog.some(t => /nothing needed your attention/.test(t)), plog.join(' // '));
+    ok('the summary names the agents whose area went unchecked',
+       plog.some(t => /^zulu\|/.test(t) && /DELTA and ECHO/.test(t) && /unchecked/.test(t)),
+       plog.join(' // '));
+    ok('and still credits the one that did report',
+       plog.some(t => /^zulu\|/.test(t) && /CHARLIE found nothing to flag/.test(t)),
+       plog.join(' // '));
+
+    // The log line is the symptom; this is the cause. ZULU has to be TOLD an agent is missing,
+    // not left to notice a hole in a list it was told was complete.
+    const zsys = ev('window.__zuluSys');
+    ok('ZULU is handed the failures alongside the reports',
+       /DELTA: DID NOT REPORT/.test(zsys) && /ECHO: DID NOT REPORT/.test(zsys), zsys.slice(-500));
+    ok('the failure carries why it failed', /Load failed/.test(zsys));
+    ok('and ZULU is told not to speak for an agent that did not run',
+       /never infer what it would/i.test(zsys) && /never describe a missing report as nothing-to-flag/i.test(zsys));
+    ok('the prompt no longer asserts that all three reported',
+       !/CHARLIE, DELTA and ECHO have each just reported/.test(zsys));
+    ok('the agent that DID report is still passed through',
+       /CHARLIE: nothing to flag/.test(zsys), zsys.slice(-500));
+
+    // Reciprocal, and the reason the all-clear exists at all: a genuinely clean full cycle must
+    // still read as one, or the fix has just traded a false all-clear for a false alarm.
+    ev("callClaudeWithData = async function(){" +
+       "  return {text: JSON.stringify({summary:'nothing to flag', proposals:[]}), toolsUsed:0, stop:'end_turn'};" +
+       "};");
+    ev(wipe);
+    await ev('agRunAll(false)');
+    ok('a genuinely clean cycle still says nothing needed his attention',
+       ev("agState().log.some(function(e){ return /nothing needed your attention/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){ return e.text.slice(0,50); })")));
+
+    ok('agNameList reads the way a person would say it',
+       ev("agNameList(['charlie'])") === 'CHARLIE' &&
+       ev("agNameList(['delta','echo'])") === 'DELTA and ECHO' &&
+       ev("agNameList(['charlie','delta','echo'])") === 'CHARLIE, DELTA and ECHO',
+       ev("agNameList(['charlie','delta','echo'])"));
+
+    ev("callClaudeWithData = window.__realDataP;");
+    ev(wipe);
+  } catch (e) {
+    ok('partial cycle section', false, e.message);
+    ev("if(window.__realDataP) callClaudeWithData = window.__realDataP;");
+  }
+
+  console.log('=== A STALE DAILY GATE MUST NOT PAY FOR A SECOND CYCLE ===');
+  try {
+    // The other half of Sep 1: the cycle ran twice, 16 minutes apart, and both runs were the
+    // real thing. The phone ran at 9:14, stamped the day, and its push reached the gist at
+    // 9:14:42 -- confirmed in the gist revision history. A second instance fired its own full
+    // cycle at 9:30 anyway. Nothing was wrong with the local gate or with applyPulled()'s merge:
+    // the tab asking the question had simply not pulled since it was backgrounded, because
+    // bgSyncTick() returns early unless document.visibilityState is 'visible' while the
+    // 15-minute scheduler interval keeps firing regardless. A backgrounded instance therefore
+    // holds a guaranteed-stale gate, and a gate read from state that cannot have been refreshed
+    // is not a gate. So the scheduler confirms against the gist before spending four calls.
+    const savedTok = ev('S.settings.ghToken'), savedGist = ev('S.settings.gistId');
+    const savedChanged = ev('S.meta.changedAt');
+    ev("S.settings.apiKey='sk-test'; S.settings.ghToken='tok'; S.settings.gistId='g1'; S.settings.autoSync=true;");
+    ev("agState().autoRun = true;");
+    ev("window.__realRunAllS = agRunAll; window.__realFetchGistS = fetchGistData;");
+    ev("agRunAll = function(){ window.__cycles++; };");
+    // A remote snapshot carrying whatever lastRun the other device wrote. exportedAt stays in
+    // the past so this never leaves a future watermark behind for later sections.
+    ev("window.__remoteSaying = function(lastRun){ return async function(){" +
+       "  const d = JSON.parse(JSON.stringify(S)); d.agents = d.agents || {}; d.agents.lastRun = lastRun;" +
+       "  return {exportedAt: Date.now() - 1000, data: d};" +
+       "}; };");
+    const withHourS = function(h, fn){
+      ev("Date.prototype.__realGH3 = Date.prototype.getHours;");
+      ev("Date.prototype.getHours = function(){ return " + h + "; };");
+      const out = fn();
+      ev("Date.prototype.getHours = Date.prototype.__realGH3; delete Date.prototype.__realGH3;");
+      return out;
+    };
+    const staleLocal = "agState().lastRun = ''; S.meta.changedAt = Date.now() - 100000; window.__cycles = 0;";
+
+    // exactly what a backgrounded tab holds: a gate that says nobody has run tonight
+    ev(staleLocal);
+    ev("fetchGistData = window.__remoteSaying(todayKey());");
+    ok('fixture: the local gate is open before the check', ev("agState().lastRun") === '');
+    await withHourS(22, function(){ return ev('agMaybeAutoRun()'); });
+    ok('a gate that is stale locally but closed on the gist starts no cycle',
+       ev('window.__cycles') === 0, String(ev('window.__cycles')));
+    ok('and the confirmed gate is kept, so the next tick answers for free',
+       ev('agState().lastRun') === ev('todayKey()'), JSON.stringify(ev('agState().lastRun')));
+
+    // reciprocal: a night nobody has checked must still run, or the fix has silenced the agents
+    ev(staleLocal);
+    ev("fetchGistData = window.__remoteSaying('2020-01-01');");
+    await withHourS(22, function(){ return ev('agMaybeAutoRun()'); });
+    ok('a night nobody has checked still runs', ev('window.__cycles') === 1, String(ev('window.__cycles')));
+
+    // GitHub unreachable is not a reason to skip the night: a revoked token or an outage must
+    // never switch the nightly cycle off for good.
+    ev(staleLocal);
+    ev("fetchGistData = async function(){ throw new Error('Pull failed (403)'); };");
+    await withHourS(22, function(){ return ev('agMaybeAutoRun()'); });
+    ok('an unreachable gist falls back to the local gate rather than skipping the night',
+       ev('window.__cycles') === 1, String(ev('window.__cycles')));
+
+    // and the common path stays free: a gate already closed locally never asks the network
+    ev("agState().lastRun = todayKey(); window.__cycles = 0; window.__pulls = 0;");
+    ev("fetchGistData = async function(){ window.__pulls++; throw new Error('should not be called'); };");
+    await withHourS(22, function(){ return ev('agMaybeAutoRun()'); });
+    ok('a gate already closed locally costs no request',
+       ev('window.__cycles') === 0 && ev('window.__pulls') === 0,
+       'cycles=' + ev('window.__cycles') + ' pulls=' + ev('window.__pulls'));
+
+    // an unsynced device has no second instance to disagree with it, and must stay synchronous
+    ev("S.settings.ghToken=''; S.settings.gistId=''; agState().lastRun=''; window.__cycles=0; window.__pulls=0;");
+    withHourS(22, function(){ ev('agMaybeAutoRun()'); });
+    ok('an unsynced device runs immediately, with no round-trip',
+       ev('window.__cycles') === 1 && ev('window.__pulls') === 0,
+       'cycles=' + ev('window.__cycles') + ' pulls=' + ev('window.__pulls'));
+
+    ev("agRunAll = window.__realRunAllS; fetchGistData = window.__realFetchGistS;");
+    ev("S.settings.ghToken=" + JSON.stringify(savedTok) + "; S.settings.gistId=" + JSON.stringify(savedGist) + ";");
+    ev("S.meta.changedAt = " + savedChanged + "; agState().lastRun = ''; agState().log = [];");
+  } catch (e) {
+    ok('stale daily gate section', false, e.message);
+    ev("if(window.__realRunAllS) agRunAll = window.__realRunAllS;");
+    ev("if(window.__realFetchGistS) fetchGistData = window.__realFetchGistS;");
   }
 
   console.log('=== THE MORNING BRIEF IS ITS OWN CALL, AFTER WHOOP ===');

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-08-31-v2">
+<meta name="ironhub-build" content="2026-09-01-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11180,6 +11180,14 @@ function agIngest(a2, id, blk){
   return raised;
 }
 
+/* "CHARLIE", "DELTA and ECHO", "CHARLIE, DELTA and ECHO" -- used in log lines that have to name
+   which agents reported and which did not, so the two halves of a partial cycle stay legible. */
+function agNameList(ids){
+  const n = (ids||[]).map(function(id){ return (AGENTS[id]||{}).name || id; });
+  if(!n.length) return 'no one';
+  if(n.length === 1) return n[0];
+  return n.slice(0,-1).join(', ')+' and '+n[n.length-1];
+}
 /* ---- the daily run ----
    Three specialists in parallel, then ZULU on top of their output.
 
@@ -11219,14 +11227,28 @@ async function agRunAll(manual){
     // is the fingerprint of this bug, and it has bitten this function before.
     const a2 = agState();
     const digest = [];
+    /* Agents that did NOT report, carried in the same list ZULU is handed. A failed agent used
+       to be simply absent from the digest, and ZULU -- told flatly that all three had just
+       reported -- closed the gap by reasoning. On Sep 1 DELTA and ECHO both died on a dropped
+       connection and ZULU wrote "Delta and Echo did not raise anything actionable", an
+       all-clear for two checks that never ran. It was wrong, too: when those two did run,
+       DELTA had a bench progression trigger waiting and ECHO had a calorie-adherence gap.
+       Silence has to arrive NAMED, or the lead invents a reason for it. */
+    const down = [];
+    const okIds = [], downIds = [];
     let failures = 0;
     results.forEach(function(r){
       if(!r.ok || !r.val){
         failures++;
-        agLog(r.id, 'I could not complete tonight\u2019s check ('+
-          (r.ok ? 'unreadable reply' : (r.err && r.err.message) || 'error')+'). Nothing changed.');
+        const why = (r.ok ? 'unreadable reply' : (r.err && r.err.message) || 'error');
+        downIds.push(r.id);
+        agLog(r.id, 'I could not complete tonight\u2019s check ('+why+'). Nothing changed.');
+        down.push(AGENTS[r.id].name+': DID NOT REPORT \u2014 '+why+'. Nothing in this '+
+          'agent\u2019s area was checked tonight. Do NOT read this as a clean bill, and do NOT '+
+          'guess what it would have found.');
         return;
       }
+      okIds.push(r.id);
       raised += agIngest(a2, r.id, r.val);
       digest.push(AGENTS[r.id].name+': '+String(r.val.summary||'(nothing)'));
       // DELTA alone refreshes the Overload Status tab. Read-only and informational, so it sits
@@ -11245,10 +11267,12 @@ async function agRunAll(manual){
     renderOps();
 
     // ZULU last, and only if at least one specialist actually reported -- synthesising three
-    // failures is a waste of a call.
+    // failures is a waste of a call. It is handed the failures TOO, though (as is the letter):
+    // the gate is what digest.length is for, the digest itself has to be the whole night.
+    const zdigest = digest.concat(down);
     if(digest.length){
       try{
-        const zres = await agRunLead(digest, manual);
+        const zres = await agRunLead(zdigest, manual);
         const a3 = agState();
         raised += agIngest(a3, 'zulu', zres);
       }catch(e){
@@ -11258,7 +11282,7 @@ async function agRunAll(manual){
       // already succeeded above it.
       if(agLetterDue()){
         try{
-          const letter = await agWriteLetter(digest);
+          const letter = await agWriteLetter(zdigest);
           if(letter){ agSetLetter(letter); agLog('zulu','Your weekly letter is ready.'); }
         }catch(e){
           agLog('zulu','I couldn\u2019t write this week\u2019s letter ('+e.message+'). Everything else above still stands.');
@@ -11281,8 +11305,15 @@ async function agRunAll(manual){
         agLog('zulu','Cycle failed: every agent errored or came back unreadable, so nothing was '+
           'checked tonight \u2014 no retry today. Use Run cycle now if you want another attempt.');
       }
-    } else if(!raised){
+    } else if(!raised && !failures){
       agLog('zulu','Cycle complete \u2014 nothing needed your attention today.');
+    } else if(!raised){
+      /* Partial failure, nothing raised. The all-clear above would be a lie here: the agents
+         that ran found nothing, but the ones that did not run found nothing because they never
+         looked, and those two facts read identically in the log. Name both halves. */
+      agLog('zulu','Cycle incomplete \u2014 '+agNameList(okIds)+' found nothing to flag, but '+
+        agNameList(downIds)+' couldn\u2019t be reached, so '+(downIds.length>1?'those areas':'that area')+
+        ' went unchecked tonight. Use Run cycle now if you want another attempt.');
     }
   }catch(e){
     agLog('zulu','Cycle failed: '+e.message+' \u2014 no retry today; use Run cycle now if you want another attempt.');
@@ -11316,13 +11347,17 @@ async function agRunLead(digest, manual){
   const pend = agPending().map(function(p){ return AGENTS[p.agent].name+': '+p.title; });
   const sc = currentDayKey();
   const sys = agSharedBrief()+
-    '\n'+'You are ZULU, the lead. CHARLIE, DELTA and ECHO have each just reported. Your job is '+
+    '\n'+'You are ZULU, the lead. CHARLIE, DELTA and ECHO were each asked to report tonight, '+
+    'and what each of them actually said is below. Your job is '+
     'synthesis and conflict-spotting, not repeating them. You rarely propose a fix of your own; '+
     'when two of them pull in opposite directions, say so and give him the options.'+
     agToolNote()+
     '\n'+'Respond with ONLY valid JSON:'+'\n'+
     '{"summary":"...","proposals":[]}'+'\n'+
-    'summary = 1-3 sentences to Mark: what the three reports add up to, and any conflict between them.'+'\n'+
+    'summary = 1-3 sentences to Mark: what the reports below add up to, and any conflict between them.'+'\n'+
+    'An agent marked DID NOT REPORT did not run at all. Say plainly that its area went unchecked '+
+    'tonight. Never describe a missing report as nothing-to-flag, and never infer what it would '+
+    'have found from the other agents or from the data.'+'\n'+
     'Do NOT write a daily brief here. That is written separately the next morning, once his '+
     'WHOOP recovery for that day has actually landed \u2014 anything you wrote about how recovered '+
     'he is would be a day out of date by the time he read it.'+'\n'+
@@ -11363,6 +11398,8 @@ async function agWriteLetter(digest){
     'short honest letter beats a padded one.'+
     '\n'+'Do not describe anything as already changed \u2014 nothing takes effect until he approves it.'+
     agToolNote()+
+    '\n'+'An agent marked DID NOT REPORT below did not run tonight. Do not speak for it and do '+
+    'not present its silence as a good week.'+
     '\n'+'WHAT THE SPECIALISTS FOUND TONIGHT:'+'\n'+(digest||[]).join('\n')+
     '\n'+'\n'+agBaseContext('zulu');
   const res = await callClaudeWithData(
@@ -11997,7 +12034,47 @@ function agMaybeAutoRun(){
   if(!S.settings.apiKey) return;
   if(a.lastRun === todayKey()) return;
   if(new Date().getHours() < 21) return;
-  agRunAll(false);
+  // Nothing to confirm the gate against on an unsynced device: there is no second instance that
+  // could have run tonight, so local state IS the truth. Stays synchronous, and costs no request.
+  if(!syncReady() || S.settings.autoSync === false){ agRunAll(false); return; }
+  return agConfirmGateThenRun();
+}
+
+/* The daily gate is only as trustworthy as the state it is read from, and a BACKGROUNDED tab is
+   guaranteed to hold a stale one: bgSyncTick() returns early unless the document is visible, so
+   an instance sitting in the background has pulled nothing since the moment it was backgrounded
+   -- while the 15-minute scheduler interval above goes on firing regardless. That is how Sep 1
+   paid for two full cycles: the phone ran at 9:14, stamped the day and pushed it to the gist at
+   9:14:42, and a second instance whose own lastRun still read yesterday fired its own cycle at
+   9:30. Both the local gate and the merge in applyPulled() were working correctly; the tab
+   asking the question simply had not looked at the answer in 16 minutes.
+   So confirm against the gist before spending four API calls. This only ever runs when the gate
+   already looks OPEN -- a closed gate returns above, so the common path stays free. */
+async function agConfirmGateThenRun(){
+  try{
+    try{
+      const p = await fetchGistData();
+      if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
+        applyPulled(p.data, p.exportedAt);
+        // Own try: a render throwing here must not be mistaken for the pull failing, which
+        // would fall through to the very stale gate this round-trip exists to replace.
+        try{ setAccent(); renderHeader(); rerenderActive(true); }catch(e){}
+      }
+    }catch(e){
+      /* Could not reach the gist. Fall through to the local gate rather than skipping: a
+         persistent GitHub failure (revoked token, rate limit, outage) must never silently
+         switch the nightly cycle off for good. Being wrong here costs one duplicate cycle on a
+         night GitHub was also unreachable; being wrong the other way costs him the agents. */
+    }
+    // CRITICAL: applyPulled() replaces S wholesale, so every check below re-resolves rather
+    // than reusing anything read before the await -- including the gate itself, which is the
+    // whole point of the round-trip.
+    const a = agState();
+    if(!a.autoRun || _agRunning) return;
+    if(!S.settings.apiKey) return;
+    if(a.lastRun === todayKey()) return;
+    agRunAll(false);
+  }catch(e){ console.warn('agConfirmGateThenRun failed', e); }
 }
 
 /* ============================================================
