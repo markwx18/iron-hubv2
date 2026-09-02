@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-01-v1">
+<meta name="ironhub-build" content="2026-09-02-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3929,8 +3929,22 @@ document.addEventListener('visibilitychange', ()=>{
 //    means that edit is safely on the gist before any incoming pull gets a chance to clobber
 //    it. If this throws (e.g. offline), the caller's pull is skipped this tick rather than
 //    risking a pull over data that was never confirmed safe.
+// The pushedAt > 0 term is load-bearing, and cost a day of training history on 2026-09-02.
+// pushedAt did not exist before 2026-08-18, and load() takes `meta` wholesale from
+// localStorage, so a state older than that comes back with the field ABSENT -> 0, while
+// changedAt is a real timestamp from whenever the device was last used. Without this term any
+// long-idle device reads as "has unpushed work" the moment it is opened, and uploads its stale
+// snapshot with a fresh exportedAt before the pull below it ever runs -- which is how a laptop
+// last touched on 2026-07-12 overwrote every other device with two-month-old data.
+// "Never recorded a push" is not the claim this function exists to act on; "had a push
+// stranded" is, and that needs a real watermark to catch up from. A device with no watermark
+// should pull instead, which is exactly what autoPullOnLoad() does next.
+// The residual cost is narrow and deliberate: a legacy device really holding edits that never
+// reached the gist will lose them to that pull. Losing one device's unsynced remnant beats
+// letting it overwrite the full history on every other device.
 async function pushUnconfirmedChanges(){
-  if(syncReady() && S.settings.autoSync !== false && S.meta && (S.meta.changedAt||0) > (S.meta.pushedAt||0)){
+  if(syncReady() && S.settings.autoSync !== false && S.meta &&
+     (S.meta.pushedAt||0) > 0 && (S.meta.changedAt||0) > (S.meta.pushedAt||0)){
     await syncPush(false);
   }
 }

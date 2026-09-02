@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1167 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1301 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -187,6 +187,27 @@ the next background pull.** Two rules follow:
   takes the snapshot's `exportedAt`, and `syncPush()` takes its own upload's.
   Without this the gate never closes (a payload stamps `exportedAt` *after* the
   `changedAt` it carries), so the identical snapshot replays every minute.
+
+**A new `meta` field is a migration, because `load()` does not migrate `meta`.** It does
+`Object.assign(DEFAULT_STATE, stored)`, which is a shallow merge — a stored `meta` object is
+taken *wholesale*, so a field added to `DEFAULT_STATE.meta` comes back **absent** on any state
+saved before that field existed, not at its default. On 2026-09-02 that erased two months of
+training: `pushedAt` (added 2026-08-18) was absent on a laptop last opened 2026-07-12, so
+`(S.meta.pushedAt||0)` was 0 while `changedAt` was a real July timestamp,
+`pushUnconfirmedChanges()` read the pair as "unpushed work," and the boot catch-up uploaded
+the stale snapshot with a fresh `exportedAt` *before* `autoPullOnLoad()` reached its pull.
+Every other device then pulled it. `mergeUnseenHistory()` cannot soften this — it keeps only
+records with `t > exportedAt`, and the bad `exportedAt` was "now".
+
+Recovery is `scripts/gist_restore.js` (`list` / `show` / `restore`): a gist keeps every
+revision, so an overwrite is undoable. `list` prints what each revision *contains*, because a
+stale push carries a fresh timestamp and the stamp alone cannot identify the good one. The
+restore must re-stamp `exportedAt` to now, or no device will accept it — they all advanced
+`changedAt` when they swallowed the bad snapshot.
+
+If you add a `meta` field, do not assume a default reaches an existing install: gate on
+whether the field is genuinely present, the way `pushUnconfirmedChanges()` now requires
+`pushedAt > 0` before treating a gap as a stranded push.
 
 ---
 

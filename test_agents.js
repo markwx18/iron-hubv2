@@ -468,6 +468,56 @@ setTimeout(async () => {
     ev("S.logs = S.logs.filter(l => l.id !== 'catchuptest1'); S.settings.ghToken=''; S.settings.gistId='';");
   }
 
+  // The 2026-09-02 data loss. A laptop last opened on 2026-07-12 was launched, and its
+  // two-month-old state overwrote every other device. S.meta.pushedAt did not exist before
+  // 2026-08-18, and load() takes `meta` wholesale from localStorage, so on that old state the
+  // field came back undefined -> 0 while changedAt was a real July timestamp. The boot
+  // catch-up read that as "this device has unpushed work" and PATCHed the stale snapshot with
+  // a fresh exportedAt -- BEFORE autoPullOnLoad() reached its pull. Every other device then saw
+  // exportedAt > changedAt and took it. mergeUnseenHistory() could not soften it either: it
+  // keeps only records with t > exportedAt, and exportedAt was "now".
+  // "Never recorded a push" and "had a push stranded" are different claims, and only the
+  // second one is what the catch-up exists to fix -- it needs a real watermark to catch up FROM.
+  // A device in the first state should pull, which is what autoPullOnLoad() does next anyway.
+  console.log('=== A STATE THAT NEVER RECORDED A PUSH DOES NOT BLIND-PUSH AT BOOT ===');
+  try {
+    let patches = [];
+    const realFetch = w.fetch;
+    w.fetch = (url, opts) => {
+      if (opts && opts.method === 'PATCH') patches.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+    };
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1';");
+    ev("window.__metaSave = JSON.parse(JSON.stringify(S.meta));");
+
+    // Exactly what load() produces from a pre-2026-08-18 localStorage blob: a real changedAt,
+    // and no pushedAt key at all. Not pushedAt=0 -- the absent field is the actual condition.
+    ev("S.meta = {changedAt: Date.parse('2026-07-12T18:00:00Z'), lastSync: Date.parse('2026-07-12T18:00:00Z')};");
+    ok('the legacy fixture really has no pushedAt field',
+      ev("!('pushedAt' in S.meta)"), JSON.stringify(ev('S.meta')));
+
+    await ev("pushUnconfirmedChanges()");
+    ok('a state that never recorded a push does not upload itself over the gist',
+      patches.length === 0,
+      'PATCHed ' + patches.length + ' time(s)');
+
+    // The guard must not be so broad that it disables the catch-up it was bolted onto: a device
+    // with a genuine watermark and a genuine gap still has to push.
+    patches = [];
+    ev("S.meta = {changedAt: Date.now(), pushedAt: Date.now() - 60000, lastSync: 0};");
+    await ev("pushUnconfirmedChanges()");
+    ok('a real stranded push is still caught up', patches.length === 1,
+      'PATCHed ' + patches.length + ' time(s)');
+
+    ev("S.meta = window.__metaSave; delete window.__metaSave;");
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('a state that never recorded a push does not blind-push at boot', false, e.message);
+    ev("if(window.__metaSave){ S.meta = window.__metaSave; delete window.__metaSave; }");
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
   // The incident this guards against: Device A (PC) logs nothing new today and hits "Push
   // Now". Device B (phone) logged a real session hours earlier that never made it off the
   // device (killed debounce). A's push lands AFTER B's local edit, so it carries a fresher

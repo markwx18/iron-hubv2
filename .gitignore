@@ -1,1 +1,5 @@
 ﻿node_modules/
+
+# local secrets for scripts/gist_restore.js — never commit
+.gistenv
+gist_before_restore_*.json
