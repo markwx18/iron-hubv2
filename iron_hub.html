@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-02-v1">
+<meta name="ironhub-build" content="2026-09-02-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10811,6 +10811,26 @@ function agSweepExpired(){
   return n;
 }
 
+/* ---- duplicate sweep: one button per setting, even for queues built by an older build ----
+   agIngest() stops a repeat at the door now, but that door only exists on THIS build. His other
+   device can go on running an older one for days, and its duplicates arrive fully formed through
+   the gist. This also clears what the queue was already holding the night the guard shipped:
+   three "Progress Barbell Bench Press to 155 lb" buttons, one of which he had already approved,
+   with the other two still sitting there looking un-actioned. Newest wins, matching agIngest();
+   proposals are unshifted, so index 0 IS the newest and walking forward keeps the right one. */
+function agSweepDuplicates(){
+  const a = agState(); let n = 0;
+  const seen = {};
+  a.proposals.forEach(function(p){
+    if(p.status !== 'pending') return;
+    const t = agFixTarget(p.fix);
+    if(!t) return;   // advisory-only entries never reach the queue, but never assume it here
+    if(seen[t]){ p.status = 'superseded'; p.closed = todayKey(); n++; }
+    else seen[t] = true;
+  });
+  return n;
+}
+
 /* ---- fix validation: never trust model output straight into state ---- */
 const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','schedule','cycleSchedule'];
 /* Every exercise Mark actually trains — split slots plus anything he has logged. NOT
@@ -10941,6 +10961,31 @@ function agFixSummary(fx){
   if(fx.type==='cycleSchedule') return 'rotating cycle \u2192 '+p.pattern.join(' \u2192 ');
   return fx.type;
 }
+/* What a fix CHANGES, as a string. Two pending proposals sharing a target are two buttons
+   fighting over one setting: approving both applies whichever was tapped last, which is not a
+   choice he was ever offered. Deliberately coarser than the payload -- "Barbell Bench Press ->
+   155 lb for 8d" and the same lift for 14d are one decision with a different number on it. */
+function agFixTarget(fx){
+  if(!fx) return '';
+  const p = fx.payload||{};
+  // Lower-cased because the target is an identity, not a label: agValidateFix() resolves the
+  // name to its canonical spelling, but a proposal queued before that resolution existed can
+  // still be sitting in state under the model's own capitalisation.
+  if(fx.type==='liftReset') return 'liftReset:'+String(p.name||'').toLowerCase();
+  if(fx.type==='addEx')     return 'addEx:'+String(p.name||'').toLowerCase()+'|'+p.day;
+  if(fx.type==='swapEx')    return 'swapEx:'+String(p.from||'').toLowerCase();
+  return fx.type;   // cal, pro, deload, schedule, cycleSchedule -- one setting apiece
+}
+/* Identity including the numbers: same target AND same payload is the very same proposal.
+   Keys sorted so two payloads written in a different order still compare equal. */
+function agFixKey(fx){
+  if(!fx) return '';
+  const p = fx.payload||{};
+  return agFixTarget(fx)+'#'+Object.keys(p).sort().map(function(k){
+    return k+'='+JSON.stringify(p[k]);
+  }).join(',');
+}
+
 /* ---- the only place an agent proposal is allowed to touch state ---- */
 function agApplyFix(fx){
   const p = fx.payload||{};
@@ -11028,6 +11073,12 @@ function agContext(){
     : 'none';
   const recentRejects = agState().proposals.filter(p=>p.status==='rejected').slice(-6)
     .map(p=>p.agent.toUpperCase()+': '+p.title).join('; ') || 'none';
+  // Only ZULU used to be told what was pending, so a specialist had no way of knowing its own
+  // proposal from two nights ago was still sitting unanswered -- and re-raised it, verbatim,
+  // every cycle until he acted. An undecided proposal cannot ride along in the rejected list
+  // above: "he said no" and "he has not said anything yet" call for opposite behaviour.
+  const pendingTxt = agPending().map(p=>AGENTS[p.agent].name+': '+p.title+
+    (p.fix ? ' ('+agFixSummary(p.fix)+', raised '+p.created+')' : '')).join('; ') || 'none';
   return '\nCURRENT SCHEDULE: '+sc+
     '\n\nSPLIT:\n'+splitTxt+
     blockTxt+
@@ -11038,6 +11089,10 @@ function agContext(){
     '\n\nACTIVE LIFT OVERRIDES: '+ovTxt+
     '\nMAXED OUT (at machine ceiling): '+mxTxt+
     '\nINVESTIGATION FLAGS: '+flags+
+    '\n\nALREADY IN HIS APPROVAL QUEUE, UNDECIDED (do NOT propose any of these again \u2014 he '+
+      'has them and has not answered yet, and a repeat is discarded. Raise something against one '+
+      'of these only if the numbers behind it have genuinely CHANGED, and say what changed): '+
+      pendingTxt+
     '\n\nPROPOSALS HE HAS ALREADY REJECTED (do not repeat these): '+recentRejects+'\n';
 }
 function agSharedBrief(){
@@ -11182,6 +11237,25 @@ function agIngest(a2, id, blk){
       }
       return;
     }
+    /* Already waiting on him. DELTA raised the identical "Progress Barbell Bench Press to
+       155 lb" on three consecutive cycles -- nothing told it what was queued, and nothing
+       stopped a third copy landing -- so the queue held three buttons that all did one thing,
+       and approving one left the other two sitting there looking un-actioned. agContext() now
+       lists the pending queue to every agent, but that is the hint; this is the guarantee. */
+    const key = agFixKey(fix), tgt = agFixTarget(fix);
+    const sameTarget = a2.proposals.filter(function(q){
+      return q.status === 'pending' && agFixTarget(q.fix) === tgt;
+    });
+    // Byte-for-byte the same call: drop it silently. The entry he has not decided on yet IS
+    // this proposal, and a log line every night saying so would be its own kind of nagging.
+    if(sameTarget.some(function(q){ return agFixKey(q.fix) === key; })) return;
+    // Same setting, different numbers: a revision, not a second option. Retire the older one so
+    // he is never shown two contradictory buttons whose outcome depends on which he taps last.
+    sameTarget.forEach(function(q){
+      q.status = 'superseded'; q.closed = todayKey();
+      agLog(id, 'Replacing my earlier \u201c'+q.title+'\u201d with \u201c'+String(pr.title)+
+        '\u201d \u2014 same call, updated numbers. Only the newer one is in the queue.');
+    });
     a2.proposals.unshift({
       id:agUid(), agent:id, title:String(pr.title),
       reasoning:String(pr.reasoning||''), fix,
@@ -11320,7 +11394,14 @@ async function agRunAll(manual){
           'checked tonight \u2014 no retry today. Use Run cycle now if you want another attempt.');
       }
     } else if(!raised && !failures){
-      agLog('zulu','Cycle complete \u2014 nothing needed your attention today.');
+      /* A cycle whose only proposal was one already queued raises nothing NEW, and used to
+         report that as nothing to attend to -- while the thing it had just re-raised sat in the
+         queue waiting on him. Name what is still open. */
+      const waiting = agPending().length;
+      agLog('zulu', waiting
+        ? 'Cycle complete \u2014 nothing new tonight; '+waiting+' proposal'+(waiting>1?'s':'')+
+          ' still waiting on your approval.'
+        : 'Cycle complete \u2014 nothing needed your attention today.');
     } else if(!raised){
       /* Partial failure, nothing raised. The all-clear above would be a lie here: the agents
          that ran found nothing, but the ones that did not run found nothing because they never
@@ -12075,10 +12156,23 @@ async function agConfirmGateThenRun(){
         try{ setAccent(); renderHeader(); rerenderActive(true); }catch(e){}
       }
     }catch(e){
-      /* Could not reach the gist. Fall through to the local gate rather than skipping: a
-         persistent GitHub failure (revoked token, rate limit, outage) must never silently
-         switch the nightly cycle off for good. Being wrong here costs one duplicate cycle on a
-         night GitHub was also unreachable; being wrong the other way costs him the agents. */
+      /* Could not reach the gist. A GitHub-SIDE failure (revoked token, 404, rate limit,
+         outage) still falls through to the local gate rather than skipping: a persistent one
+         must never silently switch the nightly cycle off for good. Being wrong there costs one
+         duplicate cycle; being wrong the other way costs him the agents.
+
+         A bare fetch rejection gets the opposite answer, because it is a different fact. It
+         means the request never left THIS DEVICE -- there is no connection right now -- and the
+         four calls the cycle is about to make would go out over that same connection. So it can
+         neither confirm the gate nor do the work, and running anyway produces nothing but a
+         false alarm. That is exactly what Sep 2 looked like: the cycle had already run and
+         reported at 9:07 on another instance; a backgrounded phone woke at 9:09 with no network
+         yet, could not see that stamp, ran on its stale local gate, and wrote three "I could not
+         complete tonight's check (Load failed)" lines directly underneath the reports those same
+         agents had just filed -- plus "couldn't reach the API at all" and a retry budget spent on
+         a night when nothing had gone wrong. Skip instead: the 15-minute scheduler comes back,
+         and any tick from 9 PM on will run the cycle if the night genuinely still needs it. */
+      if(agIsNetworkErr(e)) return;
     }
     // CRITICAL: applyPulled() replaces S wholesale, so every check below re-resolves rather
     // than reusing anything read before the await -- including the gate itself, which is the
@@ -12210,7 +12304,7 @@ const _bootPull = (async()=>{ try{ await autoPullOnLoad(); }catch(e){} })();
 try{ startUpdateWatcher(); }catch(e){}
 try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
 // agents: expire stale proposals on load, then poll for the 9 PM window
-try{ if(agSweepExpired()) save(false); }catch(e){}
+try{ if(agSweepExpired() + agSweepDuplicates()) save(false); }catch(e){}
 _bootPull.then(()=>{
   try{ agMaybeAutoRun(); }catch(e){}
   try{ agMaybeMorningBrief(); }catch(e){}

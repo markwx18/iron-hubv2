@@ -4519,6 +4519,235 @@ setTimeout(async () => {
     ev("if(window.__realFetchGistS) fetchGistData = window.__realFetchGistS;");
   }
 
+  console.log('=== AN OFFLINE DEVICE MUST NOT SPEND A NIGHT IT CANNOT REACH ===');
+  try {
+    // Sep 2, and the reason the gate round-trip above was not enough on its own. The cycle ran
+    // and reported at 9:07 on one instance. At 9:09 a backgrounded phone woke with no connection
+    // yet: fetchGistData() rejected before the request left the device, the catch fell through
+    // to a local gate that still read yesterday, and it ran a full cycle over that same dead
+    // connection -- three "I could not complete tonight's check (Load failed)" lines sitting
+    // directly underneath the reports those very agents had just filed, plus "couldn't reach the
+    // API at all" and a retry budget spent on a night nothing was wrong with.
+    // The discrimination is the whole fix: a GitHub-SIDE failure still falls through, because a
+    // revoked token must never switch the agents off for good; a request that never went out
+    // does not, because the cycle needs the connection it has just proved it does not have.
+    const savedTokO = ev('S.settings.ghToken'), savedGistO = ev('S.settings.gistId');
+    const savedChangedO = ev('S.meta.changedAt');
+    ev("S.settings.apiKey='sk-test'; S.settings.ghToken='tok'; S.settings.gistId='g1'; S.settings.autoSync=true;");
+    ev("agState().autoRun = true;");
+    ev("window.__realRunAllO = agRunAll; window.__realFetchGistO = fetchGistData;");
+    ev("agRunAll = function(){ window.__cyclesO++; };");
+    const withHourO = function (h, fn) {
+      ev("Date.prototype.__realGH4 = Date.prototype.getHours;");
+      ev("Date.prototype.getHours = function(){ return " + h + "; };");
+      const out = fn();
+      ev("Date.prototype.getHours = Date.prototype.__realGH4; delete Date.prototype.__realGH4;");
+      return out;
+    };
+    const staleO = "agState().lastRun=''; agState().log=[]; delete agState().retry; " +
+                   "S.meta.changedAt = Date.now() - 100000; window.__cyclesO = 0;";
+
+    ev(staleO);
+    ev("fetchGistData = async function(){ throw new TypeError('Load failed'); };");
+    await withHourO(22, function () { return ev('agMaybeAutoRun()'); });
+    ok('a gate check that never left the device starts no cycle',
+       ev('window.__cyclesO') === 0, String(ev('window.__cyclesO')));
+    ok('and spends none of the night’s retry budget',
+       ev('agState().retry || null') === null, JSON.stringify(ev('agState().retry || null')));
+    ok('and leaves the gate open for a tick that can actually reach the network',
+       ev('agState().lastRun') === '', JSON.stringify(ev('agState().lastRun')));
+    ok('and says nothing, because nothing failed that he needs to know about',
+       ev('agState().log.length') === 0,
+       JSON.stringify(ev("agState().log.map(function(e){return e.text.slice(0,40);})")));
+
+    // The same fact in Chrome's wording. Both engines have to be read the same way, or the fix
+    // only works on one of his two devices.
+    ev(staleO);
+    ev("fetchGistData = async function(){ throw new TypeError('Failed to fetch'); };");
+    await withHourO(22, function () { return ev('agMaybeAutoRun()'); });
+    ok('the Chrome wording for a dropped connection reads the same way',
+       ev('window.__cyclesO') === 0, String(ev('window.__cyclesO')));
+
+    // Reciprocal, and the one that matters most: GitHub answering badly is NOT the same fact.
+    // A reply came back, so the connection is alive and the four calls below it can go out.
+    ev(staleO);
+    ev("fetchGistData = async function(){ throw new Error('Pull failed (403)'); };");
+    await withHourO(22, function () { return ev('agMaybeAutoRun()'); });
+    ok('a GitHub-side failure still falls back to the local gate and runs the night',
+       ev('window.__cyclesO') === 1, String(ev('window.__cyclesO')));
+    ev(staleO);
+    ev("fetchGistData = async function(){ throw new Error('Sync file missing from gist.'); };");
+    await withHourO(22, function () { return ev('agMaybeAutoRun()'); });
+    ok('and so does a gist that answered with something unreadable',
+       ev('window.__cyclesO') === 1, String(ev('window.__cyclesO')));
+
+    // Skipping is only safe because the scheduler comes back. Prove the night is deferred and
+    // not lost: with the connection restored, the next tick runs the cycle it declined to.
+    ev(staleO);
+    ev("fetchGistData = async function(){ const d = JSON.parse(JSON.stringify(S));" +
+       " d.agents = d.agents || {}; d.agents.lastRun = '2020-01-01';" +
+       " return {exportedAt: Date.now() - 1000, data: d}; };");
+    await withHourO(22, function () { return ev('agMaybeAutoRun()'); });
+    ok('and once the connection is back the skipped night runs on the next tick',
+       ev('window.__cyclesO') === 1, String(ev('window.__cyclesO')));
+
+    ev("agRunAll = window.__realRunAllO; fetchGistData = window.__realFetchGistO;");
+    ev("S.settings.ghToken=" + JSON.stringify(savedTokO) + "; S.settings.gistId=" + JSON.stringify(savedGistO) + ";");
+    ev("S.meta.changedAt = " + savedChangedO + "; agState().lastRun = ''; agState().log = []; delete agState().retry;");
+  } catch (e) {
+    ok('offline gate section', false, e.message);
+    ev("if(window.__realRunAllO) agRunAll = window.__realRunAllO;");
+    ev("if(window.__realFetchGistO) fetchGistData = window.__realFetchGistO;");
+  }
+
+  console.log('=== THE SAME PROPOSAL MUST NOT QUEUE TWICE ===');
+  try {
+    // He was shown "Progress Barbell Bench Press to 155 lb" on three consecutive cycles. Only
+    // ZULU was ever told what was pending, so DELTA had no way of knowing its own proposal from
+    // two nights earlier was still sitting unanswered -- and nothing downstream stopped a third
+    // identical copy landing in the queue. Three buttons for one change, and approving one left
+    // the other two sitting there looking un-actioned.
+    ev("S.settings.apiKey='sk-test'; agState().autoRun = true;");
+    ev("window.__realDataQ = callClaudeWithData;");
+    ev("window.__deltaFix = null; window.__sysQ = {};");
+    ev("callClaudeWithData = async function(msgs, sys){" +
+       "  const who = /You are CHARLIE/.test(sys) ? 'charlie'" +
+       "            : /You are DELTA/.test(sys)   ? 'delta'" +
+       "            : /You are ECHO/.test(sys)    ? 'echo' : 'zulu';" +
+       "  window.__sysQ[who] = sys;" +
+       "  const props = (who === 'delta' && window.__deltaFix) ? [window.__deltaFix] : [];" +
+       "  return {text: JSON.stringify({summary: who + ' reporting', proposals: props}), toolsUsed:0, stop:'end_turn'};" +
+       "};");
+    const wipeQ = "agState().lastRun=''; agState().log=[]; agState().status={}; agState().proposals=[]; delete agState().retry;";
+    const reopen = "agState().lastRun=''; agState().log=[];";
+    const bench = function (w, days) {
+      return "window.__deltaFix = " + JSON.stringify({
+        title: 'Progress Barbell Bench Press to ' + w + ' lb',
+        reasoning: 'it cleared the progression trigger',
+        fix: { type: 'liftReset', payload: { name: 'Barbell Bench Press', w: w, days: days } }
+      }) + ";";
+    };
+
+    ev(wipeQ); ev(bench(155, 8));
+    await ev('agRunAll(false)');
+    ok('fixture: night one queues the proposal',
+       ev('agPending().length') === 1, JSON.stringify(ev("agPending().map(function(p){return p.title;})")));
+
+    // night two: DELTA says exactly the same thing again
+    ev(reopen);
+    await ev('agRunAll(false)');
+    ok('night two does not queue a second copy of it',
+       ev('agPending().length') === 1, JSON.stringify(ev("agPending().map(function(p){return p.title;})")));
+    ok('and the entry he already has is the one left standing',
+       ev('agPending()[0].fix.payload.w') === 155 && ev('agPending()[0].fix.payload.days') === 8,
+       JSON.stringify(ev('agPending()[0].fix.payload')));
+    ok('a verbatim re-raise is not announced either, because nothing changed for him',
+       ev("agState().log.every(function(e){ return !/Replacing my earlier/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.text.slice(0,50);})")));
+    // The other half: raising nothing NEW is not the same as nothing needing him. The old
+    // all-clear said "nothing needed your attention today" while the very thing it had just
+    // tried to re-raise sat in the queue waiting on exactly that.
+    ok('and the close names what is still waiting on him',
+       ev("agState().log.some(function(e){ return e.agent==='zulu' && /1 proposal still waiting/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.filter(function(e){return e.agent==='zulu';}).map(function(e){return e.text.slice(0,70);})")));
+    ok('rather than the all-clear that would have been wrong',
+       ev("agState().log.every(function(e){ return !/nothing needed your attention/.test(e.text); })"));
+
+    // night three: same lift, different numbers. That is a revision, not a second option --
+    // two pending buttons over one setting resolve to whichever he taps last, which is not a
+    // choice he was ever offered.
+    ev(reopen); ev(bench(150, 14));
+    await ev('agRunAll(false)');
+    ok('a revised number replaces rather than duplicates',
+       ev('agPending().length') === 1, JSON.stringify(ev("agPending().map(function(p){return p.fix.payload.w;})")));
+    ok('and it is the newer numbers he is left holding',
+       ev('agPending()[0].fix.payload.w') === 150 && ev('agPending()[0].fix.payload.days') === 14,
+       JSON.stringify(ev('agPending()[0].fix.payload')));
+    ok('the older one is retired rather than left pending',
+       ev("agState().proposals.filter(function(p){return p.status==='superseded';}).length") === 1,
+       JSON.stringify(ev("agState().proposals.map(function(p){return p.status;})")));
+    ok('and the swap is said out loud, so a vanished button is never unexplained',
+       ev("agState().log.some(function(e){ return e.agent==='delta' && /Replacing my earlier/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.text.slice(0,60);})")));
+
+    // Coarse enough to catch a re-worded repeat, never so coarse it swallows a different call.
+    const otherLift = ev("(function(){var out=null;Object.keys(S.split).forEach(function(d){" +
+      "(S.split[d].exercises||[]).forEach(function(x){ if(!out && exName(x)!=='Barbell Bench Press') out=exName(x); });});return out;})()");
+    ok('fixture: the split has a second lift to test against', !!otherLift, String(otherLift));
+    ev(reopen);
+    ev("window.__deltaFix = " + JSON.stringify({
+      title: 'Cap the other lift', reasoning: 'grinding through every set',
+      fix: { type: 'liftReset', payload: { name: 'x', w: 100, days: 7 } }
+    }) + ";");
+    ev("window.__deltaFix.fix.payload.name = " + JSON.stringify(otherLift) + ";");
+    await ev('agRunAll(false)');
+    ok('a different lift is a different decision and still queues alongside it',
+       ev('agPending().length') === 2, JSON.stringify(ev("agPending().map(function(p){return p.fix.payload.name;})")));
+
+    // the identity the queue check is built on, asserted directly
+    ok('two weights for one lift share a target',
+       ev("agFixTarget({type:'liftReset',payload:{name:'Barbell Bench Press',w:155,days:8}})") ===
+       ev("agFixTarget({type:'liftReset',payload:{name:'Barbell Bench Press',w:150,days:14}})"));
+    ok('but are not the same proposal',
+       ev("agFixKey({type:'liftReset',payload:{name:'Barbell Bench Press',w:155,days:8}})") !==
+       ev("agFixKey({type:'liftReset',payload:{name:'Barbell Bench Press',w:150,days:14}})"));
+    ok('a payload written in a different key order is still the same proposal',
+       ev("agFixKey({type:'liftReset',payload:{days:8,w:155,name:'Barbell Bench Press'}})") ===
+       ev("agFixKey({type:'liftReset',payload:{name:'Barbell Bench Press',w:155,days:8}})"));
+    ok('there is one calorie target, so any two cal fixes contend for it',
+       ev("agFixTarget({type:'cal',payload:{delta:200}})") === ev("agFixTarget({type:'cal',payload:{delta:-100}})"));
+    ok('calories and protein are not the same setting',
+       ev("agFixTarget({type:'cal',payload:{delta:200}})") !== ev("agFixTarget({type:'pro',payload:{to:170}})"));
+
+    // The cause, not just the symptom. A validator that quietly drops repeats still leaves the
+    // model raising one every night; it has to be told what is undecided.
+    const dSysQ = ev('window.__sysQ.delta'), eSysQ = ev('window.__sysQ.echo'), cSysQ = ev('window.__sysQ.charlie');
+    ok('DELTA is now handed the pending queue, not just the rejects',
+       /ALREADY IN HIS APPROVAL QUEUE, UNDECIDED/.test(dSysQ));
+    ok('with the actual proposal named in it',
+       /Barbell Bench Press/.test(dSysQ.split('ALREADY IN HIS APPROVAL QUEUE')[1] || ''),
+       (dSysQ.split('ALREADY IN HIS APPROVAL QUEUE')[1] || '').slice(0, 220));
+    ok('and told plainly that a repeat is discarded',
+       /a repeat is discarded/.test(dSysQ));
+    ok('undecided is kept apart from rejected, which call for opposite behaviour',
+       dSysQ.indexOf('ALREADY IN HIS APPROVAL QUEUE, UNDECIDED') >= 0 &&
+       dSysQ.indexOf('ALREADY REJECTED') >= 0 &&
+       dSysQ.indexOf('ALREADY IN HIS APPROVAL QUEUE, UNDECIDED') < dSysQ.indexOf('ALREADY REJECTED'));
+    ok('CHARLIE and ECHO see it too, since any agent can repeat itself',
+       /ALREADY IN HIS APPROVAL QUEUE, UNDECIDED/.test(cSysQ) &&
+       /ALREADY IN HIS APPROVAL QUEUE, UNDECIDED/.test(eSysQ));
+
+    // A queue built by an OLDER build arrives through the gist already holding duplicates, and
+    // the ingestion guard never sees it -- so the sweep at boot is the second line, and the only
+    // thing that could clear the three bench buttons he was already looking at.
+    ev(wipeQ);
+    ev("(function(){ var mk = function(id,w){ return {id:id, agent:'delta', title:'bench to '+w," +
+       " reasoning:'', fix:{type:'liftReset',payload:{name:'Barbell Bench Press',w:w,days:8}}," +
+       " created:todayKey(), expires:'2099-01-01', status:'pending'}; };" +
+       " var a = agState();" +
+       " a.proposals = [mk('p3',155), mk('p2',155), mk('p1',150)];" +   // newest first, as unshift leaves them
+       " a.proposals.push({id:'p0', agent:'echo', title:'calories +200', reasoning:''," +
+       "   fix:{type:'cal',payload:{delta:200}}, created:todayKey(), expires:'2099-01-01', status:'pending'});" +
+       "})();");
+    ok('fixture: an old build left four pending, three of them one decision',
+       ev('agPending().length') === 4, String(ev('agPending().length')));
+    ok('the sweep retires the stale copies', ev('agSweepDuplicates()') === 2);
+    ok('leaving one button per setting', ev('agPending().length') === 2,
+       JSON.stringify(ev("agPending().map(function(p){return p.id;})")));
+    ok('and it is the newest of the three that survives',
+       ev("agPending().some(function(p){ return p.id === 'p3'; })"),
+       JSON.stringify(ev("agPending().map(function(p){return p.id;})")));
+    ok('the unrelated calorie proposal is untouched',
+       ev("agPending().some(function(p){ return p.id === 'p0'; })"));
+    ok('running it again changes nothing', ev('agSweepDuplicates()') === 0);
+
+    ev("callClaudeWithData = window.__realDataQ;");
+    ev(wipeQ);
+  } catch (e) {
+    ok('duplicate proposal section', false, e.message);
+    ev("if(window.__realDataQ) callClaudeWithData = window.__realDataQ;");
+  }
+
   console.log('=== THE MORNING BRIEF IS ITS OWN CALL, AFTER WHOOP ===');
   try {
     ev("S.settings.apiKey = 'sk-test';");
