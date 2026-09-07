@@ -391,9 +391,12 @@ gap. So `whoopMaybeKick()` **POSTs a `workflow_dispatch`** when today's recovery
 in the morning; a dispatch is not rationed the way a schedule is and starts within seconds. Three
 consequences to keep in mind:
 
-- **The sync token now needs `workflow` scope as well as `gist`.** Without it the dispatch 403s
-  forever while looking like it worked, so the 403/404 path writes a CHARLIE log entry saying so.
-  Never make that failure silent.
+- **The sync token needs Actions write, which is NOT the scope called `workflow`.** `workflow`
+  only governs editing workflow *files*; dispatching one needs repo write - `public_repo`
+  alongside `gist` on a classic token, or (tighter, and what Settings recommends) a fine-grained
+  token limited to this repo with *Actions: Read and write* plus *Gists: Read and write*. Getting
+  this wrong is cheap to do and expensive to notice, so the 403/404 path writes a CHARLIE log
+  entry naming the right one. Never make that failure silent.
 - **The throttle state is in its own `localStorage` key, not in `S`.** In `S` it would sync, so
   one device's dispatches would spend another's budget - and a new `S.meta` field would not
   survive `load()` on an existing install anyway (see the migration note above).

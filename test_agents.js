@@ -3788,8 +3788,15 @@ setTimeout(async () => {
     ev('window.__dispStatus = 403;');
     await withHour(7, function(){ return ev('whoopMaybeKick()'); });
     const lg = ev('agState().log[0] && agState().log[0].text') || '';
-    ok('a token missing workflow scope is reported, not swallowed', lg.indexOf('workflow') >= 0, lg);
+    ok('a token that cannot trigger Actions is reported, not swallowed',
+       lg.indexOf('Actions') >= 0, lg);
     ok('and it says which token to fix', lg.indexOf('Settings') >= 0, lg);
+    // The scope is easy to get wrong: `workflow` governs EDITING workflow files, not
+    // dispatching them. Saying the wrong one sends him to a setting that will not help.
+    ok('it names a scope that actually grants a dispatch',
+       lg.indexOf('public_repo') >= 0 || lg.indexOf('read and write') >= 0, lg);
+    ok('and warns off the scope that sounds right but is not',
+       lg.indexOf('NOT the scope called workflow') >= 0, lg);
     ok('CHARLIE owns it, being the data-health agent',
        ev('agState().log[0] && agState().log[0].agent') === 'charlie');
     ev('window.__dispStatus = 204;');
