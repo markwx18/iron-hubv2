@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-07-v4">
+<meta name="ironhub-build" content="2026-09-07-v5">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12118,11 +12118,23 @@ function renderOps(){
       '<b style="color:'+AGENTS.zulu.col+';letter-spacing:.04em">DAILY BRIEF</b>'+
       '<span class="ag-when">'+esc(fmtDate(_brief.date))+
         (_briefToday?'':' \u00b7 yesterday\u2019s')+'</span>'+
-      (_briefToday?'':'<button class="btn ghost sm" style="margin-left:auto" '+
+      // Offered on TODAY'S brief too, not only on a stale one. agMaybeMorningBrief() already
+      // rewrites a WHOOP-less brief once when recovery lands late, but that is automatic, gated
+      // on autoRun, and fires exactly once -- so a brief written before recovery arrived had no
+      // control on it anywhere. That is a dead end on the one card whose whole value is being
+      // current, and it is the case Mark actually hit.
+      '<button class="btn ghost sm" style="margin-left:auto" '+
         (_agBriefRunning?'disabled':'')+' onclick="agRunBrief(true)">'+
-        (_agBriefRunning?'Writing'+String.fromCharCode(8230):'Write today'+String.fromCharCode(8217)+'s')+'</button>')+
+        (_agBriefRunning?'Writing'+String.fromCharCode(8230)
+          :_briefToday?'Rewrite':'Write today'+String.fromCharCode(8217)+'s')+'</button>'+
       '</div>'+
-      '<p class="small" style="margin-top:6px">'+esc(_brief.text)+'</p></div>';
+      '<p class="small" style="margin-top:6px">'+esc(_brief.text)+'</p>'+
+      // Says which of the two stories this card is telling. Without it a brief that opens "no
+      // recovery data" next to a status strip showing a real number just looks broken.
+      (_briefToday && !_brief.hadWhoop && whoopFresh()
+        ? '<p class="small" style="margin-top:6px;color:var(--warn)">Written before your WHOOP '+
+          'recovery landed — rewrite to fold it in.</p>' : '')+
+      '</div>';
   } else {
     // No brief at all is a normal state before the first morning run, not an error -- say which
     // it is rather than showing nothing and letting a missing card read as a failure.

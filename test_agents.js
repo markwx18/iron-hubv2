@@ -3817,6 +3817,56 @@ setTimeout(async () => {
     ev("delete S.whoop; localStorage.removeItem('ironhub:whoopkick');");
   }
 
+  console.log("=== TODAY'S BRIEF CAN BE REWRITTEN BY HAND ===");
+  try {
+    const OPS = "(document.getElementById('ops')||{}).innerHTML || ''";
+    ev("S.settings.apiKey='sk-test';");
+
+    // The case he hit: today's brief exists but went out before recovery landed. The automatic
+    // reconcile covers it, but it is gated on autoRun and fires once -- so the card itself has
+    // to offer a way back. Before this it offered none: the button rendered only for a STALE brief.
+    ev("agState().brief = {text:'No recovery data this morning.', at:new Date().toISOString(), " +
+       "date:todayKey(), hadWhoop:false};");
+    ev("applyWhoop({recovery:{date:todayKey(), score:72, hrv:85, rhr:50}});");
+    ev('renderOps();');
+    const late = ev(OPS);
+    ok("today's brief offers a rewrite", late.indexOf('Rewrite') >= 0);
+    ok('and it calls the manual path, which skips the morning gates',
+       late.indexOf('agRunBrief(true)') >= 0);
+    ok('and the card says why it might need one',
+       late.indexOf('Written before your WHOOP') >= 0);
+
+    // A brief that already reflects WHOOP must not nag -- the note is a state marker, not decoration.
+    ev("agState().brief.hadWhoop = true;");
+    ev('renderOps();');
+    const good = ev(OPS);
+    ok('a brief that already has recovery is not flagged',
+       good.indexOf('Written before your WHOOP') < 0);
+    ok('but it can still be rewritten on demand', good.indexOf('Rewrite') >= 0);
+
+    // Nothing to fold in yet: no recovery today means the note would be telling him to wait
+    // for something that has not happened.
+    ev("agState().brief.hadWhoop = false; delete S.whoop;");
+    ev('renderOps();');
+    ok('with no recovery in at all there is nothing to fold in, so no flag',
+       ev(OPS).indexOf('Written before your WHOOP') < 0);
+
+    // A stale brief keeps its original, more accurate label.
+    ev("agState().brief = {text:'yesterday', at:new Date().toISOString(), " +
+       "date: mesoAddDays(todayKey(),-1), hadWhoop:true};");
+    ev('renderOps();');
+    const stale = ev(OPS);
+    ok("yesterday's brief still says Write today's, not Rewrite",
+       stale.indexOf('Rewrite') < 0);
+    ok('and it is not flagged as pre-recovery either',
+       stale.indexOf('Written before your WHOOP') < 0);
+
+    ev("delete agState().brief; delete S.whoop; S.settings.apiKey='';");
+  } catch (e) {
+    ok('brief rewrite section', false, e.message);
+    ev("delete agState().brief; delete S.whoop; S.settings.apiKey='';");
+  }
+
   console.log('=== A WORKING TOKEN CAN BE REPLACED WITHOUT DISCONNECTING ===');
   try {
     ev('window.__realFetch2 = window.fetch;');
