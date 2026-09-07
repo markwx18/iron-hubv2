@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-07-v1">
+<meta name="ironhub-build" content="2026-09-07-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3818,6 +3818,79 @@ function whoopFresh(){
   const w = S.whoop && S.whoop.recovery;
   return !!(w && w.date === todayKey() && typeof w.score === 'number');
 }
+
+/* ---- Asking the relay to run NOW, instead of waiting for a cron that mostly does not fire ----
+
+   The workflow's schedule says every 15 minutes. GitHub delivers a median of one run every
+   3.2 HOURS. Measured over the first 88 runs: 3-9 a day against the 96 requested, a p90 gap of
+   6.8h and a worst gap of 12.6h. Scheduled workflows on a public repo are best-effort and the
+   platform drops most of a high-frequency cron -- asking for more only gets it deprioritized
+   harder, so raising the frequency is not the fix. Nor is moving off the top of the hour: the
+   surviving runs land on 45 different minutes, so this is drop-and-delay, not congestion at
+   :00 that a different minute would dodge.
+
+   That lands squarely on the brief. The window between WHOOP scoring a recovery (shortly after
+   wake) and AG_BRIEF_WHOOP_CUTOFF is about three hours, which is a coin flip against a 3.2h
+   median gap -- and on 2026-08-30 no run fired between 06:00 and 10:00 local at all. Those are
+   the mornings the brief opened with "no recovery data".
+
+   A workflow_dispatch is NOT rationed the way a schedule is; it starts within seconds. So on a
+   morning where today's recovery is still missing, ask for a run rather than wait for one. The
+   run writes the gist, the next bgSyncTick (60s) picks it up, and if the brief has already gone
+   out by then agMaybeMorningBrief()'s reconcile branch rewrites it exactly once. The cron stays
+   as it is underneath: this is a nudge on the mornings it matters, not a replacement. */
+const WHOOP_REPO     = 'markwx18/iron-hubv2';
+const WHOOP_WORKFLOW = 'whoop-sync.yml';
+const WHOOP_KICK_KEY = 'ironhub:whoopkick';
+const WHOOP_KICK_MAX = 6;              // dispatches per device per day
+const WHOOP_KICK_GAP = 8 * 60 * 1000;  // and never two closer together than this
+let _whoopKickAt = 0;
+let _whoopKickWarned = false;
+
+/* The daily counter lives in its own localStorage key, deliberately NOT in S. In S it would
+   sync, so the phone's dispatches would spend the laptop's budget; per-device is the behaviour
+   we want, since each device may reasonably ask once. Keeping it out of S.meta also sidesteps
+   the migration trap -- load() takes a stored meta wholesale, so a new field there comes back
+   absent on an existing install rather than at its default. */
+function whoopKickCount(){
+  try{
+    const p = JSON.parse(localStorage.getItem(WHOOP_KICK_KEY) || 'null');
+    return (p && p.date === todayKey()) ? (+p.n || 0) : 0;
+  }catch(e){ return 0; }
+}
+function whoopKickBump(){
+  try{ localStorage.setItem(WHOOP_KICK_KEY, JSON.stringify({date:todayKey(), n:whoopKickCount()+1})); }catch(e){}
+}
+async function whoopMaybeKick(){
+  if(!syncReady()) return false;
+  if(whoopFresh()) return false;                 // today's score is already in -- nothing to ask for
+  const h = new Date().getHours();
+  // Bounded to the window the brief depends on. Outside it, a missing recovery usually means
+  // WHOOP genuinely has nothing yet (not worn, or he has not slept), and dispatching all day
+  // would spend runs re-learning that every quarter of an hour.
+  if(h < AG_BRIEF_HOUR - 2 || h >= AG_BRIEF_WHOOP_CUTOFF + 2) return false;
+  const now = Date.now();
+  if(now - _whoopKickAt < WHOOP_KICK_GAP) return false;
+  if(whoopKickCount() >= WHOOP_KICK_MAX) return false;
+  _whoopKickAt = now; whoopKickBump();          // count the ATTEMPT, so a failing token cannot loop
+  try{
+    const res = await fetch('https://api.github.com/repos/' + WHOOP_REPO +
+                            '/actions/workflows/' + WHOOP_WORKFLOW + '/dispatches',
+      {method:'POST', headers:ghHeaders(), body:JSON.stringify({ref:'main'})});
+    if(res.status === 204) return true;          // accepted; the run writes the gist in ~30s
+    // A silent no-op is the failure mode worth guarding here: the sync token needs `workflow`
+    // scope on top of `gist`, and without it this returns 403 forever while looking fine from
+    // the outside. Say it once, in the activity log he actually reads. CHARLIE owns data health.
+    if(!_whoopKickWarned && (res.status === 403 || res.status === 404)){
+      _whoopKickWarned = true;
+      agLog('charlie', 'Could not ask the WHOOP relay to run (' + res.status + '). The GitHub ' +
+            'token in Settings needs workflow scope alongside gist -- regenerate it with both ' +
+            'ticked and paste it in again. Sync itself is unaffected.');
+      save(false);
+    }
+  }catch(e){ /* offline or blocked -- the cron is still there underneath */ }
+  return false;
+}
 async function syncPull(force){
   if(!syncReady()){ setSyncMsg('Not connected \u2014 paste your token and hit Connect first.', true); return; }
   try{
@@ -4691,9 +4764,9 @@ function renderSettings(){
       'Auto-sync (pull on open, push ~3s after every save)</label>';
   } else {
     html += '<p class="small">Sync your data across devices through a <b>private</b> GitHub Gist. Your Anthropic API key and GitHub token never leave this device \u2014 only training data is synced.</p>'+
-      '<label>GitHub Token (gist scope only)</label><input type="password" id="ghToken" placeholder="ghp_\u2026 or github_pat_\u2026">'+
+      '<label>GitHub Token (gist + workflow scope)</label><input type="password" id="ghToken" placeholder="ghp_\u2026 or github_pat_\u2026">'+
       '<div style="margin-top:10px"><button class="btn sm" onclick="connectSync()">Connect</button></div>'+
-      '<p class="small" style="margin-top:10px"><b>One-time setup:</b> GitHub \u2192 Settings \u2192 Developer settings \u2192 Personal access tokens \u2192 Tokens (classic) \u2192 Generate new token (classic) \u2192 check only <b>gist</b> \u2192 set expiration to your preference \u2192 Generate \u2192 copy it here. On your second device, paste the same token and hit Connect \u2014 it finds your gist automatically.</p>';
+      '<p class="small" style="margin-top:10px"><b>One-time setup:</b> GitHub \u2192 Settings \u2192 Developer settings \u2192 Personal access tokens \u2192 Tokens (classic) \u2192 Generate new token (classic) \u2192 check <b>gist</b> and <b>workflow</b> \u2192 set expiration to your preference \u2192 Generate \u2192 copy it here. On your second device, paste the same token and hit Connect \u2014 it finds your gist automatically. The <b>workflow</b> scope lets the app ask the WHOOP relay to run when your recovery has not landed yet - GitHub runs the relay far less often than its schedule claims, and without this the morning brief misses recovery on the days it does not fire in time. Cloud sync itself works without it.</p>';
   }
   html += '<p class="small" id="syncMsg" style="margin-top:8px"></p></div>';
 
@@ -11529,7 +11602,8 @@ function agLetter(){
 }
 
 /* Not before this hour, and past the WHOOP wait cutoff the brief is written regardless.
-   WHOOP recovery lands in the morning (the sync Action polls every two hours), and the brief
+   WHOOP recovery lands in the morning (the relay's cron asks for every 15 minutes and GitHub
+   actually delivers about one run every 3 hours -- see whoopMaybeKick), and the brief
    opens on it -- so writing before it arrives produces exactly the wrong thing: a confident
    recovery number that is actually yesterday's. */
 const AG_BRIEF_HOUR = 6;          // earliest a morning brief may be written
@@ -12323,13 +12397,20 @@ try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progres
 // agents: expire stale proposals on load, then poll for the 9 PM window
 try{ if(agSweepExpired() + agSweepDuplicates()) save(false); }catch(e){}
 _bootPull.then(()=>{
+  // Before the brief's first check, not after: if today's recovery is missing this asks the
+  // relay for it now. It does not block -- the run lands in the gist ~30s later and bgSyncTick
+  // picks it up, by which time the brief has either not been written yet (the common case,
+  // since it waits until AG_BRIEF_WHOOP_CUTOFF) or takes its one reconciling rewrite.
+  try{ whoopMaybeKick(); }catch(e){}
   try{ agMaybeAutoRun(); }catch(e){}
   try{ agMaybeMorningBrief(); }catch(e){}
   try{ setInterval(agMaybeAutoRun, 15*60*1000); }catch(e){}
-  // Polled as well as run at boot: WHOOP lands on a two-hourly cron, so on a morning he opens
+  // Polled as well as run at boot: the relay's cron is unreliable enough that recovery can land
+  // hours after the app was opened, so on a morning he opens
   // the app before it reports, the brief is written by the tick that follows rather than
   // waiting for him to reload.
   try{ setInterval(agMaybeMorningBrief, 15*60*1000); }catch(e){}
+  try{ setInterval(whoopMaybeKick, 15*60*1000); }catch(e){}
 });
 try{ startLiveRefresh(); }catch(e){}
 </script>

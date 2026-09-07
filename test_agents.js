@@ -3704,6 +3704,112 @@ setTimeout(async () => {
     ev('delete S.whoop;');
   }
 
+  console.log('=== THE APP ASKS THE RELAY TO RUN WHEN RECOVERY IS LATE ===');
+  try {
+    // GitHub delivers ~3-9 of the 96 daily cron runs the workflow asks for (median gap 3.2h,
+    // worst 12.6h), so on plenty of mornings nothing fetches WHOOP before the brief's cutoff.
+    // A workflow_dispatch is not rationed that way, so the app asks for a run itself.
+    // Wired in, not merely defined. A dispatcher that is never called is indistinguishable
+    // from the bug it fixes, and nothing else in this section would notice.
+    const kickSrc = require('fs').readFileSync(HTML_PATH, 'utf8');
+    ok('the dispatcher runs at boot, before the brief is considered',
+       kickSrc.indexOf('try{ whoopMaybeKick(); }catch(e){}') >= 0);
+    ok('and it runs at boot BEFORE agMaybeMorningBrief, not after',
+       kickSrc.indexOf('try{ whoopMaybeKick(); }catch(e){}') <
+       kickSrc.indexOf('try{ agMaybeMorningBrief(); }catch(e){}'));
+    ok('and keeps being polled, for a morning he opens the app early',
+       kickSrc.indexOf('setInterval(whoopMaybeKick, 15*60*1000)') >= 0);
+    ok('the workflow it names really exists in the repo',
+       require('fs').existsSync(require('path').join(__dirname, '.github/workflows/whoop-sync.yml')));
+    ok('and that workflow actually accepts a dispatch',
+       require('fs').readFileSync(require('path').join(__dirname, '.github/workflows/whoop-sync.yml'), 'utf8')
+         .indexOf('workflow_dispatch:') >= 0);
+
+    ev('window.__realFetch = window.fetch;');
+    ev("S.settings.ghToken='t'; S.settings.gistId='g';");
+    ev('window.__disp = []; window.__dispStatus = 204;');
+    ev(`window.fetch = async function(url, opts){
+          window.__disp.push({url:String(url), method:(opts&&opts.method)||'GET', body:(opts&&opts.body)||''});
+          return {ok: window.__dispStatus===204, status: window.__dispStatus,
+                  json: async()=>({}), text: async()=>''};
+        };`);
+    const withHour = function(h, fn){
+      ev('Date.prototype.__realGetHours = Date.prototype.getHours;');
+      ev('Date.prototype.getHours = function(){ return ' + h + '; };');
+      const out = fn();
+      ev('Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours;');
+      return out;
+    };
+    const RESET = "window.__disp=[]; _whoopKickAt=0; _whoopKickWarned=false; " +
+                  "localStorage.removeItem('ironhub:whoopkick'); agState().log=[]; delete S.whoop;";
+
+    ev(RESET);
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('a missing recovery in the morning asks for a run', ev('window.__disp.length') === 1);
+    const url = ev('window.__disp[0] && window.__disp[0].url') || '';
+    ok('it dispatches the WHOOP workflow, not something else',
+       url.indexOf('/actions/workflows/whoop-sync.yml/dispatches') >= 0, url);
+    ok('addressed to the right repo', url.indexOf('markwx18/iron-hubv2') >= 0, url);
+    ok('as a POST', ev('window.__disp[0].method') === 'POST');
+    ok('naming the branch, which the dispatch API requires',
+       JSON.parse(ev('window.__disp[0].body')).ref === 'main', ev('window.__disp[0].body'));
+
+    // The whole point is the days recovery is LATE. A day it already arrived must cost nothing.
+    ev(RESET);
+    ev('applyWhoop({recovery:{date:todayKey(), score:66}});');
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('nothing is asked for once today of recovery is already in', ev('window.__disp.length') === 0);
+
+    // Bounded to the window the brief depends on, or a rest day spends runs all afternoon
+    // re-learning that WHOOP has nothing.
+    ev(RESET);
+    await withHour(3, function(){ return ev('whoopMaybeKick()'); });
+    ok('nothing is asked for before the window opens', ev('window.__disp.length') === 0);
+    await withHour(13, function(){ return ev('whoopMaybeKick()'); });
+    ok('nor after it closes', ev('window.__disp.length') === 0);
+
+    // Two throttles, because this runs on a 15-minute poll and a 403 would otherwise loop.
+    ev(RESET);
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('two checks in a row do not fire twice', ev('window.__disp.length') === 1);
+    ev(RESET);
+    ev("localStorage.setItem('ironhub:whoopkick', JSON.stringify({date:todayKey(), n:6}));");
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('and the per-day cap holds even across reloads', ev('window.__disp.length') === 0);
+    ev(RESET);
+    ev("localStorage.setItem('ironhub:whoopkick', JSON.stringify({date:'2020-01-01', n:99}));");
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('yesterday of cap does not carry into today', ev('window.__disp.length') === 1);
+
+    // The failure that would otherwise be invisible: the sync token carries `gist` but not
+    // `workflow`, so this 403s forever while looking like it worked.
+    ev(RESET);
+    ev('window.__dispStatus = 403;');
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    const lg = ev('agState().log[0] && agState().log[0].text') || '';
+    ok('a token missing workflow scope is reported, not swallowed', lg.indexOf('workflow') >= 0, lg);
+    ok('and it says which token to fix', lg.indexOf('Settings') >= 0, lg);
+    ok('CHARLIE owns it, being the data-health agent',
+       ev('agState().log[0] && agState().log[0].agent') === 'charlie');
+    ev('window.__dispStatus = 204;');
+
+    // Not configured is not an error, and must not produce a bare unauthenticated POST.
+    ev(RESET);
+    ev("S.settings.ghToken='';");
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('an unconnected device asks for nothing', ev('window.__disp.length') === 0);
+
+    ev("S.settings.ghToken='t';");
+    ev('window.fetch = window.__realFetch; delete window.__realFetch;');
+    ev(RESET);
+    ev("localStorage.removeItem('ironhub:whoopkick'); S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('whoop dispatch section', false, e.message);
+    ev('if(window.__realFetch) window.fetch = window.__realFetch;');
+    ev("delete S.whoop; localStorage.removeItem('ironhub:whoopkick');");
+  }
+
   console.log('=== READINESS CHECK-IN REFLECTS THE WHOOP PRE-FILL ===');
   try {
     // Values landing in _rdV3 is necessary but not sufficient -- the actual bug was that a

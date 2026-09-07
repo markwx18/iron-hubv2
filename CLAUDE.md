@@ -223,7 +223,7 @@ whether the field is genuinely present, the way `pushUnconfirmedChanges()` now r
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
 | Home / strip | `renderHome()`, `renderStatusStrip()`, `readinessNow()`, `renderNotif()` |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
-| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopContext()`, `.github/workflows/whoop-sync.js` |
+| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopContext()`, `whoopMaybeKick()`, `scripts/whoop/whoop-sync.js` |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock, `liveDeltaSend()` |
@@ -376,6 +376,37 @@ with no migration pass. Anything writing effort must write both fields.
 **The status strip never renders during LIVE**, and is painted *before* the
 `refreshBlocked()` gate. That gate stops a repaint eating half-typed input; a read-only bar
 cannot do that, and behind the gate it would go stale exactly when the app is in use.
+
+**The WHOOP relay's cron is not a schedule, it is a lottery.** The workflow asks for every 15
+minutes (96/day). Measured over its first 88 runs, GitHub delivered **3-9 a day** - median gap
+between runs **3.2 hours**, p90 **6.8h**, worst **12.6h**, and on 2026-08-30 no run at all between
+06:00 and 10:00 local. Scheduled workflows on public repos are best-effort and a high-frequency
+cron is throttled hardest, so *raising* the frequency makes it worse, not better. Nor is this
+top-of-hour congestion a different minute would dodge: the surviving runs land on 45 different
+minutes-of-the-hour, i.e. GitHub both drops and arbitrarily delays them.
+
+That matters because the brief's usable window - from WHOOP scoring a recovery to
+`AG_BRIEF_WHOOP_CUTOFF` - is only about three hours, which is a coin flip against a 3.2h median
+gap. So `whoopMaybeKick()` **POSTs a `workflow_dispatch`** when today's recovery is still missing
+in the morning; a dispatch is not rationed the way a schedule is and starts within seconds. Three
+consequences to keep in mind:
+
+- **The sync token now needs `workflow` scope as well as `gist`.** Without it the dispatch 403s
+  forever while looking like it worked, so the 403/404 path writes a CHARLIE log entry saying so.
+  Never make that failure silent.
+- **The throttle state is in its own `localStorage` key, not in `S`.** In `S` it would sync, so
+  one device's dispatches would spend another's budget - and a new `S.meta` field would not
+  survive `load()` on an existing install anyway (see the migration note above).
+- **The cron stays underneath.** The dispatch is a nudge on the mornings it matters, not a
+  replacement, and the app must still work when it fails.
+
+**The relay merges, it does not clobber.** WHOOP creates a recovery record *before* it scores it
+and omits the `score` object entirely while a cycle is `PENDING_SCORE`, so a run landing in that
+window returns sleep and strain but no recovery. Because the job PATCHes `whoop_data.json`
+wholesale, that used to *erase* a recovery an earlier run had already written for today. It now
+carries forward any section this run did not get. Safe only because the app gates every section
+on `date === todayKey()` independently - if you add a consumer that does not, this becomes a
+stale-data bug.
 
 **WHOOP comes in, never out.** `syncPayload()` deletes `d.whoop`. The Action owns
 `whoop_data.json`; the app owns `ironhub_data.json`. Data not dated today is treated as
