@@ -3655,6 +3655,49 @@ setTimeout(async () => {
     ok('control: it is still in local state', ev('!!S.whoop') === true);
     ok('secrets are still stripped too',
        payload.data.settings.ghToken === undefined && payload.data.settings.apiKey === undefined);
+
+    // ...but "never goes back out" must not mean "is thrown away on the way in".
+    // syncPayload() strips whoop, so an incoming snapshot NEVER carries it, and applyPulled()
+    // rebuilt S from DEFAULT_STATE (whoop:null) -- resetting the cache on every applied pull.
+    // fetchGistData() runs applyWhoop() immediately BEFORE applyPulled(), so the value standing
+    // at that moment is the freshest reading there is, and it was being discarded. At boot that
+    // gap is the one agMaybeMorningBrief() runs in, which is how the brief ended up written
+    // saying WHOOP had not reported on mornings another device had pushed since.
+    ev('window.__savedS = JSON.stringify(S);');
+    ev("applyWhoop({recovery:{date:todayKey(), score:64, hrv:81, rhr:49}, sleep:{date:todayKey(), hours:7.1, performance:84}});");
+    ok('control: WHOOP is in state before the pull', ev('S.whoop.recovery.score') === 64);
+    // A real pull: the payload this device would itself push, applied back with a newer stamp.
+    ev('(function(){ var p = JSON.parse(syncPayload()); applyPulled(p.data, Date.now() + 5000); })();');
+    ok('a pull does not wipe today’s recovery',
+       ev('S.whoop && S.whoop.recovery && S.whoop.recovery.score') === 64,
+       JSON.stringify(ev('S.whoop')));
+    ok('the sleep section survives the pull too', ev('S.whoop.sleep.hours') === 7.1);
+    ok('it is still fresh, so the morning brief will see it', ev('whoopFresh()') === true);
+    ok('and it still reaches the agent prompt after a pull',
+       ev('whoopContext()').indexOf('64%') >= 0, ev('whoopContext()').slice(0, 120));
+    ev('S = JSON.parse(window.__savedS); delete window.__savedS;');
+    ok('pull fixture cleaned up', ev('!!S.whoop') === true);
+
+    // A field WHOOP omitted must stay absent, not coerce into a measured-looking number.
+    // WHOOP drops the score object's fields while a cycle is PENDING_SCORE, and +null is 0 --
+    // which used to clamp into a real 0% recovery and a real 20bpm resting heart rate.
+    ev('delete S.whoop;');
+    ok('a null recovery score is dropped, not stored as 0%',
+       ev('applyWhoop({recovery:{date:todayKey(), score:null}})') === false,
+       JSON.stringify(ev('S.whoop')));
+    ok('nothing was written by it', ev('!S.whoop') === true);
+    ok('an empty-string score is dropped too',
+       ev("applyWhoop({recovery:{date:todayKey(), score:''}})") === false);
+    ev('delete S.whoop;');
+    ok('a null RHR does not become a plausible 20bpm',
+       ev('applyWhoop({recovery:{date:todayKey(), score:70, hrv:null, rhr:null}})') === true &&
+       ev('S.whoop.recovery.rhr') === null && ev('S.whoop.recovery.hrv') === null,
+       JSON.stringify(ev('S.whoop && S.whoop.recovery')));
+    ok('the real score alongside it is untouched', ev('S.whoop.recovery.score') === 70);
+    ok('and the prompt omits the absent fields rather than inventing them',
+       ev('whoopContext()').indexOf('70%') >= 0 && ev('whoopContext()').indexOf('RHR') < 0,
+       ev('whoopContext()').slice(0, 120));
+
     ev('delete S.whoop; S.readiness = [];');
   } catch (e) {
     ok('whoop section', false, e.message);

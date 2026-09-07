@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-02-v2">
+<meta name="ironhub-build" content="2026-09-07-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3779,6 +3779,13 @@ function applyWhoop(raw){
   if(!raw || typeof raw !== 'object') return false;
   const out = {fetchedAt: typeof raw.fetchedAt === 'string' ? raw.fetchedAt : new Date().toISOString()};
   const num = function(v, lo, hi){
+    // Reject absent/blank BEFORE coercing. +null and +'' are both 0, so a missing
+    // recovery_score used to clamp to a measured-looking 0% and a missing resting_heart_rate
+    // to 20bpm. This is a live path, not a hypothetical: WHOOP omits score fields while a
+    // cycle is still PENDING_SCORE. An invented number is worse than none here -- every
+    // consumer falls back cleanly on null, but nothing downstream can tell a fabricated 0
+    // from a measured one.
+    if(v === null || v === undefined || v === '') return null;
     const n = +v;
     return isFinite(n) ? Math.max(lo, Math.min(hi, n)) : null;
   };
@@ -3838,8 +3845,18 @@ function applyPulled(d, exportedAt){
   // arrays alive for mergeUnseenHistory(). No deep copy needed: d's arrays are freshly parsed
   // and never alias these.
   const localPrev = S;
+  // WHOOP is a local cache of a gist file the app never writes, so syncPayload() strips it and
+  // `d` NEVER carries it -- which means the swap below resets it to DEFAULT_STATE.whoop (null)
+  // on every applied pull. fetchGistData() calls applyWhoop() immediately BEFORE this, so
+  // S.whoop here already holds the freshest remote reading, and dropping it threw away today's
+  // recovery until the next bgSyncTick re-read it 60s later. At boot that window is exactly the
+  // one agMaybeMorningBrief() runs in, so on any morning the boot pull's gate happened to open
+  // (i.e. another device had pushed since -- the nightly 9 PM cycle, or a session logged on the
+  // phone) the brief was written believing WHOOP had not reported. Carry it across the swap.
+  const localWhoop = S.whoop;
   S = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), d);
   S.settings = Object.assign({}, DEFAULT_STATE.settings, d.settings||{}, keep);
+  S.whoop = localWhoop || null;
   S.meta = S.meta || {changedAt:0,lastSync:0};
   S.meta.changedAt = d && d.meta ? (d.meta.changedAt||Date.now()) : Date.now();
   // Watermark against the snapshot we just consumed, not the writer's own changedAt.

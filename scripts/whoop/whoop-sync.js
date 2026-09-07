@@ -156,6 +156,36 @@ async function main() {
     return;
   }
 
+  /* Carry forward any section this run did not get.
+   *
+   * The PATCH below replaces whoop_data.json wholesale, so a run that came back with sleep and
+   * strain but no recovery used to ERASE a recovery an earlier run had already written for
+   * today. That is a routine occurrence, not an edge case: WHOOP creates the recovery record
+   * before it scores it and omits the `score` object entirely while the cycle is
+   * PENDING_SCORE, so any of the 15-minute runs landing in that window drops the section. The
+   * score does come back on a later run, but in the gap the app has none -- and the morning
+   * brief only waits until AG_BRIEF_WHOOP_CUTOFF before writing itself without one.
+   *
+   * Carrying a stale section forward is safe. The app gates every section on
+   * date === todayKey() independently (whoopFresh(), whoopContext(), readinessNow()), so an
+   * out-of-date reading is already treated as absent -- it can be ignored, never mistaken for
+   * current. */
+  try {
+    const prevFiles = (await ghGet(GIST_ID)).files || {};
+    const prevRaw = prevFiles['whoop_data.json'] && prevFiles['whoop_data.json'].content;
+    const prev = prevRaw ? JSON.parse(prevRaw) : null;
+    if (prev) {
+      for (const k of ['recovery', 'sleep', 'strain']) {
+        if (!out[k] && prev[k]) {
+          out[k] = prev[k];
+          console.log('Kept the previous ' + k + ' (this run returned none).');
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Could not read the previous whoop_data.json (' + e.message + ') -- writing this run alone.');
+  }
+
   // Only ever touch whoop_data.json. ironhub_data.json belongs to the app, and a PATCH that
   // named it would race the phone and could overwrite a session.
   await ghPatch(GIST_ID, { 'whoop_data.json': { content: JSON.stringify(out, null, 2) } });
