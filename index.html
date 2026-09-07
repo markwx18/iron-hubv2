@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-07-v3">
+<meta name="ironhub-build" content="2026-09-07-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3720,6 +3720,59 @@ async function connectSync(){
     markSynced(); renderSettings();
   }catch(e){ setSyncMsg(e.message, true); }
 }
+/* Swapping a token used to mean Disconnect -> reconnect, because the token input only ever
+   rendered in the DISCONNECTED branch: once sync was working there was no field to paste a new
+   one into. That was survivable while a token only ever needed `gist` and never changed. It
+   stopped being survivable when the WHOOP dispatch started needing an Actions permission the
+   existing tokens do not carry -- every working install now has to swap one.
+
+   Disconnect would also have done the job, but it clears gistId and drops you into a
+   re-discovery flow for what is really a one-field edit, on the device holding the only copy of
+   some sessions. This keeps the gist exactly where it is. */
+async function replaceToken(){
+  const tok = $('#ghTokenNew') ? $('#ghTokenNew').value.trim() : '';
+  if(!tok){ setSyncMsg('Paste the new token first.', true); return; }
+  const prev = S.settings.ghToken;
+  S.settings.ghToken = tok;
+  setSyncMsg('Checking the new token\u2026');
+  let msg, bad = false;
+  try{
+    // 1. Gist access first, and roll back if it fails. Sync is the part he cannot lose; a
+    //    token that breaks it must never be the one left installed.
+    const g = await fetch('https://api.github.com/gists/'+S.settings.gistId, {headers:ghHeaders()});
+    if(!g.ok){
+      S.settings.ghToken = prev;
+      throw new Error('That token cannot read your sync gist ('+g.status+') \u2014 kept the old one. '+
+                      'It needs Gists: read and write.');
+    }
+    save(false);
+    // 2. Actions access, verified by actually dispatching. There is no read-only probe that
+    //    proves write, and the whole point of this change is not to discover a 403 tomorrow
+    //    morning. The run is harmless and useful: it fetches WHOOP right now.
+    const d = await fetch('https://api.github.com/repos/'+WHOOP_REPO+'/actions/workflows/'+
+                          WHOOP_WORKFLOW+'/dispatches',
+      {method:'POST', headers:ghHeaders(), body:JSON.stringify({ref:'main'})});
+    if(d.status === 204){
+      _whoopKickWarned = false;
+      // Failed attempts already spent against today's cap were spent by a token that could
+      // never have worked. Give the fixed one a clean budget instead of a used-up morning.
+      try{ localStorage.removeItem(WHOOP_KICK_KEY); }catch(e){}
+      msg = '\u2713 Token saved. Gist access works, and the WHOOP relay accepted a run \u2014 '+
+            'recovery should land within a minute or two.';
+    }else{
+      bad = true;
+      msg = 'Token saved and sync works, but it cannot trigger the WHOOP relay ('+d.status+'). '+
+            'Add Actions: read and write on iron-hubv2 (fine-grained), or public_repo (classic). '+
+            'It is NOT the scope called workflow.';
+    }
+  }catch(e){ bad = true; msg = e.message; }
+  // Render BEFORE setting the message: renderSettings() rebuilds #syncMsg empty, so setting it
+  // first would wipe the very thing he needs to read.
+  // Stay open on failure: there is still something to paste. Closing it on the rollback path
+  // would drop him back to a card that says Connected with no field in sight -- exactly the
+  // dead end this whole control exists to remove.
+  tokOpen = bad; renderSettings(); setSyncMsg(msg, bad);
+}
 async function syncPush(manual){
   if(!syncReady()){ if(manual) setSyncMsg('Not connected \u2014 paste your token and hit Connect first.', true); return; }
   try{
@@ -4696,6 +4749,9 @@ async function refreshMeal(i){
 }
 
 /* ================= SETTINGS TAB ================= */
+/* Module-scoped, not on the DOM node: rerenderActive() regenerates the whole active tab
+   every 30s and after every sync pull, so a DOM-only toggle would close itself mid-paste. */
+let tokOpen = false;
 function renderSettings(){
   const el = $('#settings');
   const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -4760,10 +4816,19 @@ function renderSettings(){
       '<div class="row" style="margin-top:10px">'+
       '<div style="flex:none"><button class="btn sm" onclick="syncPush(true)">Push Now</button></div>'+
       '<div style="flex:none"><button class="btn sm ghost" onclick="syncPull(false)">Pull Now</button></div>'+
-      '<div style="flex:none"><button class="btn sm ghost" onclick="disconnectSync()" style="color:var(--bad);border-color:var(--bad)">Disconnect</button></div></div>'+
+      '<div style="flex:none"><button class="btn sm ghost" onclick="tokOpen=!tokOpen;renderSettings()">Replace token</button></div>'+
+          '<div style="flex:none"><button class="btn sm ghost" onclick="disconnectSync()" style="color:var(--bad);border-color:var(--bad)">Disconnect</button></div></div>'+
       '<label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
       '<input type="checkbox" style="width:auto" '+(S.settings.autoSync!==false?'checked':'')+' onchange="S.settings.autoSync=this.checked;save(false);">'+
-      'Auto-sync (pull on open, push ~3s after every save)</label>';
+      'Auto-sync (pull on open, push ~3s after every save)</label>'+
+          (tokOpen ? '<div style="margin-top:14px;border-top:1px solid var(--line2);padding-top:12px">'+
+            '<label>New GitHub token</label><input type="password" id="ghTokenNew" placeholder="github_pat_\u2026 or ghp_\u2026">'+
+            '<div style="margin-top:10px"><button class="btn sm" onclick="replaceToken()">Save token</button> '+
+            '<button class="btn sm ghost" onclick="tokOpen=false;renderSettings()">Cancel</button></div>'+
+            '<p class="small" style="margin-top:8px">Swaps the token in place \u2014 your gist and data are untouched. '+
+            'The new one is checked against GitHub before it replaces the old one, and the WHOOP relay is pinged '+
+            'to confirm the Actions permission really works. Needs <b>Actions: Read and write</b> on iron-hubv2 '+
+            '(fine-grained) or <b>public_repo</b> (classic), alongside gist access.</p></div>' : '');
   } else {
     html += '<p class="small">Sync your data across devices through a <b>private</b> GitHub Gist. Your Anthropic API key and GitHub token never leave this device \u2014 only training data is synced.</p>'+
       '<label>GitHub Token (gists + Actions)</label><input type="password" id="ghToken" placeholder="ghp_\u2026 or github_pat_\u2026">'+

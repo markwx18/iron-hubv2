@@ -3817,6 +3817,93 @@ setTimeout(async () => {
     ev("delete S.whoop; localStorage.removeItem('ironhub:whoopkick');");
   }
 
+  console.log('=== A WORKING TOKEN CAN BE REPLACED WITHOUT DISCONNECTING ===');
+  try {
+    ev('window.__realFetch2 = window.fetch;');
+    ev("S.settings.ghToken='old'; S.settings.gistId='g1'; tokOpen=false;");
+    ev('renderSettings();');
+    // Scoped to the settings container, NOT document.body: the app's own <script> is in the
+    // body, so body.innerHTML contains this markup as source text and every assertion below
+    // would pass against the source rather than the rendered DOM. That is how the first draft
+    // of this test passed the 'hidden until asked for' case while the field was on screen.
+    const SETTINGS = "(document.getElementById('settings')||{}).innerHTML || ''";
+    const connected = ev(SETTINGS);
+    // The bug he hit: connected, and therefore no token field anywhere on the page.
+    ok('a connected device offers a way to replace the token',
+       connected.indexOf('Replace token') >= 0);
+    ok('and the disconnect button is still a separate, distinct action',
+       connected.indexOf('disconnectSync()') >= 0);
+    ok('the input is hidden until asked for', connected.indexOf('ghTokenNew') < 0);
+    ev('tokOpen = true; renderSettings();');
+    const opened = ev(SETTINGS);
+    ok('opening it reveals the field', opened.indexOf('ghTokenNew') >= 0);
+    ok('and the field is a password input, not plain text',
+       ev("!!document.getElementById('ghTokenNew') && " +
+          "document.getElementById('ghTokenNew').type === 'password'"));
+
+    // Open-state must survive the 30s repaint, or it closes itself mid-paste.
+    ev('rerenderActive(true);');
+    ok('the open form survives a background repaint',
+       ev(SETTINGS).indexOf('ghTokenNew') >= 0);
+
+    // --- a good token: gist works, dispatch accepted ---
+    ev("window.__calls = []; window.__gistOk = true; window.__dispCode = 204;");
+    ev(`window.fetch = async function(url, opts){
+          window.__calls.push({url:String(url), method:(opts&&opts.method)||'GET'});
+          if(String(url).indexOf('/dispatches') >= 0)
+            return {ok:window.__dispCode===204, status:window.__dispCode, json:async()=>({}), text:async()=>''};
+          return {ok:window.__gistOk, status: window.__gistOk?200:401,
+                  json:async()=>({id:'g1', files:{}}), text:async()=>''};
+        };`);
+    ev("localStorage.setItem('ironhub:whoopkick', JSON.stringify({date:todayKey(), n:6}));");
+    ev("_whoopKickWarned = true;");
+    ev("document.getElementById('ghTokenNew').value = 'github_pat_new';");
+    await ev('replaceToken()');
+    ok('the new token is installed', ev('S.settings.ghToken') === 'github_pat_new');
+    ok('and the gist is left exactly where it was', ev('S.settings.gistId') === 'g1');
+    ok('it verified gist access before trusting the token',
+       ev("window.__calls.some(c=>c.url.indexOf('/gists/g1')>=0)"));
+    ok('and proved the Actions permission by actually dispatching',
+       ev("window.__calls.some(c=>c.url.indexOf('/dispatches')>=0 && c.method==='POST')"));
+    ok('a spent daily cap is cleared, so the fix is not wasted on a used-up morning',
+       ev("localStorage.getItem('ironhub:whoopkick') === null"));
+    ok('and the 403 warning is re-armed for next time', ev('_whoopKickWarned') === false);
+
+    // --- a token that cannot read the gist must NOT be the one left installed ---
+    ev("S.settings.ghToken='good'; tokOpen=true; renderSettings();");
+    ev("window.__gistOk = false; window.__calls = [];");
+    ev("document.getElementById('ghTokenNew').value = 'github_pat_bad';");
+    await ev('replaceToken()');
+    ok('a token that breaks sync is rolled back', ev('S.settings.ghToken') === 'good');
+    ok('and it never got as far as dispatching',
+       ev("!window.__calls.some(c=>c.url.indexOf('/dispatches')>=0)"));
+    ok('the form stays open so he can correct it',
+       ev(SETTINGS).indexOf('ghTokenNew') >= 0);
+
+    // --- gist fine, Actions refused: keep the token (sync works) but say so plainly ---
+    ev("S.settings.ghToken='good'; tokOpen=true; renderSettings();");
+    ev("window.__gistOk = true; window.__dispCode = 403;");
+    ev("document.getElementById('ghTokenNew').value = 'github_pat_gistonly';");
+    await ev('replaceToken()');
+    ok('a gist-only token is still installed, since sync works',
+       ev('S.settings.ghToken') === 'github_pat_gistonly');
+    const m = ev("document.getElementById('syncMsg') ? document.getElementById('syncMsg').textContent : ''");
+    ok('but the Actions gap is reported, not swallowed', m.indexOf('WHOOP relay') >= 0, m);
+    ok('and it names the permission that actually works',
+       m.indexOf('public_repo') >= 0 || m.indexOf('read and write') >= 0, m);
+    ok('and warns off the scope that merely sounds right',
+       m.indexOf('NOT the scope called workflow') >= 0, m);
+    ok('the message survives the re-render that follows it', m.length > 0);
+
+    ev('window.fetch = window.__realFetch2; delete window.__realFetch2;');
+    ev("tokOpen=false; S.settings.ghToken=''; S.settings.gistId='';");
+    ev("localStorage.removeItem('ironhub:whoopkick');");
+  } catch (e) {
+    ok('replace token section', false, e.message);
+    ev('if(window.__realFetch2) window.fetch = window.__realFetch2;');
+    ev("tokOpen=false; S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
   console.log('=== READINESS CHECK-IN REFLECTS THE WHOOP PRE-FILL ===');
   try {
     // Values landing in _rdV3 is necessary but not sufficient -- the actual bug was that a
