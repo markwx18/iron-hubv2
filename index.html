@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-08-v1">
+<meta name="ironhub-build" content="2026-09-08-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3819,8 +3819,10 @@ async function replaceToken(){
       const gh = await ghErrMsg(d);
       whoopRelaySet(false, d.status, gh);
       msg = 'Token saved and sync works, but it cannot trigger the WHOOP relay ('+d.status+
-            (gh ? ': '+gh : '')+'). Add Actions: Read and write on iron-hubv2 (fine-grained), '+
-            'or public_repo (classic). It is NOT the scope called workflow.';
+            (gh ? ': '+gh : '')+'). A classic token needs the FULL repo scope alongside gist. '+
+            'public_repo is not enough even though this repo is public \u2014 GitHub refuses it '+
+            'here with \u201cMust have admin rights to Repository.\u201d And it is NOT the scope '+
+            'called workflow, which only governs editing workflow files.';
     }
   }catch(e){ bad = true; msg = e.message; }
   // Render BEFORE setting the message: renderSettings() rebuilds #syncMsg empty, so setting it
@@ -4010,8 +4012,10 @@ async function whoopTestRelay(){
       whoopRelaySet(false, res.status, gh);
       renderSettings();
       setSyncMsg('The relay refused this device\u2019s token (' + res.status +
-                 (gh ? ': ' + gh : '') + '). It needs Actions: Read and write on iron-hubv2 ' +
-                 '(fine-grained) or public_repo (classic). It is NOT the scope called workflow.', true);
+                 (gh ? ': ' + gh : '') + '). A classic token needs the FULL repo scope alongside ' +
+                 'gist \u2014 public_repo is not enough even on a public repo, and GitHub refuses ' +
+                 'it here with \u201cMust have admin rights to Repository.\u201d It is NOT the ' +
+                 'scope called workflow.', true);
     }
   }catch(e){ setSyncMsg(e.message, true); }
 }
@@ -4063,10 +4067,13 @@ async function whoopMaybeKick(){
       agLog('charlie', 'Could not ask the WHOOP relay to run (' + res.status +
             (gh ? ': ' + gh : '') + '). This device\u2019s GitHub token cannot trigger Actions, so ' +
             'recovery is back to waiting on GitHub\u2019s schedule, which misses the brief\u2019s ' +
-            'window most mornings. A fine-grained token wants Actions: read and write on ' +
-            'iron-hubv2 (plus Gists: read and write); a classic one wants public_repo alongside ' +
-            'gist. Note it is NOT the scope called workflow, which only governs editing workflow ' +
-            'files. Tokens are per device \u2014 replacing it elsewhere does not fix this one; ' +
+            'window most mornings. A classic token needs the FULL repo scope alongside gist: ' +
+            'public_repo is NOT enough even though this repo is public, and GitHub refuses it ' +
+            'with \u201cMust have admin rights to Repository.\u201d (A fine-grained token with ' +
+            'Actions: read and write on iron-hubv2 is tighter and may work, but this endpoint is ' +
+            'inconsistent about honouring it.) Note it is also NOT the scope called workflow, ' +
+            'which only governs editing workflow files. ' +
+            'Tokens are per device \u2014 replacing it elsewhere does not fix this one; ' +
             'Settings \u203a Cloud Sync has a Test relay button. Cloud sync itself is unaffected.');
       save(false);
     }
@@ -4952,8 +4959,10 @@ function renderSettings(){
         : '<p class="small err">\u25cf WHOOP relay: this device\u2019s token cannot trigger a run ('+_rn.status+
           (_rn.msg ? ' \u2014 '+esc(_rn.msg) : '')+'). Recovery then waits on GitHub\u2019s schedule, which '+
           'misses the morning brief\u2019s window most days. Tokens are per device, so replacing it '+
-          'on another one does not fix this. Needs <b>Actions: Read and write</b> on iron-hubv2 '+
-          '(fine-grained) or <b>public_repo</b> (classic).</p>')
+          'on another one does not fix this. A classic token needs the full <b>repo</b> scope '+
+          'alongside gist \u2014 <b>public_repo is not enough</b> even on a public repo. '+
+          '(Fine-grained with <b>Actions: Read and write</b> on iron-hubv2 is tighter, but this '+
+          'endpoint does not always honour it.)</p>')
         : '')+
       '<div class="row" style="margin-top:10px">'+
       '<div style="flex:none"><button class="btn sm" onclick="syncPush(true)">Push Now</button></div>'+
@@ -4970,13 +4979,14 @@ function renderSettings(){
             '<button class="btn sm ghost" onclick="tokOpen=false;renderSettings()">Cancel</button></div>'+
             '<p class="small" style="margin-top:8px">Swaps the token in place \u2014 your gist and data are untouched. '+
             'The new one is checked against GitHub before it replaces the old one, and the WHOOP relay is pinged '+
-            'to confirm the Actions permission really works. Needs <b>Actions: Read and write</b> on iron-hubv2 '+
-            '(fine-grained) or <b>public_repo</b> (classic), alongside gist access.</p></div>' : '');
+            'to confirm the Actions permission really works. A classic token needs the full '+
+            '<b>repo</b> scope alongside <b>gist</b> \u2014 <b>public_repo is not enough</b>, even '+
+            'though this repo is public.</p></div>' : '');
   } else {
     html += '<p class="small">Sync your data across devices through a <b>private</b> GitHub Gist. Your Anthropic API key and GitHub token never leave this device \u2014 only training data is synced.</p>'+
       '<label>GitHub Token (gists + Actions)</label><input type="password" id="ghToken" placeholder="ghp_\u2026 or github_pat_\u2026">'+
       '<div style="margin-top:10px"><button class="btn sm" onclick="connectSync()">Connect</button></div>'+
-      '<p class="small" style="margin-top:10px"><b>One-time setup:</b> GitHub \u2192 Settings \u2192 Developer settings \u2192 Personal access tokens \u2192 Tokens (classic) \u2192 Generate new token (classic) \u2192 check <b>gist</b> and <b>public_repo</b> \u2192 set expiration to your preference \u2192 Generate \u2192 copy it here. On your second device, paste the same token and hit Connect \u2014 it finds your gist automatically. <b>Tighter alternative, recommended:</b> a fine-grained token instead — Personal access tokens → Fine-grained → repository access limited to <b>iron-hubv2</b> → Repository permissions: <b>Actions: Read and write</b> → Account permissions: <b>Gists: Read and write</b>. That grants less than the classic pair does. Either way, the Actions half is what lets the app ask the WHOOP relay to run when your recovery has not landed yet — GitHub runs the relay far less often than its schedule claims, and without it the morning brief misses recovery on the days it does not fire in time. Cloud sync itself works without the Actions half; you will just keep losing recovery on slow mornings.</p>';
+      '<p class="small" style="margin-top:10px"><b>One-time setup:</b> GitHub \u2192 Settings \u2192 Developer settings \u2192 Personal access tokens \u2192 Tokens (classic) \u2192 Generate new token (classic) \u2192 check <b>gist</b> and <b>repo</b> \u2192 set expiration to your preference \u2192 Generate \u2192 copy it here. On your second device, paste the same token and hit Connect \u2014 it finds your gist automatically. It must be the full <b>repo</b> scope, not <b>public_repo</b>: GitHub requires <b>repo</b> to trigger a workflow even on a public repository, and refuses <b>public_repo</b> with \u201cMust have admin rights to Repository.\u201d <b>Tighter alternative, worth trying first:</b> a fine-grained token \u2014 Personal access tokens \u2192 Fine-grained \u2192 repository access limited to <b>iron-hubv2</b> \u2192 Repository permissions: <b>Actions: Read and write</b> \u2192 Account permissions: <b>Gists: Read and write</b>. That grants far less than <b>repo</b> does, but this endpoint is inconsistent about honouring fine-grained tokens \u2014 hit <b>Test relay</b> after connecting and it will tell you in seconds. Either way, the Actions half is what lets the app ask the WHOOP relay to run when your recovery has not landed yet — GitHub runs the relay far less often than its schedule claims, and without it the morning brief misses recovery on the days it does not fire in time. Cloud sync itself works without the Actions half; you will just keep losing recovery on slow mornings.</p>';
   }
   html += '<p class="small" id="syncMsg" style="margin-top:8px"></p></div>';
 

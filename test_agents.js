@@ -5465,6 +5465,20 @@ setTimeout(async () => {
     ok('and says tokens are per device, so fixing another one does not fix this',
        ev("agState().log.some(function(e){ return e.agent==='charlie' && /per device/.test(e.text); })"));
 
+    // The scope this app recommends has now been wrong twice, and each time it cost a morning.
+    // GitHub's docs for "Create a workflow dispatch event": "OAuth tokens and personal access
+    // tokens (classic) need the repo scope to use this endpoint." public_repo is NOT a subset
+    // that covers it even on a public repo -- it is refused with 403 "Must have admin rights to
+    // Repository.", which is verbatim what Mark's phone reported on 2026-09-08 after following
+    // these very instructions. Anything that tells him a scope must name the right one.
+    ok('CHARLIE names the FULL repo scope',
+       ev("agState().log.some(function(e){ return e.agent==='charlie' && /FULL repo scope/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.text.slice(0,140);})")));
+    ok('and says outright that public_repo is not enough',
+       ev("agState().log.some(function(e){ return e.agent==='charlie' && /public_repo is NOT enough/.test(e.text); })"));
+    ok('and never recommends public_repo as the fix',
+       ev("agState().log.every(function(e){ return !/wants public_repo|or public_repo \\(classic\\)/.test(e.text); })"));
+
     // Connected has always meant "gists work", which is only half of what this token does. The
     // half the morning brief depends on failed silently behind a green Connected dot all day.
     ev('renderSettings()');
@@ -5474,12 +5488,26 @@ setTimeout(async () => {
     ok('and quotes GitHub’s explanation there too',
        sh.indexOf('Resource not accessible by personal access token') >= 0);
     ok('and offers a way to retest it without waiting for 6 AM', /whoopTestRelay\(\)/.test(sh));
+    ok('the verdict names the full repo scope rather than public_repo',
+       /full <b>repo<\/b> scope/.test(sh) && /public_repo is not enough/.test(sh));
 
     ev("whoopRelaySet(true, 204, '');");
     ev('renderSettings()');
     const sh2 = w.document.getElementById('settings').innerHTML;
     ok('a working token reads as working', /can trigger a run/.test(sh2));
     ok('and stops claiming it cannot', !/cannot trigger a run/.test(sh2));
+
+    // The first-run instructions are what sent him down the public_repo path to begin with, so
+    // they are the copy that matters most.
+    const keepTok = ev('S.settings.ghToken'), keepGist = ev('S.settings.gistId');
+    ev("S.settings.ghToken = ''; S.settings.gistId = '';");
+    ev('renderSettings()');
+    const sh3 = w.document.getElementById('settings').innerHTML;
+    ok('the first-run setup tells him to tick repo, not public_repo',
+       /check <b>gist<\/b> and <b>repo<\/b>/.test(sh3), sh3.indexOf('One-time setup') >= 0 ? 'setup text present' : 'setup text MISSING');
+    ok('and warns explicitly that public_repo is refused',
+       /not <b>public_repo<\/b>/.test(sh3) && /Must have admin rights to Repository/.test(sh3));
+    ev('S.settings.ghToken = ' + JSON.stringify(keepTok) + '; S.settings.gistId = ' + JSON.stringify(keepGist) + ';');
 
     // Deliberately per device and out of S: the token is never synced, so the phone and the
     // laptop can disagree -- and a new S.meta field would come back ABSENT on an existing

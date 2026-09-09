@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1436 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1442 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -416,12 +416,22 @@ gap. So `whoopMaybeKick()` **POSTs a `workflow_dispatch`** when today's recovery
 in the morning; a dispatch is not rationed the way a schedule is and starts within seconds. Three
 consequences to keep in mind:
 
-- **The sync token needs Actions write, which is NOT the scope called `workflow`.** `workflow`
-  only governs editing workflow *files*; dispatching one needs repo write - `public_repo`
-  alongside `gist` on a classic token, or (tighter, and what Settings recommends) a fine-grained
-  token limited to this repo with *Actions: Read and write* plus *Gists: Read and write*. Getting
-  this wrong is cheap to do and expensive to notice, so the 403/404 path writes a CHARLIE log
-  entry naming the right one. Never make that failure silent.
+- **A classic token needs the FULL `repo` scope. Not `workflow`, and not `public_repo`.** This
+  has been wrong twice and cost a morning each time, so take it from the docs rather than from
+  intuition: *"OAuth tokens and personal access tokens (classic) need the `repo` scope to use
+  this endpoint."* `workflow` only governs editing workflow *files*. And `public_repo` is **not**
+  a sufficient subset even though this repo is public - GitHub refuses it with
+  `403 Must have admin rights to Repository.`, which is verbatim what his phone reported on
+  2026-09-08 after he had followed the app's own instructions exactly. A fine-grained token
+  limited to this repo with *Actions: Read and write* plus *Gists: Read and write* is far
+  tighter than `repo` and worth trying first, but this endpoint is inconsistent about honouring
+  fine-grained tokens, so it is offered as an option rather than the recommendation. **Test
+  relay** settles it either way in seconds.
+
+  Getting this wrong is cheap to do and expensive to notice, so it is asserted: the suite checks
+  the CHARLIE log entry, the Settings verdict and the first-run instructions all name `repo` and
+  say plainly that `public_repo` is refused. Do not soften those assertions - they exist because
+  the copy, not the code, is what failed here.
 - **The throttle state is in its own `localStorage` key, not in `S`.** In `S` it would sync, so
   one device's dispatches would spend another's budget - and a new `S.meta` field would not
   survive `load()` on an existing install anyway (see the migration note above).
