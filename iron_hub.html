@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-08-v2">
+<meta name="ironhub-build" content="2026-09-08-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3971,10 +3971,10 @@ const WHOOP_RELAY_KEY = 'ironhub:whooprelay';
 function whoopRelayNote(){
   try{ return JSON.parse(localStorage.getItem(WHOOP_RELAY_KEY) || 'null'); }catch(e){ return null; }
 }
-function whoopRelaySet(ok, status, msg){
+function whoopRelaySet(ok, status, msg, diag){
   try{
     localStorage.setItem(WHOOP_RELAY_KEY, JSON.stringify(
-      {ok:!!ok, status:status||0, msg:msg||'', at:Date.now()}));
+      {ok:!!ok, status:status||0, msg:msg||'', diag:diag||'', at:Date.now()}));
   }catch(e){}
 }
 /* GitHub says exactly what is wrong in the response body, and this app used to throw it away
@@ -3987,6 +3987,59 @@ async function ghErrMsg(res){
     return (j && j.message) ? String(j.message).slice(0, 160) : '';
   }catch(e){ return ''; }
 }
+/* What the token actually IS, rather than what we assume it is. Two guesses have now been wrong
+   here -- the app recommended public_repo, then the full repo scope, and the 403 did not move --
+   and each wrong guess costs a morning. GitHub will simply say, if asked:
+
+   - X-OAuth-Scopes lists a CLASSIC token's granted scopes. A fine-grained token does not send
+     the header at all, which is what tells the two kinds apart from the outside.
+   - GET /user says which ACCOUNT the token authenticates as. This matters more than the scope
+     list: "Must have admin rights to Repository." is exactly what a token belonging to someone
+     without write access to markwx18/iron-hubv2 gets, no matter how many scopes it carries.
+   - X-Accepted-OAuth-Scopes on the refused request is GitHub naming what it wanted.
+
+   Both X-OAuth-Scopes and X-Accepted-OAuth-Scopes are on GitHub's Access-Control-Expose-Headers
+   list, so a browser really can read them; most response headers it cannot. Never throws -- a
+   diagnostic that can fail is worse than none, and this one only ever runs to explain a failure
+   that has already happened. */
+async function ghTokenScopes(){
+  try{
+    const res = await fetch('https://api.github.com/user', {headers:ghHeaders()});
+    const raw = res.headers.get('X-OAuth-Scopes');
+    let login = '';
+    try{ const j = await res.json(); login = (j && j.login) ? String(j.login) : ''; }catch(e){}
+    // Absent header (null) means fine-grained; present-but-empty means a classic token with
+    // nothing ticked, which is a different problem and must not read as the same one.
+    if(raw === null || raw === undefined) return {kind:'fine-grained', scopes:[], login:login, status:res.status};
+    const scopes = String(raw).split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+    return {kind:'classic', scopes:scopes, login:login, status:res.status};
+  }catch(e){ return null; }
+}
+/* Turn that into one sentence he can act on. Kept separate from the fetch so the wording is
+   testable without a network. */
+function ghTokenDiagnosis(sc, accepted){
+  if(!sc) return '';
+  const owner = WHOOP_REPO.split('/')[0];
+  const acc = accepted ? ' GitHub says it wanted: ' + accepted + '.' : '';
+  if(sc.login && sc.login.toLowerCase() !== owner.toLowerCase()){
+    return ' Token check: it authenticates as \u201c' + sc.login + '\u201d, not \u201c' + owner +
+           '\u201d \u2014 that account has no write access to this repo, which produces this 403 on ' +
+           'its own no matter what scopes are ticked. Make the token on the ' + owner + ' account.' + acc;
+  }
+  if(sc.kind === 'classic'){
+    const has = sc.scopes.indexOf('repo') >= 0;
+    return ' Token check: CLASSIC token on \u201c' + (sc.login || owner) + '\u201d granting [' +
+           (sc.scopes.join(', ') || 'no scopes') + '].' +
+           (has ? ' It already has repo, so this refusal is not about scopes.'
+                : ' It is missing repo \u2014 that is the one this needs.') + acc;
+  }
+  return ' Token check: FINE-GRAINED token on \u201c' + (sc.login || owner) + '\u201d. Those send no ' +
+         'scope list, and this endpoint is inconsistent about honouring them: it needs repository ' +
+         'access to include ' + WHOOP_REPO.split('/')[1] + ', with Actions: Read and write AND ' +
+         'Contents: Read and write. If it still refuses, a classic token with repo is the reliable ' +
+         'path.' + acc;
+}
+
 /* Dispatching IS the test: there is no read-only probe that proves write access, and the run it
    triggers is useful anyway because it fetches WHOOP right now. Exists as a button because
    otherwise the only place this failure is observable is 6 AM, which is the one time he is not
@@ -4009,13 +4062,14 @@ async function whoopTestRelay(){
       setSyncMsg('\u2713 The relay accepted a run \u2014 recovery should land within a minute or two.');
     } else {
       const gh = await ghErrMsg(res);
-      whoopRelaySet(false, res.status, gh);
+      // X-Accepted-OAuth-Scopes is GitHub naming what it wanted, on the very request it refused.
+      let accepted = '';
+      try{ accepted = res.headers.get('X-Accepted-OAuth-Scopes') || ''; }catch(e){}
+      const diag = ghTokenDiagnosis(await ghTokenScopes(), accepted);
+      whoopRelaySet(false, res.status, gh, diag);
       renderSettings();
       setSyncMsg('The relay refused this device\u2019s token (' + res.status +
-                 (gh ? ': ' + gh : '') + '). A classic token needs the FULL repo scope alongside ' +
-                 'gist \u2014 public_repo is not enough even on a public repo, and GitHub refuses ' +
-                 'it here with \u201cMust have admin rights to Repository.\u201d It is NOT the ' +
-                 'scope called workflow.', true);
+                 (gh ? ': ' + gh : '') + ').' + diag, true);
     }
   }catch(e){ setSyncMsg(e.message, true); }
 }
@@ -4962,7 +5016,9 @@ function renderSettings(){
           'on another one does not fix this. A classic token needs the full <b>repo</b> scope '+
           'alongside gist \u2014 <b>public_repo is not enough</b> even on a public repo. '+
           '(Fine-grained with <b>Actions: Read and write</b> on iron-hubv2 is tighter, but this '+
-          'endpoint does not always honour it.)</p>')
+          'endpoint does not always honour it.)'+
+          // Only present once Test relay has actually asked GitHub what this token is.
+          (_rn.diag ? '<br><b>'+esc(_rn.diag.trim())+'</b>' : '')+'</p>')
         : '')+
       '<div class="row" style="margin-top:10px">'+
       '<div style="flex:none"><button class="btn sm" onclick="syncPush(true)">Push Now</button></div>'+

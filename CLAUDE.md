@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1442 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1457 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -432,6 +432,19 @@ consequences to keep in mind:
   the CHARLIE log entry, the Settings verdict and the first-run instructions all name `repo` and
   say plainly that `public_repo` is refused. Do not soften those assertions - they exist because
   the copy, not the code, is what failed here.
+
+- **Do not diagnose a token by guessing. Ask GitHub.** Two guesses were wrong before this rule
+  existed. `ghTokenScopes()` reads `X-OAuth-Scopes` (a classic token's granted scopes; the header
+  is *absent entirely* on a fine-grained one, which is how the two are told apart) and `GET /user`
+  for the account the token authenticates as, and `ghTokenDiagnosis()` turns that into one
+  sentence. Both `X-OAuth-Scopes` and `X-Accepted-OAuth-Scopes` are on GitHub's
+  `Access-Control-Expose-Headers`, so a browser can genuinely read them - most response headers it
+  cannot, so check that list before relying on a header here.
+
+  The **account** is checked before the scopes and reported first, because it outranks them:
+  `Must have admin rights to Repository.` is exactly what a token belonging to anyone without
+  write access to this repo receives, however many scopes it carries. Only `whoopTestRelay()` and
+  `replaceToken()` pay for the extra request - the 6 AM path stays as cheap as it was.
 - **The throttle state is in its own `localStorage` key, not in `S`.** In `S` it would sync, so
   one device's dispatches would spend another's budget - and a new `S.meta` field would not
   survive `load()` on an existing install anyway (see the migration note above).

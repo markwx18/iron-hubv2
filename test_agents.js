@@ -5509,6 +5509,73 @@ setTimeout(async () => {
        /not <b>public_repo<\/b>/.test(sh3) && /Must have admin rights to Repository/.test(sh3));
     ev('S.settings.ghToken = ' + JSON.stringify(keepTok) + '; S.settings.gistId = ' + JSON.stringify(keepGist) + ';');
 
+    // --- ask GitHub what the token IS, instead of guessing a third time ---
+    // public_repo was recommended, then the full repo scope, and the 403 did not move. GitHub
+    // will just say: X-OAuth-Scopes lists a classic token's scopes and is absent entirely on a
+    // fine-grained one, and GET /user names the account. The account matters most -- "Must have
+    // admin rights to Repository." is exactly what a token belonging to someone without write
+    // access gets, however many scopes it carries.
+    const hdr = function (scopes) {
+      return "{ok:true, status:200, headers:{get:function(k){ return k === 'X-OAuth-Scopes' ? " +
+        (scopes === null ? 'null' : JSON.stringify(scopes)) +
+        " : null; }}, json:function(){ return Promise.resolve({login:'markwx18'}); }}";
+    };
+
+    ev("window.fetch = function(){ return Promise.resolve(" + hdr('gist, public_repo') + "); };");
+    const scA = await ev('ghTokenScopes()');
+    ok('a classic token is identified by its scope header', scA && scA.kind === 'classic',
+       JSON.stringify(scA || null));
+    ok('and its granted scopes are read out exactly',
+       scA && scA.scopes.join('|') === 'gist|public_repo', JSON.stringify(scA && scA.scopes));
+    ok('and the account it authenticates as is captured', scA && scA.login === 'markwx18');
+
+    ev("window.fetch = function(){ return Promise.resolve(" + hdr(null) + "); };");
+    const scB = await ev('ghTokenScopes()');
+    ok('a fine-grained token is identified by the header being absent',
+       scB && scB.kind === 'fine-grained', JSON.stringify(scB || null));
+
+    // --- the wording, which is the part he actually reads ---
+    const diag = function (obj, accepted) {
+      ev('window.__sc = ' + JSON.stringify(obj) + ';');
+      return ev('ghTokenDiagnosis(window.__sc, ' + JSON.stringify(accepted || '') + ')');
+    };
+
+    const dWrong = diag({kind:'classic', scopes:['repo','gist'], login:'someoneelse'});
+    ok('a token on the wrong account is called out before anything about scopes',
+       /authenticates as/.test(dWrong) && dWrong.indexOf('someoneelse') >= 0 &&
+       /no write access/.test(dWrong), dWrong);
+    ok('and it says that alone explains the 403', /on its own no matter what scopes/.test(dWrong), dWrong);
+
+    const dMissing = diag({kind:'classic', scopes:['gist','public_repo'], login:'markwx18'});
+    ok('a classic token missing repo is named as such',
+       /CLASSIC token/.test(dMissing) && /missing repo/.test(dMissing), dMissing);
+    ok('and its actual scopes are quoted back', dMissing.indexOf('gist, public_repo') >= 0, dMissing);
+
+    const dHas = diag({kind:'classic', scopes:['repo','gist'], login:'markwx18'});
+    ok('a classic token that already has repo says so, rather than repeating the advice',
+       /already has repo/.test(dHas) && /not about scopes/.test(dHas), dHas);
+
+    const dFine = diag({kind:'fine-grained', scopes:[], login:'markwx18'});
+    ok('a fine-grained token is named, with the permissions it needs',
+       /FINE-GRAINED token/.test(dFine) &&
+       /Actions: Read and write AND Contents: Read and write/.test(dFine), dFine);
+    ok('and points at the reliable fallback', /classic token with repo is the reliable/.test(dFine), dFine);
+
+    ok('what GitHub said it wanted is passed through when it says anything',
+       /GitHub says it wanted: repo\./.test(diag({kind:'classic', scopes:['gist'], login:'markwx18'}, 'repo')));
+    ok('and a readout that could not be taken degrades to nothing', diag(null) === '');
+
+    // the readout is stored, so Settings keeps showing it after the press that produced it
+    ev("whoopRelaySet(false, 403, 'Must have admin rights to Repository.', ' Token check: CLASSIC token on \u201cmarkwx18\u201d granting [gist, public_repo]. It is missing repo.');");
+    ok('the readout rides on the stored note', /missing repo/.test(ev('whoopRelayNote().diag')),
+       ev('whoopRelayNote().diag'));
+    ev("S.settings.ghToken = 'ghp_testtoken'; S.settings.gistId = 'abcdef0123456789';");
+    ev('renderSettings()');
+    const sh4 = w.document.getElementById('settings').innerHTML;
+    ok('and Settings paints it under the verdict',
+       sh4.indexOf('granting [gist, public_repo]') >= 0, sh4.indexOf('Token check') >= 0 ? 'present' : 'MISSING');
+    ev('S.settings.ghToken = ' + JSON.stringify(keepTok) + '; S.settings.gistId = ' + JSON.stringify(keepGist) + ';');
+
     // Deliberately per device and out of S: the token is never synced, so the phone and the
     // laptop can disagree -- and a new S.meta field would come back ABSENT on an existing
     // install rather than at its default.
