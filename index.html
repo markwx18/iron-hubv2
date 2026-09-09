@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-07-v5">
+<meta name="ironhub-build" content="2026-09-08-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3493,11 +3493,63 @@ function aiBody(messages, system, maxTokens, opts){
   body.output_config = oc;
   return body;
 }
+/* ---- one transport for every API call ----
+   The three request builders here used to each run their own fetch, status check and JSON
+   parse -- three copies of the same six lines, and three places to miss when something has to
+   change. It had to change twice.
+
+   TIMEOUT. None of them had one. A fetch that never settles is not a slow night, it is a
+   permanent jam: agRunAll() and agRunBrief() raise their in-flight flag before the await and
+   lower it in a finally that is then never reached, so every later scheduler tick returns
+   early -- silently, because those gates return before anything is written to the log. Nothing
+   short of a reload recovers.
+
+   RETRY, but only for a rejection that PROVES the request never completed: a bare TypeError,
+   worded 'Load failed' on iOS and 'Failed to fetch' on Chrome. Nothing was billed, so nothing
+   is paid for twice. An HTTP error reply is deliberately NOT retried -- it came back, it would
+   come back the same way, and repeating DELTA's tool loop would pay for the whole conversation
+   again. agIsNetworkErr() already draws exactly that line for the cycle-level retry; this
+   applies it one level down, per request, which is where the loss actually happens. On
+   2026-09-08 CHARLIE and ECHO reported normally and DELTA came back 'Load failed': one blip
+   somewhere in its seven-request tool loop discarded every round before it and left training
+   unchecked for the night. The cycle-level retry was no help, because it only fires when all
+   three specialists go down together -- and the agent with the most requests in flight is
+   precisely the one most likely to be hit on its own.
+
+   A timeout is NOT retried, for the same cost reason: unlike a rejection it cannot prove the
+   request never reached the API, and one still being served would be paid for twice. */
+const AI_TIMEOUT_MS  = 240000;        // per request; generous, because effort 'high' plus tools is slow
+const AI_NET_RETRIES = 2;             // extra attempts, network-rejection only
+const AI_NET_BACKOFF = [1000, 3000];  // ms to wait before attempt 2 and attempt 3
+async function aiSend(body){
+  const payload = JSON.stringify(body);
+  let lastErr;
+  for(let attempt=0; attempt<=AI_NET_RETRIES; attempt++){
+    const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    let timedOut = false;
+    const timer = setTimeout(function(){ timedOut = true; if(ctl) ctl.abort(); }, AI_TIMEOUT_MS);
+    try{
+      const init = {method:'POST', headers:aiHeaders(), body:payload};
+      if(ctl) init.signal = ctl.signal;
+      const res = await fetch(AI_ENDPOINT, init);
+      if(!res.ok){ const t = await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
+      return await res.json();
+    }catch(e){
+      // Reworded to the fact it actually is -- and worded so agIsNetworkErr() matches it. A
+      // night on which every agent timed out really was a dead connection and should still
+      // qualify for the cycle-level retry, even though this layer refuses to repeat the
+      // request itself.
+      lastErr = timedOut
+        ? new Error('the connection timed out after '+Math.round(AI_TIMEOUT_MS/1000)+'s')
+        : e;
+      if(timedOut || attempt === AI_NET_RETRIES || !agIsNetworkErr(lastErr)) throw lastErr;
+    }finally{ clearTimeout(timer); }
+    await new Promise(function(r){ setTimeout(r, AI_NET_BACKOFF[attempt] || 3000); });
+  }
+  throw lastErr;   // not reachable: the final attempt above always returns or throws
+}
 async function callClaude(messages, system, maxTokens, opts){
-  const res = await fetch(AI_ENDPOINT,{method:'POST',headers:aiHeaders(),
-    body:JSON.stringify(aiBody(messages, system, maxTokens, opts))});
-  if(!res.ok){ const t=await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
-  const data = await res.json();
+  const data = await aiSend(aiBody(messages, system, maxTokens, opts));
   return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
 }
 /* What the agents are told about WHOOP. Silent when there is nothing fresh, so the prompt
@@ -3753,6 +3805,7 @@ async function replaceToken(){
                           WHOOP_WORKFLOW+'/dispatches',
       {method:'POST', headers:ghHeaders(), body:JSON.stringify({ref:'main'})});
     if(d.status === 204){
+      whoopRelaySet(true, 204, '');
       _whoopKickWarned = false;
       // Failed attempts already spent against today's cap were spent by a token that could
       // never have worked. Give the fixed one a clean budget instead of a used-up morning.
@@ -3761,9 +3814,13 @@ async function replaceToken(){
             'recovery should land within a minute or two.';
     }else{
       bad = true;
-      msg = 'Token saved and sync works, but it cannot trigger the WHOOP relay ('+d.status+'). '+
-            'Add Actions: read and write on iron-hubv2 (fine-grained), or public_repo (classic). '+
-            'It is NOT the scope called workflow.';
+      // GitHub's own wording, not ours. Guessing at the cause is what let a swapped token go on
+      // failing with the same opaque 403 as the one it replaced.
+      const gh = await ghErrMsg(d);
+      whoopRelaySet(false, d.status, gh);
+      msg = 'Token saved and sync works, but it cannot trigger the WHOOP relay ('+d.status+
+            (gh ? ': '+gh : '')+'). Add Actions: Read and write on iron-hubv2 (fine-grained), '+
+            'or public_repo (classic). It is NOT the scope called workflow.';
     }
   }catch(e){ bad = true; msg = e.message; }
   // Render BEFORE setting the message: renderSettings() rebuilds #syncMsg empty, so setting it
@@ -3900,6 +3957,65 @@ const WHOOP_KICK_GAP = 8 * 60 * 1000;  // and never two closer together than thi
 let _whoopKickAt = 0;
 let _whoopKickWarned = false;
 
+/* Whether this token can trigger the relay is a per-DEVICE fact, because the token is per
+   device: syncPayload() strips it and applyPulled() keeps the local one, so the phone and the
+   laptop can hold different tokens and routinely do. Replacing it on the laptop therefore does
+   nothing for the phone, and on 2026-09-08 that is what a swapped token looked like from the
+   outside -- one device fixed, the other still 403ing at 6 AM with nothing on screen saying so.
+   Kept out of S for that reason, and for the migration one: load() takes a stored meta
+   wholesale, so a field added to DEFAULT_STATE.meta comes back ABSENT on an existing install
+   rather than at its default. Same call as WHOOP_KICK_KEY above. */
+const WHOOP_RELAY_KEY = 'ironhub:whooprelay';
+function whoopRelayNote(){
+  try{ return JSON.parse(localStorage.getItem(WHOOP_RELAY_KEY) || 'null'); }catch(e){ return null; }
+}
+function whoopRelaySet(ok, status, msg){
+  try{
+    localStorage.setItem(WHOOP_RELAY_KEY, JSON.stringify(
+      {ok:!!ok, status:status||0, msg:msg||'', at:Date.now()}));
+  }catch(e){}
+}
+/* GitHub says exactly what is wrong in the response body, and this app used to throw it away
+   and report a bare status instead. That is how a 403 survived a token swap: "cannot trigger
+   Actions" is a guess at the cause, "Resource not accessible by personal access token" is the
+   answer. Never throws -- a diagnostic that can fail is worse than none. */
+async function ghErrMsg(res){
+  try{
+    const j = JSON.parse(await res.text());
+    return (j && j.message) ? String(j.message).slice(0, 160) : '';
+  }catch(e){ return ''; }
+}
+/* Dispatching IS the test: there is no read-only probe that proves write access, and the run it
+   triggers is useful anyway because it fetches WHOOP right now. Exists as a button because
+   otherwise the only place this failure is observable is 6 AM, which is the one time he is not
+   going to go looking for it. */
+async function whoopTestRelay(){
+  if(!syncReady()){ setSyncMsg('Connect cloud sync first.', true); return; }
+  setSyncMsg('Asking the WHOOP relay to run' + String.fromCharCode(8230));
+  try{
+    const res = await fetch('https://api.github.com/repos/' + WHOOP_REPO +
+                            '/actions/workflows/' + WHOOP_WORKFLOW + '/dispatches',
+      {method:'POST', headers:ghHeaders(), body:JSON.stringify({ref:'main'})});
+    if(res.status === 204){
+      whoopRelaySet(true, 204, '');
+      _whoopKickWarned = false;
+      // A budget spent by a token that could never have worked is not a budget.
+      try{ localStorage.removeItem(WHOOP_KICK_KEY); }catch(e){}
+      // renderSettings() BEFORE setSyncMsg(): it rebuilds #syncMsg empty, so setting the
+      // message first would wipe the very thing he needs to read.
+      renderSettings();
+      setSyncMsg('\u2713 The relay accepted a run \u2014 recovery should land within a minute or two.');
+    } else {
+      const gh = await ghErrMsg(res);
+      whoopRelaySet(false, res.status, gh);
+      renderSettings();
+      setSyncMsg('The relay refused this device\u2019s token (' + res.status +
+                 (gh ? ': ' + gh : '') + '). It needs Actions: Read and write on iron-hubv2 ' +
+                 '(fine-grained) or public_repo (classic). It is NOT the scope called workflow.', true);
+    }
+  }catch(e){ setSyncMsg(e.message, true); }
+}
+
 /* The daily counter lives in its own localStorage key, deliberately NOT in S. In S it would
    sync, so the phone's dispatches would spend the laptop's budget; per-device is the behaviour
    we want, since each device may reasonably ask once. Keeping it out of S.meta also sidesteps
@@ -3930,17 +4046,28 @@ async function whoopMaybeKick(){
     const res = await fetch('https://api.github.com/repos/' + WHOOP_REPO +
                             '/actions/workflows/' + WHOOP_WORKFLOW + '/dispatches',
       {method:'POST', headers:ghHeaders(), body:JSON.stringify({ref:'main'})});
-    if(res.status === 204) return true;          // accepted; the run writes the gist in ~30s
-    // A silent no-op is the failure mode worth guarding here: the sync token needs `workflow`
-    // scope on top of `gist`, and without it this returns 403 forever while looking fine from
-    // the outside. Say it once, in the activity log he actually reads. CHARLIE owns data health.
+    if(res.status === 204){
+      whoopRelaySet(true, 204, '');
+      _whoopKickWarned = false;
+      return true;                               // accepted; the run writes the gist in ~30s
+    }
+    // A silent no-op is the failure mode worth guarding here: the sync token needs an Actions
+    // permission on top of `gist`, and without it this returns 403 forever while looking fine
+    // from the outside. Say it once, in the activity log he actually reads (CHARLIE owns data
+    // health) -- and record it where Settings can show it too, because a log line scrolls away
+    // and this failure repeats every single morning until the token is changed.
+    const gh = await ghErrMsg(res);
+    whoopRelaySet(false, res.status, gh);
     if(!_whoopKickWarned && (res.status === 403 || res.status === 404)){
       _whoopKickWarned = true;
-      agLog('charlie', 'Could not ask the WHOOP relay to run (' + res.status + '). The GitHub ' +
-            'token in Settings cannot trigger Actions. A fine-grained token wants Actions: ' +
-            'read and write on iron-hubv2 (plus Gists: read and write); a classic one wants ' +
-            'public_repo alongside gist. Note it is NOT the scope called workflow, which only ' +
-            'governs editing workflow files. Cloud sync itself is unaffected.');
+      agLog('charlie', 'Could not ask the WHOOP relay to run (' + res.status +
+            (gh ? ': ' + gh : '') + '). This device\u2019s GitHub token cannot trigger Actions, so ' +
+            'recovery is back to waiting on GitHub\u2019s schedule, which misses the brief\u2019s ' +
+            'window most mornings. A fine-grained token wants Actions: read and write on ' +
+            'iron-hubv2 (plus Gists: read and write); a classic one wants public_repo alongside ' +
+            'gist. Note it is NOT the scope called workflow, which only governs editing workflow ' +
+            'files. Tokens are per device \u2014 replacing it elsewhere does not fix this one; ' +
+            'Settings \u203a Cloud Sync has a Test relay button. Cloud sync itself is unaffected.');
       save(false);
     }
   }catch(e){ /* offline or blocked -- the cron is still there underneath */ }
@@ -4811,12 +4938,28 @@ function renderSettings(){
 
   html += '<h2>Cloud Sync \u2014 GitHub Gist</h2><div class="card">';
   if(syncReady()){
+    /* Connected has always meant "gists work", which is only half of what this token does. The
+       other half -- being allowed to ask the WHOOP relay to run -- is the half the morning brief
+       depends on, and it failed silently for a whole day behind a green Connected dot. Shown
+       here rather than only in the activity log because it is a property of the token sitting
+       in this device's Settings, and because the log line scrolls away while the failure
+       repeats every morning. */
+    const _rn = whoopRelayNote();
     html += '<p class="small"><span class="ok">\u25cf Connected</span> \u00b7 gist <span class="mono">'+esc(S.settings.gistId.slice(0,10))+'\u2026</span>'+
       (S.meta && S.meta.lastSync ? ' \u00b7 last sync '+new Date(S.meta.lastSync).toLocaleString() : '')+'</p>'+
+      (_rn ? (_rn.ok
+        ? '<p class="small" style="color:var(--cyan)">\u25cf WHOOP relay: this device\u2019s token can trigger a run.</p>'
+        : '<p class="small err">\u25cf WHOOP relay: this device\u2019s token cannot trigger a run ('+_rn.status+
+          (_rn.msg ? ' \u2014 '+esc(_rn.msg) : '')+'). Recovery then waits on GitHub\u2019s schedule, which '+
+          'misses the morning brief\u2019s window most days. Tokens are per device, so replacing it '+
+          'on another one does not fix this. Needs <b>Actions: Read and write</b> on iron-hubv2 '+
+          '(fine-grained) or <b>public_repo</b> (classic).</p>')
+        : '')+
       '<div class="row" style="margin-top:10px">'+
       '<div style="flex:none"><button class="btn sm" onclick="syncPush(true)">Push Now</button></div>'+
       '<div style="flex:none"><button class="btn sm ghost" onclick="syncPull(false)">Pull Now</button></div>'+
       '<div style="flex:none"><button class="btn sm ghost" onclick="tokOpen=!tokOpen;renderSettings()">Replace token</button></div>'+
+      '<div style="flex:none"><button class="btn sm ghost" onclick="whoopTestRelay()">Test relay</button></div>'+
           '<div style="flex:none"><button class="btn sm ghost" onclick="disconnectSync()" style="color:var(--bad);border-color:var(--bad)">Disconnect</button></div></div>'+
       '<label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
       '<input type="checkbox" style="width:auto" '+(S.settings.autoSync!==false?'checked':'')+' onchange="S.settings.autoSync=this.checked;save(false);">'+
@@ -8554,9 +8697,7 @@ function coachExecuteAction(name, inp){
 async function callClaudeWithTools(messages, system, tools, maxTokens, opts){
   const body = aiBody(messages, system, maxTokens||1200, opts);
   if(tools && tools.length) body.tools = tools;
-  const res = await fetch(AI_ENDPOINT,{method:'POST',headers:aiHeaders(),body:JSON.stringify(body)});
-  if(!res.ok){ const t=await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
-  const data = await res.json();
+  const data = await aiSend(body);
   // Filtering by type already drops Sonnet 5's thinking blocks: they are not answer text,
   // and this filter predates them, so nothing here needed to change for the model swap.
   const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
@@ -8709,9 +8850,7 @@ function agRunDataTool(name, inp){
 async function aiRequest(messages, system, tools, maxTokens, opts){
   const body = aiBody(messages, system, maxTokens, opts);
   if(tools && tools.length) body.tools = tools;
-  const res = await fetch(AI_ENDPOINT,{method:'POST',headers:aiHeaders(),body:JSON.stringify(body)});
-  if(!res.ok){ const t=await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
-  return await res.json();
+  return await aiSend(body);
 }
 
 /* A reply that ran out of room is NOT a reply. Sonnet 5 thinks adaptively and thinking bills
@@ -11454,10 +11593,14 @@ async function agRunAll(manual){
   // of the first; and because S persists, a crash mid-cycle would leave a stale `true` on disk
   // that blocks every future run. A module-level flag has neither problem.
   if(_agRunning) return;
-  _agRunning = true; renderOps();
+  // renderOps() used to run here, between raising the flag and entering the try. A throw from
+  // a repaint would strand _agRunning at true and take the nightly cycle out until the next
+  // reload, with nothing logged to say why. It is inside the try now, and guarded.
+  _agRunning = true;
   let raised = 0;
   let retryable = false;   // set only by a network-only wipeout; read by the finally
   try{
+    try{ renderOps(); }catch(e){}
     // Settled, not all: one specialist failing must not take the other two down with it.
     // Under the old single-call design a malformed reply cost every agent its night.
     const results = await Promise.all(AG_ORDER.map(function(id){
@@ -11509,7 +11652,7 @@ async function agRunAll(manual){
       }
     });
     save();
-    renderOps();
+    try{ renderOps(); }catch(e){}
 
     // ZULU last, and only if at least one specialist actually reported -- synthesising three
     // failures is a waste of a call. It is handed the failures TOO, though (as is the letter):
@@ -11589,7 +11732,8 @@ async function agRunAll(manual){
         'you want another.');
       a4.lastRun = todayKey();
     }
-    _agRunning = false; save(); renderOps();
+    _agRunning = false; save();
+    try{ renderOps(); }catch(e){}
   }
 }
 
@@ -12248,8 +12392,11 @@ async function agRunBrief(manual){
     if(manual) alert('Add your API key in Settings first \u2014 ZULU needs it to write the brief.');
     return;
   }
-  _agBriefRunning = true; renderOps();
+  // Same trap as agRunAll(): outside the try, a throwing repaint stranded _agBriefRunning at
+  // true and every later agMaybeMorningBrief() returned at the first gate, writing nothing.
+  _agBriefRunning = true;
   try{
+    try{ renderOps(); }catch(e){}
     const text = await agWriteBrief(manual);
     // Re-resolve AFTER the await. applyPulled() may have replaced S while the request was in
     // flight, and agSetBrief() resolves through agState() internally, so this is safe -- but
@@ -12260,7 +12407,8 @@ async function agRunBrief(manual){
   }catch(e){
     agLog('zulu','I couldn\u2019t write this morning\u2019s brief ('+e.message+'). Nothing else changed.');
   }finally{
-    _agBriefRunning = false; save(); renderOps();
+    _agBriefRunning = false; save();
+    try{ renderOps(); }catch(e){}
     try{ if(MODE==='review' && activeReviewTab==='home') renderHome(); }catch(e){}
   }
 }
@@ -12355,6 +12503,35 @@ async function agConfirmGateThenRun(){
   }catch(e){ console.warn('agConfirmGateThenRun failed', e); }
 }
 
+/* Returning to the app is the one moment we KNOW he is present and the page is live, and it is
+   when these three checks matter most -- yet only the sync tick and the update checker were
+   wired to it. Everything agent-side ran once at boot and then on a 15-minute setInterval, and
+   on iOS that interval is frozen for as long as the app is backgrounded, which is most of the
+   day.
+
+   That is exactly how 2026-09-08 went. The page booted at 6:38 AM, found no recovery yet (the
+   relay's last run was 6:01 and WHOOP had not scored) and correctly did nothing. It was then
+   backgrounded. The relay's next run landed today's recovery in the gist at 10:35, 35 minutes
+   after AG_BRIEF_WHOOP_CUTOFF. When he opened the app that afternoon bgSyncTick() pulled that
+   recovery in and put a HIGH on screen -- and nothing re-asked whether the brief could now be
+   written. It never ran. Because agMaybeMorningBrief() returns before it spends a call, there
+   was not even a log line to explain the silence; he wrote the brief by hand at 7:09 PM.
+
+   Ordered AFTER the pull deliberately: the pull is what brings today's recovery in, and
+   checking the brief against pre-pull state would skip for precisely the reason the check
+   exists. Each of the three has its own gate, so this only ever asks. */
+let _agFgAt = 0;
+function agForegroundCheck(){
+  const now = Date.now();
+  // Switching in and out of the app must not spend a call per switch. Long enough to absorb
+  // that, short enough that the first real return of the afternoon is effectively immediate.
+  if(now - _agFgAt < 60000) return;
+  _agFgAt = now;
+  try{ whoopMaybeKick(); }catch(e){}
+  try{ agMaybeAutoRun(); }catch(e){}
+  try{ agMaybeMorningBrief(); }catch(e){}
+}
+
 /* ============================================================
    LIVE REFRESH \u2014 keep the open page current without a manual reload
    ============================================================ */
@@ -12439,9 +12616,19 @@ function startLiveRefresh(){
   setInterval(bgSyncTick, 60000);          // pull other devices' changes while the tab is open
   setInterval(rerenderActive, 30000);      // repaint so relative timestamps + local state stay current
   document.addEventListener('visibilitychange', ()=>{
-    if(document.visibilityState==='visible'){ bgSyncTick(); rerenderActive(); }
+    if(document.visibilityState==='visible'){
+      // Chained rather than fired alongside: agForegroundCheck() reads the state this pull is
+      // about to replace. Both arms, because a failed pull must not swallow the checks -- they
+      // have their own gates, and a dead network only means they find nothing to do.
+      Promise.resolve(bgSyncTick()).then(agForegroundCheck, agForegroundCheck);
+      rerenderActive();
+    }
   });
-  window.addEventListener('online', bgSyncTick);
+  // Coming back online is the other moment worth re-asking: it is what a bounded network retry
+  // is waiting for.
+  window.addEventListener('online', ()=>{
+    Promise.resolve(bgSyncTick()).then(agForegroundCheck, agForegroundCheck);
+  });
 }
 
 /* ===================== BOOT ===================== */
@@ -12480,9 +12667,9 @@ _bootPull.then(()=>{
   // relay for it now. It does not block -- the run lands in the gist ~30s later and bgSyncTick
   // picks it up, by which time the brief has either not been written yet (the common case,
   // since it waits until AG_BRIEF_WHOOP_CUTOFF) or takes its one reconciling rewrite.
-  try{ whoopMaybeKick(); }catch(e){}
-  try{ agMaybeAutoRun(); }catch(e){}
-  try{ agMaybeMorningBrief(); }catch(e){}
+  // Same three checks, in the same order, through the one helper -- so boot and foreground can
+  // never drift apart.
+  try{ agForegroundCheck(); }catch(e){}
   try{ setInterval(agMaybeAutoRun, 15*60*1000); }catch(e){}
   // Polled as well as run at boot: the relay's cron is unreliable enough that recovery can land
   // hours after the app was opened, so on a morning he opens

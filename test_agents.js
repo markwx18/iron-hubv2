@@ -5212,6 +5212,296 @@ setTimeout(async () => {
     ev("if(Date.prototype.__realGetHours){ Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours; }");
   }
 
+  console.log('=== ONE BLIP MUST NOT COST AN AGENT ITS NIGHT ===');
+  try {
+    // 2026-09-08: CHARLIE and ECHO reported normally, DELTA came back "Load failed", and
+    // training went unchecked for the night. "Load failed" is WebKit's wording for fetch()
+    // rejecting before any request completed -- a dropped connection, not a bad request. There
+    // was no retry at the request level, so one blip anywhere in DELTA's seven-request tool
+    // loop discarded every round before it. The cycle-level retry could not help: it only fires
+    // when all three specialists go down together, and the agent making the most requests is
+    // precisely the one most likely to be hit on its own.
+    ev('window.__realFetch = window.fetch;');
+    ev('if(window.__realData) callClaudeWithData = window.__realData;');
+    ev("S.settings.apiKey = 'sk-test';");
+
+    // Count ONLY calls to the API. startUpdateWatcher() re-fetches the page itself on its own
+    // timer, and it lands inside the seconds these tests spend waiting on backoff -- counting
+    // every fetch made the bounded-retry assertion read 4 attempts where the API saw 3.
+    ev(`window.__apiOnly = function(handler){
+          return function(u, init){
+            if(String(u).indexOf(AI_ENDPOINT) !== 0) return Promise.reject(new Error('not the API'));
+            window.__fetchN++;
+            return handler(u, init);
+          };
+        };`);
+
+    // --- a dropped connection is retried, and the answer still arrives ---
+    ev(`window.__fetchN = 0;
+        window.fetch = window.__apiOnly(function(){
+          if(window.__fetchN < 2) return Promise.reject(new TypeError('Load failed'));
+          return Promise.resolve({ok:true, status:200, json:function(){
+            return Promise.resolve({content:[{type:'text', text:'recovered'}]}); }});
+        });`);
+    const rec = await ev("callClaude([{role:'user',content:'hi'}], 'sys', 100)");
+    ok('a dropped connection is retried rather than thrown away', rec === 'recovered', String(rec));
+    ok('and one extra attempt was enough', ev('window.__fetchN') === 2, 'fetches=' + ev('window.__fetchN'));
+
+    // --- but an HTTP error reply is never repeated ---
+    // Guard, not a bug test: this passed before the change too. It is here because the change
+    // introduced a retry loop, and the one thing that loop must never do is re-run a request
+    // that came BACK -- DELTA's whole tool conversation would be billed a second time to get
+    // the identical answer.
+    ev(`window.__fetchN = 0;
+        window.fetch = window.__apiOnly(function(){
+          return Promise.resolve({ok:false, status:400,
+            text:function(){ return Promise.resolve('{"type":"error"}'); }});
+        });`);
+    let apiErr = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 100)"); } catch (e) { apiErr = e; }
+    ok('an HTTP error reply is surfaced, not swallowed', !!apiErr && /API 400/.test(apiErr.message),
+       apiErr && apiErr.message);
+    ok('and is never retried — it came back, so repeating it would be paid for twice',
+       ev('window.__fetchN') === 1, 'fetches=' + ev('window.__fetchN'));
+
+    // --- and a genuinely dead connection still gives up ---
+    ev(`window.__fetchN = 0;
+        window.fetch = window.__apiOnly(function(){ return Promise.reject(new TypeError('Load failed')); });`);
+    let deadErr = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 100)"); } catch (e) { deadErr = e; }
+    ok('a dead connection is not retried forever', !!deadErr);
+    ok('it stops after AI_NET_RETRIES extra attempts and no more',
+       ev('window.__fetchN') === ev('AI_NET_RETRIES') + 1, 'fetches=' + ev('window.__fetchN'));
+
+    // --- classification, which is what decides whether the CYCLE retries as well ---
+    ok('a bare Load failed still reads as a dropped connection',
+       ev("agIsNetworkErr(new TypeError('Load failed'))") === true);
+    ok('the timeout is worded so it reads as one too',
+       ev("agIsNetworkErr(new Error('the connection timed out after 240s'))") === true);
+    ok('while an HTTP error reply never does', ev("agIsNetworkErr(new Error('API 400: bad'))") === false);
+    ok('and the per-request timeout is long enough not to cut off a slow effort-high call',
+       ev('AI_TIMEOUT_MS') >= 120000, String(ev('AI_TIMEOUT_MS')));
+    ok('and there is more than one attempt to begin with', ev('AI_NET_RETRIES') >= 1,
+       String(ev('AI_NET_RETRIES')));
+
+    // The 240s expiry itself cannot be driven here -- there is no clock to wind forward and no
+    // way to shrink a const from outside. What IS checkable is the mechanism it depends on: no
+    // signal on the request means no timeout can ever fire, and a fetch that never settles goes
+    // back to jamming the in-flight flag forever.
+    ev(`window.__sawSignal = null; window.__fetchN = 0;
+        window.fetch = window.__apiOnly(function(u, init){
+          window.__sawSignal = !!(init && init.signal && typeof init.signal.aborted === 'boolean');
+          return Promise.resolve({ok:true, status:200, json:function(){
+            return Promise.resolve({content:[{type:'text', text:'ok'}]}); }});
+        });`);
+    await ev("callClaude([{role:'user',content:'hi'}], 'sys', 100)");
+    ok('every request carries an abort signal, which is what makes the timeout possible',
+       ev('window.__sawSignal') === true, String(ev('window.__sawSignal')));
+  } catch (e) {
+    ok('transport retry section', false, e.message);
+  }
+  ev('if(window.__realFetch) window.fetch = window.__realFetch;');
+
+  // Own try, because this is the headline case and an earlier failure must not hide it.
+  try {
+    // --- the actual Sep 8 shape: one blip mid tool-loop, and DELTA reports anyway ---
+    ev(`window.__fetchN = 0;
+        window.fetch = window.__apiOnly(function(){
+          if(window.__fetchN === 1) return Promise.resolve({ok:true, status:200, json:function(){
+            return Promise.resolve({stop_reason:'tool_use',
+              content:[{type:'tool_use', id:'t1', name:'list_lifts', input:{}}]}); }});
+          if(window.__fetchN === 2) return Promise.reject(new TypeError('Load failed'));
+          return Promise.resolve({ok:true, status:200, json:function(){
+            return Promise.resolve({stop_reason:'end_turn',
+              content:[{type:'text', text:'{"summary":"delta reported anyway","proposals":[]}'}]}); }});
+        });`);
+    const dres = await ev("agRunSpecialist('delta', false)");
+    ok('a blip mid tool-loop no longer costs DELTA its whole night',
+       !!dres && dres.summary === 'delta reported anyway', JSON.stringify(dres || null));
+    ok('and the rounds already paid for are resumed, not re-run from the top',
+       ev('window.__fetchN') === 3, 'fetches=' + ev('window.__fetchN'));
+  } catch (e) {
+    ok('DELTA tool-loop blip section', false, e.message);
+  }
+  ev('if(window.__realFetch) window.fetch = window.__realFetch;');
+
+  try {
+    // --- a repaint must never be able to strand an in-flight flag ---
+    // Both runners raised their guard and THEN called renderOps(), outside the try, so a throw
+    // from a pure-UI repaint left the flag true for the life of the page. Every later scheduler
+    // tick then returned at the first gate -- which is before anything is written to the log,
+    // so there was nothing at all to explain the silence.
+    ev('window.__realRenderOps = renderOps;');
+    ev("renderOps = function(){ throw new Error('repaint blew up'); };");
+    ev('window.fetch = window.__realFetch;');
+    ev("delete agState().brief; agState().log = [];");
+    ev("S.whoop = {recovery:{date:todayKey(), score:88, hrv:110, rhr:55}};");
+    ev(`callClaudeWithData = async function(){
+          return {text: '{"brief":"written despite the repaint"}', toolsUsed:0, stop:'end_turn'};
+        };`);
+    await ev('agRunBrief(true)');
+    ok('a throwing repaint does not cost him the brief',
+       ev('agBriefToday() && agBriefToday().text') === 'written despite the repaint',
+       JSON.stringify(ev('agState().brief || null')));
+    ok('and does not strand the flag that silences every later attempt',
+       ev('_agBriefRunning') === false);
+
+    stubAgents({charlie:{summary:'c ok', proposals:[]},
+                delta:{summary:'d ok', proposals:[]},
+                echo:{summary:'e ok', proposals:[]}});
+    ev("agState().lastRun = ''; agState().log = []; delete agState().retry;");
+    await ev('agRunAll(true)');
+    ok('the nightly cycle survives a throwing repaint too', ev('_agRunning') === false);
+    ok('and still stamps the day it completed', ev('agState().lastRun') === ev('todayKey()'),
+       String(ev('agState().lastRun')));
+    unstubAgents();
+    ev('renderOps = window.__realRenderOps;');
+
+    ev('window.fetch = window.__realFetch;');
+    ev('if(window.__realData) callClaudeWithData = window.__realData;');
+    ev("delete agState().brief; agState().log = []; agState().lastRun = ''; delete S.whoop;");
+  } catch (e) {
+    ok('stranded in-flight flag section', false, e.message);
+    ev('if(window.__realFetch) window.fetch = window.__realFetch;');
+    ev('if(window.__realRenderOps) renderOps = window.__realRenderOps;');
+    ev('if(window.__realData) callClaudeWithData = window.__realData;');
+    try { unstubAgents(); } catch (e2) {}
+  }
+
+  console.log('=== COMING BACK TO THE APP IS WHEN THESE CHECKS MATTER ===');
+  try {
+    // Everything agent-side ran once at boot and then on a 15-minute setInterval. On iOS that
+    // interval is frozen for as long as the app is backgrounded, which is most of the day. On
+    // 2026-09-08 the page booted at 6:38 AM with no recovery yet (correctly did nothing) and
+    // was then backgrounded; the relay landed today's recovery in the gist at 10:35, 35 minutes
+    // past AG_BRIEF_WHOOP_CUTOFF. When he opened the app that afternoon bgSyncTick() pulled it
+    // in and put a HIGH on screen -- and nothing re-asked whether the brief could now be
+    // written. It never was, and because the gate returns before it spends a call there was not
+    // even a log line to explain the silence.
+    ev('window.__realKick2 = whoopMaybeKick; window.__realAuto2 = agMaybeAutoRun;');
+    ev('window.__realBrief2 = agMaybeMorningBrief; window.__realBg2 = bgSyncTick;');
+    ev('window.__realFetch2 = window.fetch;');
+    ev('window.__fg = [];');
+    ev("whoopMaybeKick = function(){ window.__fg.push('kick'); };");
+    ev("agMaybeAutoRun = function(){ window.__fg.push('auto'); };");
+    ev("agMaybeMorningBrief = function(){ window.__fg.push('brief'); };");
+
+    ev('_agFgAt = 0; agForegroundCheck();');
+    ok('the foreground check asks the relay for a run before judging the brief',
+       ev("window.__fg.join(',')") === 'kick,auto,brief', ev("window.__fg.join(',')"));
+
+    ev('window.__fg = [];');
+    ev('agForegroundCheck(); agForegroundCheck();');
+    ok('but switching in and out of the app does not spend a call per switch',
+       ev('window.__fg.length') === 0, ev("window.__fg.join(',')"));
+
+    // The ordering is the whole point: the pull is what brings today's recovery in, so checking
+    // the brief against pre-pull state would skip for exactly the reason the check exists.
+    ev('window.__order = [];');
+    ev(`bgSyncTick = function(){
+          window.__order.push('pull-start');
+          return new Promise(function(r){ setTimeout(function(){ window.__order.push('pull-done'); r(); }, 20); });
+        };`);
+    ev("agMaybeMorningBrief = function(){ window.__order.push('brief'); };");
+    ev('_agFgAt = 0;');
+    ev("document.dispatchEvent(new Event('visibilitychange'));");
+    await new Promise(function (r) { setTimeout(r, 150); });
+    ok('returning to the app re-asks whether the brief can be written now',
+       ev("window.__order.indexOf('brief')") >= 0, ev("window.__order.join(',')"));
+    ok('and only after the pull that brings the recovery in',
+       ev("window.__order.join(',')").indexOf('pull-done,brief') >= 0, ev("window.__order.join(',')"));
+
+    // A failed pull must not swallow the checks -- they have their own gates, and a dead
+    // network only means they find nothing to do.
+    ev('window.__order = [];');
+    // The .catch is on the stub, not on the code under test: it keeps an implementation that
+    // ignores the returned promise from killing the whole run on an unhandled rejection, so a
+    // mutant fails these two assertions and still reports the rest of the suite.
+    ev(`bgSyncTick = function(){
+          var p = Promise.reject(new TypeError('Load failed'));
+          p.catch(function(){});
+          return p;
+        };`);
+    ev('_agFgAt = 0;');
+    ev("document.dispatchEvent(new Event('visibilitychange'));");
+    await new Promise(function (r) { setTimeout(r, 100); });
+    ok('a pull that fails still lets the checks run', ev("window.__order.indexOf('brief')") >= 0,
+       ev("window.__order.join(',')"));
+
+    ev('bgSyncTick = window.__realBg2;');
+    ev('whoopMaybeKick = window.__realKick2; agMaybeAutoRun = window.__realAuto2;');
+    ev('agMaybeMorningBrief = window.__realBrief2;');
+
+    // --- why the relay refused, on the device that was refused ---
+    const gm = await ev(`ghErrMsg({text:function(){ return Promise.resolve('{"message":"Resource not accessible by personal access token"}'); }})`);
+    ok('GitHub’s own explanation is read out of the response body',
+       gm === 'Resource not accessible by personal access token', String(gm));
+    const gm2 = await ev(`ghErrMsg({text:function(){ return Promise.resolve('<html>nope</html>'); }})`);
+    ok('and a body that is not JSON degrades to nothing rather than throwing', gm2 === '', String(gm2));
+
+    const savedTok = ev('S.settings.ghToken || ""');
+    const savedGist = ev('S.settings.gistId || ""');
+    ev("S.settings.ghToken = 'ghp_testtoken'; S.settings.gistId = 'abcdef0123456789';");
+    ev('localStorage.removeItem(WHOOP_RELAY_KEY); localStorage.removeItem(WHOOP_KICK_KEY);');
+    ev('_whoopKickAt = 0; _whoopKickWarned = false;');
+    ev("delete S.whoop; agState().log = [];");
+    ev(`window.fetch = function(){
+          return Promise.resolve({ok:false, status:403, text:function(){
+            return Promise.resolve('{"message":"Resource not accessible by personal access token"}'); }});
+        };`);
+    ev('Date.prototype.__realGetHours = Date.prototype.getHours;');
+    ev('Date.prototype.getHours = function(){ return 7; };');
+    const kicked = await ev('whoopMaybeKick()');
+    ev('Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours;');
+    ok('a refused kick reports failure', kicked === false, String(kicked));
+    const note = ev('whoopRelayNote()');
+    ok('and is remembered on the device that was refused',
+       !!note && note.ok === false && note.status === 403, JSON.stringify(note || null));
+    ok('with GitHub’s own message rather than a guess at the cause',
+       !!note && /Resource not accessible/.test(note.msg), note && note.msg);
+    ok('CHARLIE names the permission that actually grants a dispatch',
+       ev("agState().log.some(function(e){ return e.agent==='charlie' && /Actions: read and write/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.agent+':'+e.text.slice(0,50);})")));
+    ok('and says tokens are per device, so fixing another one does not fix this',
+       ev("agState().log.some(function(e){ return e.agent==='charlie' && /per device/.test(e.text); })"));
+
+    // Connected has always meant "gists work", which is only half of what this token does. The
+    // half the morning brief depends on failed silently behind a green Connected dot all day.
+    ev('renderSettings()');
+    const sh = w.document.getElementById('settings').innerHTML;
+    ok('Settings says the relay half is broken, not just Connected',
+       /cannot trigger a run/.test(sh) && sh.indexOf('403') >= 0);
+    ok('and quotes GitHub’s explanation there too',
+       sh.indexOf('Resource not accessible by personal access token') >= 0);
+    ok('and offers a way to retest it without waiting for 6 AM', /whoopTestRelay\(\)/.test(sh));
+
+    ev("whoopRelaySet(true, 204, '');");
+    ev('renderSettings()');
+    const sh2 = w.document.getElementById('settings').innerHTML;
+    ok('a working token reads as working', /can trigger a run/.test(sh2));
+    ok('and stops claiming it cannot', !/cannot trigger a run/.test(sh2));
+
+    // Deliberately per device and out of S: the token is never synced, so the phone and the
+    // laptop can disagree -- and a new S.meta field would come back ABSENT on an existing
+    // install rather than at its default.
+    ok('relay health is kept out of synced state',
+       ev("JSON.stringify(S).indexOf('whooprelay')") === -1);
+    ok('and lives in its own localStorage key', ev('WHOOP_RELAY_KEY') === 'ironhub:whooprelay');
+
+    ev('localStorage.removeItem(WHOOP_RELAY_KEY); localStorage.removeItem(WHOOP_KICK_KEY);');
+    ev('S.settings.ghToken = ' + JSON.stringify(savedTok) + '; S.settings.gistId = ' + JSON.stringify(savedGist) + ';');
+    ev('window.fetch = window.__realFetch2;');
+    ev("agState().log = []; delete S.whoop; _whoopKickWarned = false; _whoopKickAt = 0; _agFgAt = 0;");
+  } catch (e) {
+    ok('foreground / relay section', false, e.message);
+    ev('if(window.__realBg2) bgSyncTick = window.__realBg2;');
+    ev('if(window.__realKick2) whoopMaybeKick = window.__realKick2;');
+    ev('if(window.__realAuto2) agMaybeAutoRun = window.__realAuto2;');
+    ev('if(window.__realBrief2) agMaybeMorningBrief = window.__realBrief2;');
+    ev('if(window.__realFetch2) window.fetch = window.__realFetch2;');
+    ev("if(Date.prototype.__realGetHours){ Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours; }");
+  }
+
   console.log('=== DAILY BRIEF + WEEKLY LETTER ===');
   try {
     // The letter is weekly, gated on the day of week, so this cannot be written against

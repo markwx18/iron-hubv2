@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1301 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1436 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -309,6 +309,31 @@ is rejected in cycle mode; `cycleSchedule` is rejected in dow mode. The cycle
 *anchor date* can never be changed by a proposal — only manually in Settings,
 because shifting it silently changes what today resolves to.
 
+**One transport, and it retries only what it can prove was never billed.** `aiSend()` is the only
+place this app talks to the API — `callClaude()`, `callClaudeWithTools()` and `aiRequest()` all go
+through it. It carries a per-request `AbortController` timeout (`AI_TIMEOUT_MS`, 240s): without
+one, a fetch that never settles is not a slow night but a *permanent jam*, because `agRunAll()`
+and `agRunBrief()` raise their in-flight flag before the await and lower it in a `finally` that is
+then never reached. It retries `AI_NET_RETRIES` times and **only** on a bare `TypeError` ("Load
+failed" on iOS, "Failed to fetch" on Chrome), which proves the request never completed and so
+costs nothing to repeat. An HTTP error reply is never retried — it came back, it would come back
+the same way, and DELTA's whole tool conversation would be billed a second time for the identical
+answer. A timeout is not retried either, for the same reason: unlike a rejection it cannot prove
+the request never reached the API. `agIsNetworkErr()` draws that line; do not widen it.
+
+The retry belongs at the *request* level, not the cycle level. `agRunAll()`'s retry only fires
+when all three specialists go down together, and the agent with the most requests in flight —
+DELTA, up to seven across its tool loop — is precisely the one most likely to be hit on its own.
+On 2026-09-08 CHARLIE and ECHO reported normally, DELTA came back "Load failed", and training went
+unchecked for the night while every round it had already paid for was thrown away.
+
+**A repaint must never be able to strand an in-flight flag.** Both runners used to call
+`renderOps()` between raising their module-scoped guard and entering the `try`. A throw from a
+pure-UI repaint left the flag `true` for the life of the page, and every later scheduler tick then
+returned at the first gate — which is *before* anything is written to the log, so nothing on
+screen could explain the silence. Every repaint inside those two functions is now within the `try`
+and individually guarded.
+
 ---
 
 ## V4 invariants — things that will silently break if undone
@@ -402,6 +427,37 @@ consequences to keep in mind:
   survive `load()` on an existing install anyway (see the migration note above).
 - **The cron stays underneath.** The dispatch is a nudge on the mornings it matters, not a
   replacement, and the app must still work when it fails.
+- **Whether the token can dispatch is a PER-DEVICE fact, and has to be shown per device.**
+  `syncPayload()` strips `ghToken` and `applyPulled()` keeps the local one, so the phone and the
+  laptop routinely hold different tokens - replacing it on one does nothing for the other. On
+  2026-09-08 that is exactly what a "fixed" token looked like from the outside: one device
+  working, the other still 403ing at 6 AM behind a green **Connected** dot, because Connected
+  only ever meant *gists* work. `whoopRelayNote()` / `whoopRelaySet()` record the last outcome in
+  their own `localStorage` key (same reasoning as the throttle above), Settings renders the
+  verdict under the Connected line, and **Test relay** re-checks it on demand rather than making
+  him find out at 6 AM. And read the body: `ghErrMsg()` surfaces GitHub's own `message`, because
+  "cannot trigger Actions" is a guess at the cause and "Resource not accessible by personal
+  access token" is the answer.
+
+**A `setInterval` is not a scheduler on iOS.** Everything agent-side - the 9 PM cycle, the morning
+brief, the relay kick - is checked at boot and then on a 15-minute `setInterval`. That interval is
+frozen for as long as the app is backgrounded, which is most of the day on a phone, so in practice
+it only fires when he happens to leave the app open and foregrounded for a quarter of an hour.
+`bgSyncTick()` and the update checker were already wired to `visibilitychange` for exactly this
+reason; the agent schedulers were not, and on 2026-09-08 that cost him the brief. The page booted
+at 6:38 AM with no recovery yet (correct - the relay's previous run was 6:01 and WHOOP had not
+scored), was backgrounded, and the next relay run landed today's recovery in the gist at 10:35,
+35 minutes past `AG_BRIEF_WHOOP_CUTOFF`. He opened the app that afternoon, `bgSyncTick()` pulled
+the recovery in and put a HIGH on screen, and nothing re-asked whether the brief could now be
+written. Because `agMaybeMorningBrief()` returns before it spends a call, there was not even a log
+line to explain the silence; he wrote it by hand at 7:09 PM.
+
+`agForegroundCheck()` is the single entry point now - boot, `visibilitychange` and `online` all go
+through it, in one order, throttled to once a minute so switching in and out cannot spend a call
+per switch. It runs **after** the pull resolves rather than alongside it: the pull is what brings
+today's recovery in, and checking the brief against pre-pull state skips for precisely the reason
+the check exists. Anything else that must happen "when he next looks at the app" belongs in that
+helper, not in a new interval.
 
 **The relay merges, it does not clobber.** WHOOP creates a recovery record *before* it scores it
 and omits the `score` object entirely while a cycle is `PENDING_SCORE`, so a run landing in that
