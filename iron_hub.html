@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-08-v3">
+<meta name="ironhub-build" content="2026-09-08-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3817,12 +3817,15 @@ async function replaceToken(){
       // GitHub's own wording, not ours. Guessing at the cause is what let a swapped token go on
       // failing with the same opaque 403 as the one it replaced.
       const gh = await ghErrMsg(d);
-      whoopRelaySet(false, d.status, gh);
+      let accepted = '';
+      try{ accepted = d.headers.get('X-Accepted-OAuth-Scopes') || ''; }catch(e){}
+      // Reads the token that was just installed, so the readout describes the NEW one rather
+      // than the one it replaced.
+      const diag = ghTokenDiagnosis(await ghTokenScopes(), accepted);
+      whoopRelaySet(false, d.status, gh, diag);
       msg = 'Token saved and sync works, but it cannot trigger the WHOOP relay ('+d.status+
-            (gh ? ': '+gh : '')+'). A classic token needs the FULL repo scope alongside gist. '+
-            'public_repo is not enough even though this repo is public \u2014 GitHub refuses it '+
-            'here with \u201cMust have admin rights to Repository.\u201d And it is NOT the scope '+
-            'called workflow, which only governs editing workflow files.';
+            (gh ? ': '+gh : '')+').'+diag+' A classic token needs the FULL repo scope alongside '+
+            'gist \u2014 and it is NOT the scope called workflow.';
     }
   }catch(e){ bad = true; msg = e.message; }
   // Render BEFORE setting the message: renderSettings() rebuilds #syncMsg empty, so setting it

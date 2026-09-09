@@ -3901,7 +3901,12 @@ setTimeout(async () => {
     ev(`window.fetch = async function(url, opts){
           window.__calls.push({url:String(url), method:(opts&&opts.method)||'GET'});
           if(String(url).indexOf('/dispatches') >= 0)
-            return {ok:window.__dispCode===204, status:window.__dispCode, json:async()=>({}), text:async()=>''};
+            return {ok:window.__dispCode===204, status:window.__dispCode,
+                    headers:{get:function(){ return null; }}, json:async()=>({}), text:async()=>''};
+          if(String(url).indexOf('/user') >= 0)
+            return {ok:true, status:200,
+                    headers:{get:function(k){ return k === 'X-OAuth-Scopes' ? 'gist' : null; }},
+                    json:async()=>({login:'markwx18'}), text:async()=>''};
           return {ok:window.__gistOk, status: window.__gistOk?200:401,
                   json:async()=>({id:'g1', files:{}}), text:async()=>''};
         };`);
@@ -3939,10 +3944,21 @@ setTimeout(async () => {
        ev('S.settings.ghToken') === 'github_pat_gistonly');
     const m = ev("document.getElementById('syncMsg') ? document.getElementById('syncMsg').textContent : ''");
     ok('but the Actions gap is reported, not swallowed', m.indexOf('WHOOP relay') >= 0, m);
-    ok('and it names the permission that actually works',
-       m.indexOf('public_repo') >= 0 || m.indexOf('read and write') >= 0, m);
+    ok('and it names the scope that actually works',
+       /FULL repo scope/.test(m), m);
+    ok('and no longer offers public_repo as though it were an alternative',
+       m.indexOf('public_repo') < 0, m);
     ok('and warns off the scope that merely sounds right',
        m.indexOf('NOT the scope called workflow') >= 0, m);
+    // Replace token is the path taken to FIX this, so it is the one that most needs to say what
+    // the token he just pasted actually carries. It was reporting a bare status while Test relay
+    // -- the diagnostic path -- had the readout, which is backwards.
+    ok('and the readout describes the token that was just installed',
+       /CLASSIC token/.test(m) && m.indexOf('[gist]') >= 0, m);
+    ok('naming the account it authenticates as', m.indexOf('markwx18') >= 0, m);
+    ok('and the readout is stored so Settings keeps showing it',
+       /missing repo/.test(ev("(whoopRelayNote()||{}).diag || ''")),
+       ev("JSON.stringify(whoopRelayNote())"));
     ok('the message survives the re-render that follows it', m.length > 0);
 
     ev('window.fetch = window.__realFetch2; delete window.__realFetch2;');
