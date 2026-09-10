@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-09-v2">
+<meta name="ironhub-build" content="2026-09-09-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4091,6 +4091,27 @@ async function whoopAwaitRun(sinceMs){
    triggers is useful anyway because it fetches WHOOP right now. Exists as a button because
    otherwise the only place this failure is observable is 6 AM, which is the one time he is not
    going to go looking for it. */
+/* Reveal state, module-scoped for the same reason tokOpen is: rerenderActive() regenerates the
+   whole tab every 30s and after every sync pull, so DOM-only state is wiped on a timer. */
+let tokShow = false;
+/* navigator.clipboard needs a secure context and can be refused outright; select() always works
+   and leaves the value ready for a manual copy, which is the point either way. */
+function copySyncToken(){
+  const el = document.getElementById('tokReveal');
+  if(!el) return;
+  el.select();
+  const say = function(t){ const m = document.getElementById('tokCopyMsg'); if(m) m.textContent = t; };
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(el.value).then(function(){ say('\u2713 Copied'); },
+                                                   function(){ say('Selected \u2014 copy it yourself'); });
+      return;
+    }
+  }catch(e){}
+  try{ document.execCommand('copy'); say('\u2713 Copied'); }
+  catch(e){ say('Selected \u2014 copy it yourself'); }
+}
+
 async function whoopTestRelay(){
   if(!syncReady()){ setSyncMsg('Connect cloud sync first.', true); return; }
   setSyncMsg('Asking the WHOOP relay to run' + String.fromCharCode(8230));
@@ -5112,7 +5133,19 @@ function renderSettings(){
       '<div style="flex:none"><button class="btn sm ghost" onclick="syncPull(false)">Pull Now</button></div>'+
       '<div style="flex:none"><button class="btn sm ghost" onclick="tokOpen=!tokOpen;renderSettings()">Replace token</button></div>'+
       '<div style="flex:none"><button class="btn sm ghost" onclick="whoopTestRelay()">Test relay</button></div>'+
+      '<div style="flex:none"><button class="btn sm ghost" onclick="tokShow=!tokShow;renderSettings()">'+
+        (tokShow?'Hide token':'Show token')+'</button></div>'+
           '<div style="flex:none"><button class="btn sm ghost" onclick="disconnectSync()" style="color:var(--bad);border-color:var(--bad)">Disconnect</button></div></div>'+
+      (tokShow ? '<div style="margin-top:12px;border-top:1px solid var(--line2);padding-top:12px">'+
+        '<label>This device\u2019s sync token</label>'+
+        '<input id="tokReveal" readonly value="'+esc(S.settings.ghToken||'')+'" '+
+          'style="font-family:var(--mono,monospace);font-size:12px" onclick="this.select()">'+
+        '<div style="margin-top:10px"><button class="btn sm" onclick="copySyncToken()">Copy</button> '+
+        '<span class="small ok" id="tokCopyMsg"></span></div>'+
+        '<p class="small" style="margin-top:8px">This exact token already works on your gists \u2014 '+
+        'it pulls your data every 60 seconds. If the WHOOP relay is failing with a 401, paste '+
+        '<b>this</b> value into the <b>IRONHUB_GIST_TOKEN</b> repository secret on GitHub rather '+
+        'than generating another one. Same string, no expiry surprises, nothing to keep straight.</p></div>' : '')+
       '<label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
       '<input type="checkbox" style="width:auto" '+(S.settings.autoSync!==false?'checked':'')+' onchange="S.settings.autoSync=this.checked;save(false);">'+
       'Auto-sync (pull on open, push ~3s after every save)</label>'+

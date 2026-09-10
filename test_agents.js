@@ -5750,6 +5750,32 @@ setTimeout(async () => {
     ok('and only then is the token recorded as working',
        (ev('whoopRelayNote()') || {}).ok === true, JSON.stringify(ev('whoopRelayNote()')));
 
+    /* --- the working token is the one he cannot see --- */
+    // The token in Settings is PROVEN good on these gists: it pulls the sync gist every 60s. But
+    // it sits in a password field, so every attempt to repair IRONHUB_GIST_TOKEN was a brand new
+    // token typed from memory into a box that cannot be checked. Let him copy the working one.
+    ev("S.settings.ghToken = 'ghp_knowngood123'; S.settings.gistId = 'abcdef0123456789';");
+    ev('tokShow = false; renderSettings();');
+    const hidden = w.document.getElementById('settings').innerHTML;
+    ok('the token is not on screen until asked for', hidden.indexOf('ghp_knowngood123') < 0);
+    ok('but there is a way to ask', /tokShow=!tokShow/.test(hidden));
+
+    ev('tokShow = true; renderSettings();');
+    const shown = w.document.getElementById('settings').innerHTML;
+    ok('revealing it shows the actual value', shown.indexOf('ghp_knowngood123') >= 0);
+    ok('in a readonly field, so it cannot be edited by accident',
+       !!w.document.getElementById('tokReveal') && w.document.getElementById('tokReveal').readOnly);
+    ok('with a copy button', /copySyncToken\(\)/.test(shown));
+    ok('and it says to paste THIS value into the repository secret',
+       shown.indexOf('IRONHUB_GIST_TOKEN') >= 0 && /already works on your gists/.test(shown));
+
+    // Open-state must survive the 30s repaint, or it closes itself mid-copy. Same rule as tokOpen.
+    ev('rerenderActive(true);');
+    ev('renderSettings();');
+    ok('the reveal survives a background repaint',
+       w.document.getElementById('settings').innerHTML.indexOf('ghp_knowngood123') >= 0);
+    ev('tokShow = false;');
+
     ev('localStorage.removeItem(WHOOP_RELAY_KEY); localStorage.removeItem(WHOOP_KICK_KEY);');
     ev('S.settings.ghToken = ' + JSON.stringify(savedTok) + '; S.settings.gistId = ' + JSON.stringify(savedGist) + ';');
     ev('window.fetch = window.__realFetch2;');

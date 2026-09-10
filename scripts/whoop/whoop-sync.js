@@ -30,7 +30,23 @@ if (missing.length) {
 const CLIENT_ID = process.env.WHOOP_CLIENT_ID;
 const CLIENT_SECRET = process.env.WHOOP_CLIENT_SECRET;
 const GIST_ID = process.env.IRONHUB_GIST_ID;
-const GIST_TOKEN = process.env.IRONHUB_GIST_TOKEN;
+const RAW_GIST_TOKEN = process.env.IRONHUB_GIST_TOKEN || '';
+const GIST_TOKEN = RAW_GIST_TOKEN.trim();
+/* Never prints the token. Length and prefix-shape are enough to separate the three causes that
+   all surface as 401, and neither is a secret. */
+function describeGistToken() {
+  if (!GIST_TOKEN) return 'The IRONHUB_GIST_TOKEN secret is EMPTY or not set on this repository at all.';
+  const bits = ['The secret holds ' + GIST_TOKEN.length + ' characters'];
+  if (RAW_GIST_TOKEN !== GIST_TOKEN) {
+    bits.push('and it had surrounding whitespace, which this run trimmed -- if that was the ' +
+              'problem it is fixed now, but re-paste it without the stray newline');
+  }
+  if (!/^(ghp_|gho_|github_pat_)/.test(GIST_TOKEN)) {
+    bits.push('and it does NOT start with ghp_ or github_pat_, so it may not be a token at all ' +
+              '(a gist ID or the WHOOP token pasted into the wrong secret would look like this)');
+  }
+  return bits.join(', ') + '.';
+}
 const STATE_GIST_ID = process.env.IRONHUB_STATE_GIST_ID;
 const STATE_FILE = 'whoop_token.json';
 
@@ -66,10 +82,13 @@ async function readStoredToken() {
      * fallback achieved was reporting a GitHub problem as a WHOOP one. */
     throw new Error(
       'cannot read the WHOOP token store (' + e.message + '). This is a GITHUB auth failure, ' +
-      'not a missing token: check the IRONHUB_GIST_TOKEN repository secret -- a classic PAT ' +
-      'expires on a fixed date and this one may simply have run out. Nothing is lost; the ' +
-      'rotated WHOOP refresh token is still sitting in the state gist and the next run picks ' +
-      'it up as soon as this secret can read it again.');
+      'not a missing token. ' + describeGistToken() + ' A 401 means the credential was rejected ' +
+      'outright -- expired, revoked, or not a token; a merely under-scoped token would give 403 ' +
+      'or 404 instead, so this is the VALUE, not the permissions. The token that Iron Hub itself ' +
+      'uses for cloud sync is known to work on these gists: Settings > Cloud Sync > Show token ' +
+      'copies it, and pasting that exact value into IRONHUB_GIST_TOKEN is the shortest fix. ' +
+      'Nothing is lost meanwhile; the rotated WHOOP refresh token is still in the state gist and ' +
+      'the next run picks it up as soon as this secret can read it again.');
   }
   try {
     const f = g.files && g.files[STATE_FILE];
