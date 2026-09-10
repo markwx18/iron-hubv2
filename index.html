@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-08-v4">
+<meta name="ironhub-build" content="2026-09-09-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12053,6 +12053,21 @@ function renderHome(){
       '<div class="card" style="border-left:3px solid '+AGENTS.zulu.col+'">'+
       '<p class="small" style="line-height:1.55">'+esc(brief.text)+'</p>'+
       '<p class="small" style="color:var(--dim);margin-top:6px">ZULU \u00b7 '+esc(fmtDate(brief.date))+'</p></div>';
+  } else {
+    /* No brief used to render as nothing at all, which is indistinguishable from a brief that
+       simply has not been looked at yet -- and it is what made two days of this invisible. */
+    const _tr = briefTrail();
+    if(_tr && _tr.reason !== 'written'){
+      h += '<div class="dash-sec">Brief</div>'+
+        '<div class="card" style="border-left:3px solid var(--line2)">'+
+        '<p class="small" style="line-height:1.55;color:var(--dim)">No brief yet \u2014 '+
+        esc(_tr.reason)+'.'+(_tr.detail ? ' '+esc(_tr.detail)+'.' : '')+'</p>'+
+        '<p class="small" style="color:var(--dim);margin-top:4px">Checked '+_tr.n+
+        (_tr.n===1?' time':' times')+', last at '+esc(new Date(_tr.at).toLocaleTimeString())+'.</p>'+
+        '<button class="btn ghost sm" style="margin-top:8px" '+(_agBriefRunning?'disabled':'')+
+        ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing'+String.fromCharCode(8230)
+          :'Write it now')+'</button></div>';
+    }
   }
 
   // Fuel timing, but only when there is a workout time to hang it off -- the brief asks for
@@ -12482,13 +12497,59 @@ async function agRunBrief(manual){
   }
 }
 
+/* ---- why there is no brief yet ----
+
+   agMaybeMorningBrief() returns before it spends a call, which is correct -- and it means every
+   morning it declines leaves NOTHING behind. Twice now that silence has been the whole problem:
+   on 2026-09-08 the brief never ran and there was no log line to say so, and on 2026-09-09 it
+   still did not appear on a morning when the relay demonstrably succeeded at 6:37 and 7:55 AM.
+   Guessing at which gate closed has been wrong every time, so the gate now writes down which
+   one it was, and the dashboard shows it instead of an empty space.
+
+   Per device and out of S for the same two reasons as the relay note: this records what THIS
+   device decided (the phone and the laptop legitimately decide differently, and merging them
+   would be meaningless), and a new S.meta field would come back absent on an existing install
+   because load() takes a stored meta wholesale. */
+const BRIEF_TRAIL_KEY = 'ironhub:brieftrail';
+function briefTrail(){
+  try{
+    const p = JSON.parse(localStorage.getItem(BRIEF_TRAIL_KEY) || 'null');
+    return (p && p.date === todayKey()) ? p : null;   // yesterday's reasoning explains nothing
+  }catch(e){ return null; }
+}
+/* Collapses a repeat of the same reason into a count rather than a list: "waiting on WHOOP,
+   checked 23 times since 6:38 AM" is the useful shape, and it cannot grow without bound. */
+function briefNote(reason, detail){
+  try{
+    const prev = briefTrail();
+    const same = prev && prev.reason === reason;
+    localStorage.setItem(BRIEF_TRAIL_KEY, JSON.stringify({
+      date: todayKey(), reason: reason, detail: detail || '',
+      n: same ? (prev.n || 1) + 1 : 1,
+      firstAt: same && prev.firstAt ? prev.firstAt : Date.now(),
+      at: Date.now()
+    }));
+  }catch(e){}
+}
+/* The single most useful fact when the brief is missing: what WHOOP data this device actually
+   holds. It distinguishes "the relay never delivered" from "it delivered yesterday's" from
+   "it is here and something else is wrong" -- three causes that look identical from outside. */
+function briefWhoopDetail(){
+  const w = S.whoop && S.whoop.recovery;
+  if(!w) return 'this device holds no WHOOP recovery at all';
+  if(w.date !== todayKey()) return 'the newest WHOOP recovery here is dated '+w.date+
+    ' ('+w.score+'%), not today';
+  return 'WHOOP has today at '+w.score+'%';
+}
+
 /* Fires on the first app open of the morning. There is no backend and no service worker, so
    "in the morning" can only mean "the first time he opens it after AG_BRIEF_HOUR" -- which is
    the moment he would read it anyway. */
 function agMaybeMorningBrief(){
   const a = agState();
-  if(!a.autoRun || _agBriefRunning || _agRunning) return;
-  if(!S.settings.apiKey) return;
+  if(!a.autoRun) return briefNote('auto-run is switched off in Ops');
+  if(_agBriefRunning || _agRunning) return;   // transient, and about to resolve itself
+  if(!S.settings.apiKey) return briefNote('no API key is set in Settings');
   const b = agBrief();
   const w = S.whoop && S.whoop.recovery;
   const whoopIn = !!(w && w.date === todayKey());
@@ -12498,12 +12559,17 @@ function agMaybeMorningBrief(){
   // Mark flagged: the brief and the strip telling two different stories about the same day.
   // One reconciling rewrite closes the gap; a brief that already had WHOOP, or a day WHOOP
   // never reports at all, is untouched.
-  if(b && b.date === todayKey() && (b.hadWhoop || !whoopIn)) return;
+  if(b && b.date === todayKey() && (b.hadWhoop || !whoopIn)) return briefNote('written');
   const h = new Date().getHours();
-  if(h < AG_BRIEF_HOUR || h >= AG_BRIEF_LATEST) return;
+  if(h < AG_BRIEF_HOUR) return briefNote('it is before '+AG_BRIEF_HOUR+' AM, when the morning window opens');
+  if(h >= AG_BRIEF_LATEST) return briefNote('the app was not opened between '+AG_BRIEF_HOUR+' AM and '+
+    (AG_BRIEF_LATEST-12)+' PM, and it is too late to call it a morning brief', briefWhoopDetail());
   // Wait for WHOOP rather than spend the call on a brief that has to open "no recovery data".
   // Only up to the cutoff, though: a day WHOOP never reports must still get a brief.
-  if(!whoopIn && h < AG_BRIEF_WHOOP_CUTOFF) return;
+  if(!whoopIn && h < AG_BRIEF_WHOOP_CUTOFF) return briefNote(
+    'waiting for WHOOP to report today\u2019s recovery (until '+AG_BRIEF_WHOOP_CUTOFF+' AM, then it writes anyway)',
+    briefWhoopDetail());
+  briefNote('writing it now', briefWhoopDetail());
   // Returned rather than fired and forgotten, so a caller (and the suite) can await the write
   // instead of racing the _agBriefRunning guard on the next tick.
   return agRunBrief(false);

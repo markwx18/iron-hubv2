@@ -57,15 +57,30 @@ async function ghPatch(id, files) {
  * every time you spend the old one, so the seeded secret is only ever good for the first run
  * -- after that the live one lives here. */
 async function readStoredToken() {
+  let g;
   try {
-    const g = await ghGet(STATE_GIST_ID);
+    g = await ghGet(STATE_GIST_ID);
+  } catch (e) {
+    /* Fatal, and said plainly. Falling back to WHOOP_REFRESH_TOKEN here is guaranteed to fail:
+     * that seed was spent and rotated away on the first run this relay ever made. All the
+     * fallback achieved was reporting a GitHub problem as a WHOOP one. */
+    throw new Error(
+      'cannot read the WHOOP token store (' + e.message + '). This is a GITHUB auth failure, ' +
+      'not a missing token: check the IRONHUB_GIST_TOKEN repository secret -- a classic PAT ' +
+      'expires on a fixed date and this one may simply have run out. Nothing is lost; the ' +
+      'rotated WHOOP refresh token is still sitting in the state gist and the next run picks ' +
+      'it up as soon as this secret can read it again.');
+  }
+  try {
     const f = g.files && g.files[STATE_FILE];
     if (f && f.content) {
       const p = JSON.parse(f.content);
       if (p && typeof p.refresh_token === 'string' && p.refresh_token) return p.refresh_token;
     }
   } catch (e) {
-    console.error('Could not read stored token (' + e.message + ') -- falling back to the secret.');
+    // A gist we CAN read that holds no usable token really is the first-run case, and the
+    // seeded secret is exactly right for it.
+    console.error('Stored token file unusable (' + e.message + ') -- falling back to the seed.');
   }
   return null;
 }

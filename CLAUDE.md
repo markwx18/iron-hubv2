@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1461 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1474 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -481,6 +481,31 @@ per switch. It runs **after** the pull resolves rather than alongside it: the pu
 today's recovery in, and checking the brief against pre-pull state skips for precisely the reason
 the check exists. Anything else that must happen "when he next looks at the app" belongs in that
 helper, not in a new interval.
+
+**A gate that declines must leave evidence.** `agMaybeMorningBrief()` returns *before* it spends a
+call - correct, and it means every decline used to leave nothing behind at all. That silence has
+been the entire problem twice: 2026-09-08 (never ran, nothing logged) and 2026-09-09 (still no
+brief on a morning the relay demonstrably succeeded at 6:37 and 7:55 AM). Guessing which gate
+closed was wrong every single time. Each gate now calls `briefNote()`, and `renderHome()` prints
+the reason where the brief would have been instead of rendering nothing - with `briefWhoopDetail()`
+saying what WHOOP data the device actually holds, which is the fact that separates "the relay never
+delivered", "it delivered yesterday's" and "it is here and something else is wrong". Repeats
+collapse into a count so the record cannot grow without bound. Kept per-device in
+`BRIEF_TRAIL_KEY` for the same two reasons as the relay note.
+
+If you add a gate to that function, give it a `briefNote()`. A silent `return` there is how this
+became a three-day bug.
+
+**A relay that cannot READ its token store must fail loudly, not fall back.** WHOOP rotates the
+refresh token on every use, so the seeded `WHOOP_REFRESH_TOKEN` secret was spent on the very first
+run this relay ever made; the live one lives in the state gist. `readStoredToken()` used to catch a
+gist read failure and fall back to that seed, which could not possibly work - and reported a
+**GitHub** auth failure as `token refresh failed (400)`, pointing at WHOOP. That is what
+2026-09-09 looked like from 3:27 PM: a step dying in 1000ms, too fast to have reached anything but
+the first call, after succeeding all morning. A read failure is fatal now and names
+`IRONHUB_GIST_TOKEN` (a classic PAT expires on a fixed date). An unreadable *file* inside a gist we
+could read is still the genuine first-run case and still falls back to the seed. Nothing is lost
+either way - the rotated token stays in the state gist and resumes as soon as the secret works.
 
 **The relay merges, it does not clobber.** WHOOP creates a recovery record *before* it scores it
 and omits the `score` object entirely while a cycle is `PENDING_SCORE`, so a run landing in that

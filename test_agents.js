@@ -5220,6 +5220,78 @@ setTimeout(async () => {
        ev('agState().brief && agState().brief.text') === 'late but todays',
        JSON.stringify(ev('S.agents.brief || null')));
 
+    // --- a gate that declines has to leave evidence ---
+    // agMaybeMorningBrief() returns before it spends a call, so every morning it declines used
+    // to leave nothing behind. That silence has now been the whole problem twice: on 2026-09-08
+    // the brief never ran with no log line to say so, and on 2026-09-09 it still did not appear
+    // on a morning when the relay demonstrably succeeded at 6:37 and 7:55 AM. Guessing which
+    // gate closed was wrong every time. It writes the reason down now.
+    const trail = function () { return ev('briefTrail()'); };
+    const clearTrail = function () { ev('localStorage.removeItem(BRIEF_TRAIL_KEY);'); };
+
+    ev("delete agState().brief; agState().autoRun = true;");
+    ev(whoopToday); clearTrail();
+    withHour(4, function () { ev('agMaybeMorningBrief()'); });
+    ok('declining before the window says so', /before 6 AM/.test((trail() || {}).reason || ''),
+       JSON.stringify(trail()));
+
+    clearTrail();
+    withHour(21, function () { ev('agMaybeMorningBrief()'); });
+    ok('and declining after it names the real cause \u2014 the app was never opened in the window',
+       /was not opened between/.test((trail() || {}).reason || ''), JSON.stringify(trail()));
+
+    ev(noWhoop); clearTrail();
+    withHour(7, function () { ev('agMaybeMorningBrief()'); });
+    ok('waiting on WHOOP is recorded as waiting on WHOOP',
+       /waiting for WHOOP/.test((trail() || {}).reason || ''), JSON.stringify(trail()));
+    ok('and it says what this device actually holds, which is the fact that settles it',
+       /no WHOOP recovery at all/.test((trail() || {}).detail || ''), JSON.stringify(trail()));
+
+    ev(staleWhoop); clearTrail();
+    withHour(7, function () { ev('agMaybeMorningBrief()'); });
+    ok('a stale recovery is distinguished from no recovery, and its date quoted',
+       /newest WHOOP recovery here is dated/.test((trail() || {}).detail || ''), JSON.stringify(trail()));
+
+    // Repeats collapse into a count rather than growing without bound.
+    clearTrail();
+    withHour(7, function () { ev('agMaybeMorningBrief()'); });
+    const firstAt = (trail() || {}).firstAt;
+    withHour(7, function () { ev('agMaybeMorningBrief()'); });
+    withHour(7, function () { ev('agMaybeMorningBrief()'); });
+    ok('repeat declines are counted, not listed', (trail() || {}).n === 3, JSON.stringify(trail()));
+    ok('and the first time it started waiting is kept', (trail() || {}).firstAt === firstAt);
+
+    ev("agState().autoRun = false;"); clearTrail();
+    withHour(7, function () { ev('agMaybeMorningBrief()'); });
+    ok('auto-run being off is named rather than looking like a WHOOP problem',
+       /auto-run is switched off/.test((trail() || {}).reason || ''), JSON.stringify(trail()));
+    ev("agState().autoRun = true;");
+
+    // yesterday's reasoning explains nothing about this morning
+    ev("localStorage.setItem(BRIEF_TRAIL_KEY, JSON.stringify({date:'2020-01-01', reason:'ancient', n:1, at:Date.now()}));");
+    ok('a trail from another day is ignored', trail() === null, JSON.stringify(trail()));
+
+    // --- and the dashboard shows it, instead of rendering nothing at all ---
+    ev("delete agState().brief;");
+    ev(noWhoop); clearTrail();
+    withHour(7, function () { ev('agMaybeMorningBrief()'); });
+    ev('renderHome()');
+    const homeHTML = w.document.getElementById('home').innerHTML;
+    ok('with no brief, the dashboard explains itself rather than showing an empty space',
+       /No brief yet/.test(homeHTML) && /waiting for WHOOP/.test(homeHTML),
+       homeHTML.indexOf('No brief yet') >= 0 ? 'present' : 'MISSING');
+    ok('and offers the button that writes one', /agRunBrief\(true\)/.test(homeHTML));
+    ok('and says how many times it has looked', /Checked 1 time/.test(homeHTML), homeHTML.slice(0, 0));
+
+    // a brief that exists still wins the space -- the explanation is only for its absence
+    ev(whoopToday);
+    ev("agState().brief = {text:'real brief', date: todayKey(), at:new Date().toISOString(), hadWhoop:true};");
+    ev('renderHome()');
+    const homeHTML2 = w.document.getElementById('home').innerHTML;
+    ok('once a brief exists the explanation gives way to it',
+       homeHTML2.indexOf('real brief') >= 0 && !/No brief yet/.test(homeHTML2));
+
+    clearTrail();
     ev("callClaudeWithData = window.__realDataB;");
     ev("delete agState().brief; agState().log = []; agState().status = {}; delete S.whoop;");
   } catch (e) {
