@@ -1040,6 +1040,83 @@ setTimeout(async () => {
      /delta is a CHANGE to the daily target/.test(ev('AG_FIX_MENU.echo')) &&
      /unlike cal, this one IS the new target/.test(ev('AG_FIX_MENU.echo')), ev('AG_FIX_MENU.echo'));
 
+  /* --- a proposed weight has to be one the machine can actually make --- */
+  // DELTA proposed 130 lb for a Chest Fly machine whose stack goes 120 -> 135. Nothing rejected
+  // it, because 130 is sane in the abstract; it is only unmakeable on that machine. The
+  // per-exercise increment in Settings is exactly the statement of what the machine can do.
+  ev("window.__splitSave = JSON.stringify(S.split); window.__logsSave = JSON.stringify(S.logs);");
+  ev("S.split.D1 = S.split.D1 || {name:'Test', exercises:[]};");
+  ev("S.split.D1.exercises.push({name:'Chest Fly Machine', inc:15});");
+  ev("S.logs.push({date: todayKey(), day:'D1', entries:[{exercise:'Chest Fly Machine', sets:[{w:120,r:10},{w:120,r:9}]}]});");
+
+  ok('the increment configured in Settings is what gets read',
+     ev("incForExercise('Chest Fly Machine')") === 15);
+  ok('a weight off the ladder is snapped to a real notch',
+     ev("agSnapWeight('Chest Fly Machine', 130)") === 135,
+     String(ev("agSnapWeight('Chest Fly Machine', 130)")));
+  ok('snapping goes to the NEAREST notch, not always upward',
+     ev("agSnapWeight('Chest Fly Machine', 124)") === 120,
+     String(ev("agSnapWeight('Chest Fly Machine', 124)")));
+  ok('a weight already on the ladder is left alone',
+     ev("agSnapWeight('Chest Fly Machine', 135)") === 135);
+  /* A stack starting at 20 and stepping by 15 makes 20/35/50 -- none of them multiples of 15.
+     That is the only shape that tells anchoring apart from rounding to multiples, and the
+     Chest Fly fixture above (120, step 15) cannot: both methods agree at every notch there.
+     This assertion passed with anchoring deleted until it was rewritten. */
+  ev("S.split.D1.exercises.push({name:'Pec Deck', inc:15});");
+  ev("S.logs.push({date: todayKey(), day:'D1', entries:[{exercise:'Pec Deck', sets:[{w:20,r:12}]}]});");
+  ok('it anchors on a weight he actually lifted, not on multiples from zero',
+     ev("agSnapWeight('Pec Deck', 30)") === 35,
+     'got ' + ev("agSnapWeight('Pec Deck', 30)") + ', multiples-of-15 would give 30');
+  ok('and the notch below anchors the same way',
+     ev("agSnapWeight('Pec Deck', 26)") === 20,
+     String(ev("agSnapWeight('Pec Deck', 26)")));
+
+  const snapped = ev("JSON.stringify(agValidateFix({type:'liftReset', payload:{name:'Chest Fly Machine', w:130, days:14}}) || null)");
+  ok('so a liftReset proposal reaches the queue already snapped',
+     JSON.parse(snapped) && JSON.parse(snapped).payload.w === 135, snapped);
+  ok('and the rest of the proposal survives intact',
+     JSON.parse(snapped).payload.name === 'Chest Fly Machine' && JSON.parse(snapped).payload.days === 14);
+
+  // A 2.5 lb ladder must not be rounded away to whole numbers.
+  ev("S.split.D1.exercises.push({name:'Cable Curl', inc:2.5});");
+  ev("S.logs.push({date: todayKey(), day:'D1', entries:[{exercise:'Cable Curl', sets:[{w:30,r:10}]}]});");
+  ok('a 2.5 lb ladder keeps its halves',
+     ev("agSnapWeight('Cable Curl', 34)") === 35 && ev("agSnapWeight('Cable Curl', 33)") === 32.5,
+     String(ev("agSnapWeight('Cable Curl', 33)")));
+
+  /* --- an agent that cannot see what it said will say it again --- */
+  ev("agState().recent = {}; agState().status = {};");
+  ev("agIngest(agState(), 'delta', {summary:'Bench is tracking fine, nothing to change.', proposals:[]});");
+  ok('a summary is remembered, not just logged',
+     (ev("agState().recent.delta") || []).length === 1,
+     JSON.stringify(ev('agState().recent')));
+  ev("agIngest(agState(), 'delta', {summary:'Second night.', proposals:[]});");
+  ok('newest first', ev("agState().recent.delta[0].s") === 'Second night.');
+  ok('and it is capped rather than growing forever',
+     ev("(function(){ for(var i=0;i<12;i++) agIngest(agState(),'delta',{summary:'n'+i,proposals:[]}); return agState().recent.delta.length; })()") === 6,
+     String(ev("agState().recent.delta.length")));
+
+  ok('the memory is actually wired into the prompt the agent receives',
+     /ALREADY TOLD HIM/.test(ev("agBaseContext('delta')")),
+     'agRecentSaid() alone proves nothing if agBaseContext() never calls it');
+  const ctx = ev("agRecentSaid('delta')");
+  ok('the agent is shown what it has already told him',
+     /ALREADY TOLD HIM/.test(ctx) && ctx.indexOf('n11') >= 0, ctx.slice(0, 120));
+  ok('and told plainly not to restate it', /Do not restate any of it/.test(ctx));
+  ok('with permission to be brief when nothing changed',
+     /one short line and stop/.test(ctx) && /quiet week should read as a quiet week/.test(ctx));
+  ok('it is that agent\u2019s own history, not another\u2019s',
+     ev("agRecentSaid('echo')") === '', ev("agRecentSaid('echo')"));
+  ok('and the shared contract calls the length a ceiling, not a quota',
+     /ceiling, not a quota/.test(ev("agJsonSpec('delta')")));
+
+  ev("agState().recent = {}; agState().status = {};");
+  ev("S.split = JSON.parse(window.__splitSave); S.logs = JSON.parse(window.__logsSave);");
+  ok('cleanup: split and logs restored after the increment fixtures',
+     ev("JSON.stringify(S.split)") === ev('window.__splitSave') &&
+     ev("JSON.stringify(S.logs)") === ev('window.__logsSave'));
+
   // and a bad exercise name is named specifically, since that is the common real case
   ev("agState().proposals = []; agState().log = [];");
   stubAgents({

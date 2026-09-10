@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-09-v4">
+<meta name="ironhub-build" content="2026-09-09-v5">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11234,6 +11234,7 @@ function agState(){
   if(!a.chats) a.chats = {};
   AG_ORDER.forEach(k=>{ if(!a.chats[k]) a.chats[k] = []; });
   if(!a.status) a.status = {};
+  if(!a.recent) a.recent = {};   // per-agent memory of its own last few summaries
   if(a.autoRun===undefined) a.autoRun = true;
   if(!a.lastRun) a.lastRun = '';
   // v4c and earlier persisted the in-flight flag onto S. Nothing reads it now, but it would
@@ -11382,7 +11383,9 @@ function agValidateFix(fx){
     // is rewritten to that lift's canonical spelling before it can reach state.
     const name = agResolveExName(p.name);
     if(!name) return null;
-    return {type:'liftReset', payload:{name, w, days}};
+    // ...and to a weight the equipment can actually make. Same class of fault as the name: an
+    // override is applied VERBATIM, so a number off the ladder becomes a target he cannot load.
+    return {type:'liftReset', payload:{name, w: agSnapWeight(name, w), days}};
   }
   if(fx.type==='deload') return {type:'deload', payload:{}};
   if(fx.type==='addEx'){
@@ -11430,6 +11433,35 @@ function agValidateFix(fx){
   }
   return null;
 }
+/* Snap a model-supplied weight to a notch the equipment actually has.
+
+   DELTA proposed 130 lb for a Chest Fly machine whose stack goes 120 -> 135. Nothing rejected
+   it, because 130 is a perfectly sane number in the abstract -- it is only unmakeable on that
+   specific machine. The per-exercise increment in Settings (+2.5 / +5 / +10 / +15) is exactly
+   the statement of what that machine can do, and nothing outside the LIVE progression engine
+   was reading it.
+
+   Anchored on a weight he has ACTUALLY LIFTED rather than on multiples of the increment from
+   zero, because a stack that starts at 20 and steps by 15 makes 20/35/50, none of which are
+   multiples of 15. With no history there is no notch to anchor on and multiples are the best
+   guess available -- which is also what backoffWeightFor() has always assumed. */
+function agSnapWeight(name, w){
+  const inc = incForExercise(name);
+  if(!(inc > 0)) return w;
+  let base = 0;
+  try{
+    const last = lastSessionFor(name);
+    if(last && last.sets && last.sets.length){
+      base = last.sets.reduce(function(m, st){ return Math.max(m, +st.w || 0); }, 0);
+    }
+  }catch(e){}
+  const snapped = base + Math.round((w - base) / inc) * inc;
+  // Never snap to nothing: a rounding that lands at or below zero means the inputs were odd
+  // enough that the original number is the safer answer.
+  if(!(snapped > 0)) return w;
+  return Math.round(snapped * 10) / 10;   // .5 survives a 2.5 lb ladder
+}
+
 /* Why agValidateFix() turned a fix down, in plain words rather than a code. Purely for the
    activity log \u2014 it has no authority over the decision, which agValidateFix() alone makes. */
 function agRejectReason(fx){
@@ -11668,8 +11700,11 @@ const AG_FIX_MENU = {
 function agJsonSpec(id){
   return '\n'+'Respond with ONLY valid JSON -- no markdown fences, no commentary before or after:'+'\n'+
     '{"summary":"...","proposals":[]}'+'\n'+
-    'summary = 1-3 sentences, first person, addressed to Mark, describing what you found this cycle. '+
-    'Observations, things worth watching, and "no action needed but here is why" all belong here.'+'\n'+
+    'summary = UP TO 3 sentences, first person, addressed to Mark, describing what you found this '+
+    'cycle. That is a ceiling, not a quota: one sentence is the right answer on a quiet night, and '+
+    '"nothing has changed since yesterday" is a complete summary. Observations, things worth '+
+    'watching, and "no action needed but here is why" all belong here -- but only if they are NEW. '+
+    'Never repeat an observation he has already read just to fill the space.'+'\n'+
     'proposals = ONLY things with a concrete fix attached. If you have nothing worth applying, return an '+
     'empty array. Do not add a proposal just to have said something -- say it in summary instead. A '+
     'proposal with fix:null is a contradiction: if there is nothing to apply, it is not a proposal.'+'\n'+
@@ -11696,8 +11731,23 @@ function agJsonSpec(id){
 /* Everything an agent is handed before it starts asking questions. Deliberately still a
    summary rather than a dump -- the data tools exist so it can go and get the detail. */
 function agBaseContext(id){
-  return coachMemContext()+trainingContext()+agContext()+
+  return coachMemContext()+trainingContext()+agContext()+agRecentSaid(id)+
     (id==='delta' ? olAgentContext() : '');
+}
+/* What this agent has already told him, so it can stop telling him again. Its OWN summaries
+   only: the point is self-repetition, and handing DELTA what ECHO said would just invite it to
+   comment on nutrition. */
+function agRecentSaid(id){
+  const a = agState();
+  const list = (a.recent && a.recent[id]) || [];
+  if(!list.length) return '';
+  return '\n'+'WHAT YOU HAVE ALREADY TOLD HIM (newest first) -- he has read all of this:'+'\n'+
+    list.map(function(r){ return '  '+r.d+': '+r.s; }).join('\n')+'\n'+
+    'Do not restate any of it. If your read is unchanged from one of these, say so in one short '+
+    'line and stop -- "bench is still tracking, nothing new" is a complete and useful summary. '+
+    'Spend the words only on what has actually CHANGED since, or on something you have not raised '+
+    'before. A quiet week should read as a quiet week; padding it back to three sentences every '+
+    'night is how a real signal gets lost in the noise.'+'\n';
 }
 
 function agToolNote(){
@@ -11735,6 +11785,16 @@ function agIngest(a2, id, blk){
   if(blk.summary){
     a2.status[id] = {summary:String(blk.summary), at:new Date().toISOString(),
                      consulted:(blk._consulted||[]).slice(0,8)};
+    /* Each agent runs with no idea what it said yesterday, so on a quiet week DELTA re-derives
+       the same bench observation from the same data every single night and files it as though
+       it were news. Nothing was wrong with the reasoning; it simply had no way to know it was
+       repeating itself. Hand the last few back to it. Six is enough to cover a training week
+       without crowding the prompt, and it lives in S.agents (which agState() initialises), not
+       S.meta -- so it needs no migration. */
+    if(!a2.recent) a2.recent = {};
+    if(!Array.isArray(a2.recent[id])) a2.recent[id] = [];
+    a2.recent[id].unshift({d:todayKey(), s:String(blk.summary).slice(0,400)});
+    a2.recent[id] = a2.recent[id].slice(0, 6);
     agLog(id, String(blk.summary));
   }
   (blk.proposals||[]).slice(0,2).forEach(function(pr){
