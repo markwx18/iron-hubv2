@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-09-v1">
+<meta name="ironhub-build" content="2026-09-09-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3971,6 +3971,7 @@ let _whoopKickWarned = false;
    wholesale, so a field added to DEFAULT_STATE.meta comes back ABSENT on an existing install
    rather than at its default. Same call as WHOOP_KICK_KEY above. */
 const WHOOP_RELAY_KEY = 'ironhub:whooprelay';
+const WHOOP_RUNFAIL_KEY = 'ironhub:whooprunfail';   // day-stamped, so the warning lands once
 function whoopRelayNote(){
   try{ return JSON.parse(localStorage.getItem(WHOOP_RELAY_KEY) || 'null'); }catch(e){ return null; }
 }
@@ -4043,6 +4044,49 @@ function ghTokenDiagnosis(sc, accepted){
          'path.' + acc;
 }
 
+/* Accepting a dispatch and succeeding at it are different facts, and reporting the first as
+   though it were the second wasted an evening: on 2026-09-09 both devices said "the relay
+   accepted a run" while both jobs died on a gist 401 seconds later. GitHub agreeing to START a
+   run says nothing about whether it worked.
+
+   This is also the split that matters diagnostically. A refused DISPATCH is this device's token;
+   a failed RUN is the IRONHUB_GIST_TOKEN secret in the repo. Two different tokens in two
+   different places, and telling him "the relay is broken" without saying which one is how three
+   tokens turned into a week of confusion. */
+const WHOOP_RUN_WAIT_MS = 60000;   // how long to wait for a verdict before giving up
+const WHOOP_RUN_POLL_MS = 4000;
+async function whoopLastRun(sinceMs){
+  try{
+    const res = await fetch('https://api.github.com/repos/' + WHOOP_REPO + '/actions/workflows/' +
+                            WHOOP_WORKFLOW + '/runs?per_page=5', {headers:ghHeaders()});
+    if(!res.ok) return null;
+    const j = await res.json();
+    const runs = (j && j.workflow_runs) || [];
+    for(let i=0;i<runs.length;i++){
+      const r = runs[i];
+      const t = Date.parse(r.created_at);
+      // 60s of slack: GitHub stamps created_at server-side and clocks drift, so an exact
+      // "after we asked" comparison drops the very run we just triggered.
+      if(!sinceMs || (isFinite(t) && t >= sinceMs - 60000)){
+        return {id:r.id, status:r.status, conclusion:r.conclusion, at:t, event:r.event};
+      }
+    }
+    return null;
+  }catch(e){ return null; }
+}
+/* Poll until the run we just asked for reaches a verdict. Bounded, and a timeout is reported as
+   a timeout rather than dressed up as either outcome. */
+async function whoopAwaitRun(sinceMs){
+  const deadline = Date.now() + WHOOP_RUN_WAIT_MS;
+  let last = null;
+  while(Date.now() < deadline){
+    await new Promise(function(r){ setTimeout(r, WHOOP_RUN_POLL_MS); });
+    const run = await whoopLastRun(sinceMs);
+    if(run){ last = run; if(run.status === 'completed') return run; }
+  }
+  return (last && last.status === 'completed') ? last : null;
+}
+
 /* Dispatching IS the test: there is no read-only probe that proves write access, and the run it
    triggers is useful anyway because it fetches WHOOP right now. Exists as a button because
    otherwise the only place this failure is observable is 6 AM, which is the one time he is not
@@ -4050,19 +4094,40 @@ function ghTokenDiagnosis(sc, accepted){
 async function whoopTestRelay(){
   if(!syncReady()){ setSyncMsg('Connect cloud sync first.', true); return; }
   setSyncMsg('Asking the WHOOP relay to run' + String.fromCharCode(8230));
+  const started = Date.now();
   try{
     const res = await fetch('https://api.github.com/repos/' + WHOOP_REPO +
                             '/actions/workflows/' + WHOOP_WORKFLOW + '/dispatches',
       {method:'POST', headers:ghHeaders(), body:JSON.stringify({ref:'main'})});
     if(res.status === 204){
-      whoopRelaySet(true, 204, '');
       _whoopKickWarned = false;
       // A budget spent by a token that could never have worked is not a budget.
       try{ localStorage.removeItem(WHOOP_KICK_KEY); }catch(e){}
-      // renderSettings() BEFORE setSyncMsg(): it rebuilds #syncMsg empty, so setting the
-      // message first would wipe the very thing he needs to read.
-      renderSettings();
-      setSyncMsg('\u2713 The relay accepted a run \u2014 recovery should land within a minute or two.');
+      setSyncMsg('Dispatched \u2014 waiting to see whether the run succeeds' + String.fromCharCode(8230));
+      const run = await whoopAwaitRun(started);
+      // renderSettings() BEFORE setSyncMsg() throughout: it rebuilds #syncMsg empty, so setting
+      // the message first would wipe the very thing he needs to read.
+      if(!run){
+        whoopRelaySet(true, 204, '', ' Dispatch accepted; the run had not finished in time to confirm.');
+        renderSettings();
+        setSyncMsg('Dispatch accepted, but the run had not finished after ' +
+                   Math.round(WHOOP_RUN_WAIT_MS/1000) + 's \u2014 it may still be going. ' +
+                   'Press again in a minute to see the verdict.');
+      } else if(run.conclusion === 'success'){
+        whoopRelaySet(true, 204, '', '');
+        renderSettings();
+        setSyncMsg('\u2713 The relay ran and SUCCEEDED \u2014 recovery should be in within a minute.');
+      } else {
+        /* The case that used to read as success. Name which token is at fault, because they are
+           different tokens in different places and that is the whole confusion. */
+        whoopRelaySet(false, 0, 'the run itself failed (' + (run.conclusion || 'no result') + ')',
+          ' The dispatch was accepted, so THIS APP\u2019S token is fine. The RELAY failed, which is ' +
+          'the IRONHUB_GIST_TOKEN repository secret \u2014 a different token, set on GitHub, not here.');
+        renderSettings();
+        setSyncMsg('The relay was triggered but the run FAILED (' + (run.conclusion || 'no result') +
+                   '). This app\u2019s token is fine \u2014 the fault is the IRONHUB_GIST_TOKEN ' +
+                   'repository secret on GitHub. Open the Actions tab for the exact line.', true);
+      }
     } else {
       const gh = await ghErrMsg(res);
       // X-Accepted-OAuth-Scopes is GitHub naming what it wanted, on the very request it refused.
@@ -4103,6 +4168,25 @@ async function whoopMaybeKick(){
   if(now - _whoopKickAt < WHOOP_KICK_GAP) return false;
   if(whoopKickCount() >= WHOOP_KICK_MAX) return false;
   _whoopKickAt = now; whoopKickBump();          // count the ATTEMPT, so a failing token cannot loop
+  /* Before asking for another run, look at what the last one DID. A relay that dispatches
+     perfectly and then fails every time is invisible from inside the app -- that is how
+     2026-09-09 ran from 3:27 PM to bedtime with nobody noticing. Once a day is enough: this is
+     a standing condition, not an event. */
+  try{
+    const prev = await whoopLastRun(0);
+    if(prev && prev.status === 'completed' && prev.conclusion && prev.conclusion !== 'success'){
+      const seen = localStorage.getItem(WHOOP_RUNFAIL_KEY);
+      if(seen !== todayKey()){
+        localStorage.setItem(WHOOP_RUNFAIL_KEY, todayKey());
+        agLog('charlie', 'The WHOOP relay is running but FAILING (last run ' +
+          new Date(prev.at).toLocaleString() + ': ' + prev.conclusion + '), so no recovery is ' +
+          'reaching the app. This is NOT the token in Settings \u2014 that one is working, or the ' +
+          'run would not have started. It is the IRONHUB_GIST_TOKEN repository secret on GitHub. ' +
+          'Settings \u203a Cloud Sync \u203a Test relay now waits for the verdict and will say the same.');
+        save(false);
+      }
+    }
+  }catch(e){}
   try{
     const res = await fetch('https://api.github.com/repos/' + WHOOP_REPO +
                             '/actions/workflows/' + WHOOP_WORKFLOW + '/dispatches',

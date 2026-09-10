@@ -3728,8 +3728,15 @@ setTimeout(async () => {
     ev('window.__realFetch = window.fetch;');
     ev("S.settings.ghToken='t'; S.settings.gistId='g';");
     ev('window.__disp = []; window.__dispStatus = 204;');
-    ev(`window.fetch = async function(url, opts){
-          window.__disp.push({url:String(url), method:(opts&&opts.method)||'GET', body:(opts&&opts.body)||''});
+    ev(`window.__runsReply = {workflow_runs:[]};
+        window.fetch = async function(url, opts){
+          const u = String(url);
+          if(u.indexOf('/runs?') >= 0){
+            // The pre-flight health check, not the dispatch. Kept out of __disp so the
+            // assertions below stay about the dispatch itself.
+            return {ok:true, status:200, json: async()=>window.__runsReply, text: async()=>''};
+          }
+          window.__disp.push({url:u, method:(opts&&opts.method)||'GET', body:(opts&&opts.body)||''});
           return {ok: window.__dispStatus===204, status: window.__dispStatus,
                   json: async()=>({}), text: async()=>''};
         };`);
@@ -3741,11 +3748,13 @@ setTimeout(async () => {
       return out;
     };
     const RESET = "window.__disp=[]; _whoopKickAt=0; _whoopKickWarned=false; " +
-                  "localStorage.removeItem('ironhub:whoopkick'); agState().log=[]; delete S.whoop;";
+                  "localStorage.removeItem('ironhub:whoopkick'); localStorage.removeItem(WHOOP_RUNFAIL_KEY); " +
+                  "window.__runsReply={workflow_runs:[]}; agState().log=[]; delete S.whoop;";
 
     ev(RESET);
     await withHour(7, function(){ return ev('whoopMaybeKick()'); });
-    ok('a missing recovery in the morning asks for a run', ev('window.__disp.length') === 1);
+    ok('a missing recovery in the morning asks for a run', ev('window.__disp.length') === 1,
+       JSON.stringify(ev('window.__disp.map(function(d){return d.url;})')));
     const url = ev('window.__disp[0] && window.__disp[0].url') || '';
     ok('it dispatches the WHOOP workflow, not something else',
        url.indexOf('/actions/workflows/whoop-sync.yml/dispatches') >= 0, url);
@@ -3753,6 +3762,38 @@ setTimeout(async () => {
     ok('as a POST', ev('window.__disp[0].method') === 'POST');
     ok('naming the branch, which the dispatch API requires',
        JSON.parse(ev('window.__disp[0].body')).ref === 'main', ev('window.__disp[0].body'));
+
+    /* A relay that accepts every dispatch and then FAILS every run is invisible from inside the
+       app: the dispatch succeeds, so nothing here looks wrong, and the only symptom is recovery
+       quietly never arriving. That is exactly how 2026-09-09 ran from 3:27 PM to bedtime. The
+       morning kick now reads the previous run's verdict before asking for another. */
+    ev(RESET);
+    ev("window.__runsReply = {workflow_runs:[{id:1, status:'completed', conclusion:'failure', " +
+       "created_at:new Date(Date.now()-3600000).toISOString(), event:'schedule'}]};");
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('a relay that runs but fails is reported, not left silent',
+       ev("agState().log.some(function(e){ return e.agent==='charlie' && /running but FAILING/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.text.slice(0,60);})")));
+    ok('and it says plainly that the Settings token is NOT the problem',
+       ev("agState().log.some(function(e){ return /NOT the token in Settings/.test(e.text); })"));
+    ok('naming the secret that actually is',
+       ev("agState().log.some(function(e){ return /IRONHUB_GIST_TOKEN/.test(e.text); })"));
+    ok('and it still asks for a fresh run anyway', ev('window.__disp.length') === 1);
+
+    // Once a day. It is a standing condition, not an event, and a log full of it helps nobody.
+    ev("window.__disp=[]; _whoopKickAt=0; agState().log=[];");
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('but it says so only once a day',
+       ev("agState().log.every(function(e){ return !/running but FAILING/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.text.slice(0,40);})")));
+
+    // A healthy relay must not be reported as broken.
+    ev(RESET);
+    ev("window.__runsReply = {workflow_runs:[{id:2, status:'completed', conclusion:'success', " +
+       "created_at:new Date(Date.now()-3600000).toISOString(), event:'schedule'}]};");
+    await withHour(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('a relay whose last run succeeded is left alone',
+       ev("agState().log.every(function(e){ return !/running but FAILING/.test(e.text); })"));
 
     // The whole point is the days recovery is LATE. A day it already arrived must cost nothing.
     ev(RESET);
@@ -5670,6 +5711,44 @@ setTimeout(async () => {
     ok('relay health is kept out of synced state',
        ev("JSON.stringify(S).indexOf('whooprelay')") === -1);
     ok('and lives in its own localStorage key', ev('WHOOP_RELAY_KEY') === 'ironhub:whooprelay');
+
+    /* --- accepted is not the same as succeeded --- */
+    // On 2026-09-09 both devices reported "the relay accepted a run" while both jobs died on a
+    // gist 401 seconds later. The dispatch really was fine -- it is the RUN that failed, and
+    // those are two different tokens in two different places. Saying only the first half sent
+    // him hunting the wrong one.
+    ev("S.settings.ghToken = 'ghp_testtoken'; S.settings.gistId = 'abcdef0123456789';");
+    ev('localStorage.removeItem(WHOOP_RELAY_KEY);');
+    ev(`window.__runConclusion = 'failure';
+        window.fetch = async function(url, opts){
+          const u = String(url);
+          if(u.indexOf('/runs?') >= 0){
+            return {ok:true, status:200, json: async()=>({workflow_runs:[{id:9, status:'completed',
+              conclusion:window.__runConclusion, created_at:new Date().toISOString(), event:'workflow_dispatch'}]}),
+              text: async()=>''};
+          }
+          return {ok:true, status:204, headers:{get:function(){ return null; }},
+                  json: async()=>({}), text: async()=>''};
+        };`);
+    await ev('whoopTestRelay()');
+    const relayMsg = ev("document.getElementById('syncMsg') ? document.getElementById('syncMsg').textContent : ''");
+    ok('a dispatch that is accepted but whose run fails is reported as a FAILURE',
+       /run FAILED/.test(relayMsg), relayMsg);
+    ok('and it clears this app\u2019s token of blame, since the dispatch was accepted',
+       /app\u2019s token is fine/.test(relayMsg) || relayMsg.indexOf('token is fine') >= 0, relayMsg);
+    ok('naming the repository secret that is actually at fault',
+       relayMsg.indexOf('IRONHUB_GIST_TOKEN') >= 0, relayMsg);
+    ok('and the stored verdict is not left reading as working',
+       (ev('whoopRelayNote()') || {}).ok === false, JSON.stringify(ev('whoopRelayNote()')));
+
+    ev("window.__runConclusion = 'success';");
+    ev('localStorage.removeItem(WHOOP_RELAY_KEY);');
+    await ev('whoopTestRelay()');
+    const relayMsg2 = ev("document.getElementById('syncMsg') ? document.getElementById('syncMsg').textContent : ''");
+    ok('a run that actually succeeds says SUCCEEDED, not merely accepted',
+       /SUCCEEDED/.test(relayMsg2), relayMsg2);
+    ok('and only then is the token recorded as working',
+       (ev('whoopRelayNote()') || {}).ok === true, JSON.stringify(ev('whoopRelayNote()')));
 
     ev('localStorage.removeItem(WHOOP_RELAY_KEY); localStorage.removeItem(WHOOP_KICK_KEY);');
     ev('S.settings.ghToken = ' + JSON.stringify(savedTok) + '; S.settings.gistId = ' + JSON.stringify(savedGist) + ';');
