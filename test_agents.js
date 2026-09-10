@@ -987,8 +987,59 @@ setTimeout(async () => {
      ev("agState().log.some(l=>/Bad fix attempt/.test(l.text) && /NOTHING was applied/.test(l.text))"),
      JSON.stringify(ev('agState().log.map(l=>l.text)')));
   ok('the rejection notice names why it was turned down',
-     ev("agState().log.some(l=>/out of the allowed range/.test(l.text))"),
+     ev("agState().log.some(l=>/more than the \u00b1500 a single change may move it/.test(l.text))"),
      JSON.stringify(ev('agState().log.map(l=>l.text)')));
+  ok('and quotes the offending value rather than a generic phrase',
+     ev("agState().log.some(l=>/\\+99999 cal\\/day/.test(l.text))"),
+     JSON.stringify(ev('agState().log.map(l=>l.text)')));
+  /* ECHO kept proposing a calorie change that "did not pass validation (value out of the allowed
+     range)" and applied nothing. The fix menu lists cal as a delta and pro as a target on adjacent
+     lines, so sending {"to":<target>} for calories is the obvious analogy -- and it landed as
+     +undefined||0 = 0 and was discarded with a message naming neither the mistake nor the remedy. */
+  ev("S.fuel = S.fuel || {}; S.fuel.calTarget = 4100;");
+  const calTo = ev("JSON.stringify(agValidateFix({type:'cal', payload:{to:3800}}) || null)");
+  ok('an absolute calorie target is accepted and converted to a delta',
+     JSON.parse(calTo) && JSON.parse(calTo).payload.delta === -300, calTo);
+  const calDelta = ev("JSON.stringify(agValidateFix({type:'cal', payload:{delta:-300}}) || null)");
+  ok('and the delta form still works exactly as before',
+     JSON.parse(calDelta) && JSON.parse(calDelta).payload.delta === -300, calDelta);
+
+  // The envelope must not have moved. This is intake: the cap is the safety property.
+  ok('an absolute target implying more than 500 is still refused',
+     ev("agValidateFix({type:'cal', payload:{to:3000}})") === null);
+  ok('and so is a raw delta beyond the cap',
+     ev("agValidateFix({type:'cal', payload:{delta:-900}})") === null);
+  /* The sanity floor has to be isolated, or the +/-500 cap catches these on its own and the
+     assertion passes with the floor deleted -- which it did on the first attempt. Drop the
+     current target low enough that a dangerous absolute lands INSIDE the cap, so only the floor
+     can refuse it. */
+  ev("S.fuel.calTarget = 1500;");
+  ok('a target below the sane floor is refused even when the delta is within the cap',
+     ev("agValidateFix({type:'cal', payload:{to:1100}})") === null,
+     'delta would be ' + (1100 - 1500));
+  ev("S.fuel.calTarget = 4100;");
+  ok('and an absurd target is refused too',
+     ev("agValidateFix({type:'cal', payload:{to:99999}})") === null);
+  ok('and a no-op is not a proposal', ev("agValidateFix({type:'cal', payload:{to:4100}})") === null);
+  ok('an explicit delta still wins over a stray to',
+     JSON.parse(ev("JSON.stringify(agValidateFix({type:'cal', payload:{delta:-200, to:3800}}) || null)")).payload.delta === -200);
+
+  // and the reasons say which value and which limit
+  ok('a refused absolute target explains the move it implied',
+     /would be -1100\/day/.test(ev("agRejectReason({type:'cal', payload:{to:3000}})")),
+     ev("agRejectReason({type:'cal', payload:{to:3000}})"));
+  ok('a refused target that is already set says so',
+     /already the target/.test(ev("agRejectReason({type:'cal', payload:{to:4100}})")),
+     ev("agRejectReason({type:'cal', payload:{to:4100}})"));
+  ok('and an empty calorie payload says nothing was specified',
+     /no calorie change was actually specified/.test(ev("agRejectReason({type:'cal', payload:{}})")),
+     ev("agRejectReason({type:'cal', payload:{}})"));
+
+  // the prompt names the trap instead of leaving it to be inferred
+  ok('the fix menu tells ECHO cal is a change and pro is a target',
+     /delta is a CHANGE to the daily target/.test(ev('AG_FIX_MENU.echo')) &&
+     /unlike cal, this one IS the new target/.test(ev('AG_FIX_MENU.echo')), ev('AG_FIX_MENU.echo'));
+
   // and a bad exercise name is named specifically, since that is the common real case
   ev("agState().proposals = []; agState().log = [];");
   stubAgents({

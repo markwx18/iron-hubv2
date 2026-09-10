@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-09-v3">
+<meta name="ironhub-build" content="2026-09-09-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11350,7 +11350,23 @@ function agValidateFix(fx){
   if(AG_FIX_TYPES.indexOf(fx.type) < 0) return null;
   const p = fx.payload || {};
   if(fx.type==='cal'){
-    const d = Math.round(+p.delta||0);
+    /* Two shapes, one envelope. The fix menu offers 'delta' for cal and 'to' for pro on adjacent
+       lines, so a model reading them together sends 'to' for calories by analogy -- and that used
+       to land as +undefined||0 = 0 and be discarded as "value out of the allowed range", a message
+       describing neither the mistake nor the remedy. ECHO hit this repeatedly.
+
+       This is NOT a loosening. An absolute target is converted to a delta and then meets exactly
+       the same +/-500 cap it always did, so a 900-calorie cut is still refused -- it just gets a
+       reason that says so. Deliberate, because this is intake: the cap is the safety property
+       here, and the shape of the JSON is not. */
+    let d;
+    if(p.delta == null && p.to != null){
+      const to = Math.round(+p.to||0);
+      if(!(to >= 1200 && to <= 6000)) return null;   // a sane daily target at all, before any delta
+      d = to - calTarget();
+    } else {
+      d = Math.round(+p.delta||0);
+    }
     if(!d || Math.abs(d) > 500) return null;      // clamp: no wild swings
     return {type:'cal', payload:{delta:d}};
   }
@@ -11423,6 +11439,24 @@ function agRejectReason(fx){
   if(fx.type==='liftReset'){
     if(p.name && !agResolveExName(p.name)) return '\u201c'+String(p.name).slice(0,40)+'\u201d is not a lift you train';
     return 'weight or duration out of range';
+  }
+  if(fx.type==='cal'){
+    // "value out of the allowed range" told him nothing about which value, or what range.
+    if(p.delta == null && p.to != null){
+      const to = Math.round(+p.to||0);
+      if(!(to >= 1200 && to <= 6000)) return 'a daily target of '+to+' cal is outside the sane range';
+      const d = to - calTarget();
+      if(!d) return String(to)+' cal is already the target';
+      return 'moving to '+to+' cal would be '+(d>0?'+':'')+d+'/day, more than the \u00b1500 a single change may move it';
+    }
+    const d = Math.round(+p.delta||0);
+    if(!d) return 'no calorie change was actually specified';
+    return (d>0?'+':'')+d+' cal/day is more than the \u00b1500 a single change may move it';
+  }
+  if(fx.type==='pro'){
+    const to = Math.round(+p.to||0);
+    if(!to) return 'no protein target was actually specified';
+    return String(to)+'g/day is outside the allowed 80-300g';
   }
   if(fx.type==='schedule')      return scheduleMode()==='cycle' ? 'weekday map sent while a rotating cycle is active' : 'incomplete or invalid week';
   if(fx.type==='cycleSchedule') return scheduleMode()!=='cycle' ? 'cycle pattern sent while on a weekday schedule' : 'invalid cycle pattern';
@@ -11622,8 +11656,12 @@ const AG_FIX_MENU = {
     '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}'+'\n'+
     '  {"type":"swapEx","payload":{"from":"...","to":"..."}}',
   echo:
-    '  {"type":"cal","payload":{"delta":-500..500}}'+'\n'+
-    '  {"type":"pro","payload":{"to":80..300}}'
+    // The two lines below take DIFFERENT shapes, which is a trap worth naming rather than
+    // leaving to be inferred: cal is a change, pro is a target.
+    '  {"type":"cal","payload":{"delta":-500..500}}  -- delta is a CHANGE to the daily target, '+
+      'not the new target itself. You may send {"to":<new daily calorie target>} instead and it '+
+      'will be converted, but either way a single change may move calories by at most 500/day.'+'\n'+
+    '  {"type":"pro","payload":{"to":80..300}}  -- unlike cal, this one IS the new target, not a change.'
 };
 
 /* Shared tail: the JSON contract, identical for all three specialists. */
