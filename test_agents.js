@@ -1111,6 +1111,36 @@ setTimeout(async () => {
   ok('and the shared contract calls the length a ceiling, not a quota',
      /ceiling, not a quota/.test(ev("agJsonSpec('delta')")));
 
+  /* --- the "say so and stop" permission above must not swallow the session itself --- */
+  // 2026-09-10: asked to make sure DELTA still names TODAY's session specifically, rather than
+  // letting the repetition guidance above collapse a trained day into "nothing new."
+  // Earlier fixtures in this section (Pec Deck, Cable Curl) also logged against todayKey() --
+  // agTodaySessionNote() reads the FIRST log dated today, so those have to go or this asserts
+  // against whichever of them happens to sit first rather than the session pushed here.
+  ev("S.logs = S.logs.filter(function(l){ return l.date !== todayKey(); });");
+  ev("S.logs.push({date: todayKey(), day:'D2', dayName:'Pull', entries:[" +
+     "{exercise:'Barbell Row', sets:[{w:135,r:8},{w:135,r:8},{w:135,r:7}]}]});");
+  const todayCtx = ev("agTodaySessionNote()");
+  ok('today’s session is named specifically, not folded into the trend read',
+     /TODAY’S SESSION/.test(todayCtx) && todayCtx.indexOf('Barbell Row') >= 0 &&
+     todayCtx.indexOf('135×8') >= 0, todayCtx);
+  ok('and DELTA is told the session itself is not covered by "nothing new"',
+     /MUST reference this specific session/.test(todayCtx), todayCtx);
+  ok('the note is wired into what DELTA actually receives',
+     ev("agBaseContext('delta')").indexOf('TODAY’S SESSION') >= 0,
+     'agTodaySessionNote() alone proves nothing if agBaseContext() never calls it');
+  ok('it does not leak into an agent whose remit is not training content',
+     ev("agBaseContext('echo')").indexOf('TODAY’S SESSION') === -1 &&
+     ev("agBaseContext('echo')").indexOf('no session logged') === -1);
+
+  // rest day / nothing logged today: must not invent a session
+  ev("S.logs = S.logs.filter(function(l){ return l.date !== todayKey(); });");
+  const restCtx = ev("agTodaySessionNote()");
+  ok('a day with no session says so instead of fabricating one',
+     /no session logged/.test(restCtx) && restCtx.indexOf('Barbell Row') === -1, restCtx);
+  ok('and does not demand a same-session reference on a day nothing happened',
+     restCtx.indexOf('MUST reference this specific session') === -1, restCtx);
+
   ev("agState().recent = {}; agState().status = {};");
   ev("S.split = JSON.parse(window.__splitSave); S.logs = JSON.parse(window.__logsSave);");
   ok('cleanup: split and logs restored after the increment fixtures',

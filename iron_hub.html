@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-10-v1">
+<meta name="ironhub-build" content="2026-09-10-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11872,7 +11872,26 @@ function agJsonSpec(id){
    summary rather than a dump -- the data tools exist so it can go and get the detail. */
 function agBaseContext(id){
   return coachMemContext()+trainingContext()+agContext()+agRecentSaid(id)+
-    (id==='delta' ? olAgentContext() : '');
+    (id==='delta' ? agTodaySessionNote()+olAgentContext() : '');
+}
+/* agRecentSaid()'s "say so in one short line and stop" is aimed at a repeated TREND
+   observation, not at the session itself -- but nothing told DELTA the two were different, so
+   a trained day whose trend read was unchanged could come back as "bench is still tracking,
+   nothing new" with no mention that he had just trained at all. Call today's session out by
+   name, separately from the trend commentary, so it survives the same-conversation-as-last-
+   night check that "nothing new" is built to pass. DELTA only -- CHARLIE covers the schedule,
+   not what was actually done in it, and ECHO's remit is bodyweight/intake, not lifts. */
+function agTodaySessionNote(){
+  const t = todayKey();
+  const l = S.logs.find(function(x){ return x.date === t; });
+  if(!l) return '\n'+'TODAY ('+fmtDate(t)+'): no session logged — do not invent one; comment on the trend as usual.\n';
+  const txt = l.entries.map(function(e){ return '  '+e.exercise+': '+summ(e.sets); }).join('\n');
+  return '\n'+'TODAY’S SESSION ('+fmtDate(t)+', '+l.day+' '+(l.dayName||dayName(l.day))+
+    (l.home?' · HOME':'')+(l.deload?' · DELOAD':'')+'):\n'+txt+'\n'+
+    'He trained today. Your summary MUST reference this specific session -- what he did, and '+
+    'whether it changed anything -- even on a night your broader trend read is unchanged. '+
+    '"Nothing new" can cover the TREND, but never the fact that he just trained; say what '+
+    'happened today first, then add the trend read only if it earns a second sentence.\n';
 }
 /* What this agent has already told him, so it can stop telling him again. Its OWN summaries
    only: the point is self-repetition, and handing DELTA what ECHO said would just invite it to
