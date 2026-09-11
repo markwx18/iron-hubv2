@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-09-v5">
+<meta name="ironhub-build" content="2026-09-10-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3488,6 +3488,14 @@ function aiBody(messages, system, maxTokens, opts){
   const o = opts || {};
   const body = {model:AI_MODEL, max_tokens:maxTokens||1000, messages};
   if(system) body.system = system;
+  // 'summarized' is NOT here to be read -- every consumer keeps only text blocks. It is here
+  // because it is the only thing that puts bytes on the wire while the model thinks. Sonnet 5
+  // defaults to 'omitted', and measured 2026-09-10 that streams NOTHING for the whole think:
+  // a 21s think was 20.6s of dead air, no pings, the same prompt with 'summarized' never went
+  // quiet for more than 4.6s. Safari drops a connection after 60s of silence (see aiSend), so a
+  // stream alone was not enough. Billing is identical either way -- the full thinking bills as
+  // output under both settings, and the summary itself is free.
+  body.thinking = {type:'adaptive', display:'summarized'};
   const oc = {effort: o.effort || AI_EFFORT_DEFAULT};
   if(o.format) oc.format = o.format;
   body.output_config = oc;
@@ -3517,23 +3525,47 @@ function aiBody(messages, system, maxTokens, opts){
    precisely the one most likely to be hit on its own.
 
    A timeout is NOT retried, for the same cost reason: unlike a rejection it cannot prove the
-   request never reached the API, and one still being served would be paid for twice. */
+   request never reached the API, and one still being served would be paid for twice.
+
+   STREAMED, because Safari will not wait on a silent connection. WebKit gives fetch() a 60s
+   network IDLE timeout that a page cannot raise or switch off -- no bytes for a minute and it
+   drops the connection and rejects with the same 'Load failed' as a genuine outage. A
+   non-streamed reply sends nothing at all until the model has finished, and Sonnet 5 at effort
+   'high' can think for longer than that before it writes a word. So DELTA -- the deepest
+   thinker, with the most rounds -- was the agent this kept killing, while the network was
+   demonstrably fine: on 2026-09-08 ZULU's own request went through 7 seconds after DELTA's
+   failure was logged, and on 2026-09-10, with the retry above in place, 3 seconds after. The
+   retry could not help, because it re-sent the identical request and got the identical long
+   think -- and a request that waited a full minute had plainly reached the API, so each of
+   those attempts was very likely billed as well.
+   With stream:true the reply starts at once, and with aiBody()'s display:'summarized' it keeps
+   arriving through the think too -- a stream alone was measured to go silent for the whole of
+   it. Nothing above aiSend() can tell the difference: aiReadReply() rebuilds exactly the
+   message object a non-streamed reply would have been.
+
+   That also sharpens the retry rule. fetch() resolving means the API accepted the request and
+   was generating, so a failure AFTER that is billed work and is not repeated. Only a rejection
+   before any reply arrived is. */
 const AI_TIMEOUT_MS  = 240000;        // per request; generous, because effort 'high' plus tools is slow
 const AI_NET_RETRIES = 2;             // extra attempts, network-rejection only
 const AI_NET_BACKOFF = [1000, 3000];  // ms to wait before attempt 2 and attempt 3
 async function aiSend(body){
-  const payload = JSON.stringify(body);
+  const payload = JSON.stringify(Object.assign({}, body, {stream:true}));
   let lastErr;
   for(let attempt=0; attempt<=AI_NET_RETRIES; attempt++){
     const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    let timedOut = false;
+    let timedOut = false, replied = false;
+    const t0 = Date.now();
     const timer = setTimeout(function(){ timedOut = true; if(ctl) ctl.abort(); }, AI_TIMEOUT_MS);
     try{
       const init = {method:'POST', headers:aiHeaders(), body:payload};
       if(ctl) init.signal = ctl.signal;
       const res = await fetch(AI_ENDPOINT, init);
+      replied = true;
       if(!res.ok){ const t = await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
-      return await res.json();
+      // Inside the try on purpose: the timeout has to cover reading the stream, not just
+      // waiting for it to start, or a stream that stalls halfway jams the flag all over again.
+      return await aiReadReply(res);
     }catch(e){
       // Reworded to the fact it actually is -- and worded so agIsNetworkErr() matches it. A
       // night on which every agent timed out really was a dead connection and should still
@@ -3542,11 +3574,119 @@ async function aiSend(body){
       lastErr = timedOut
         ? new Error('the connection timed out after '+Math.round(AI_TIMEOUT_MS/1000)+'s')
         : e;
-      if(timedOut || attempt === AI_NET_RETRIES || !agIsNetworkErr(lastErr)) throw lastErr;
+      const net = !timedOut && agIsNetworkErr(lastErr);
+      if(timedOut || replied || attempt === AI_NET_RETRIES || !net){
+        throw net ? aiNetDetail(lastErr, replied, attempt+1, Date.now()-t0) : lastErr;
+      }
     }finally{ clearTimeout(timer); }
     await new Promise(function(r){ setTimeout(r, AI_NET_BACKOFF[attempt] || 3000); });
   }
   throw lastErr;   // not reachable: the final attempt above always returns or throws
+}
+/* A bare 'Load failed' is what the log said on both nights DELTA died, and it cannot tell a
+   dead connection from one that was cut off mid-reply -- which is exactly the question that had
+   to be answered to fix it. Say which, and how long in. Keeps the engine's own wording first and
+   the TypeError class, so agIsNetworkErr() reads it the same as before. */
+function aiNetDetail(e, replied, tries, ms){
+  const s = Math.round(ms/1000);
+  const why = replied
+    ? 'the reply was cut off '+s+'s in'
+    : 'no reply on any of '+tries+' tries (the last failed after '+s+'s)';
+  const E = (typeof TypeError !== 'undefined' && e instanceof TypeError) ? TypeError : Error;
+  return new E(String((e && e.message) || e)+' — '+why);
+}
+/* An error that arrives INSIDE a stream comes with HTTP 200 already sent. Give it the status
+   it would have had unstreamed, so it reads as an API reply ('API 529: ...') everywhere that
+   matters -- above all in agIsNetworkErr(), which must never mistake one for a dropped
+   connection and retry work that was already served. */
+const AI_STREAM_ERR_STATUS = {invalid_request_error:400, authentication_error:401,
+  permission_error:403, not_found_error:404, request_too_large:413, rate_limit_error:429,
+  api_error:500, overloaded_error:529};
+/* Rebuild the complete message from its event stream: the same {content, stop_reason, usage}
+   object the API returns unstreamed, so callers never know the difference. Thinking blocks keep
+   their signature, because callClaudeWithData() echoes them back verbatim and a missing one
+   corrupts the next round. A body that is not an event stream is read whole. */
+async function aiReadReply(res){
+  const ct = (res.headers && typeof res.headers.get === 'function' && res.headers.get('content-type')) || '';
+  if(!res.body || typeof res.body.getReader !== 'function' || ct.indexOf('text/event-stream') < 0){
+    return await res.json();
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  const st = {msg:null, blocks:[], json:{}, done:false};
+  let buf = '';
+  for(;;){
+    const chunk = await reader.read();
+    if(chunk.done) break;
+    buf += dec.decode(chunk.value, {stream:true});
+    // An event ends at a blank line. A network chunk can end anywhere -- mid-line, mid-JSON,
+    // mid-character -- so only whole events are consumed and the rest waits for the next read.
+    let m;
+    while((m = /\r?\n\r?\n/.exec(buf))){
+      aiStreamEvent(st, buf.slice(0, m.index));
+      buf = buf.slice(m.index + m[0].length);
+    }
+  }
+  buf += dec.decode();
+  if(buf.trim()) aiStreamEvent(st, buf);
+  // A stream can end early without an error of any kind. Half a message is not a reply, and
+  // returning it would let a truncated tool call or summary through as though it were whole.
+  if(!st.msg || !st.done) throw new Error('the reply stream ended before the message was complete');
+  st.msg.content = st.blocks.filter(Boolean);
+  return st.msg;
+}
+function aiStreamEvent(st, raw){
+  const data = [];
+  raw.split(/\r?\n/).forEach(function(line){
+    if(line.indexOf('data:') === 0) data.push(line.slice(5).replace(/^ /, ''));
+  });
+  if(!data.length) return;   // an SSE comment, or an event: line with nothing attached
+  let ev;
+  try{ ev = JSON.parse(data.join('\n')); }
+  catch(e){ throw new Error('the reply stream carried an unreadable event'); }
+  const b = (ev.index != null) ? st.blocks[ev.index] : null;
+  switch(ev.type){
+    case 'message_start':
+      st.msg = Object.assign({}, ev.message);
+      break;
+    case 'content_block_start':
+      st.blocks[ev.index] = Object.assign({}, ev.content_block);
+      if(ev.content_block && ev.content_block.type === 'tool_use') st.json[ev.index] = '';
+      break;
+    case 'content_block_delta': {
+      const d = ev.delta || {};
+      if(!b) break;
+      if(d.type === 'text_delta') b.text = (b.text || '') + d.text;
+      else if(d.type === 'thinking_delta') b.thinking = (b.thinking || '') + d.thinking;
+      else if(d.type === 'signature_delta') b.signature = d.signature;
+      else if(d.type === 'input_json_delta') st.json[ev.index] = (st.json[ev.index] || '') + (d.partial_json || '');
+      else if(d.type === 'citations_delta') (b.citations = b.citations || []).push(d.citation);
+      break;
+    }
+    case 'content_block_stop':
+      // Tool input arrives as fragments of one JSON string, and is only an object once whole.
+      if(b && st.json[ev.index] !== undefined){
+        b.input = st.json[ev.index] ? JSON.parse(st.json[ev.index]) : {};
+        delete st.json[ev.index];
+      }
+      break;
+    case 'message_delta':
+      if(st.msg){
+        Object.assign(st.msg, ev.delta || {});
+        if(ev.usage) st.msg.usage = Object.assign({}, st.msg.usage, ev.usage);
+      }
+      break;
+    case 'message_stop':
+      st.done = true;
+      break;
+    case 'error': {
+      const er = ev.error || {};
+      throw new Error('API '+(AI_STREAM_ERR_STATUS[er.type] || 500)+': '+(er.type || 'error')+
+        (er.message ? ' — '+er.message : ''));
+    }
+    default:
+      break;   // ping, and any event type the API adds later -- the docs say to ignore those
+  }
 }
 async function callClaude(messages, system, maxTokens, opts){
   const data = await aiSend(aiBody(messages, system, maxTokens, opts));

@@ -71,7 +71,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1525 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1543 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -326,6 +326,30 @@ when all three specialists go down together, and the agent with the most request
 DELTA, up to seven across its tool loop — is precisely the one most likely to be hit on its own.
 On 2026-09-08 CHARLIE and ECHO reported normally, DELTA came back "Load failed", and training went
 unchecked for the night while every round it had already paid for was thrown away.
+
+**But "Load failed" was not a dropped connection, and a retry could not fix it.** It happened
+again on 2026-09-10 with the retry live — and both nights ZULU's request went through 3–7 seconds
+later, so the network was fine. WebKit gives `fetch()` a **60-second network idle timeout** that
+a page cannot raise, and it rejects with the same `TypeError: Load failed` as an outage. An
+unstreamed reply sends no bytes until the model finishes, so a long effort-`high` think (DELTA's)
+simply got cut off — and the retry re-sent the identical request into the identical long think,
+very likely paying for each attempt. So a bare `TypeError` does **not** prove a request was never
+billed; it only proves no complete response arrived.
+
+Hence `aiSend()` **streams** (`stream: true`, rebuilt into the unstreamed message shape by
+`aiReadReply()`, so no caller changed), and `aiBody()` sends
+`thinking: {type: 'adaptive', display: 'summarized'}`. Both halves are required, and this was
+measured, not assumed: with Sonnet 5's default `display: 'omitted'` a *stream* sends **nothing at
+all** while the model thinks — a 21s think was 20.6s of dead air with no pings — while the same
+prompt with `summarized` never went quiet for more than 4.6s. Billing is identical under both
+settings (the full thinking bills as output either way; the summary is free). Do not remove
+`display: 'summarized'` as an unused-output cleanup — nothing reads it, it is there for the bytes.
+
+The retry line moved with it: only a `fetch()` that rejects *before any response* is retried. Once
+the stream has started, the API is generating, so a mid-stream failure is billed work and is never
+repeated. The thrown message now says which it was and how long in (`Load failed — the reply was
+cut off 61s in` vs `no reply on any of 3 tries`), because a bare "Load failed" was exactly what made
+this take two nights to see.
 
 **A repaint must never be able to strand an in-flight flag.** Both runners used to call
 `renderOps()` between raising their module-scoped guard and entering the `try`. A throw from a

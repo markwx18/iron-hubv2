@@ -5582,6 +5582,184 @@ setTimeout(async () => {
   }
   ev('if(window.__realFetch) window.fetch = window.__realFetch;');
 
+  console.log('=== A LONG THINK MUST NOT LOOK LIKE A DEAD CONNECTION ===');
+  try {
+    // 2026-09-10: DELTA "Load failed" again, with the per-request retry above already live. ZULU's
+    // request went through 3 seconds later, so the connection was fine. WebKit drops a fetch after
+    // 60s with no bytes, and an unstreamed reply sends none until the model is done -- so a long
+    // effort-'high' think looked exactly like an outage, and the retry re-sent the same request
+    // into the same long think. The fix streams, and asks for summarized thinking, because a
+    // stream with the default 'omitted' was measured to send nothing for the whole think.
+    // The 60s idle cut itself cannot happen in jsdom; what is checked here is that the request
+    // asks for the two things that keep bytes flowing, and that the reply is rebuilt exactly.
+    const enc = new TextEncoder();
+    const sse = function(evs, eol){
+      eol = eol || '\n';
+      return evs.map(function(e){ return 'event: ' + e.type + eol + 'data: ' + JSON.stringify(e) + eol + eol; }).join('');
+    };
+    // Fixed 7-byte chunks: splits land mid-line, mid-JSON and -- asserted below, so the fixture
+    // cannot quietly get too clean -- inside a multi-byte character. Deterministic, never random.
+    const chunk7 = function(str){
+      const bytes = Array.from(enc.encode(str)), out = [];
+      for (let i = 0; i < bytes.length; i += 7) out.push(bytes.slice(i, i + 7));
+      return out;
+    };
+    const splitsAChar = function(chunks){
+      // a chunk that ends on a UTF-8 lead or continuation byte of an unfinished character
+      return chunks.some(function(c, i){
+        if (i === chunks.length - 1) return false;
+        const next = chunks[i + 1][0];
+        return next >= 0x80 && next < 0xC0;
+      });
+    };
+    ev(`window.__sseRes = function(chunks){
+          let i = 0;
+          return {ok:true, status:200,
+            headers:{get:function(k){ return /content-type/i.test(k) ? 'text/event-stream; charset=utf-8' : null; }},
+            body:{getReader:function(){ return {read:function(){
+              if(i < chunks.length){
+                const c = chunks[i++];
+                if(c === 'DROP') return Promise.reject(new TypeError('Load failed'));
+                return Promise.resolve({done:false, value:new Uint8Array(c)});
+              }
+              return Promise.resolve({done:true, value:undefined});
+            }}; }},
+            json:function(){ return Promise.reject(new Error('an event stream has no JSON body')); }};
+        };`);
+    ev('window.__realFetch = window.__realFetch || window.fetch;');
+    ev('if(window.__realData) callClaudeWithData = window.__realData;');
+    ev("S.settings.apiKey = 'sk-test';");
+
+    const THINK = 'Bench is up 5 lb — squat has not moved in three weeks.';
+    const round1 = sse([
+      {type:'message_start', message:{id:'msg_1', type:'message', role:'assistant', model:'claude-sonnet-5',
+        content:[], stop_reason:null, usage:{input_tokens:900, output_tokens:1}}},
+      {type:'content_block_start', index:0, content_block:{type:'thinking', thinking:'', signature:''}},
+      {type:'ping'},
+      {type:'content_block_delta', index:0, delta:{type:'thinking_delta', thinking:THINK.slice(0, 20)}},
+      {type:'content_block_delta', index:0, delta:{type:'thinking_delta', thinking:THINK.slice(20)}},
+      {type:'content_block_delta', index:0, delta:{type:'signature_delta', signature:'sig-EqQBCgIYAh'}},
+      {type:'content_block_stop', index:0},
+      {type:'content_block_start', index:1, content_block:{type:'text', text:''}},
+      {type:'content_block_delta', index:1, delta:{type:'text_delta', text:'Checking the squat — '}},
+      {type:'content_block_delta', index:1, delta:{type:'text_delta', text:'one moment.'}},
+      {type:'content_block_stop', index:1},
+      {type:'content_block_start', index:2, content_block:{type:'tool_use', id:'toolu_1', name:'get_lift_history', input:{}}},
+      {type:'content_block_delta', index:2, delta:{type:'input_json_delta', partial_json:''}},
+      {type:'content_block_delta', index:2, delta:{type:'input_json_delta', partial_json:'{"lift": "Barbell'}},
+      {type:'content_block_delta', index:2, delta:{type:'input_json_delta', partial_json:' Back Squat"}'}},
+      {type:'content_block_stop', index:2},
+      {type:'message_delta', delta:{stop_reason:'tool_use', stop_sequence:null}, usage:{output_tokens:210}},
+      {type:'message_stop'}
+    ]);
+    // CRLF on the second round: the SSE spec allows either line ending, and a parser that only
+    // splits on \n\n would never see an event end.
+    const round2 = sse([
+      {type:'message_start', message:{id:'msg_2', type:'message', role:'assistant', content:[], stop_reason:null,
+        usage:{input_tokens:1200, output_tokens:1}}},
+      {type:'content_block_start', index:0, content_block:{type:'text', text:''}},
+      {type:'content_block_delta', index:0, delta:{type:'text_delta', text:'Squat is stalling — hold 235.'}},
+      {type:'content_block_stop', index:0},
+      {type:'message_delta', delta:{stop_reason:'end_turn', stop_sequence:null}, usage:{output_tokens:40}},
+      {type:'message_stop'}
+    ], '\r\n');
+    const c1 = chunk7(round1), c2 = chunk7(round2);
+    ok('fixture: a chunk boundary really does fall inside a multi-byte character', splitsAChar(c1));
+    w.__c1 = c1; w.__c2 = c2;
+
+    // --- the request asks for what keeps bytes on the wire ---
+    ev(`window.__sent = []; window.__fetchN = 0;
+        window.fetch = window.__apiOnly(function(u, init){
+          window.__sent.push(JSON.parse(init.body));
+          return Promise.resolve(window.__sseRes(window.__fetchN === 1 ? window.__c1 : window.__c2));
+        });`);
+    const loop = await ev("callClaudeWithData([{role:'user', content:'go'}], 'sys', 16000, {effort:'high'})");
+    const sent = ev('window.__sent');
+    ok('every request is streamed', sent.length === 2 && sent.every(function(b){ return b.stream === true; }),
+       JSON.stringify(sent.map(function(b){ return b.stream; })));
+    ok('and asks for summarized thinking -- "omitted" streams nothing at all while it thinks',
+       sent.every(function(b){ return b.thinking && b.thinking.type === 'adaptive' && b.thinking.display === 'summarized'; }),
+       JSON.stringify(sent[0] && sent[0].thinking));
+
+    // --- the reply is rebuilt exactly, across both rounds of a tool loop ---
+    ok('a streamed tool loop still reaches its answer', loop && loop.text === 'Squat is stalling — hold 235.',
+       JSON.stringify(loop));
+    ok('with the tool round counted and the stop reason read from the stream',
+       loop && loop.toolsUsed === 1 && loop.stop === 'end_turn', JSON.stringify(loop));
+    const echoed = (sent[1] && sent[1].messages[1]) || {};
+    const eb = echoed.content || [];
+    ok('the assistant turn is echoed back with its thinking block first', echoed.role === 'assistant' &&
+       eb.length === 3 && eb[0].type === 'thinking', JSON.stringify(eb.map(function(b){ return b.type; })));
+    // The signature is what the API checks on the next round. Lose it and round 2 is a 400.
+    ok('and the thinking signature survives -- round 2 is refused without it',
+       eb[0] && eb[0].signature === 'sig-EqQBCgIYAh', eb[0] && eb[0].signature);
+    ok('the thinking text is whole, including a character split across two chunks',
+       eb[0] && eb[0].thinking === THINK, eb[0] && JSON.stringify(eb[0].thinking));
+    ok('tool input arrives as an object, not the JSON fragments it was streamed in',
+       eb[2] && eb[2].type === 'tool_use' && eb[2].input && eb[2].input.lift === 'Barbell Back Squat',
+       eb[2] && JSON.stringify(eb[2].input));
+    ok('and the tool result is paired with that call', sent[1] && sent[1].messages[2].content[0].tool_use_id === 'toolu_1');
+
+    // --- an error inside the stream is an API reply, not a dropped connection ---
+    ev(`window.__fetchN = 0;
+        window.__cErr = ${JSON.stringify(chunk7(sse([
+          {type:'message_start', message:{id:'m', content:[], stop_reason:null, usage:{}}},
+          {type:'content_block_start', index:0, content_block:{type:'text', text:''}},
+          {type:'content_block_delta', index:0, delta:{type:'text_delta', text:'part'}},
+          {type:'error', error:{type:'overloaded_error', message:'Overloaded'}}
+        ])))};
+        window.fetch = window.__apiOnly(function(){ return Promise.resolve(window.__sseRes(window.__cErr)); });`);
+    let sErr = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000)"); } catch (e) { sErr = e; }
+    ok('an error event mid-stream is surfaced with the status it would have had',
+       !!sErr && /^API 529/.test(sErr.message), sErr && sErr.message);
+    w.__sErr = sErr;
+    ok('so it never reads as a dropped connection', ev('agIsNetworkErr(window.__sErr)') === false);
+    ok('and is not retried', ev('window.__fetchN') === 1, 'fetches=' + ev('window.__fetchN'));
+
+    // --- a stream that just stops is not a reply ---
+    ev(`window.__fetchN = 0;
+        window.__cCut = ${JSON.stringify(chunk7(sse([
+          {type:'message_start', message:{id:'m', content:[], stop_reason:null, usage:{}}},
+          {type:'content_block_start', index:0, content_block:{type:'text', text:''}},
+          {type:'content_block_delta', index:0, delta:{type:'text_delta', text:'{"summary":"half a sen'}}
+        ])))};
+        window.fetch = window.__apiOnly(function(){ return Promise.resolve(window.__sseRes(window.__cCut)); });`);
+    let cutErr = null, cutVal;
+    try { cutVal = await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000)"); } catch (e) { cutErr = e; }
+    ok('a stream that ends with no message_stop throws instead of passing half a reply off as whole',
+       !!cutErr && /ended before/.test(cutErr.message), cutErr ? cutErr.message : 'returned ' + JSON.stringify(cutVal));
+
+    // --- the connection dropping MID-reply: billed work, so not repeated ---
+    // Before this change a mid-reply drop and a request that never left the phone were the same
+    // bare 'Load failed', and both were re-sent. Only the second is free to repeat.
+    ev(`window.__fetchN = 0;
+        window.fetch = window.__apiOnly(function(){
+          return Promise.resolve(window.__sseRes(window.__c2.slice(0, 3).concat(['DROP'])));
+        });`);
+    let midErr = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000)"); } catch (e) { midErr = e; }
+    ok('a reply cut off mid-stream is not re-sent -- the API was already generating it',
+       ev('window.__fetchN') === 1, 'fetches=' + ev('window.__fetchN'));
+    ok('and the log says it was cut off, not that nothing got through',
+       !!midErr && /Load failed/.test(midErr.message) && /cut off \d+s in/.test(midErr.message), midErr && midErr.message);
+    w.__midErr = midErr;
+    ok('while still counting as a connection failure for the cycle-level decision',
+       ev('agIsNetworkErr(window.__midErr)') === true);
+
+    // --- and a request that never got a reply says so, with how many tries ---
+    ev(`window.__fetchN = 0;
+        window.fetch = window.__apiOnly(function(){ return Promise.reject(new TypeError('Load failed')); });`);
+    let noErr = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000)"); } catch (e) { noErr = e; }
+    ok('a request that never got a reply names the tries it took',
+       !!noErr && noErr.message.indexOf('no reply on any of ' + (ev('AI_NET_RETRIES') + 1) + ' tries') >= 0,
+       noErr && noErr.message);
+  } catch (e) {
+    ok('streamed transport section', false, e.message);
+  }
+  ev('if(window.__realFetch) window.fetch = window.__realFetch;');
+
   try {
     // --- a repaint must never be able to strand an in-flight flag ---
     // Both runners raised their guard and THEN called renderOps(), outside the try, so a throw
