@@ -1,0 +1,62 @@
+# Iron Hub -> Discord version announcement
+#
+# Posts a short note to the Discord channel whenever a new build ships. Triggered by the
+# deliberate act of shipping -- a push to main that changes the `ironhub-build` marker in
+# index.html (the file GitHub Pages serves) -- not by a watcher polling for changes.
+# A push that touches index.html WITHOUT bumping the marker posts nothing.
+#
+# One-time setup: add a repository secret DISCORD_WEBHOOK_URL (the same channel webhook the
+# Worker uses). Without it this job exits quietly.
+
+name: Discord release note
+
+on:
+  push:
+    branches: [main]
+    paths: [index.html]
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need the pre-push commit to compare the marker
+
+      - name: Post if the build marker changed
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DISCORD_WEBHOOK_URL}" ]; then echo "DISCORD_WEBHOOK_URL not set; skipping."; exit 0; fi
+          # head -n 1: the meta tag comes first; the in-app update checker's own regex further
+          # down contains the same text and would otherwise be a second "match".
+          marker() { grep -o 'name="ironhub-build" content="[^"]*"' | head -n 1 | sed 's/.*content="\([^"]*\)"/\1/' || true; }
+          NEW=$(git show "${AFTER}:index.html" | marker)
+          OLD=""
+          if git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            OLD=$(git show "${BEFORE}:index.html" 2>/dev/null | marker)
+            RANGE="${BEFORE}..${AFTER}"
+          else
+            RANGE="-1 ${AFTER}"
+          fi
+          if [ -z "${NEW}" ] || [ "${NEW}" = "${OLD}" ]; then echo "Build marker unchanged (${OLD:-none} -> ${NEW:-none}); nothing to announce."; exit 0; fi
+          # Commit subjects are the changelog. Capped so a big push still fits one embed.
+          NOTES=$(git log --no-merges --format='• %s' ${RANGE} | head -n 15)
+          jq -n --arg build "${NEW}" --arg old "${OLD}" --arg notes "${NOTES}" --arg url "https://github.com/${GITHUB_REPOSITORY}/commits/${AFTER}" '{
+            allowed_mentions: {parse: []},
+            embeds: [{
+              title: ("🚀 Iron Hub " + $build + " shipped"),
+              url: $url,
+              color: 16156207,
+              description: (($notes | .[0:3800]) + "\n\nLands on the next app launch."),
+              footer: {text: (if $old == "" then "first tracked build" else ("previous: " + $old) end)}
+            }]
+          }' > payload.json
+          curl -sS --fail-with-body -H 'Content-Type: application/json' -d @payload.json "${DISCORD_WEBHOOK_URL}"
+          echo "Announced ${NEW}."

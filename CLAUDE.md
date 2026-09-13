@@ -21,8 +21,12 @@ in that one file. This is deliberate, not technical debt:
 **Do not** split it into modules, add a build step, introduce a framework, or
 create `src/` directories. If a change seems to require any of that, stop and ask.
 
-`test_agents.js` is the only other file that matters. It is a dev-time test
+`test_agents.js` is the only other file that matters to the app. It is a dev-time test
 harness and is never loaded by the app.
+
+`discord/` is a separate, read-only Cloudflare Worker that shows Iron Hub in Discord. It has its
+own `package.json` and test suite (`node discord/test_worker.js`, must be 0 failed too), and the
+app never loads anything from it. Its setup guide is `discord/README.md`.
 
 ---
 
@@ -71,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1549 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1567 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -240,6 +244,7 @@ whether the field is genuinely present, the way `pushUnconfirmedChanges()` now r
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
 | Muscle map data | `bmViewerData()`, `bmStatusFor()`, `bmWeeklyVol()`, `bmTrainedDays()` |
 | 3D viewer | `bm3dInit()`, `bm3dBuild()`, `bm3dApply()`, `bm3dPick()`, `bm3dDispose()`, `bm3dFallback()` |
+| Discord view | `discordView()`, `discordViewFile()`, `syncFiles()`, `DISCORD_VIEW_FILE`; Worker in `discord/src/` |
 
 **Agent system:** four agents — ZULU (lead), CHARLIE (logistics/schedule/data health),
 DELTA (training), ECHO (nutrition/bodyweight). Model: `claude-sonnet-5`, declared once as
@@ -542,6 +547,24 @@ stale-data bug.
 **WHOOP comes in, never out.** `syncPayload()` deletes `d.whoop`. The Action owns
 `whoop_data.json`; the app owns `ironhub_data.json`. Data not dated today is treated as
 absent — a stale recovery score is worse than none because it looks current.
+
+**Discord is a window, not a door.** `discord/` reads the gist and nothing else. GitHub only ever
+gets GETs from it, and the suite checks this two ways: by scanning the source, and by recording
+every request made across every command. No command may ever change Iron Hub state, including
+proposals, which are view-only there. The Worker does **not** re-derive app math. Every push also
+writes `discord_view.json`, built by `discordView()` from the app's own functions
+(`readinessNow()`, `bmViewerData()`, `weeklyVolumeByGroup()`, `e1rmSeries()`), so Discord
+cannot disagree with the app. Three rules:
+- **It must never cost a sync.** `syncFiles()` always includes the data file. The view is
+  best-effort, and if `discordView()` throws, the view is simply left out (tested).
+- **Nothing reads it back.** `fetchGistData()` ignores it, so it cannot affect state on any
+  device. Keep it that way.
+- **It rides along on every push and every 60 s pull**, so `DISCORD_VIEW_MAX` caps its size.
+  When it's too big, the least recently trained lifts are dropped first.
+
+Nothing in the Worker calls Claude. A future command that does must be labeled as paid. Version
+notes come from `.github/workflows/discord-release.yml`, which fires only when the build marker in
+`index.html` changes, so skipping the bump also skips the announcement.
 
 **Photos never go in `S`.** State holds an index; the blobs live in their own gist, fetched
 on demand. Everything in `S` is re-serialized on every save and re-uploaded on every sync.

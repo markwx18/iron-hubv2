@@ -1,0 +1,18 @@
+{
+  "name": "ironhub-discord",
+  "private": true,
+  "type": "module",
+  "description": "Read-only Discord view of Iron Hub. Deploy-time tooling only; the app itself never loads anything from here.",
+  "scripts": {
+    "test": "node test_worker.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "@resvg/resvg-wasm": "2.6.2"
+  },
+  "devDependencies": {
+    "wrangler": "4.131.1"
+  }
+}

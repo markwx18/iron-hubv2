@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-10-v2">
+<meta name="ironhub-build" content="2026-09-13-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3879,6 +3879,77 @@ function syncPayload(){
   _lastPushExportedAt = Date.now();
   return JSON.stringify({app:'ironhub', v:1, exportedAt:_lastPushExportedAt, data:d});
 }
+/* ---- Discord view: a derived, read-only snapshot for the Discord Worker (discord/) ----
+   Readiness, schedule, weekly volume and e1RM trends are computed here, not stored in S, so
+   the Worker would otherwise have to re-implement them -- a second copy of the logic that
+   could quietly disagree with the app (the bulkRate() lesson). Instead every push also writes
+   this file, built by the app's own functions. Nothing ever reads it back: fetchGistData()
+   only looks at GIST_FILE and WHOOP_FILE, so it cannot affect state on any device.
+   Every section is guarded on its own, and discordViewFile() swallows a total failure, so a
+   Discord nicety can never cost a sync. */
+const DISCORD_VIEW_FILE = 'discord_view.json';
+const DISCORD_VIEW_MAX = 60000;   // chars -- it rides along on every push AND every 60s pull
+function discordView(){
+  const now = new Date(), today = todayKey();
+  const v = {app:'ironhub-discord', v:1, generatedAt:now.getTime(), date:today, build:''};
+  try{ const m = document.querySelector('meta[name="ironhub-build"]'); v.build = (m && m.content) || ''; }catch(e){}
+  try{
+    const t = dashToday();
+    const up = [];
+    for(let i=1;i<=7;i++){ const k = mesoAddDays(today, i); const dk = scheduledDayFor(k); up.push({date:k, day:dk, name: dk==='REST' ? 'Rest' : (dayName(dk)||dk)}); }
+    v.status = {readiness: readinessNow(), streak: streakDays(), today: t, upcoming: up, pending: agPending().length};
+  }catch(e){ v.status = null; }
+  try{
+    const byBroad = {};
+    bmViewerData('weekly').forEach(g=>{ if(!byBroad[g.broad]) byBroad[g.broad] = {group:g.broad, sets:g.volume, status:g.status}; });
+    const lw = lastCompletedWeekRange();
+    const last = weeklyVolumeByGroup(lw.start, lw.end);
+    v.week = {start: weekStartKey(), lastStart: lw.start, lastEnd: lw.end,
+      groups: MUSCLE_GROUPS.map(g=>Object.assign({group:g, sets:0, status:'off'}, byBroad[g]||{}, {lastSets: last[g]||0}))};
+  }catch(e){ v.week = null; }
+  try{
+    // Best e1RM per Monday-week, newest lifts first, last 26 weeks. The same e1rmSeries() the
+    // Analytics tab plots, so a Discord chart and the in-app chart are the same line.
+    const cutoff = mesoAddDays(today, -180);
+    const names = {};
+    S.logs.forEach(l=>{ if(l.date>=cutoff) (l.entries||[]).forEach(e=>{ if(!names[e.exercise] || names[e.exercise]<l.date) names[e.exercise]=l.date; }); });
+    const lifts = Object.keys(names).filter(n=>!isBodyweight(n)).sort((a,b)=>names[b].localeCompare(names[a]));
+    v.charts = {};
+    lifts.forEach(ex=>{
+      const wk = {};
+      e1rmSeries(ex).forEach(p=>{
+        const d = new Date(p.date+'T00:00:00'); d.setDate(d.getDate()-((d.getDay()+6)%7));
+        const k = dateKeyOf(d); if(!wk[k] || p.v>wk[k]) wk[k] = p.v;
+      });
+      const pts = Object.keys(wk).sort().slice(-26).map(k=>[k, wk[k]]);
+      if(pts.length) v.charts[ex] = pts;
+    });
+    // Size cap: shed the least-recently-trained lifts first, never truncate a series mid-line.
+    while(JSON.stringify(v).length > DISCORD_VIEW_MAX && Object.keys(v.charts).length){
+      const ks = Object.keys(v.charts); delete v.charts[ks[ks.length-1]];
+    }
+  }catch(e){ v.charts = null; }
+  try{
+    const days = {};
+    S.logs.forEach(l=>{ if(l.day && !(l.day in days)) days[l.day] = dayName(l.day) || ''; });
+    Object.keys(activeSplitObj()).forEach(k=>{ days[k] = dayName(k) || ''; });
+    v.days = days;
+  }catch(e){ v.days = null; }
+  return v;
+}
+function discordViewFile(){
+  try{
+    const s = JSON.stringify(discordView());
+    return s.length <= DISCORD_VIEW_MAX ? {content:s} : null;
+  }catch(e){ return null; }
+}
+/* The files map for a push. The data file is unconditional; the Discord view is best-effort. */
+function syncFiles(){
+  const files = {[GIST_FILE]:{content:syncPayload()}};
+  const dv = discordViewFile();
+  if(dv) files[DISCORD_VIEW_FILE] = dv;
+  return files;
+}
 function setSyncMsg(t, err){ const el = $('#syncMsg'); if(el){ el.textContent = t; el.className = err ? 'err' : 'small ok'; } }
 function markSynced(){
   S.meta = S.meta || {changedAt:0,lastSync:0};
@@ -3903,7 +3974,7 @@ async function connectSync(){
       setSyncMsg('\u2713 Connected \u2014 found your existing sync gist and pulled its data.');
     } else {
       const c = await fetch('https://api.github.com/gists',{method:'POST',headers:ghHeaders(),
-        body:JSON.stringify({description:'Iron Hub training data (auto-sync)', public:false, files:{[GIST_FILE]:{content:syncPayload()}}})});
+        body:JSON.stringify({description:'Iron Hub training data (auto-sync)', public:false, files:syncFiles()})});
       if(!c.ok) throw new Error('Could not create gist ('+c.status+')');
       const g = await c.json();
       S.settings.gistId = g.id; save(false);
@@ -3979,7 +4050,7 @@ async function syncPush(manual){
   if(!syncReady()){ if(manual) setSyncMsg('Not connected \u2014 paste your token and hit Connect first.', true); return; }
   try{
     const res = await fetch('https://api.github.com/gists/'+S.settings.gistId,{method:'PATCH',headers:ghHeaders(),
-      body:JSON.stringify({files:{[GIST_FILE]:{content:syncPayload()}}})});
+      body:JSON.stringify({files:syncFiles()})});
     if(!res.ok) throw new Error('Push failed ('+res.status+')');
     // Adopt our own upload's exportedAt as the local freshness watermark. A payload always
     // stamps exportedAt AFTER the changedAt it carries, so without this the pull gate

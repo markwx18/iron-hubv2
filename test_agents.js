@@ -6577,6 +6577,86 @@ setTimeout(async () => {
   ev('S = ' + syncSaved + ';');
   ok('cleanup: real state restored after sync section', ev('JSON.stringify(S)') === syncSaved);
 
+  // The Discord Worker reads discord_view.json instead of re-deriving readiness, volume and
+  // e1RM itself. These pin that the snapshot IS the app's own numbers, that it rides along on a
+  // push, and that it can never cost one.
+  console.log('=== DISCORD VIEW SNAPSHOT ===');
+  const dvSaved = ev('JSON.stringify(S)');
+  try {
+    // Two sessions in the SAME Monday-week with different bests, plus a deload in that week
+    // that would be the highest if it were counted -- so "weekly best" is distinguishable from
+    // "last session of the week" and from "raw max including deloads".
+    ev(`(function(){
+      const base = mesoAddDays(todayKey(), -30);
+      const d = new Date(base+'T00:00:00'); d.setDate(d.getDate()-((d.getDay()+6)%7));
+      window.__dvMon = dateKeyOf(d);
+      const k = n => mesoAddDays(window.__dvMon, n);
+      S.logs = S.logs.filter(l=>!l.__dv);
+      S.logs.push({__dv:1, id:'dv1', date:k(1), day:'D1', entries:[{exercise:'Barbell Bench Press', sets:[{w:185,r:5},{w:175,r:8}]}]});
+      S.logs.push({__dv:1, id:'dv2', date:k(3), day:'D1', entries:[{exercise:'Barbell Bench Press', sets:[{w:180,r:6}]}]});
+      S.logs.push({__dv:1, id:'dv3', date:k(4), day:'D1', deload:true, entries:[{exercise:'Barbell Bench Press', sets:[{w:225,r:5}]}]});
+      S.logs.push({__dv:1, id:'dv4', date:k(8), day:'D2', entries:[{exercise:'Lat Pulldown', sets:[{w:140,r:10},{w:140,r:9},{w:130,r:11}]}]});
+    })()`);
+    const dv = JSON.parse(ev('JSON.stringify(discordView())'));
+    ok('discord view: readiness is readinessNow()', JSON.stringify(dv.status.readiness) === ev('JSON.stringify(readinessNow())'));
+    ok('discord view: streak is streakDays()', dv.status.streak === ev('streakDays()'), dv.status.streak);
+    ok('discord view: today is dashToday()', JSON.stringify(dv.status.today) === ev('JSON.stringify(dashToday())'));
+    ok('discord view: 7 upcoming days from scheduledDayFor()',
+       dv.status.upcoming.length === 7 && dv.status.upcoming.every(u => u.day === call('scheduledDayFor', u.date)));
+    const chest = dv.week.groups.find(g => g.group === 'Chest');
+    ok('discord view: weekly sets are the muscle map volume', chest.sets === call('bmWeeklyVol', 'Chest'), chest.sets);
+    const lw = JSON.parse(ev('JSON.stringify(lastCompletedWeekRange())'));
+    const lastBack = JSON.parse(ev(`JSON.stringify(weeklyVolumeByGroup('${lw.start}','${lw.end}'))`)).Back;
+    ok('discord view: last-week sets are weeklyVolumeByGroup()', dv.week.groups.find(g => g.group === 'Back').lastSets === lastBack);
+    const mon = ev('window.__dvMon');
+    const series = JSON.parse(ev(`JSON.stringify(e1rmSeries('Barbell Bench Press'))`));
+    const inWeek = series.filter(p => p.date >= mon && p.date <= ev(`mesoAddDays('${mon}', 6)`)).map(p => p.v);
+    const pt = (dv.charts['Barbell Bench Press'] || []).find(p => p[0] === mon);
+    ok('discord view: chart point is the weekly BEST e1RM, deload excluded',
+       pt && inWeek.length === 2 && pt[1] === Math.max(...inWeek) && pt[1] < 225 * (1 + 5 / 30), JSON.stringify(pt) + ' ' + inWeek);
+    ok('discord view: the most recently trained lift is listed first', Object.keys(dv.charts)[0] === 'Lat Pulldown', Object.keys(dv.charts)[0]);
+    ok('discord view: day names come from dayName()', dv.days.D1 === ev(`dayName('D1')`));
+
+    // Size cap: flood it with lifts; the file must stay under the cap and shed the OLDEST lifts.
+    // 12 weekly sessions x 400 lifts is ~100KB of chart unshed, all OLDER than Lat Pulldown.
+    ev(`(function(){ for(let wk=0;wk<12;wk++){ const ents=[]; for(let i=0;i<400;i++) ents.push({exercise:'Filler Lift Number '+i+' With A Long Name', sets:[{w:100+i+wk,r:8}]});
+         S.logs.push({__dv:1, id:'dvf'+wk, date:mesoAddDays(window.__dvMon, -7*(wk+1)), day:'D3', entries:ents}); } })()`);
+    const big = ev('JSON.stringify(discordView())');
+    ok('discord view: flood fixture really exceeds the cap unshed', ev(`(function(){ let n=0; for(let i=0;i<400;i++) n+=('Filler Lift Number '+i+' With A Long Name').length+12*22; return n; })()`) > ev('DISCORD_VIEW_MAX'));
+    ok('discord view: stays under DISCORD_VIEW_MAX', big.length <= ev('DISCORD_VIEW_MAX'), big.length);
+    ok('discord view: shedding keeps the recent lift', !!JSON.parse(big).charts['Lat Pulldown']);
+
+    // The push carries both files...
+    let bodies = [];
+    const realFetch = w.fetch;
+    w.fetch = (url, opts) => { bodies.push(opts && opts.body); return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) }); };
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1';");
+    await ev('syncPush(false)');
+    const sent = JSON.parse(bodies[0] || '{}').files || {};
+    ok('push sends ironhub_data.json', !!sent['ironhub_data.json']);
+    ok('push sends discord_view.json with a parseable snapshot',
+       !!sent['discord_view.json'] && JSON.parse(sent['discord_view.json'].content).app === 'ironhub-discord');
+
+    // ...and a snapshot that throws costs nothing but itself.
+    bodies = [];
+    ev('window.__realDV = discordView; discordView = function(){ throw new Error("boom"); };');
+    ev('S.meta.pushedAt = 0;');
+    await ev('syncPush(false)');
+    const sent2 = JSON.parse(bodies[0] || '{}').files || {};
+    ok('a throwing snapshot still pushes the data file', !!sent2['ironhub_data.json'] && !sent2['discord_view.json'], Object.keys(sent2).join(','));
+    ok('...and the push still confirms', ev('S.meta.pushedAt') > 0);
+    ev('discordView = window.__realDV;');
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+
+    ok('discord view file is never read back by a pull', !/DISCORD_VIEW_FILE/.test(ev('fetchGistData.toString()')));
+  } catch (e) {
+    ok('discord view section', false, e.stack);
+    ev('if(window.__realDV) discordView = window.__realDV;');
+  }
+  ev('S = ' + dvSaved + ';');
+  ok('cleanup: real state restored after discord view section', ev('JSON.stringify(S)') === dvSaved);
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
