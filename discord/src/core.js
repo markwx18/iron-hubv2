@@ -255,39 +255,50 @@ export function alertKeys(data) {
   const brief = (data && data.agents && data.agents.brief && data.agents.brief.date) || '';
   return { prs, flags, proposals, brief };
 }
-/* Returns {seen, messages}. seen is null when nothing needs storing. The FIRST run records what
-   exists and posts nothing, so months of history do not flood the channel on day one. */
+/* Each alert kind goes to its own Discord channel, and each channel owns the part of the
+   watermark it is responsible for. That pairing is the point: with one shared watermark, a post
+   that failed in #alerts would hold back #prs's record too, and the retry would post the PR a
+   second time. The channel -> watermark-keys map lives here so the two cannot drift apart. */
+export const ALERT_CHANNELS = {
+  prs: { keys: ['prs'] },
+  alerts: { keys: ['flags', 'proposals'] },
+  brief: { keys: ['brief'] },
+};
+/* Returns {init, cur, channels:{prs:[msgs], alerts:[msgs], brief:[msgs]}}. `cur` is the full
+   current key set; the caller adopts each channel's slice of it only once that channel's posts
+   succeed. The FIRST run (no stored watermark) posts nothing, so months of history do not
+   flood the channels on day one. */
 export function diffAlerts(data, prevSeen) {
   const cur = alertKeys(data);
-  const nextSeen = { init: true, prs: cur.prs, flags: cur.flags, proposals: cur.proposals, brief: cur.brief };
-  if (!prevSeen || !prevSeen.init) return { seen: nextSeen, messages: [] };
+  const channels = { prs: [], alerts: [], brief: [] };
+  if (!prevSeen || !prevSeen.init) return { init: true, cur, channels };
   const had = (arr) => new Set(arr || []);
   const pSeen = had(prevSeen.prs), fSeen = had(prevSeen.flags), qSeen = had(prevSeen.proposals);
-  const embeds = [];
 
   const newPrs = (data.prHistory || []).filter((p) => !pSeen.has(p.exercise + '|' + p.date + '|' + p.e1rm));
   if (newPrs.length) {
-    embeds.push({ title: '🏆 New PR' + (newPrs.length > 1 ? 's' : ''), color: COLORS.cyan,
-      description: clip(newPrs.map((p) => '**' + safe(p.exercise) + '** ' + p.weight + '×' + p.reps + ' → e1RM ' + p.e1rm + (p.gain ? ' (+' + p.gain + ')' : '')).join('\n'), LIM.desc) });
+    channels.prs = packEmbeds([{ title: '🏆 New PR' + (newPrs.length > 1 ? 's' : ''), color: COLORS.cyan,
+      description: clip(newPrs.map((p) => '**' + safe(p.exercise) + '** ' + p.weight + '×' + p.reps + ' → e1RM ' + p.e1rm + (p.gain ? ' (+' + p.gain + ')' : '')).join('\n'), LIM.desc) }]);
   }
+  const alertEmbeds = [];
   const newFlags = ((data.invest || {}).flags || []).filter((f) => f && f.status === 'active' && !fSeen.has(String(f.id)));
   const SEV = { yellow: 'ADVISORY', orange: 'WATCH', red: 'WARNING' };
-  newFlags.forEach((f) => embeds.push({
+  newFlags.forEach((f) => alertEmbeds.push({
     title: clip('🔎 ' + (SEV[f.severity] || 'FLAG') + ' · ' + safe(f.title), LIM.title),
     color: f.severity === 'red' ? COLORS.red : f.severity === 'orange' ? COLORS.amber : COLORS.zulu,
     description: clip((f.findings || []).map((x) => '• ' + safe(x)).join('\n'), 1500),
   }));
   const newProps = ((data.agents || {}).proposals || []).filter((p) => p && p.status === 'pending' && !qSeen.has(String(p.id)));
   if (newProps.length) {
-    embeds.push({ title: '📋 ' + newProps.length + ' proposal' + (newProps.length > 1 ? 's' : '') + ' ready', color: COLORS.zulu,
+    alertEmbeds.push({ title: '📋 ' + newProps.length + ' proposal' + (newProps.length > 1 ? 's' : '') + ' ready', color: COLORS.zulu,
       description: clip(newProps.map((p) => '**' + ((AGENT_META[p.agent] || {}).name || p.agent) + '** — ' + safe(p.title)).join('\n'), 3500) + '\n\nApprove or reject in the app.' });
   }
+  if (alertEmbeds.length) channels.alerts = packEmbeds(alertEmbeds);
   const brief = data.agents && data.agents.brief;
   if (cur.brief && cur.brief !== prevSeen.brief && brief && brief.text) {
-    splitText(safe(brief.text), 4000).forEach((part, i) => embeds.push({ title: i === 0 ? '☀️ Daily brief · ' + brief.date : undefined, color: COLORS.zulu, description: part }));
+    channels.brief = packEmbeds(splitText(safe(brief.text), 4000).map((part, i) => ({ title: i === 0 ? '☀️ Daily brief · ' + brief.date : undefined, color: COLORS.zulu, description: part })));
   }
-  if (!embeds.length) return { seen: null, messages: [] };
-  return { seen: nextSeen, messages: packEmbeds(embeds) };
+  return { init: false, cur, channels };
 }
 
 /* ---------- chart data ---------- */

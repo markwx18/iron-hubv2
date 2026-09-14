@@ -76,7 +76,7 @@ function makeEnv(extra) {
   const kv = new Map();
   return Object.assign({
     GIST_ID: 'g1', GIST_TOKEN: 'tok', DISCORD_APP_ID: 'app1', DISCORD_PUBLIC_KEY: pubHex, DISCORD_OWNER_ID: OWNER,
-    DISCORD_WEBHOOK_URL: 'https://discord.com/api/webhooks/1/abc',
+    WEBHOOK_PRS: 'https://discord.com/api/webhooks/10/prs', WEBHOOK_ALERTS: 'https://discord.com/api/webhooks/20/alerts', WEBHOOK_BRIEF: 'https://discord.com/api/webhooks/30/brief',
     ALERTS: { _m: kv, async get(k, t) { const v = kv.get(k); return v == null ? null : t === 'json' ? JSON.parse(v) : v; }, async put(k, v) { kv.set(k, v); } },
   }, extra || {});
 }
@@ -92,7 +92,7 @@ function makeDeps(data, view, opts) {
     fetch: async (url, init) => {
       calls.push({ url, method: (init && init.method) || 'GET', init });
       if (url.startsWith('https://api.github.com/gists/')) return new Response(JSON.stringify(gist()), { status: 200 });
-      if (opts && opts.discordFail && url.startsWith('https://discord.com')) return new Response('nope', { status: 500 });
+      if (opts && opts.discordFail && url.startsWith('https://discord.com') && (opts.discordFail === true || url.includes(opts.discordFail))) return new Response('nope', { status: 500 });
       return new Response('{}', { status: 200 });
     },
   };
@@ -334,31 +334,55 @@ console.log('=== ALERTS ===');
   next.agents.proposals.unshift({ id: 'p2', agent: 'echo', title: 'Set calories to 3200', status: 'pending' });
   next.agents.brief = { text: 'Legs today.', date: '2026-09-11' };
   const d2 = makeDeps(next, VIEW);
-  const r2 = await app.runAlerts(env, d2);
+  await app.runAlerts(env, d2);
   const posts = discordCalls(d2);
-  const text = posts.map((c) => JSON.stringify(payloadOf(c))).join('');
-  ok('alerts: new items post to the webhook with wait=true', posts.length === 1 && posts[0].method === 'POST' && posts[0].url === 'https://discord.com/api/webhooks/1/abc?wait=true', posts.map((c) => c.url).join());
-  ok('alerts: the new PR is posted and the old one is not', /Barbell Back Squat/.test(text) && !/198/.test(text), text.slice(0, 300));
-  ok('alerts: the new flag is posted', /WARNING · Bodyweight dropping/.test(text));
-  ok('alerts: the pre-existing flag is not re-posted', !/Bench stalling/.test(text));
-  ok('alerts: new proposal summarised, pre-existing one not', /Set calories to 3200/.test(text) && !/Progress bench/.test(text));
-  ok('alerts: the new brief is posted', /Daily brief · 2026-09-11/.test(text) && /Legs today/.test(text));
-  ok('alerts: mentions disabled on the webhook', payloadOf(posts[0]).allowed_mentions.parse.length === 0);
+  const to = (id) => posts.filter((c) => c.url.includes('/webhooks/' + id + '/')).map((c) => JSON.stringify(payloadOf(c))).join('');
+  const prsText = to('10'), alertsText = to('20'), briefText = to('30');
+  ok('alerts: one post per channel, each to its own webhook with wait=true',
+    posts.length === 3 && posts.every((c) => c.method === 'POST' && c.url.endsWith('?wait=true')) &&
+    ['10/prs', '20/alerts', '30/brief'].every((h) => posts.some((c) => c.url.includes(h))), posts.map((c) => c.url).join());
+  ok('alerts: #prs gets the new PR, and the old one is not re-posted', /Barbell Back Squat/.test(prsText) && !/198/.test(prsText), prsText.slice(0, 300));
+  ok('alerts: #prs gets ONLY PRs', !/Bodyweight dropping|Set calories|Legs today/.test(prsText));
+  ok('alerts: #alerts gets the new flag', /WARNING · Bodyweight dropping/.test(alertsText));
+  ok('alerts: #alerts gets the new proposal, not the pre-existing one', /Set calories to 3200/.test(alertsText) && !/Progress bench/.test(alertsText));
+  ok('alerts: #alerts does not re-post the pre-existing flag', !/Bench stalling/.test(alertsText));
+  ok('alerts: #alerts gets ONLY flags and proposals', !/Barbell Back Squat|Legs today/.test(alertsText));
+  ok('alerts: #daily-brief gets the new brief and nothing else', /Daily brief · 2026-09-11/.test(briefText) && /Legs today/.test(briefText) && !/Back Squat|Bodyweight|calories/.test(briefText));
+  ok('alerts: mentions disabled on every webhook post', posts.every((c) => payloadOf(c).allowed_mentions.parse.length === 0));
 
   const again = makeDeps(next, VIEW);
   await app.runAlerts(env, again);
   ok('alerts: the same items never post twice', discordCalls(again).length === 0);
 
-  // A failed post must not mark items as delivered.
+  // One channel failing must retry THAT channel only. With a shared watermark the retry would
+  // re-post the PR that already went out fine.
   const next2 = JSON.parse(JSON.stringify(next));
   next2.prHistory.push({ exercise: 'Barbell Bench Press', weight: 180, reps: 5, e1rm: 210, gain: 5.8, date: '2026-09-12', t: 4 });
-  await app.runAlerts(env, makeDeps(next2, VIEW, { discordFail: true })).catch(() => {});
+  next2.invest.flags.push({ id: 'f3', status: 'active', severity: 'yellow', title: 'Quads light', findings: ['4 sets'] });
+  let threw = false;
+  await app.runAlerts(env, makeDeps(next2, VIEW, { discordFail: '/webhooks/20/' })).catch(() => { threw = true; });
+  ok('alerts: a failed channel surfaces as an error (visible in wrangler tail)', threw);
   const retry = makeDeps(next2, VIEW);
   await app.runAlerts(env, retry);
-  ok('alerts: a PR whose post failed is retried next tick', discordCalls(retry).length === 1 && /210/.test(JSON.stringify(payloadOf(discordCalls(retry)[0]))));
+  const rc = discordCalls(retry);
+  ok('alerts: the failed #alerts post is retried next tick', rc.some((c) => c.url.includes('/webhooks/20/') && /Quads light/.test(JSON.stringify(payloadOf(c)))), rc.map((c) => c.url).join());
+  ok('alerts: ...and the #prs post that succeeded is NOT posted again', !rc.some((c) => c.url.includes('/webhooks/10/')), rc.map((c) => c.url).join());
 
-  const noHook = await app.runAlerts(makeEnv({ DISCORD_WEBHOOK_URL: '' }), makeDeps(DATA, VIEW));
-  ok('alerts: no webhook configured is a clean no-op', noHook.posted === 0 && noHook.skipped);
+  // An unset webhook switches that channel off: nothing posts, but its items are marked seen,
+  // so adding the webhook later does not dump the backlog into the new channel.
+  const envOff = makeEnv({ WEBHOOK_BRIEF: '' });
+  await app.runAlerts(envOff, makeDeps(DATA, VIEW));
+  const dOff = makeDeps(next, VIEW);
+  const offRes = await app.runAlerts(envOff, dOff);
+  ok('alerts: an unset webhook posts nothing to that channel, others still post',
+    !discordCalls(dOff).some((c) => /brief/.test(c.url)) && discordCalls(dOff).some((c) => /prs/.test(c.url)) && offRes.disabled.join() === 'brief');
+  envOff.WEBHOOK_BRIEF = 'https://discord.com/api/webhooks/30/brief';
+  const dOn = makeDeps(next, VIEW);
+  await app.runAlerts(envOff, dOn);
+  ok('alerts: turning a channel on later does not post its backlog', discordCalls(dOn).length === 0, discordCalls(dOn).map((c) => c.url).join());
+
+  const noHook = await app.runAlerts(makeEnv({ WEBHOOK_PRS: '', WEBHOOK_ALERTS: '', WEBHOOK_BRIEF: '' }), makeDeps(DATA, VIEW));
+  ok('alerts: no webhooks configured is a clean no-op', noHook.posted === 0);
 
   // Alerts must read fresh, not from the 60s command cache.
   const env3 = makeEnv(); const d5 = makeDeps(DATA, VIEW);

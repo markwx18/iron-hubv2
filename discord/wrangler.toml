@@ -12,7 +12,8 @@ crons = ["*/5 * * * *"]
 # then paste the id it prints below.
 [[kv_namespaces]]
 binding = "ALERTS"
-id = "PASTE_KV_NAMESPACE_ID_HERE"
+id = "8c46e378150a44daba9f00e603ab8b80"
 
 # Secrets are NOT in this file (the repo is public). Set each with `npx wrangler secret put NAME`:
-#   GIST_ID  GIST_TOKEN  DISCORD_APP_ID  DISCORD_PUBLIC_KEY  DISCORD_OWNER_ID  DISCORD_WEBHOOK_URL
+#   GIST_ID  GIST_TOKEN  DISCORD_APP_ID  DISCORD_PUBLIC_KEY  DISCORD_OWNER_ID
+#   WEBHOOK_PRS  WEBHOOK_ALERTS  WEBHOOK_BRIEF   (one per channel; see README)

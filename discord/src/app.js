@@ -170,15 +170,39 @@ function followup(ix, env, deps, payload) {
 
 /* ---------- scheduled alerts ---------- */
 const SEEN_KEY = 'alerts:seen:v1';
+// One webhook per channel. Each webhook URL is bound to exactly one Discord channel, so this
+// map IS the routing. The release note channel is not here; it is posted by GitHub Actions.
+export const CHANNEL_ENV = { prs: 'WEBHOOK_PRS', alerts: 'WEBHOOK_ALERTS', brief: 'WEBHOOK_BRIEF' };
 export async function runAlerts(env, deps) {
-  if (!env.DISCORD_WEBHOOK_URL) return { posted: 0, skipped: 'no webhook' };
   const g = await loadGist(env, deps, 0); // always fresh: a cached copy could delay an alert by a whole cycle
   const prev = await env.ALERTS.get(SEEN_KEY, 'json');
-  const { seen, messages } = core.diffAlerts(g.data, prev);
-  for (const m of messages) await discordSend(deps, 'POST', env.DISCORD_WEBHOOK_URL + (env.DISCORD_WEBHOOK_URL.includes('?') ? '&' : '?') + 'wait=true', m);
-  // Stored only after every post succeeded, so a failed post is retried next tick rather than
-  // silently marked as delivered. Written only when something changed: KV's free tier is
-  // 1000 writes/day and a write every 5 minutes would spend a third of it on nothing.
-  if (seen) await env.ALERTS.put(SEEN_KEY, JSON.stringify(seen));
-  return { posted: messages.length, initialised: !!(seen && (!prev || !prev.init)) };
+  const { init, cur, channels } = core.diffAlerts(g.data, prev);
+  const next = Object.assign({ init: true }, prev || {});
+  let changed = init, posted = 0;
+  const failed = [], disabled = [];
+  if (init) Object.assign(next, cur);
+  else {
+    for (const ch of Object.keys(core.ALERT_CHANNELS)) {
+      const msgs = channels[ch];
+      if (!msgs.length) continue;
+      const hook = env[CHANNEL_ENV[ch]];
+      try {
+        // An unset webhook means that channel is switched off: its items are marked seen rather
+        // than queued, so adding the webhook later does not dump weeks of backlog into it.
+        if (hook) for (const m of msgs) { await discordSend(deps, 'POST', hook + (hook.includes('?') ? '&' : '?') + 'wait=true', m); posted++; }
+        else disabled.push(ch);
+        // Only now does this channel's slice of the watermark advance. A channel whose post
+        // failed keeps its old keys and retries next tick, without re-posting anyone else's.
+        core.ALERT_CHANNELS[ch].keys.forEach((k) => { next[k] = cur[k]; });
+        changed = true;
+      } catch (e) {
+        failed.push(ch + ': ' + e.message);
+      }
+    }
+  }
+  // Written only when something changed: KV's free tier is 1000 writes/day, and a write every
+  // 5 minutes would spend a third of it on nothing.
+  if (changed) await env.ALERTS.put(SEEN_KEY, JSON.stringify(next));
+  if (failed.length) throw new Error('alert post failed for ' + failed.join('; '));
+  return { posted, initialised: init, disabled };
 }

@@ -3,3 +3,6 @@
 # local secrets for scripts/gist_restore.js — never commit
 .gistenv
 gist_before_restore_*.json
+
+# wrangler dev local state (KV/D1/cache) — machine-local, never commit
+discord/.wrangler/
