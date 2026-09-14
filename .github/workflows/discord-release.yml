@@ -1,12 +1,13 @@
 # Iron Hub -> Discord version announcement
 #
-# Posts a short note to the Discord channel whenever a new build ships. Triggered by the
+# Posts a short note to the #releases Discord channel whenever a new build ships. Triggered by the
 # deliberate act of shipping -- a push to main that changes the `ironhub-build` marker in
 # index.html (the file GitHub Pages serves) -- not by a watcher polling for changes.
 # A push that touches index.html WITHOUT bumping the marker posts nothing.
 #
-# One-time setup: add a repository secret DISCORD_WEBHOOK_URL (the same channel webhook the
-# Worker uses). Without it this job exits quietly.
+# One-time setup: add a repository secret DISCORD_RELEASES_WEBHOOK_URL -- the webhook created in
+# the #releases channel. It is NOT one of the Worker's webhooks: the Worker posts PRs, alerts and
+# the brief; this job alone posts releases. Without the secret this job exits quietly.
 
 name: Discord release note
 
@@ -28,12 +29,12 @@ jobs:
 
       - name: Post if the build marker changed
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_RELEASES_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASES_WEBHOOK_URL }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ -z "${DISCORD_WEBHOOK_URL}" ]; then echo "DISCORD_WEBHOOK_URL not set; skipping."; exit 0; fi
+          if [ -z "${DISCORD_RELEASES_WEBHOOK_URL}" ]; then echo "DISCORD_RELEASES_WEBHOOK_URL not set; skipping."; exit 0; fi
           # head -n 1: the meta tag comes first; the in-app update checker's own regex further
           # down contains the same text and would otherwise be a second "match".
           marker() { grep -o 'name="ironhub-build" content="[^"]*"' | head -n 1 | sed 's/.*content="\([^"]*\)"/\1/' || true; }
@@ -58,5 +59,5 @@ jobs:
               footer: {text: (if $old == "" then "first tracked build" else ("previous: " + $old) end)}
             }]
           }' > payload.json
-          curl -sS --fail-with-body -H 'Content-Type: application/json' -d @payload.json "${DISCORD_WEBHOOK_URL}"
+          curl -sS --fail-with-body -H 'Content-Type: application/json' -d @payload.json "${DISCORD_RELEASES_WEBHOOK_URL}"
           echo "Announced ${NEW}."
