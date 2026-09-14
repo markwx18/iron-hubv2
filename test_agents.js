@@ -6144,11 +6144,23 @@ setTimeout(async () => {
     ok('no letter is due midweek', withDay(3, function(){ return ev('agLetterDue()'); }) === false);
     ok('a letter IS due on Sunday', withDay(0, function(){ return ev('agLetterDue()'); }) === true);
     withDay(0, function(){ ev("agSetLetter('a letter about the week');"); });
-    ok('the letter is stored with its week',
-       ev('agLetter().week') === withDay(0, function(){ return ev('weekStartKey(todayKey())'); }),
-       ev('agLetter().week'));
+    ok('the letter is stored with the Sunday it was written for',
+       ev('agLetter().week') === ev('todayKey()'), ev('agLetter().week'));
     ok('a second letter is not due the same week',
        withDay(0, function(){ return ev('agLetterDue()'); }) === false);
+
+    // Regression, 2026-09-13: on an 8-day cycle two consecutive Sundays can fall in the same
+    // pass, so weekStartKey() returns the same key for both. Pin it to exactly that (last
+    // Sunday's date) and store last Sunday's letter under it -- the old gate read that as
+    // "already written" and skipped this Sunday silently.
+    ev("window.__realWsk = weekStartKey;");
+    ev("window.__lastSun = mesoAddDays(todayKey(), -7);");
+    ev("weekStartKey = function(){ return window.__lastSun; };");
+    ev("agState().letter = {text:'last Sunday\\u2019s letter', at:'x', week:window.__lastSun};");
+    ok('a letter is due on a Sunday that shares a training pass with last Sunday',
+       withDay(0, function(){ return ev('agLetterDue()'); }) === true);
+    ev("weekStartKey = window.__realWsk; delete window.__realWsk; delete window.__lastSun;");
+    withDay(0, function(){ ev("agSetLetter('a letter about the week');"); });
 
     // both surfaces render, and the brief renders as text he would actually read
     ev("agSetBrief('Recovered well. D3 today. Nothing waiting on you.');");

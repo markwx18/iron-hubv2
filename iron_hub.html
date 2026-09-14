@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-13-v1">
+<meta name="ironhub-build" content="2026-09-13-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12189,6 +12189,10 @@ async function agRunAll(manual){
         }catch(e){
           agLog('zulu','I couldn\u2019t write this week\u2019s letter ('+e.message+'). Everything else above still stands.');
         }
+      } else if(new Date().getDay() === 0){
+        // A Sunday skip used to leave nothing behind, which is how a wrongly-closed gate went
+        // unnoticed on 2026-09-13. Say so, so a skip is always distinguishable from a failure.
+        agLog('zulu','This week\u2019s letter was already written, so I didn\u2019t write another.');
       }
     }
     // "Nothing needed your attention" and "every agent errored" look identical from the
@@ -12294,8 +12298,12 @@ function agLetterDue(){
   const a = agState();
   // Sunday night: the week is finished, and it is the natural moment to look back at it.
   if(new Date().getDay() !== 0) return false;
-  const wk = weekStartKey(todayKey());
-  return !(a.letter && a.letter.week === wk);
+  /* Keyed on the Sunday itself, NOT weekStartKey(). That is the TRAINING week, and in cycle
+     mode it is one pass through the pattern -- 8 days on his split -- so two consecutive Sundays
+     can share a pass. On 2026-09-13 exactly that happened: Sep 6 opened a pass, Sep 13 was its
+     last slot, both resolved to "2026-09-06", and the letter was skipped as already written with
+     nothing logged. One letter per calendar Sunday is what "weekly" means here. */
+  return !(a.letter && a.letter.week === todayKey());
 }
 async function agWriteLetter(digest){
   const sys = agSharedBrief()+
@@ -12319,7 +12327,8 @@ async function agWriteLetter(digest){
 }
 function agSetLetter(text){
   const a = agState();
-  a.letter = {text:text, at:new Date().toISOString(), week:weekStartKey(todayKey())};
+  // `week` is the Sunday it was written for -- see agLetterDue() for why not weekStartKey().
+  a.letter = {text:text, at:new Date().toISOString(), week:todayKey()};
 }
 function agLetter(){
   const a = agState();
