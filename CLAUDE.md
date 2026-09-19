@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1567 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1604 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -213,6 +213,34 @@ If you add a `meta` field, do not assume a default reaches an existing install: 
 whether the field is genuinely present, the way `pushUnconfirmedChanges()` now requires
 `pushedAt > 0` before treating a gap as a stranded push.
 
+**A push must not overwrite what this device has not read.** It happened again on 2026-09-19,
+from the other direction: a laptop last synced Sep 14 was opened at 2:08 PM, its boot pull
+*failed* (the app showed "sync offline" and carried on, which is also why it wrote a second
+morning brief), and the very next `save()` PATCHed its Sep-14 snapshot over four sessions,
+four weigh-ins, five nutrition days and seven PRs. It then kept pushing it, because
+`syncPush()` advances its own watermark, so no later pull could apply. The `pushedAt > 0`
+guard above does not cover this: the device had a real watermark, and the push was an ordinary
+debounced one, not the boot catch-up.
+
+So `syncPush()` calls `syncReconcileBeforePush()` first — one GET, on every push, manual
+included. If the gist holds a snapshot this device has not applied, it applies it and pushes
+the union; if the gist cannot be READ, the push does not go out at all (the records stay local,
+`changedAt` stays ahead of `pushedAt`, and `pushUnconfirmedChanges()` retries). Two things
+that reconcile has to get right, and both are tested:
+
+- **It runs a second merge, with `pushedAt` as the cutoff.** `applyPulled()`'s own
+  `mergeUnseenHistory(localPrev, exportedAt)` keeps only records *newer than the snapshot* —
+  correct for a pull, where an older record the snapshot lacks was deleted on purpose somewhere.
+  Before a push there is a second class to save: anything written since this device's last
+  *confirmed upload* provably never reached the gist, so its absence there cannot be a deletion.
+  Without it, reconciling would drop a session logged offline at 6 PM because another device
+  pushed at 6:30 — trading one data-loss bug for another.
+- **The cutoff is `pushedAt`, not "keep everything local".** A record older than the last
+  confirmed push that the gist no longer holds *was* deleted elsewhere, and must stay deleted.
+
+This does not replace push-before-pull in `autoPullOnLoad()`; it makes the push itself safe,
+so the two orders can no longer disagree.
+
 ---
 
 ## Architecture map
@@ -220,7 +248,7 @@ whether the field is genuinely present, the way `pushUnconfirmedChanges()` now r
 | Area | Key functions |
 |---|---|
 | State | `S`, `load()`, `save()`, `LS_KEY = 'ironhub:v1'` |
-| Sync | `autoPullOnLoad()`, `applyPulled()`, `fetchGistData()`, `schedulePush()` |
+| Sync | `autoPullOnLoad()`, `applyPulled()`, `fetchGistData()`, `schedulePush()`, `syncReconcileBeforePush()` |
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()` (`dow` \| `cycle`) |
 | Week windows | `weekStartKey()`, `lastCompletedWeekRange()`, `weeklyVolumeByGroup()` |
 | Progression | `classifyDecision()`, `buildOneLiveExercise()`, `intraAdvice()` |

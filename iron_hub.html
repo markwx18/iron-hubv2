@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-19-v1">
+<meta name="ironhub-build" content="2026-09-19-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4046,9 +4046,59 @@ async function replaceToken(){
   // dead end this whole control exists to remove.
   tokOpen = bad; renderSettings(); setSyncMsg(msg, bad);
 }
+/* ---- nothing may be overwritten that this device has never seen ----
+
+   A push replaces ironhub_data.json WHOLESALE, so the only thing standing between a week-old
+   device and everyone else's history is whether that device happens to have pulled first. On
+   2026-09-19 it had not: a laptop last synced on Sep 14 was opened at 2:08 PM, its boot pull
+   FAILED (which is also why it thought no brief existed and WHOOP was yesterday's), the app
+   correctly showed "sync offline" and carried on -- and the very next save() pushed its Sep-14
+   snapshot over four sessions, four weigh-ins, five nutrition days and seven PRs. It then kept
+   pushing it, because syncPush() had advanced its own watermark and no later pull could apply.
+   The same shape cost him two months on 2026-09-02.
+
+   mergeUnseenHistory() protects the RECEIVING side of a pull. This is the other half: a push
+   confirms, first, that it is not writing over a snapshot it has not applied. If the check
+   cannot be made -- no network, dead token -- the push does not go out at all. Nothing is lost
+   by waiting: the records stay in localStorage, changedAt stays ahead of pushedAt, and
+   pushUnconfirmedChanges() retries on the next tick and at the next boot. That is strictly
+   better than uploading a snapshot we know is blind.
+
+   Costs one GET per push. Pushes are debounced (schedulePush, 2.5s), so mid-workout that is a
+   few dozen extra requests against a 5000/hour budget -- the cheapest insurance in the app. */
+async function syncReconcileBeforePush(){
+  const p = await fetchGistData();          // throws on a dead network or a GitHub error; the
+                                            // caller must let that abort the push
+  if(!(p.exportedAt > (S.meta ? S.meta.changedAt : 0))) return 0;   // already seen it
+  // Held across the swap: applyPulled() rebinds S, and both merges below read the pre-pull side.
+  const localPrev = S, pushedAt = (S.meta && S.meta.pushedAt) || 0;
+  applyPulled(p.data, p.exportedAt);
+  // applyPulled()'s own merge keeps local records NEWER THAN THE SNAPSHOT (t > exportedAt) --
+  // the right rule for a pull, where an older record the snapshot lacks was deleted on purpose
+  // somewhere and must stay deleted. Before a push there is a second class to save: anything
+  // written since this device's last CONFIRMED upload, whatever the snapshot's stamp says.
+  // Those provably never reached the gist, so their absence from it cannot be a deletion.
+  // Without this, reconciling before a push would drop a session logged offline at 6 PM
+  // because another device happened to push at 6:30 -- trading one data-loss bug for another.
+  // pushedAt of 0 keeps nothing, the same caution pushUnconfirmedChanges() takes: a meta
+  // without the field is an install that predates it, not a device with unpushed work.
+  const kept = mergeUnseenHistory(localPrev, pushedAt);
+  // Those records are in S but NOT on the gist, and applyPulled() has just set pushedAt to the
+  // snapshot's watermark. If the PATCH below fails, that pair would read as "all confirmed" and
+  // nothing would ever retry them. Mark the gap; a successful push closes it a moment later.
+  if(kept) S.meta.pushedAt = Math.min(S.meta.pushedAt||0, (S.meta.changedAt||0) - 1);
+  // Own try: a throwing repaint must not read as the reconcile failing.
+  try{ setAccent(); renderHeader(); rerenderActive(true); }catch(e){}
+  return kept;
+}
 async function syncPush(manual){
   if(!syncReady()){ if(manual) setSyncMsg('Not connected \u2014 paste your token and hit Connect first.', true); return; }
   try{
+    // Before anything is overwritten, confirm we have seen what we are overwriting. A failure
+    // here aborts the push by design -- see the note above syncReconcileBeforePush().
+    try{ await syncReconcileBeforePush(); }
+    catch(e){ throw new Error('Nothing was pushed \u2014 this device could not read the cloud copy '+
+      'first ('+e.message+'), so it will not overwrite it. Your data is safe here and goes up on the next try.'); }
     const res = await fetch('https://api.github.com/gists/'+S.settings.gistId,{method:'PATCH',headers:ghHeaders(),
       body:JSON.stringify({files:syncFiles()})});
     if(!res.ok) throw new Error('Push failed ('+res.status+')');

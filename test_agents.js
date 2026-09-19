@@ -365,10 +365,24 @@ setTimeout(async () => {
     ev("if(window.__wSave3) S.weights = window.__wSave3;");
   }
 
+  /* syncPush() reads the gist before it overwrites it (syncReconcileBeforePush), so every stub
+     standing in for the network has to answer the GET as well as the PATCH. exportedAt 1 means
+     "the gist holds nothing this device has not seen", which is the common case; onPatch gets
+     the parsed request body. */
+  const gistStub = (onPatch, remote) => (url, opts) => {
+    if (opts && opts.method === 'PATCH') {
+      if (onPatch) onPatch(JSON.parse(opts.body), opts);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+    }
+    const p = (typeof remote === 'function' ? remote() : remote) || { app: 'ironhub', v: 1, exportedAt: 1, data: {} };
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({
+      files: { 'ironhub_data.json': { content: JSON.stringify(p) } } }) });
+  };
+
   console.log('=== A PUSH DOES NOT READ AS NEWER THAN US ===');
   try {
     const realFetch = w.fetch;
-    w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+    w.fetch = gistStub();
     ev("S.settings.ghToken='tok'; S.settings.gistId='gist1'; S.meta.changedAt = Date.now() - 100000;");
     await ev("syncPush(false)");
     const pushedAt = ev('_lastPushExportedAt');
@@ -392,7 +406,7 @@ setTimeout(async () => {
   console.log('=== PUSHEDAT WATERMARK TRACKS A CONFIRMED PUSH ===');
   try {
     const realFetch = w.fetch;
-    w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+    w.fetch = gistStub();
     // changedAt starts well behind "now" (as it does after a real debounced save()) so the
     // push's own Math.max(changedAt, exportedAt) bump is exercised, not masked by a tie.
     ev("S.settings.ghToken='tok'; S.settings.gistId='gist1'; S.meta.pushedAt=0; S.meta.changedAt = Date.now() - 5000;");
@@ -428,13 +442,7 @@ setTimeout(async () => {
   try {
     let patchCalls = [];
     const realFetch = w.fetch;
-    w.fetch = (url, opts) => {
-      if (opts && opts.method === 'PATCH') {
-        const body = JSON.parse(opts.body);
-        patchCalls.push(JSON.parse(body.files['ironhub_data.json'].content));
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
-    };
+    w.fetch = gistStub(body => patchCalls.push(JSON.parse(body.files['ironhub_data.json'].content)));
     ev("S.settings.ghToken='tok'; S.settings.gistId='gist1';");
 
     // No pending change: pushUnconfirmedChanges must be a no-op (nothing was lost, no API call spent).
@@ -483,10 +491,7 @@ setTimeout(async () => {
   try {
     let patches = [];
     const realFetch = w.fetch;
-    w.fetch = (url, opts) => {
-      if (opts && opts.method === 'PATCH') patches.push(JSON.parse(opts.body));
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
-    };
+    w.fetch = gistStub(body => patches.push(body));
     ev("S.settings.ghToken='tok'; S.settings.gistId='gist1';");
     ev("window.__metaSave = JSON.parse(JSON.stringify(S.meta));");
 
@@ -547,7 +552,9 @@ setTimeout(async () => {
     mockGist = { exportedAt: ev('S.meta.changedAt'), data: JSON.parse(ev('JSON.stringify(S)')) };
 
     // Device B: log a session locally, then the tab gets killed before the debounced push fires.
-    ev("S.logs.push({id:'clobbertest1', date:'2026-08-18', day:'D1', entries:[{exercise:'Clobber Test Lift', sets:[{w:225,r:5}]}]}); save();");
+    // stampRec() because every real write path stamps, and the reconcile in front of the push
+    // (syncReconcileBeforePush) keeps a local record by comparing that stamp to pushedAt.
+    ev("S.logs.push(stampRec({id:'clobbertest1', date:'2026-08-18', day:'D1', entries:[{exercise:'Clobber Test Lift', sets:[{w:225,r:5}]}]})); save();");
     ev("clearTimeout(_pushTimer); _pushTimer = null;");
     const localChangedAt = ev('S.meta.changedAt');
 
@@ -571,6 +578,133 @@ setTimeout(async () => {
   } catch (e) {
     ok('background sync pushes local edits before pulling', false, e.message);
     ev("S.logs = S.logs.filter(l=>l.id!=='clobbertest1'); S.settings.ghToken=''; S.settings.gistId='';");
+  }
+
+  // The 2026-09-19 data loss, and the second of its kind. A laptop last synced on Sep 14 was
+  // opened at 2:08 PM; its boot pull FAILED (the same failure that made it write a second
+  // morning brief), the app showed "sync offline" and carried on, and the very next save()
+  // PATCHed its Sep-14 snapshot over four sessions, four weigh-ins, five nutrition days and
+  // seven PRs. It then kept pushing it, because syncPush() had advanced its own watermark so
+  // no later pull could apply. mergeUnseenHistory() protects the receiving side of a pull;
+  // nothing protected the gist from a device that had never read it.
+  console.log('=== A PUSH MUST NOT OVERWRITE WHAT THIS DEVICE HAS NOT SEEN ===');
+  try {
+    let patched = [], remote = null, getFails = null, gets = 0;
+    const realFetch = w.fetch;
+    w.fetch = (url, opts) => {
+      if (opts && opts.method === 'PATCH') {
+        patched.push(JSON.parse(JSON.parse(opts.body).files['ironhub_data.json'].content));
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) });
+      }
+      gets++;
+      if (getFails) return Promise.reject(new TypeError(getFails));
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({
+        files: { 'ironhub_data.json': { content: JSON.stringify(remote) } } }) });
+    };
+    ev("S.settings.ghToken='tok'; S.settings.gistId='gist1'; S.settings.autoSync=true;");
+    ev("window.__pgSave = JSON.stringify({logs:S.logs, weights:S.weights, meta:S.meta});");
+
+    // A device a week behind: the gist holds a session it has never seen, and its own
+    // watermarks are a week old.
+    const weekAgo = Date.now() - 7 * 86400000;
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 'staleremote1' && l.id !== 'staleremote2'; });");
+    ev("S.meta.changedAt = " + weekAgo + "; S.meta.pushedAt = " + weekAgo + ";");
+    remote = { app: 'ironhub', v: 1, exportedAt: Date.now() - 3600000,
+               data: JSON.parse(ev("JSON.stringify(S)")) };
+    remote.data.logs = remote.data.logs.concat([
+      { id: 'staleremote1', date: '2026-09-15', day: 'D2', t: Date.now() - 3700000,
+        entries: [{ exercise: 'Session Logged On The Phone', sets: [{ w: 225, r: 5 }] }] }]);
+    remote.data.meta = { changedAt: remote.exportedAt, pushedAt: remote.exportedAt, lastSync: remote.exportedAt };
+    ok('fixture: this device has never seen the gist’s newest session',
+       ev("!S.logs.some(function(l){ return l.id==='staleremote1'; })") &&
+       ev('S.meta.changedAt') < remote.exportedAt);
+
+    patched = [];
+    await ev("syncPush(false)");
+    ok('a stale device does not push its snapshot over the newer one on the gist',
+       patched.length === 1 && patched[0].data.logs.some(l => l.id === 'staleremote1'),
+       'pushes=' + patched.length + ' carried=' +
+       (patched[0] ? patched[0].data.logs.filter(l => l.id === 'staleremote1').length : 0));
+    ok('and it takes that session locally instead of erasing it',
+       ev("S.logs.some(function(l){ return l.id==='staleremote1'; })"));
+
+    // The other half, and the reason this is not simply "pull first": a record written since
+    // this device's last CONFIRMED push has provably never reached the gist, so its absence
+    // there is not a deletion. Reconciling must not drop a session logged offline at 6 PM
+    // because another device happened to push at 6:30.
+    ev("S.meta.changedAt = " + (Date.now() - 600000) + "; S.meta.pushedAt = " + (Date.now() - 600000) + ";");
+    ev("S.logs.push(stampRec({id:'offline1', date:'2026-09-17', day:'D3', entries:[{exercise:'Logged While Offline', sets:[{w:135,r:8}]}]})); save(false);");
+    ev("S.meta.changedAt = Date.now();");   // the local edit, still unpushed
+    remote = { app: 'ironhub', v: 1, exportedAt: Date.now() + 5000,   // another device pushes AFTER it
+               data: JSON.parse(ev("JSON.stringify(S)")) };
+    remote.data.logs = remote.data.logs.filter(l => l.id !== 'offline1');
+    remote.data.meta = { changedAt: remote.exportedAt, pushedAt: remote.exportedAt, lastSync: remote.exportedAt };
+    ok('fixture: the remote snapshot is newer than the local edit and lacks it',
+       remote.exportedAt > ev('S.meta.changedAt') && !remote.data.logs.some(l => l.id === 'offline1'));
+
+    patched = [];
+    await ev("syncPush(false)");
+    ok('a session logged since the last confirmed push survives the reconcile',
+       ev("S.logs.some(function(l){ return l.id==='offline1'; })"));
+    ok('and goes up in the same push rather than being quietly dropped',
+       patched.length === 1 && patched[0].data.logs.some(l => l.id === 'offline1'),
+       JSON.stringify(patched.map(p => p.data.logs.length)));
+
+    // ...while a record OLDER than the last confirmed push that the gist no longer has was
+    // deleted somewhere on purpose, and must stay deleted. That discriminator is the whole
+    // reason the cutoff is pushedAt rather than "keep everything local".
+    ev("S.logs.push({id:'deletedelsewhere1', date:'2026-09-02', day:'D1', t:" + (Date.now() - 86400000) +
+       ", entries:[{exercise:'Deleted On The Phone', sets:[{w:95,r:10}]}]});");
+    ev("S.meta.changedAt = Date.now(); S.meta.pushedAt = Date.now();");
+    remote = { app: 'ironhub', v: 1, exportedAt: Date.now() + 5000,
+               data: JSON.parse(ev("JSON.stringify(S)")) };
+    remote.data.logs = remote.data.logs.filter(l => l.id !== 'deletedelsewhere1');
+    remote.data.meta = { changedAt: remote.exportedAt, pushedAt: remote.exportedAt, lastSync: remote.exportedAt };
+    patched = [];
+    await ev("syncPush(false)");
+    ok('a record deleted elsewhere is not resurrected by the reconcile',
+       ev("!S.logs.some(function(l){ return l.id==='deletedelsewhere1'; })") &&
+       patched.length === 1 && !patched[0].data.logs.some(l => l.id === 'deletedelsewhere1'));
+
+    // A push that cannot READ the gist first does not write to it. The records stay local and
+    // stay flagged as unpushed, which is what pushUnconfirmedChanges() retries from.
+    ev("S.logs.push(stampRec({id:'unreadable1', date:'2026-09-17', day:'D3', entries:[{exercise:'Written While Blind', sets:[{w:135,r:8}]}]})); save(false);");
+    ev("S.meta.changedAt = Date.now(); S.meta.pushedAt = Date.now() - 60000;");
+    patched = []; getFails = 'Load failed';
+    await ev("syncPush(false)");
+    ok('a device that cannot read the gist does not overwrite it', patched.length === 0,
+       'pushes=' + patched.length);
+    ok('and the work stays flagged as unpushed, so the catch-up retries it',
+       ev('S.meta.changedAt') > ev('S.meta.pushedAt') &&
+       ev("S.logs.some(function(l){ return l.id==='unreadable1'; })"));
+    // ...and a manual Push Now says why, rather than looking like it worked. Settings is
+    // rendered first because #syncMsg is part of that card -- which is where he is standing
+    // when he taps Push Now.
+    ev("try{ renderSettings(); }catch(e){}");
+    await ev("syncPush(true)");
+    const msg = w.document.getElementById('syncMsg') ? w.document.getElementById('syncMsg').textContent : '';
+    ok('a manual push says nothing was sent and why',
+       /Nothing was pushed/.test(msg) && /could not read the cloud copy/.test(msg), JSON.stringify(msg));
+    getFails = null;
+
+    // The common case must stay cheap and must not pull anything it already has.
+    ev("S.meta.changedAt = Date.now(); S.meta.pushedAt = Date.now() - 1000;");
+    remote = { app: 'ironhub', v: 1, exportedAt: Date.now() - 120000, data: JSON.parse(ev("JSON.stringify(S)")) };
+    patched = []; gets = 0;
+    await ev("syncPush(false)");
+    ok('a device already up to date still pushes, with one check and no pull',
+       patched.length === 1 && gets === 1, 'pushes=' + patched.length + ' gets=' + gets);
+
+    ev("(function(){ var s = JSON.parse(window.__pgSave); S.logs = s.logs; S.weights = s.weights; S.meta = s.meta; })();");
+    ev("S.logs = S.logs.filter(function(l){ return ['staleremote1','offline1','deletedelsewhere1','unreadable1'].indexOf(l.id) < 0; });");
+    ev("delete window.__pgSave;");
+    w.fetch = realFetch;
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
+  } catch (e) {
+    ok('a push must not overwrite what this device has not seen', false, e.message);
+    ev("if(window.__pgSave){ (function(){ var s = JSON.parse(window.__pgSave); S.logs = s.logs; S.weights = s.weights; S.meta = s.meta; })(); delete window.__pgSave; }");
+    ev("S.logs = S.logs.filter(function(l){ return ['staleremote1','offline1','deletedelsewhere1','unreadable1'].indexOf(l.id) < 0; });");
+    ev("S.settings.ghToken=''; S.settings.gistId='';");
   }
 
   console.log('=== LIVE DELTA + CLEAR CHAT ===');
@@ -6832,10 +6966,10 @@ setTimeout(async () => {
     // The push carries both files...
     let bodies = [];
     const realFetch = w.fetch;
-    w.fetch = (url, opts) => { bodies.push(opts && opts.body); return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gist1' }) }); };
+    w.fetch = gistStub(body => bodies.push(body));
     ev("S.settings.ghToken='tok'; S.settings.gistId='gist1';");
     await ev('syncPush(false)');
-    const sent = JSON.parse(bodies[0] || '{}').files || {};
+    const sent = (bodies[0] || {}).files || {};
     ok('push sends ironhub_data.json', !!sent['ironhub_data.json']);
     ok('push sends discord_view.json with a parseable snapshot',
        !!sent['discord_view.json'] && JSON.parse(sent['discord_view.json'].content).app === 'ironhub-discord');
@@ -6845,7 +6979,7 @@ setTimeout(async () => {
     ev('window.__realDV = discordView; discordView = function(){ throw new Error("boom"); };');
     ev('S.meta.pushedAt = 0;');
     await ev('syncPush(false)');
-    const sent2 = JSON.parse(bodies[0] || '{}').files || {};
+    const sent2 = (bodies[0] || {}).files || {};
     ok('a throwing snapshot still pushes the data file', !!sent2['ironhub_data.json'] && !sent2['discord_view.json'], Object.keys(sent2).join(','));
     ok('...and the push still confirms', ev('S.meta.pushedAt') > 0);
     ev('discordView = window.__realDV;');
