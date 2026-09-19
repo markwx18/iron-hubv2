@@ -5499,6 +5499,197 @@ setTimeout(async () => {
     ev("if(Date.prototype.__realGetHours){ Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours; }");
   }
 
+  console.log('=== A SECOND DEVICE MUST NOT REWRITE THE MORNING BRIEF ===');
+  try {
+    // 2026-09-19, from the gist's own revision history: the phone wrote a good brief at 6:16 AM
+    // quoting a 50% recovery; the laptop, opened at 2:08 PM before its first pull had landed,
+    // saw no brief for today and yesterday's WHOOP, wrote a second one opening "No WHOOP
+    // recovery reading came through this morning" and pushed it straight over the first. Every
+    // local gate was working correctly -- the tab asking the question had simply not looked at
+    // the answer yet. Same weakness the 9 PM cycle had, and worse here, because the brief is the
+    // one agent output he actually reads.
+    const savedTokB = ev('S.settings.ghToken'), savedGistB = ev('S.settings.gistId');
+    const savedChangedB = ev('S.meta.changedAt');
+    ev("window.__realDataB2 = callClaudeWithData; window.__realFetchB = fetchGistData;");
+    ev("S.settings.apiKey='sk-test'; S.settings.ghToken='tok'; S.settings.gistId='g1'; S.settings.autoSync=true;");
+    ev("agState().autoRun = true; agState().log = []; delete agState().brief;");
+    ev("window.__briefCalls = 0; window.__briefSys = ''; window.__pullsB = 0;");
+    ev(`callClaudeWithData = async function(msgs, sys){
+          window.__briefCalls++; window.__briefSys = sys;
+          return {text: JSON.stringify({brief:'locally written brief'}), toolsUsed:0, stop:'end_turn'};
+        };`);
+    const withHourB = function(h, fn){
+      ev("Date.prototype.__realGHB = Date.prototype.getHours;");
+      ev("Date.prototype.getHours = function(){ return " + h + "; };");
+      const out = fn();
+      ev("Date.prototype.getHours = Date.prototype.__realGHB; delete Date.prototype.__realGHB;");
+      return out;
+    };
+    // What the gist holds -- plus, when asked, the WHOOP a real fetchGistData() would have
+    // applied to S on the way past: it runs applyWhoop() before it returns, which is how a
+    // confirming pull can answer "has recovery landed?" as well as "has anyone written one?".
+    ev(`window.__remoteBrief = function(brief, whoop){ return async function(){
+          window.__pullsB++;
+          const d = JSON.parse(JSON.stringify(S)); d.agents = d.agents || {};
+          if(brief) d.agents.brief = brief; else delete d.agents.brief;
+          if(whoop) applyWhoop(whoop);
+          return {exportedAt: Date.now() - 1000, data: d};
+        }; };`);
+    const phoneBrief = "{text:'phone brief', date: todayKey(), hadWhoop:true, at:" +
+      "(function(){ var d=new Date(); d.setHours(6,16,0,0); return d.toISOString(); })()}";
+    const whoop50 = "{recovery:{date:todayKey(), score:50, hrv:115, rhr:65}}";
+    const staleLocalB = "delete agState().brief; S.whoop = {recovery:{date: mesoAddDays(todayKey(),-1), score:78}};" +
+      "S.meta.changedAt = Date.now() - 100000; window.__briefCalls = 0; window.__pullsB = 0;";
+
+    // --- exactly the laptop at 2:08 PM: nothing local says a brief exists, and one does ---
+    ev(staleLocalB);
+    ev("fetchGistData = window.__remoteBrief(" + phoneBrief + ", " + whoop50 + ");");
+    ok('fixture: this device holds no brief and yesterday’s recovery',
+       ev('agBriefToday()') === null && ev('S.whoop.recovery.date') !== ev('todayKey()'));
+    await withHourB(14, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('a brief another device already wrote today is not rewritten, even before this one has pulled it',
+       ev('window.__briefCalls') === 0, 'calls=' + ev('window.__briefCalls'));
+    ok('and the brief he read this morning is what he still has',
+       ev('agBriefToday() && agBriefToday().text') === 'phone brief',
+       JSON.stringify(ev('agState().brief || null')));
+    ok('at the cost of one GET, not one paid call', ev('window.__pullsB') === 1);
+
+    // --- reciprocal: a morning nobody has written must still get a brief ---
+    ev(staleLocalB);
+    ev("fetchGistData = window.__remoteBrief(null, " + whoop50 + ");");
+    await withHourB(14, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('a morning nobody has written still gets one', ev('window.__briefCalls') === 1,
+       'calls=' + ev('window.__briefCalls'));
+    ok('and it is this device’s', ev('agBriefToday() && agBriefToday().text') === 'locally written brief');
+    // ...and the same round-trip is what brings today's recovery in, so the brief it writes is
+    // not the "no recovery data" one this device's stale copy would have produced.
+    ok('and the confirming pull is what put today’s recovery in front of it',
+       /WHOOP TODAY: recovery 50%/.test(ev('window.__briefSys')), ev('window.__briefSys').slice(0, 0));
+    ok('so it is stored as a brief that had WHOOP', ev('agState().brief.hadWhoop') === true);
+
+    // --- an unreachable gist: the two failures are not the same fact ---
+    ev(staleLocalB); ev("localStorage.removeItem(BRIEF_TRAIL_KEY);");
+    ev("fetchGistData = async function(){ window.__pullsB++; throw new TypeError('Load failed'); };");
+    await withHourB(14, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('with no connection at all it spends nothing — the call would go out over the same dead link',
+       ev('window.__briefCalls') === 0, 'calls=' + ev('window.__briefCalls'));
+    ok('and says so rather than declining silently',
+       /no connection/.test((ev('briefTrail()') || {}).reason || ''), JSON.stringify(ev('briefTrail()')));
+
+    ev(staleLocalB);
+    ev("fetchGistData = async function(){ window.__pullsB++; throw new Error('Pull failed (403)'); };");
+    await withHourB(14, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('but a GitHub-side failure falls back to the local gate rather than costing him the brief',
+       ev('window.__briefCalls') === 1, 'calls=' + ev('window.__briefCalls'));
+
+    // --- an unsynced device has no second instance to disagree with it ---
+    ev(staleLocalB); ev("S.settings.ghToken=''; S.settings.gistId='';");
+    ev("fetchGistData = async function(){ window.__pullsB++; throw new Error('should not be called'); };");
+    await withHourB(14, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('an unsynced device writes immediately, with no round-trip',
+       ev('window.__briefCalls') === 1 && ev('window.__pullsB') === 0,
+       'calls=' + ev('window.__briefCalls') + ' pulls=' + ev('window.__pullsB'));
+
+    // --- hadWhoop records what the brief was WRITTEN WITH, not what arrived afterwards ---
+    // The 2:15 PM rewrite on 2026-09-19 opened "No WHOOP recovery score came in this morning"
+    // and was stored hadWhoop:true, because recovery landed in the ~5s the request was in
+    // flight and the flag was read after the await. That does not just mislabel the brief: the
+    // reconcile below tests that flag, so an over-optimistic one disarms the one rewrite that
+    // would have fixed the text.
+    ev(staleLocalB); ev("agState().log = [];");
+    ev(`callClaudeWithData = async function(msgs, sys){
+          window.__briefCalls++; window.__briefSys = sys;
+          applyWhoop({recovery:{date:todayKey(), score:50, hrv:115, rhr:65}});   // a bgSyncTick lands mid-flight
+          return {text: JSON.stringify({brief:'No WHOOP recovery came in this morning.'}), toolsUsed:0, stop:'end_turn'};
+        };`);
+    await withHourB(14, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('a brief whose text says no recovery came in is not stored as one that had it',
+       ev('agState().brief.hadWhoop') === false, JSON.stringify(ev('agState().brief || null')));
+    ok('fixture: and recovery really did land while it was writing', ev('whoopFresh()') === true);
+    // ...which leaves the one reconciling rewrite armed, so the brief and the status strip stop
+    // telling two different stories about the same morning.
+    ev("window.__briefCalls = 0;");
+    ev(`callClaudeWithData = async function(msgs, sys){
+          window.__briefCalls++; window.__briefSys = sys;
+          return {text: JSON.stringify({brief:'Recovery is 50% this morning.'}), toolsUsed:0, stop:'end_turn'};
+        };`);
+    await withHourB(15, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('so the single reconciling rewrite still fires', ev('window.__briefCalls') === 1,
+       'calls=' + ev('window.__briefCalls'));
+    ok('and this time the flag is earned', ev('agState().brief.hadWhoop') === true);
+    ev("window.__briefCalls = 0;");
+    await withHourB(16, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('and it never rewrites a third time', ev('window.__briefCalls') === 0,
+       'calls=' + ev('window.__briefCalls'));
+
+    // --- a brief that lands DURING the write is not clobbered either ---
+    // The confirming pull closes the window before the call; this closes the ~30s the call
+    // itself takes, which is long enough for the phone's push to arrive on a 60s tick.
+    ev(staleLocalB); ev("agState().log = []; S.whoop = {recovery:{date:todayKey(), score:50}};");
+    ev(`callClaudeWithData = async function(msgs, sys){
+          window.__briefCalls++;
+          agState().brief = ` + phoneBrief + `;          // another device's push lands mid-flight
+          return {text: JSON.stringify({brief:'mine, written against older state'}), toolsUsed:0, stop:'end_turn'};
+        };`);
+    await withHourB(14, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('a brief that arrives while this one is thinking is kept, not overwritten',
+       ev('agBriefToday() && agBriefToday().text') === 'phone brief',
+       JSON.stringify(ev('agState().brief || null')));
+    ok('and ZULU says which happened, so the missing brief is never a mystery',
+       ev("agState().log.some(function(e){ return e.agent==='zulu' && /kept theirs/.test(e.text); })"),
+       JSON.stringify(ev("agState().log.map(function(e){return e.text.slice(0,50);})")));
+
+    // ...but the manual button is him asking for a new one on purpose, so it still wins
+    ev("window.__briefCalls = 0;");
+    await withHourB(14, function(){ return ev('agRunBrief(true)'); });
+    ok('the Rewrite button still overwrites what is there',
+       ev('agBriefToday() && agBriefToday().text') === 'mine, written against older state',
+       JSON.stringify(ev('agState().brief || null')));
+
+    // --- and a pull must not eat a brief this device has written but not yet pushed ---
+    ev("S.settings.ghToken='tok'; S.settings.gistId='g1';");
+    ev("agState().brief = {text:'just written here', date: todayKey(), hadWhoop:true, at:new Date().toISOString()};");
+    ev("window.__snapB = JSON.parse(JSON.stringify(S)); window.__snapB.agents.brief = " + phoneBrief + ";");
+    ev("applyPulled(JSON.parse(JSON.stringify(window.__snapB)), Date.now() - 1000);");
+    ok('a pull carrying an older brief does not discard the one just written here',
+       ev('agBriefToday() && agBriefToday().text') === 'just written here',
+       JSON.stringify(ev('agState().brief || null')));
+    ev("agState().brief = " + phoneBrief + ";");
+    ev("window.__snapB = JSON.parse(JSON.stringify(S));");
+    ev("window.__snapB.agents.brief = {text:'newer from the phone', date: todayKey(), hadWhoop:true, at:new Date().toISOString()};");
+    ev("applyPulled(JSON.parse(JSON.stringify(window.__snapB)), Date.now() - 1000);");
+    ok('and a genuinely newer one from another device still lands',
+       ev('agBriefToday() && agBriefToday().text') === 'newer from the phone',
+       JSON.stringify(ev('agState().brief || null')));
+
+    // --- HOME says when the brief predates the recovery, and offers the way out ---
+    // The Ops tab has had this control; the dashboard he actually reads in the morning had
+    // nothing, so a brief written before WHOOP landed was a dead end on the one card whose
+    // whole value is being current.
+    ev("agState().brief = {text:'no recovery data this morning', date: todayKey(), hadWhoop:false, at:new Date().toISOString()};");
+    ev("S.whoop = {recovery:{date:todayKey(), score:50, hrv:115, rhr:65}};");
+    ev('renderHome()');
+    const homeLate = w.document.getElementById('home').innerHTML;
+    ok('the dashboard flags a brief written before the recovery landed',
+       /Written before your WHOOP/.test(homeLate) && /50%/.test(homeLate),
+       homeLate.indexOf('Written before your WHOOP') >= 0 ? 'present' : 'MISSING');
+    ok('and puts the rewrite control on that card', /onclick="agRunBrief\(true\)"/.test(homeLate));
+    ev("agState().brief.hadWhoop = true;");
+    ev('renderHome()');
+    ok('a brief that already has the number says nothing about it',
+       !/Written before your WHOOP/.test(w.document.getElementById('home').innerHTML));
+
+    ev("callClaudeWithData = window.__realDataB2; fetchGistData = window.__realFetchB;");
+    ev("S.settings.ghToken=" + JSON.stringify(savedTokB) + "; S.settings.gistId=" + JSON.stringify(savedGistB) + ";");
+    ev("S.meta.changedAt = " + savedChangedB + ";");
+    ev("delete agState().brief; agState().log = []; delete S.whoop; localStorage.removeItem(BRIEF_TRAIL_KEY);");
+  } catch (e) {
+    ok('second-device brief section', false, e.message);
+    ev("if(window.__realDataB2) callClaudeWithData = window.__realDataB2;");
+    ev("if(window.__realFetchB) fetchGistData = window.__realFetchB;");
+    ev("if(Date.prototype.__realGHB){ Date.prototype.getHours = Date.prototype.__realGHB; delete Date.prototype.__realGHB; }");
+  }
+
   console.log('=== ONE BLIP MUST NOT COST AN AGENT ITS NIGHT ===');
   try {
     // 2026-09-08: CHARLIE and ECHO reported normally, DELTA came back "Load failed", and

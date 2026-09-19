@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-13-v2">
+<meta name="ironhub-build" content="2026-09-19-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4520,6 +4520,11 @@ function applyPulled(d, exportedAt){
       const loc = localAgents.status[k];
       if(!a.status[k] || (loc.at||'') > (a.status[k].at||'')) a.status[k] = loc;
     });
+    // The brief comes across wholesale with the snapshot, so a pull landing in the 2.5s between
+    // agSetBrief() and its debounced push would drop a brief this device had just written and
+    // never uploaded. Keep whichever side is newer, the same way status is merged.
+    if(localAgents.brief && localAgents.brief.at &&
+       (!a.brief || localAgents.brief.at > (a.brief.at||''))) a.brief = localAgents.brief;
   }
   if(localLastAuto){
     const iv = invState();
@@ -12506,6 +12511,16 @@ function renderHome(){
     h += '<div class="dash-sec">Brief</div>'+
       '<div class="card" style="border-left:3px solid '+AGENTS.zulu.col+'">'+
       '<p class="small" style="line-height:1.55">'+esc(brief.text)+'</p>'+
+      // Says which of the two stories this card is telling, and gives him the control on the
+      // screen he actually reads in the morning -- the Ops tab has had this, HOME had nothing.
+      // A brief written before recovery landed is rewritten automatically once, but only while
+      // auto-run is on and the device can reach the API, so the button is the way out otherwise.
+      (!brief.hadWhoop && whoopFresh()
+        ? '<p class="small" style="color:var(--warn);margin-top:6px">Written before your WHOOP '+
+          'recovery landed \u2014 '+Math.round(S.whoop.recovery.score)+'% is in now.</p>'+
+          '<button class="btn ghost sm" style="margin-top:6px" '+(_agBriefRunning?'disabled':'')+
+          ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing\u2026':'Rewrite')+'</button>'
+        : '')+
       '<p class="small" style="color:var(--dim);margin-top:6px">ZULU \u00b7 '+esc(fmtDate(brief.date))+'</p></div>';
   } else {
     /* No brief used to render as nothing at all, which is indistinguishable from a brief that
@@ -12935,12 +12950,29 @@ async function agRunBrief(manual){
   _agBriefRunning = true;
   try{
     try{ renderOps(); }catch(e){}
+    // What the brief was written WITH has to be read BEFORE the request, not after it.
+    // WHOOP can land mid-flight (a bgSyncTick pull is at most 60s away, and fetchGistData()
+    // applies recovery on every one), and reading it afterwards stamped hadWhoop:true on a
+    // brief whose own first sentence says no recovery came in -- 2026-09-19, twice. That flag
+    // is exactly what the reconcile in agMaybeMorningBrief() tests, so an over-optimistic one
+    // does not merely mislabel the brief: it permanently disarms the single rewrite that
+    // would have replaced it with one that quotes the number.
+    const hadWhoop = whoopFresh();
+    // What this write is replacing, so the check after the await can tell "unchanged" from
+    // "another device wrote one while we were thinking".
+    const prevAt = (function(){ const p = agBrief(); return (p && p.date === todayKey()) ? (p.at||'') : ''; })();
     const text = await agWriteBrief(manual);
     // Re-resolve AFTER the await. applyPulled() may have replaced S while the request was in
     // flight, and agSetBrief() resolves through agState() internally, so this is safe -- but
     // the save() below must not be reached through anything captured before the await.
-    const hadWhoop = !!(S.whoop && S.whoop.recovery && S.whoop.recovery.date === todayKey());
-    if(text){ agSetBrief(text, hadWhoop); agLog('zulu','Wrote this morning\u2019s brief.'); }
+    // A brief that appeared during the flight came from another device (a pull landed it), and
+    // it was written against state at least as fresh as ours. An automatic run steps aside; a
+    // manual one is him asking for a new one on purpose, so it still wins.
+    const landed = (function(){ const c = agBrief(); return !!(c && c.date === todayKey() && (c.at||'') !== prevAt); })();
+    if(text && !manual && landed){
+      agLog('zulu','Another device had already written this morning\u2019s brief by the time mine was ready \u2014 I kept theirs.');
+    }
+    else if(text){ agSetBrief(text, hadWhoop); agLog('zulu','Wrote this morning\u2019s brief.'); }
     else agLog('zulu','I couldn\u2019t write this morning\u2019s brief (unreadable reply). Nothing else changed.');
   }catch(e){
     agLog('zulu','I couldn\u2019t write this morning\u2019s brief ('+e.message+'). Nothing else changed.');
@@ -12999,7 +13031,7 @@ function briefWhoopDetail(){
 /* Fires on the first app open of the morning. There is no backend and no service worker, so
    "in the morning" can only mean "the first time he opens it after AG_BRIEF_HOUR" -- which is
    the moment he would read it anyway. */
-function agMaybeMorningBrief(){
+function agMaybeMorningBrief(confirmed){
   const a = agState();
   if(!a.autoRun) return briefNote('auto-run is switched off in Ops');
   if(_agBriefRunning || _agRunning) return;   // transient, and about to resolve itself
@@ -13023,10 +13055,49 @@ function agMaybeMorningBrief(){
   if(!whoopIn && h < AG_BRIEF_WHOOP_CUTOFF) return briefNote(
     'waiting for WHOOP to report today\u2019s recovery (until '+AG_BRIEF_WHOOP_CUTOFF+' AM, then it writes anyway)',
     briefWhoopDetail());
+  // Every gate above reads LOCAL state, and local state is only as good as this device's last
+  // pull -- which at boot and on a foreground is routinely "none yet". On 2026-09-19 the phone
+  // wrote a good brief at 6:16 AM quoting a 50% recovery, and the laptop, opened at 2:08 PM
+  // before its pull had landed, saw no brief and yesterday's WHOOP, wrote a second one opening
+  // "no WHOOP recovery came in this morning", and pushed it over the first. Nothing was wrong
+  // with the gate; the tab asking the question simply had not looked at the answer yet.
+  // So confirm against the gist first, exactly as agMaybeAutoRun() does for the 9 PM cycle.
+  // Only ever reached when the gate already looks OPEN, so the common morning costs nothing
+  // extra, and an unsynced device has no second instance to disagree with it.
+  if(!confirmed && syncReady() && S.settings.autoSync !== false) return agConfirmBriefThenWrite();
   briefNote('writing it now', briefWhoopDetail());
   // Returned rather than fired and forgotten, so a caller (and the suite) can await the write
   // instead of racing the _agBriefRunning guard on the next tick.
   return agRunBrief(false);
+}
+
+/* One GET before one paid call, and it answers two questions at once: has another device
+   already written this morning's brief, and has today's recovery landed since this device last
+   looked (fetchGistData() applies WHOOP too). Both are things the local gate cannot know. */
+async function agConfirmBriefThenWrite(){
+  try{
+    try{
+      const p = await fetchGistData();
+      if(p.exportedAt > (S.meta ? S.meta.changedAt : 0)){
+        applyPulled(p.data, p.exportedAt);
+        // Own try: a render throwing here must not be mistaken for the pull failing, which
+        // would fall through to the very stale gate this round-trip exists to replace.
+        try{ setAccent(); renderHeader(); rerenderActive(true); }catch(e){}
+      }
+    }catch(e){
+      /* Same split as agConfirmGateThenRun(), for the same reasons. A bare fetch rejection
+         means the request never left this device, so the API call about to be made would go
+         out over that same dead connection -- skip, and let the next foreground check ask
+         again. A GitHub-SIDE failure (revoked token, 404, rate limit, outage) falls through to
+         the local gate instead: being wrong there costs one duplicate brief, being wrong the
+         other way would silently cost him the brief for as long as the failure lasts. */
+      if(agIsNetworkErr(e)) return briefNote('there is no connection to check whether another device already wrote it');
+    }
+    // Re-resolve AFTER the await by re-entering the gate. applyPulled() has very likely just
+    // replaced S wholesale, and re-asking is the entire point of the round-trip -- the answer
+    // may now be "written", or "WHOOP is here after all". passing true stops it recursing.
+    return agMaybeMorningBrief(true);
+  }catch(e){ console.warn('agConfirmBriefThenWrite failed', e); }
 }
 
 /* ---- 9 PM daily scheduler ---- */
