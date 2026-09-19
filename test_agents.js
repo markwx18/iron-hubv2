@@ -41,6 +41,29 @@ const w = dom.window;
 const ev = (expr) => w.eval(expr);
 const call = (fn, ...args) => { w.__a = args; return w.eval(fn + '.apply(null, window.__a)'); };
 
+/* Freeze the HOUR for one call under test, and hold it frozen until that call is DONE.
+   Six copies of this used to live inline, and every one of them restored the real clock on the
+   synchronous return -- which is wrong for the two functions it is most used on. Both
+   agMaybeMorningBrief() and agMaybeAutoRun() hand off to a confirming GET and then re-check
+   the hour AFTER that await, by which point the stub was already gone and the REAL clock
+   answered. That made the brief section pass all afternoon and fail from 6 PM (AG_BRIEF_LATEST)
+   onwards: a suite whose colour depended on when it was run, which is precisely what this repo
+   forbids. Restoring only once the promise settles fixes it.
+
+   Still restores synchronously when fn() returns a non-promise: several call sites below do not
+   await, and leaking the stub past them into the next assertion would be a new bug for an old
+   one. */
+function withHourAt(h, fn){
+  ev('Date.prototype.__realGetHours = Date.prototype.getHours;');
+  ev('Date.prototype.getHours = function(){ return ' + h + '; };');
+  const done = () => ev('Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours;');
+  let out;
+  try { out = fn(); } catch (e) { done(); throw e; }
+  if (out && typeof out.then === 'function') return out.then(v => { done(); return v; }, e => { done(); throw e; });
+  done();
+  return out;
+}
+
 // The nightly cycle is four calls now (three specialists in parallel, then the lead), not one
 // combined call, so a stub has to answer PER AGENT instead of returning one object with four
 // keys in it. Routes on the role line in the system prompt, which is the same thing the model
@@ -4032,13 +4055,7 @@ setTimeout(async () => {
           return {ok: window.__dispStatus===204, status: window.__dispStatus,
                   json: async()=>({}), text: async()=>''};
         };`);
-    const withHour = function(h, fn){
-      ev('Date.prototype.__realGetHours = Date.prototype.getHours;');
-      ev('Date.prototype.getHours = function(){ return ' + h + '; };');
-      const out = fn();
-      ev('Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours;');
-      return out;
-    };
+    const withHour = withHourAt;
     const RESET = "window.__disp=[]; _whoopKickAt=0; _whoopKickWarned=false; " +
                   "localStorage.removeItem('ironhub:whoopkick'); localStorage.removeItem(WHOOP_RUNFAIL_KEY); " +
                   "window.__runsReply={workflow_runs:[]}; agState().log=[]; delete S.whoop;";
@@ -4881,13 +4898,7 @@ setTimeout(async () => {
     ev("S.settings.apiKey = 'sk-test'; agState().autoRun = true;");
     ev("window.__realDataN = callClaudeWithData;");
     ev("window.__netFail = function(){ callClaudeWithData = async function(){ throw new TypeError('Failed to fetch'); }; };");
-    const withHourN = function(h, fn){
-      ev("Date.prototype.__realGH2 = Date.prototype.getHours;");
-      ev("Date.prototype.getHours = function(){ return " + h + "; };");
-      const out = fn();
-      ev("Date.prototype.getHours = Date.prototype.__realGH2; delete Date.prototype.__realGH2;");
-      return out;
-    };
+    const withHourN = withHourAt;
     const reset = "agState().lastRun=''; agState().log=[]; agState().status={}; delete agState().retry; delete agState().brief;";
 
     // agMaybeAutoRun() now confirms the daily gate against the gist before spending a cycle, so
@@ -5104,13 +5115,7 @@ setTimeout(async () => {
        "  const d = JSON.parse(JSON.stringify(S)); d.agents = d.agents || {}; d.agents.lastRun = lastRun;" +
        "  return {exportedAt: Date.now() - 1000, data: d};" +
        "}; };");
-    const withHourS = function(h, fn){
-      ev("Date.prototype.__realGH3 = Date.prototype.getHours;");
-      ev("Date.prototype.getHours = function(){ return " + h + "; };");
-      const out = fn();
-      ev("Date.prototype.getHours = Date.prototype.__realGH3; delete Date.prototype.__realGH3;");
-      return out;
-    };
+    const withHourS = withHourAt;
     const staleLocal = "agState().lastRun = ''; S.meta.changedAt = Date.now() - 100000; window.__cycles = 0;";
 
     // exactly what a backgrounded tab holds: a gate that says nobody has run tonight
@@ -5179,13 +5184,7 @@ setTimeout(async () => {
     ev("agState().autoRun = true;");
     ev("window.__realRunAllO = agRunAll; window.__realFetchGistO = fetchGistData;");
     ev("agRunAll = function(){ window.__cyclesO++; };");
-    const withHourO = function (h, fn) {
-      ev("Date.prototype.__realGH4 = Date.prototype.getHours;");
-      ev("Date.prototype.getHours = function(){ return " + h + "; };");
-      const out = fn();
-      ev("Date.prototype.getHours = Date.prototype.__realGH4; delete Date.prototype.__realGH4;");
-      return out;
-    };
+    const withHourO = withHourAt;
     const staleO = "agState().lastRun=''; agState().log=[]; delete agState().retry; " +
                    "S.meta.changedAt = Date.now() - 100000; window.__cyclesO = 0;";
 
@@ -5404,13 +5403,7 @@ setTimeout(async () => {
           return {text: JSON.stringify({brief:'94% recovery this morning. D3 legs, go.'}),
                   toolsUsed:0, stop:'end_turn'};
         };`);
-    const withHour = function(h, fn){
-      ev("Date.prototype.__realGetHours = Date.prototype.getHours;");
-      ev("Date.prototype.getHours = function(){ return " + h + "; };");
-      const out = fn();
-      ev("Date.prototype.getHours = Date.prototype.__realGetHours; delete Date.prototype.__realGetHours;");
-      return out;
-    };
+    const withHour = withHourAt;
     const noWhoop    = "delete S.whoop;";
     const whoopToday = "S.whoop = {recovery:{date:todayKey(), score:94, hrv:121, rhr:57}, sleep:{date:todayKey(), hours:7.9, performance:90}};";
     const staleWhoop = "S.whoop = {recovery:{date: mesoAddDays(todayKey(),-1), score:71, hrv:99, rhr:61}};";
@@ -5652,13 +5645,7 @@ setTimeout(async () => {
           window.__briefCalls++; window.__briefSys = sys;
           return {text: JSON.stringify({brief:'locally written brief'}), toolsUsed:0, stop:'end_turn'};
         };`);
-    const withHourB = function(h, fn){
-      ev("Date.prototype.__realGHB = Date.prototype.getHours;");
-      ev("Date.prototype.getHours = function(){ return " + h + "; };");
-      const out = fn();
-      ev("Date.prototype.getHours = Date.prototype.__realGHB; delete Date.prototype.__realGHB;");
-      return out;
-    };
+    const withHourB = withHourAt;
     // What the gist holds -- plus, when asked, the WHOOP a real fetchGistData() would have
     // applied to S on the way past: it runs applyWhoop() before it returns, which is how a
     // confirming pull can answer "has recovery landed?" as well as "has anyone written one?".
@@ -6993,6 +6980,208 @@ setTimeout(async () => {
   }
   ev('S = ' + dvSaved + ';');
   ok('cleanup: real state restored after discord view section', ev('JSON.stringify(S)') === dvSaved);
+
+  /* ============================================================
+     WORKOUT SCHEDULE DOC
+     CHARLIE restates the schedule into the Google Doc Mark keeps by hand. Everything here is
+     computed, never modelled, so it is all exactly assertable -- and it had better be, because
+     the failure mode is a document quietly telling him he skipped a session he did not.
+     ============================================================ */
+  console.log('=== WORKOUT SCHEDULE DOC ===');
+  const gdSaved = ev('JSON.stringify(S)');
+  try {
+    ev("localStorage.removeItem(GDOC_NOTE_KEY); _gdocAt = 0; _gdocWarned = '';");
+    // Fixed day keys, never currentDayKey(): this must read the same on a rest day.
+    ev("S.scheduleMode='dow'; S.schedule={0:'REST',1:'D1',2:'D2',3:'D3',4:'D4',5:'D5',6:'D6'};");
+    ev("S.split = JSON.parse(JSON.stringify(DEFAULT_SPLIT));");
+    ev("S.meso = {template:null, active:null}; S.overrideDay = null; S.logs = [];");
+    // Mar 1-7 2026 is Sun-Sat and entirely in the past, so 'missed' is reachable.
+    // Deliberately messy, per the fixture rule: a rested rest day, a trained day, a skipped
+    // day, and a day trained at home all have to come out differently.
+    ev("S.logs.push({id:1, date:'2026-03-02', day:'D1', entries:[{exercise:'Barbell Bench Press', sets:[{w:185,r:5}]}]});");
+    ev("S.logs.push({id:2, date:'2026-03-04', day:'D3', home:true, entries:[{exercise:'Leg Press', sets:[{w:300,r:8}]}]});");
+    ev("S.logs.push({id:3, date:'2026-03-08', day:'REST', entries:[{exercise:'Dips', sets:[{w:0,r:10}]}]});");
+
+    // --- the label, which is what the script matches a week on ---
+    ok('doc label: a week inside one month', call('gdocWeekLabel', '2026-03-01') === 'Week of Mar 1-7',
+       call('gdocWeekLabel', '2026-03-01'));
+    ok('doc label: a week that straddles a month names the second one',
+       call('gdocWeekLabel', '2026-08-30') === 'Week of Aug 30-Sep 5', call('gdocWeekLabel', '2026-08-30'));
+
+    // --- Sunday-Saturday, NOT the training week ---
+    ok('doc week starts on Sunday', call('gdocWeekStart', '2026-03-04') === '2026-03-01',
+       call('gdocWeekStart', '2026-03-04'));
+    ok('...and a Sunday is its own week start', call('gdocWeekStart', '2026-03-01') === '2026-03-01');
+    ok('...and it is deliberately not weekStartKey(), which is the training week',
+       !/weekStartKey/.test(ev('gdocWeekStart.toString()')));
+
+    // --- the week, line by line ---
+    const wk = JSON.parse(ev("JSON.stringify(gdocWeekModel('2026-03-01','VANGUARD'))"));
+    const line = i => wk.days[i].text, stat = i => wk.days[i].status;
+    ok('doc week: label carried', wk.label === 'Week of Mar 1-7');
+    ok('doc week: seven days', wk.days.length === 7, wk.days.length);
+    ok('doc week: a rest day reads Rest and is bold only up to the colon',
+       line(0) === 'Sunday, Mar 1: Rest' && wk.days[0].plainFrom === 'Sunday, Mar 1: '.length, line(0));
+    ok('doc week: a rested rest day is not marked at all', stat(0) === 'pending', stat(0));
+    ok('doc week: a trained day is the split name, upper-cased, with the gym tag',
+       line(1) === 'Monday, Mar 2: CHEST + TRICEPS [VANGUARD]', line(1));
+    ok('doc week: a training day with a session logged is green',
+       stat(1) === 'done' && wk.days[1].plainFrom === -1, stat(1));
+    ok('doc week: a training day that passed with nothing logged is red', stat(2) === 'missed', stat(2));
+    ok('doc week: [HOME] comes from the logged session, not the default gym',
+       line(3) === 'Wednesday, Mar 4: LEGS + ABS (SQUAT) [HOME]', line(3));
+    ok('doc week: ...and that day is still green', stat(3) === 'done');
+    ok('doc week: the rest of the skipped week is red',
+       stat(4) === 'missed' && stat(5) === 'missed' && stat(6) === 'missed',
+       [stat(4), stat(5), stat(6)].join(','));
+
+    // A session logged on a scheduled REST day: he trained, so it is green -- but the doc still
+    // says Rest, because the doc reports the schedule and the schedule said rest.
+    const restTrained = JSON.parse(ev("JSON.stringify(gdocDay('2026-03-08','VANGUARD'))"));
+    ok('doc: training on a rest day turns it green without rewriting the plan',
+       restTrained.text === 'Sunday, Mar 8: Rest' && restTrained.status === 'done', JSON.stringify(restTrained));
+
+    // --- today is never red. He may still be going to train. ---
+    ev("S.logs = S.logs.filter(function(l){ return l.date !== todayKey(); });");
+    const todayDow = ev('new Date(todayKey()+"T00:00:00").getDay()');
+    ev("S.schedule[" + todayDow + "] = 'D1';");     // force today to be a TRAINING day, whatever day it is
+    const todayCell = JSON.parse(ev("JSON.stringify(gdocDay(todayKey(),'VANGUARD'))"));
+    ok('doc: fixture really has today as an unlogged training day',
+       ev("scheduledDayFor(todayKey())") === 'D1' && !ev("S.logs.some(function(l){return l.date===todayKey();})"));
+    ok('doc: today is never marked red', todayCell.status === 'pending', todayCell.status);
+    const tomorrow = ev("mesoAddDays(todayKey(),1)");
+    ok('doc: a day still to come is not marked either',
+       call('gdocStatusFor', tomorrow, 'D1') === 'pending');
+    ev("S.schedule[" + todayDow + "] = " + JSON.stringify(ev("S.schedule[" + todayDow + "]")) + ";");
+
+    // --- a strength block's S1/S2/S3 are keys, not names: they must resolve ---
+    ok('doc: the day name resolves through the split in force, not S.split',
+       /dayName\(/.test(ev('gdocDay.toString()')) && /activeSplitObj/.test(ev('dayName.toString()')) === false,
+       'gdocDay calls dayName(), which resolves via dayMeta()/activeSplitObj()');
+    ok('...and dayMeta() is what reads the active split', /activeSplitObj/.test(ev('dayMeta.toString()')));
+
+    // --- oldest first, because a new label is inserted at the TOP of the doc ---
+    ev("S.settings.gdocUrl='https://script.google.com/x/exec'; S.settings.gdocSecret='s3cret'; S.settings.gdocGym='VANGUARD';");
+    const pay = JSON.parse(ev("JSON.stringify(gdocPayload(gdocCfg(), 3))"));
+    ok('doc payload: three weeks', pay.weeks.length === 3);
+    ok('doc payload: oldest week first, so inserting at the top stacks them the right way up',
+       pay.weeks[2].label === call('gdocWeekLabel', call('gdocWeekStart', ev('todayKey()'))),
+       pay.weeks.map(x => x.label).join(' | '));
+    ok('doc payload: carries the secret', pay.secret === 's3cret');
+    ok('doc signature ignores the secret, so rotating it does not force a rewrite',
+       !/secret/.test(ev('gdocSig.toString()')));
+
+    // --- the credential pair is per device and must never be synced ---
+    const sp = JSON.parse(ev('syncPayload()')).data.settings;
+    ok('sync payload omits the doc web-app URL', !('gdocUrl' in sp), Object.keys(sp).join(','));
+    ok('sync payload omits the doc secret', !('gdocSecret' in sp));
+    ok('...but the gym tag is ordinary settings and still syncs', sp.gdocGym === 'VANGUARD');
+
+    // --- off unless BOTH halves are present: an absent setting is never "assume configured" ---
+    ev("var __u = S.settings.gdocUrl; S.settings.gdocUrl = '';");
+    ok('doc: no URL means off', ev('gdocCfg()') === null);
+    ev("S.settings.gdocUrl = __u; var __s = S.settings.gdocSecret; S.settings.gdocSecret = '';");
+    ok('doc: no secret means off', ev('gdocCfg()') === null);
+    ev("S.settings.gdocSecret = __s;");
+    ev("delete S.settings.gdocUrl; delete S.settings.gdocSecret;");
+    ok('doc: a settings object saved before this feature existed reads as off, not as default-on',
+       ev('gdocCfg()') === null);
+    let noNet = 0;
+    const realFetchG = w.fetch;
+    w.fetch = () => { noNet++; return Promise.reject(new Error('should not be called')); };
+    ok('doc: an unconfigured push sends nothing', (await ev('gdocPush()')) === false && noNet === 0, 'fetches=' + noNet);
+    ev("S.settings.gdocUrl='https://script.google.com/x/exec'; S.settings.gdocSecret='s3cret';");
+
+    // --- a confirmed write, and a repeat that costs nothing ---
+    const sent = [];
+    const gdocStub = (reply, status) => (url, opts) => {
+      sent.push({ url, opts });
+      return Promise.resolve({ ok: (status || 200) < 400, status: status || 200,
+                               text: () => Promise.resolve(typeof reply === 'string' ? reply : JSON.stringify(reply)) });
+    };
+    w.fetch = gdocStub({ ok: true, weeks: ['Week of Mar 1-7 (updated)'] });
+    ev("_gdocAt = 0;");
+    ok('doc: a push goes out', (await ev('gdocPush()')) === true && sent.length === 1, 'sent=' + sent.length);
+    ok('doc: POSTed as text/plain, because Apps Script cannot answer a CORS preflight',
+       sent[0].opts.method === 'POST' && /^text\/plain/.test(sent[0].opts.headers['Content-Type']),
+       JSON.stringify(sent[0].opts.headers));
+    const body0 = JSON.parse(sent[0].opts.body);
+    ok('doc: the body is the secret plus the weeks', body0.secret === 's3cret' && body0.weeks.length === 2);
+    ev("_gdocAt = 0;");
+    ok('doc: nothing has changed, so the second push is skipped',
+       (await ev('gdocPush()')) === false && sent.length === 1, 'sent=' + sent.length);
+    // ...and a change reopens it. Logging today is exactly what moves a cell from pending to done.
+    ev("S.logs.push({id:9, date:todayKey(), day:'D1', entries:[{exercise:'Dips', sets:[{w:0,r:8}]}]});");
+    ev("_gdocAt = 0;");
+    ok('doc: logging a session makes the next push go out', (await ev('gdocPush()')) === true && sent.length === 2,
+       'sent=' + sent.length);
+
+    // --- Apps Script answers 200 with {ok:false}. res.ok alone would call that a success. ---
+    ev("localStorage.removeItem(GDOC_NOTE_KEY); _gdocAt = 0; _gdocWarned = ''; agState().log = [];");
+    const logsBefore = ev('JSON.stringify(S.logs)');
+    w.fetch = gdocStub({ ok: false, error: 'bad secret' }, 200);
+    ok('doc: HTTP 200 with ok:false is a failure, not a write', (await ev('gdocPush()')) === false);
+    ok('doc: a failure records no signature, so the week is retried rather than assumed delivered',
+       !ev('gdocNote().sig'), JSON.stringify(ev('JSON.stringify(gdocNote())')));
+    ok('doc: ...and the reason is kept for Settings to show', /bad secret/.test(ev('gdocNote().msg')), ev('gdocNote().msg'));
+    ok('doc: a failed write never touches training data', ev('JSON.stringify(S.logs)') === logsBefore);
+    ok('doc: CHARLIE says so once, in the log he owns',
+       ev("agState().log.filter(function(e){ return e.agent==='charlie' && /Workout Schedule doc/.test(e.text); }).length") === 1,
+       ev("JSON.stringify(agState().log.map(function(e){return e.agent;}))"));
+    ok('doc: ...and names the per-device trap that made the WHOOP relay so hard to see',
+       ev("agState().log.some(function(e){ return /per DEVICE/.test(e.text); })"));
+    ev("_gdocAt = 0;");
+    await ev('gdocPush()');
+    ok('doc: the same failure is not logged twice',
+       ev("agState().log.filter(function(e){ return /Workout Schedule doc/.test(e.text); }).length") === 1);
+
+    // --- an unreachable script is silent to the workout ---
+    ev("localStorage.removeItem(GDOC_NOTE_KEY); _gdocAt = 0; _gdocWarned = '';");
+    w.fetch = () => Promise.reject(new TypeError('Load failed'));
+    let threw = false;
+    try { ok('doc: a dead network is not a write', (await ev('gdocPush()')) === false); }
+    catch (e) { threw = true; }
+    ok('doc: ...and it never throws into the caller', !threw);
+    ok('doc: ...and it records no signature either', !ev('gdocNote().sig'));
+
+    // --- the sign-in page is the failure he will actually hit ---
+    w.fetch = gdocStub('<!DOCTYPE html><html>Sign in</html>', 200);
+    ev("_gdocAt = 0;");
+    await ev('gdocTest()');
+    ok('doc: an HTML reply is reported as the deployment being private, not as raw markup',
+       /Anyone/.test(ev('gdocNote().msg')) && !/DOCTYPE/.test(ev('gdocNote().msg')), ev('gdocNote().msg'));
+
+    // --- wiring: the one "he is looking at the app" entry point, not a new interval ---
+    ok('doc: pushed from agForegroundCheck()', /gdocPush\(\)/.test(ev('agForegroundCheck.toString()')));
+    ok('doc: pushed when a LIVE session is saved', /gdocPush\(\)/.test(ev('endLiveSession.toString()')));
+    ok('doc: pushed when a session is saved from the manual log too',
+       /gdocPush\(\)/.test(ev('saveToday.toString()')));
+
+    // --- the Settings card ---
+    w.fetch = realFetchG;
+    ev("localStorage.removeItem(GDOC_NOTE_KEY); gdocOpen = false;");
+    const cardOn = ev('gdocCardHTML()');
+    ok('doc card: shows the controls once configured',
+       /gdocRunManual\(/.test(cardOn) && /gdocTest\(\)/.test(cardOn) && /Backfill/.test(cardOn), cardOn.slice(0, 120));
+    ok('doc card: says the credentials are per device', /this device/.test(cardOn));
+    ev("delete S.settings.gdocUrl; delete S.settings.gdocSecret;");
+    const cardOff = ev('gdocCardHTML()');
+    ok('doc card: unconfigured, it explains the setup instead', /workout-schedule\.gs/.test(cardOff));
+    ok('doc card: open-state is module-scoped, not on the DOM node', typeof ev('gdocOpen') === 'boolean');
+    ok('doc card: reaches the Settings tab', /gdocCardHTML\(\)/.test(ev('renderSettings.toString()')));
+
+    // --- and the hard rule: this is a window, not a door ---
+    ok('doc: no model call anywhere in the push path',
+       !/callClaude|aiSend|aiRequest/.test(ev('gdocPush.toString()') + ev('gdocPayload.toString()') +
+                                           ev('gdocWeekModel.toString()')));
+    ok('doc: nothing it sends can come back as state',
+       !/gdoc/i.test(ev('applyPulled.toString()')) && !/gdoc/i.test(ev('fetchGistData.toString()')));
+  } catch (e) {
+    ok('workout schedule doc section', false, e.stack);
+  }
+  ev('S = ' + gdSaved + ';');
+  ev("localStorage.removeItem(GDOC_NOTE_KEY); _gdocAt = 0; _gdocWarned = '';");
+  ok('cleanup: real state restored after the schedule doc section', ev('JSON.stringify(S)') === gdSaved);
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

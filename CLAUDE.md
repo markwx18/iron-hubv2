@@ -273,6 +273,7 @@ so the two orders can no longer disagree.
 | Muscle map data | `bmViewerData()`, `bmStatusFor()`, `bmWeeklyVol()`, `bmTrainedDays()` |
 | 3D viewer | `bm3dInit()`, `bm3dBuild()`, `bm3dApply()`, `bm3dPick()`, `bm3dDispose()`, `bm3dFallback()` |
 | Discord view | `discordView()`, `discordViewFile()`, `syncFiles()`, `DISCORD_VIEW_FILE`; Worker in `discord/src/` |
+| Schedule doc | `gdocWeekModel()`, `gdocDay()`, `gdocStatusFor()`, `gdocPush()`, `gdocCfg()`, `gdocCardHTML()`; Apps Script in `scripts/gdoc/workout-schedule.gs` |
 
 **Agent system:** four agents — ZULU (lead), CHARLIE (logistics/schedule/data health),
 DELTA (training), ECHO (nutrition/bodyweight). Model: `claude-sonnet-5`, declared once as
@@ -593,6 +594,33 @@ cannot disagree with the app. Three rules:
 Nothing in the Worker calls Claude. A future command that does must be labeled as paid. Version
 notes come from `.github/workflows/discord-release.yml`, which fires only when the build marker in
 `index.html` changes, so skipping the bump also skips the announcement.
+
+**The schedule doc is a window too, and a computed one.** CHARLIE writes the weekly schedule into
+the Google Doc Mark has kept by hand since January (`gdocPush()`, nightly-free: it fires from
+`agForegroundCheck()` and after a session is saved). **No model call is involved and none should
+be** — the doc restates what `scheduledDayFor()` says and what `S.logs` holds, which a pure
+function produces exactly and Sonnet would only produce expensively and sometimes wrongly. The
+arrow points one way: nothing reads the doc back, and `gdocPush()` touches `S` only through
+`agLog()` on a failure. Four things that removal or extension here must keep:
+
+- **Sunday–Saturday, not `weekStartKey()`.** The doc has run on calendar weeks since the first
+  entry; `weekStartKey()` is the *training* week (the day after the last scheduled rest day, and
+  in cycle mode not 7 days at all). `gdocWeekStart()` is deliberately separate.
+- **Today is never marked red.** `gdocStatusFor()` uses a strict `<` against `todayKey()`. A red
+  mark on a day he may still be about to train would sit there all afternoon telling him he
+  failed.
+- **The URL and secret are a credential pair for a live document-editing endpoint**, so
+  `syncPayload()` strips them next to `ghToken`/`apiKey`, which makes "is the doc being written?"
+  a per-device question with a per-device answer — the exact shape of the 2026-09-08 WHOOP relay
+  confusion. The card says so on the connected view, not only inside the edit form.
+- **A 200 is not a success.** Apps Script answers `200 {ok:false}` for a bad secret, so
+  `res.ok` alone would record a write that never happened, close the signature gate, and stop
+  retrying. Check the body.
+
+The Apps Script half is idempotent by label: a week already in the doc is rewritten in place, a
+new one is inserted at the top, and weeks nobody sends are never touched — which is what keeps a
+year of hand-written history safe. Editing `workout-schedule.gs` does nothing until it is
+re-deployed as a **New version**; the `/exec` URL otherwise keeps running the old code.
 
 **Photos never go in `S`.** State holds an index; the blobs live in their own gist, fetched
 on demand. Everything in `S` is re-serialized on every save and re-uploaded on every sync.

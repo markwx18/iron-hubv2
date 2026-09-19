@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-19-v2">
+<meta name="ironhub-build" content="2026-09-19-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2641,6 +2641,7 @@ function saveToday(){
   const beforePR = snapshotPRs();
   S.logs.push(stampRec({id:Date.now(), date:todayKey(), day:dk, entries}));
   save();
+  try{ gdocPush(); }catch(e){}   // same reason as endLiveSession(): today just turned green
   checkPRs(beforePR);
   todaySwaps = {};
   $('#saveMsg').innerHTML='<span class="ok">✓ Saved. '+entries.length+' exercises logged.</span>';
@@ -3872,6 +3873,9 @@ let _lastPushExportedAt = 0;   // exportedAt stamp of the snapshot this device l
 function syncPayload(){
   const d = JSON.parse(JSON.stringify(S));
   delete d.settings.ghToken; delete d.settings.gistId; delete d.settings.apiKey; // secrets never leave the device
+  // The schedule doc's web-app URL and shared secret are a credential pair for a live endpoint
+  // that can edit a document. They stay on the device that set them, alongside the tokens above.
+  delete d.settings.gdocUrl; delete d.settings.gdocSecret;
   // WHOOP is cached locally so it survives an offline launch, but the Action owns that file
   // and this app is not a writer of it. Pushing our copy back would duplicate it in the sync
   // payload and let a stale local read outlive the fresh remote one.
@@ -3949,6 +3953,218 @@ function syncFiles(){
   const dv = discordViewFile();
   if(dv) files[DISCORD_VIEW_FILE] = dv;
   return files;
+}
+/* ============================================================
+   WORKOUT SCHEDULE DOC — CHARLIE keeps the Google Doc Mark has kept by hand since January
+   ============================================================
+   There is no model call anywhere in here and there never should be. The doc is a restatement
+   of facts the app already holds — what the schedule says, and what was logged against it — so
+   asking Sonnet to write it would cost money nightly to produce something a pure function
+   produces exactly. CHARLIE owns it the way CHARLIE owns the relay warnings: it runs under his
+   name and reports in his log, but the content is computed.
+
+   Nothing here touches S except agLog() on a failure, so it is outside everything agApplyFix()
+   guards, and there is no path by which the doc can change training state — the arrow only
+   points out. Same rule as Discord: a window, not a door.
+
+   The Apps Script half lives in scripts/gdoc/workout-schedule.gs and is pasted into the doc
+   itself; it is never loaded by the app. */
+const GDOC_NOTE_KEY = 'ironhub:gdocpush';   // per device, out of S — see gdocNote()
+const GDOC_GAP = 10*60*1000;                // floor between automatic attempts
+const GDOC_WEEKS = 2;                       // this week + last week, every automatic push
+const GDOC_BACKFILL_WEEKS = 12;
+const GDOC_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const GDOC_DOWS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+/* Configured at all? The URL and secret are stripped by syncPayload(), so this is a per-device
+   question with a per-device answer, exactly like the WHOOP relay token. Absent means OFF —
+   never "assume the default is in place", because load() takes a stored settings object
+   wholesale and a field added to DEFAULT_STATE.settings comes back ABSENT on his existing
+   install rather than at its default. Same trap as S.meta. */
+function gdocCfg(){
+  const st = S.settings || {};
+  const url = String(st.gdocUrl||'').trim(), secret = String(st.gdocSecret||'').trim();
+  if(!url || !secret) return null;
+  return {url, secret, gym: String(st.gdocGym||'').trim() || 'VANGUARD', on: st.gdocOn !== false};
+}
+/* Sunday of the calendar week containing dateKey. Deliberately NOT weekStartKey(): that one
+   starts the day after the last scheduled rest day, and in cycle mode is not a 7-day window at
+   all. The doc has run Sunday-to-Saturday since the first entry. Two different questions. */
+function gdocWeekStart(dateKey){
+  const d = new Date(dateKey+'T00:00:00');
+  d.setDate(d.getDate() - d.getDay());
+  return dateKeyOf(d);
+}
+/* "Week of Sep 6-12", and "Week of Aug 30-Sep 5" when the week straddles a month. Three-letter
+   months throughout: the hand-written history spells some months out and abbreviates others,
+   but every recent week abbreviates, and consistency matters more than matching a year of
+   drift. */
+function gdocWeekLabel(sun){
+  const a = new Date(sun+'T00:00:00');
+  const b = new Date(sun+'T00:00:00'); b.setDate(b.getDate()+6);
+  return 'Week of '+GDOC_MONTHS[a.getMonth()]+' '+a.getDate()+'-'+
+    (a.getMonth()===b.getMonth() ? '' : GDOC_MONTHS[b.getMonth()]+' ')+b.getDate();
+}
+/* done    — something was logged that day
+   missed  — a training day already in the past with nothing logged against it
+   pending — today, the future, or a rest day that was genuinely rested
+   Today is never 'missed'. A red mark on a day he may still be about to train is a lie, and it
+   would sit there all afternoon. */
+function gdocStatusFor(dateKey, dayKey){
+  if(S.logs.some(l=>l.date===dateKey)) return 'done';
+  if(dayKey==='REST') return 'pending';
+  return dateKey < todayKey() ? 'missed' : 'pending';
+}
+/* [HOME] only where a logged session actually says so — finishSession() stamps home:true onto
+   the record, so it survives the same-day expiry of S.homeToday and is still readable weeks
+   later. Everything else takes the default gym rather than guessing. */
+function gdocGymFor(dateKey, gym){
+  return S.logs.some(l=>l.date===dateKey && l.home) ? 'HOME' : gym;
+}
+/* One line. plainFrom is the index at which it stops being bold, -1 for all-bold: a rest line
+   in this doc is bold up to the colon and plain after it, and that is worth preserving. */
+function gdocDay(dateKey, gym){
+  const d = new Date(dateKey+'T00:00:00');
+  const prefix = GDOC_DOWS[d.getDay()]+', '+GDOC_MONTHS[d.getMonth()]+' '+d.getDate()+': ';
+  const dk = scheduledDayFor(dateKey);
+  const status = gdocStatusFor(dateKey, dk);
+  if(dk==='REST') return {text: prefix+'Rest', plainFrom: prefix.length, status};
+  // dayName() resolves through activeSplitObj(), so an approved strength block's S1/S2/S3 read
+  // as the names he trained under instead of as keys that mean nothing in a document.
+  return {text: prefix+String(dayName(dk)||dk).toUpperCase()+' ['+gdocGymFor(dateKey, gym)+']',
+          plainFrom: -1, status};
+}
+function gdocWeekModel(sun, gym){
+  const days = [];
+  for(let i=0;i<7;i++) days.push(gdocDay(mesoAddDays(sun, i), gym));
+  return {label: gdocWeekLabel(sun), days};
+}
+/* Oldest week first. A label the doc has never seen is inserted at the TOP, so sending them
+   newest-first would stack them upside down. */
+function gdocPayload(cfg, weeks){
+  const n = Math.max(1, weeks || GDOC_WEEKS);
+  const thisSun = gdocWeekStart(todayKey());
+  const out = [];
+  for(let i=n-1;i>=0;i--) out.push(gdocWeekModel(mesoAddDays(thisSun, -7*i), cfg.gym));
+  return {secret: cfg.secret, weeks: out};
+}
+/* Fingerprint of what would be WRITTEN. The secret is excluded on purpose: rotating it must not
+   force a rewrite of the doc, and it has no business being stored a second time. */
+function gdocSig(payload){
+  const s = JSON.stringify(payload.weeks);
+  let h = 0;
+  for(let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) | 0;
+  return h+':'+s.length;
+}
+/* Kept in its own localStorage key rather than in S, for the two reasons the WHOOP relay note
+   and the brief trail are: it records what THIS device sent (only one device needs to be
+   configured, and merging two devices' attempts would be meaningless), and a new S.meta field
+   would come back absent on an existing install. */
+function gdocNote(){
+  try{ return JSON.parse(localStorage.getItem(GDOC_NOTE_KEY) || 'null') || {}; }catch(e){ return {}; }
+}
+function gdocNoteSet(o){
+  try{ localStorage.setItem(GDOC_NOTE_KEY, JSON.stringify(Object.assign(gdocNote(), o, {at:Date.now()}))); }catch(e){}
+}
+let _gdocAt = 0;
+let _gdocWarned = '';
+/* opts: {manual:true} to bypass the on/off switch, the throttle and the unchanged-since-last-
+   write check; {weeks:n} to send more than the usual two. Returns true only on a confirmed
+   write. Never throws — a document nicety must not be able to cost a workout. */
+async function gdocPush(opts){
+  opts = opts || {};
+  const cfg = gdocCfg();
+  if(!cfg) return false;
+  if(!cfg.on && !opts.manual) return false;
+  const payload = gdocPayload(cfg, opts.weeks);
+  const sig = gdocSig(payload);
+  if(!opts.manual){
+    const prev = gdocNote();
+    // Only a CONFIRMED write closes the gate. A failed attempt records no signature, so a week
+    // the doc never received is retried rather than assumed delivered.
+    if(prev.ok && prev.sig === sig) return false;
+    if(Date.now() - _gdocAt < GDOC_GAP) return false;
+  }
+  _gdocAt = Date.now();
+  let res, body;
+  try{
+    /* text/plain keeps this a SIMPLE request. An application/json POST triggers a CORS
+       preflight, and an Apps Script web app does not answer OPTIONS — the browser would refuse
+       the send before it ever left the device. The script parses e.postData.contents itself, so
+       the declared type is irrelevant to it. */
+    res = await fetch(cfg.url, {method:'POST', redirect:'follow',
+      headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload)});
+    body = await res.text();
+  }catch(e){
+    gdocNoteSet({ok:false, sig:'', msg:'could not reach the script ('+((e && e.message) || 'network error')+')'});
+    return false;
+  }
+  let j = null; try{ j = JSON.parse(body); }catch(e){}
+  if(!res.ok || !j || !j.ok){
+    const msg = (j && j.error) ? String(j.error).slice(0,160) : ('HTTP '+res.status);
+    gdocNoteSet({ok:false, sig:'', msg:msg});
+    /* Once per distinct failure, in the log CHARLIE owns. A doc that quietly stops updating is
+       precisely the failure shape that went unnoticed for days with the WHOOP relay, and the
+       per-device detail is the part that made that one so hard to see. */
+    if(_gdocWarned !== msg){
+      _gdocWarned = msg;
+      agLog('charlie', 'Could not update the Workout Schedule doc: '+msg+'. The weekly schedule '+
+        'is not being written. The web-app URL and secret are per DEVICE — they are never '+
+        'synced — so check Settings › Workout Schedule Doc on this device, and re-deploy the '+
+        'Apps Script as a New version if you edited it.');
+      save(false);
+    }
+    return false;
+  }
+  _gdocWarned = '';
+  gdocNoteSet({ok:true, sig:sig, msg:'', weeks:(j.weeks||[]).join(' · ')});
+  return true;
+}
+function setGdocMsg(t, err){ const el = $('#gdocMsg'); if(el){ el.textContent = t; el.className = err ? 'err' : 'small ok'; } }
+function gdocSaveSettings(){
+  S.settings.gdocUrl = ($('#gdocUrl') ? $('#gdocUrl').value : '').trim();
+  S.settings.gdocSecret = ($('#gdocSecret') ? $('#gdocSecret').value : '').trim();
+  S.settings.gdocGym = (($('#gdocGym') ? $('#gdocGym').value : '').trim() || 'VANGUARD').toUpperCase();
+  // touch+push, not save(false): the gym tag is ordinary synced state and this is a user action,
+  // so a background pull a minute later must not be able to revert it. The URL and secret are
+  // stripped from the payload either way, so nothing secret goes out with it.
+  save();
+  renderSettings();
+  setGdocMsg(gdocCfg() ? '✓ Saved on this device. Hit Test doc to check it.' : 'Both the URL and the secret are needed.', !gdocCfg());
+}
+/* Proves the URL, the secret and the deployment in one round trip without editing the doc. */
+async function gdocTest(){
+  const cfg = gdocCfg();
+  if(!cfg){ setGdocMsg('Paste the web-app URL and the secret first.', true); return; }
+  setGdocMsg('Asking the script…');
+  try{
+    const res = await fetch(cfg.url, {method:'POST', redirect:'follow',
+      headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({secret:cfg.secret, ping:true})});
+    const txt = await res.text();
+    let j = null; try{ j = JSON.parse(txt); }catch(e){}
+    if(j && j.ok){ gdocNoteSet({ok:true, sig:'', msg:''}); renderSettings();
+      setGdocMsg('✓ Connected to “'+(j.doc||'the document')+'”. Nothing was changed.'); return; }
+    /* An Apps Script URL that answers with HTML rather than JSON is nearly always the sign-in
+       page, which means the deployment is not set to "Anyone". Say that, rather than dumping a
+       page of markup into a status line. */
+    const msg = (j && j.error) ? j.error
+      : /^\s*</.test(txt) ? 'the script returned a sign-in page — re-deploy with Who has access set to Anyone'
+      : ('HTTP '+res.status);
+    gdocNoteSet({ok:false, sig:'', msg:msg}); renderSettings();
+    setGdocMsg('The script refused it: '+msg, true);
+  }catch(e){ setGdocMsg('Could not reach the script — '+(e.message||'network error')+
+    '. Check the URL ends in /exec.', true); }
+}
+async function gdocRunManual(weeks){
+  if(!gdocCfg()){ setGdocMsg('Paste the web-app URL and the secret first.', true); return; }
+  setGdocMsg(weeks>GDOC_WEEKS ? 'Writing the last '+weeks+' weeks…' : 'Writing this week…');
+  const ok = await gdocPush({manual:true, weeks:weeks});
+  // Re-resolved after the await rather than captured before it: a sync landing mid-request
+  // replaces S wholesale, and anything written through an older reference is silently dropped.
+  save();
+  renderSettings();
+  const n = gdocNote();
+  setGdocMsg(ok ? '✓ Wrote '+(n.weeks||'the schedule')+'.' : (n.msg || 'The write failed.'), !ok);
 }
 function setSyncMsg(t, err){ const el = $('#syncMsg'); if(el){ el.textContent = t; el.className = err ? 'err' : 'small ok'; } }
 function markSynced(){
@@ -5314,6 +5530,7 @@ async function refreshMeal(i){
 /* Module-scoped, not on the DOM node: rerenderActive() regenerates the whole active tab
    every 30s and after every sync pull, so a DOM-only toggle would close itself mid-paste. */
 let tokOpen = false;
+let gdocOpen = false;
 function renderSettings(){
   const el = $('#settings');
   const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -5432,12 +5649,73 @@ function renderSettings(){
   }
   html += '<p class="small" id="syncMsg" style="margin-top:8px"></p></div>';
 
+  html += gdocCardHTML();
+
   html += '<h2>Data</h2><div class="card"><div class="row">'+
     '<div style="flex:none"><button class="btn sm ghost" onclick="exportData()">Export JSON</button></div>'+
     '<div style="flex:none"><label class="btn sm ghost" style="display:inline-block;cursor:pointer">Import JSON<input type="file" accept=".json" style="display:none" onchange="importData(this)"></label></div>'+
     '<div style="flex:none"><button class="btn sm ghost" onclick="resetAll()" style="color:var(--bad);border-color:var(--bad)">Reset Everything</button></div></div>'+
     '<p class="small" style="margin-top:8px">Export regularly — localStorage can be wiped by browser cleanup. The JSON file is your backup.</p></div>';
   el.innerHTML = html;
+}
+/* Rendered as its own card rather than folded into Cloud Sync: it is a different endpoint with
+   a different credential, and the WHOOP relay lesson was that a failure hidden under somebody
+   else's green dot goes unnoticed for days. */
+function gdocCardHTML(){
+  const cfg = gdocCfg();
+  const n = gdocNote();
+  const gym = String((S.settings||{}).gdocGym||'').trim() || 'VANGUARD';
+  let h = '<h2>Workout Schedule Doc</h2><div class="card">';
+  if(cfg){
+    h += '<p class="small">'+(n.ok
+        ? '<span class="ok">● Connected</span>'
+        : (n.msg ? '<span class="err">● Last write failed</span>' : '<span class="ok">● Configured</span>'))+
+      ' · CHARLIE writes this week and last week into the doc whenever something changes.'+
+      (n.at ? ' Last attempt '+new Date(n.at).toLocaleString()+'.' : '')+'</p>'+
+      (n.ok && n.weeks ? '<p class="small" style="color:var(--cyan)">Last wrote: '+esc(n.weeks)+'</p>' : '')+
+      (!n.ok && n.msg ? '<p class="small err">'+esc(n.msg)+'</p>' : '')+
+      '<div class="row" style="margin-top:10px">'+
+      '<div style="flex:none"><button class="btn sm" onclick="gdocRunManual('+GDOC_WEEKS+')">Write now</button></div>'+
+      '<div style="flex:none"><button class="btn sm ghost" onclick="gdocTest()">Test doc</button></div>'+
+      '<div style="flex:none"><button class="btn sm ghost" onclick="gdocRunManual('+GDOC_BACKFILL_WEEKS+')">Backfill '+GDOC_BACKFILL_WEEKS+' weeks</button></div>'+
+      '<div style="flex:none"><button class="btn sm ghost" onclick="gdocOpen=!gdocOpen;renderSettings()">'+
+        (gdocOpen?'Close':'Edit connection')+'</button></div></div>'+
+      '<label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
+      '<input type="checkbox" style="width:auto" '+(S.settings.gdocOn!==false?'checked':'')+
+        ' onchange="S.settings.gdocOn=this.checked;save();renderSettings();">'+
+      'Keep the doc up to date automatically</label>'+
+      '<p class="small" style="margin-top:8px">A logged session turns its day <b>green</b>; a training '+
+      'day that passed with nothing logged turns <b>red</b>. Today is never marked red. Weeks you '+
+      'wrote by hand are never touched — only the two most recent are rewritten, and rewriting '+
+      'one with the same content changes nothing.</p>'+
+      // Stated on the connected view, not only inside the edit form: this is the exact shape of
+      // the WHOOP relay failure, where one device worked, the other did not, and nothing on
+      // screen said the setting was per device at all.
+      '<p class="small">Set up on <b>this device</b> only — the URL and secret are never synced, '+
+      'so another device will not write the doc until it is set up there too.</p>';
+  }
+  if(!cfg || gdocOpen){
+    h += (cfg ? '<div style="margin-top:14px;border-top:1px solid var(--line2);padding-top:12px">' : '')+
+      (cfg ? '' : '<p class="small">Let CHARLIE write your weekly schedule into the Google Doc you keep by hand. '+
+        'Iron Hub has no backend, so a small script inside the doc does the editing — '+
+        '<span class="mono">scripts/gdoc/workout-schedule.gs</span> in the repo has the setup, and it '+
+        'takes about two minutes.</p>')+
+      '<label>Apps Script web app URL</label><input id="gdocUrl" placeholder="https://script.google.com/…/exec" value="'+
+        esc((S.settings||{}).gdocUrl||'')+'">'+
+      '<label style="margin-top:10px">Shared secret</label><input type="password" id="gdocSecret" placeholder="the IRONHUB_SECRET script property" value="'+
+        esc((S.settings||{}).gdocSecret||'')+'">'+
+      '<label style="margin-top:10px">Default gym tag</label><input id="gdocGym" placeholder="VANGUARD" value="'+esc(gym)+'">'+
+      '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">'+
+      '<button class="btn sm" onclick="gdocSaveSettings()">Save</button>'+
+      '<button class="btn sm ghost" onclick="gdocTest()">Test doc</button>'+
+      (cfg ? '<button class="btn sm ghost" onclick="gdocOpen=false;renderSettings()">Cancel</button>' : '')+'</div>'+
+      '<p class="small" style="margin-top:8px">The URL and secret stay on <b>this device</b> — they are '+
+      'stripped from every sync, exactly like your GitHub token — so set them up on each device you '+
+      'want writing the doc. Days are tagged <span class="mono">['+esc(gym)+']</span> unless the session '+
+      'was logged in HOME mode, which writes <span class="mono">[HOME]</span>.</p>'+
+      (cfg ? '</div>' : '');
+  }
+  return h + '<p class="small" id="gdocMsg" style="margin-top:8px"></p></div>';
 }
 function setScheduleMode(v){
   scheduleInit();
@@ -6419,6 +6697,10 @@ function endLiveSession(){
   logRec.trimmed = !!live.trimmed;
   S.logs.push(stampRec(logRec));
   save();
+  // Today just turned green. Waiting for the next foreground check would be correct but slow,
+  // and this is the one moment the doc is guaranteed to be out of date. Fire-and-forget: it
+  // never throws, never renders, and never touches the summary about to be shown.
+  try{ gdocPush(); }catch(e){}
   // compute summary
   const totalSets = entries.reduce((a,e)=>a+e.sets.length,0);
   const totalVol = entries.reduce((a,e)=>a+e.sets.reduce((b,s)=>b+(+s.w||0)*(+s.r||0),0),0);
@@ -13240,6 +13522,10 @@ function agForegroundCheck(){
   try{ whoopMaybeKick(); }catch(e){}
   try{ agMaybeAutoRun(); }catch(e){}
   try{ agMaybeMorningBrief(); }catch(e){}
+  // Same reasoning as the three above, and the same reason it is not a new setInterval: on iOS
+  // an interval is frozen for as long as the app is backgrounded. Its own gate decides whether
+  // anything actually goes out, and an unchanged week costs nothing.
+  try{ gdocPush(); }catch(e){}
 }
 
 /* ============================================================
