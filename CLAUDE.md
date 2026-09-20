@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1604 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1668 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -384,6 +384,17 @@ the stream has started, the API is generating, so a mid-stream failure is billed
 repeated. The thrown message now says which it was and how long in (`Load failed — the reply was
 cut off 61s in` vs `no reply on any of 3 tries`), because a bare "Load failed" was exactly what made
 this take two nights to see.
+
+**And streaming did not end it.** On 2026-09-19 DELTA died again — `cut off 39s in`, while CHARLIE,
+ECHO and ZULU all came back over the same seconds, ZULU four seconds later. So it was neither the
+network nor the 60s idle rule: 39s of connection cannot contain a 60s silence. Something severed a
+stream that was receiving bytes, and nothing recorded could say what. `aiStreamNote()` now appends
+what had arrived — `[407 B in over 3 events, longest silence 12s, still thinking]` — to both a
+mid-stream drop and a stream that just stops. A longest silence near 60s is WebKit giving up on a
+quiet stream and wants more bytes on the wire; a short one with bytes still flowing is the
+connection being taken away and wants something else entirely. The gap still *running* when it died
+is folded in, or the number is always under-reported by exactly the silence that killed it. Mark
+chose evidence over a retry here: a mid-stream drop is billed work and is still never re-sent.
 
 **A repaint must never be able to strand an in-flight flag.** Both runners used to call
 `renderOps()` between raising their module-scoped guard and entering the `try`. A throw from a

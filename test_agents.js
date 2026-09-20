@@ -6071,6 +6071,9 @@ setTimeout(async () => {
     try { cutVal = await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000)"); } catch (e) { cutErr = e; }
     ok('a stream that ends with no message_stop throws instead of passing half a reply off as whole',
        !!cutErr && /ended before/.test(cutErr.message), cutErr ? cutErr.message : 'returned ' + JSON.stringify(cutVal));
+    ok('and it says how far it got, not just that it stopped',
+       !!cutErr && /over \d+ events/.test(cutErr.message) && /writing its answer/.test(cutErr.message),
+       cutErr && cutErr.message);
 
     // --- the connection dropping MID-reply: billed work, so not repeated ---
     // Before this change a mid-reply drop and a request that never left the phone were the same
@@ -6088,6 +6091,57 @@ setTimeout(async () => {
     w.__midErr = midErr;
     ok('while still counting as a connection failure for the cycle-level decision',
        ev('agIsNetworkErr(window.__midErr)') === true);
+
+    // --- and it says WHAT had arrived, which is the whole diagnosis ---
+    // 'cut off 39s in' was all 2026-09-19 left behind, and it cannot separate a stream that went
+    // quiet (Safari drops one after 60s) from a connection taken away while bytes were still
+    // arriving. The two want opposite fixes, so the failure has to name which it was.
+    const think = chunk7(sse([
+      {type:'message_start', message:{id:'m', content:[], stop_reason:null, usage:{}}},
+      {type:'content_block_start', index:0, content_block:{type:'thinking', thinking:'', signature:''}},
+      {type:'content_block_delta', index:0, delta:{type:'thinking_delta', thinking:'Weighing the bench numbers.'}}
+    ]));
+    // A reader that can hold one read open, so the silence before the drop is a real measured
+    // gap rather than zero -- the existing __sseRes resolves every read instantly.
+    ev(`window.__slowRes = function(chunks, delayAt, ms){
+          let i = 0;
+          const one = function(c){
+            return (c === 'DROP') ? Promise.reject(new TypeError('Load failed'))
+                                  : Promise.resolve({done:false, value:new Uint8Array(c)});
+          };
+          return {ok:true, status:200,
+            headers:{get:function(k){ return /content-type/i.test(k) ? 'text/event-stream' : null; }},
+            body:{getReader:function(){ return {read:function(){
+              if(i >= chunks.length) return Promise.resolve({done:true, value:undefined});
+              const n = i, c = chunks[i++];
+              if(n !== delayAt) return one(c);
+              return new Promise(function(res, rej){ setTimeout(function(){ one(c).then(res, rej); }, ms); });
+            }}; }},
+            json:function(){ return Promise.reject(new Error('an event stream has no JSON body')); }};
+        };`);
+    w.__think = think;
+    ev(`window.__fetchN = 0;
+        window.fetch = window.__apiOnly(function(){
+          const ch = window.__think.concat(['DROP']);
+          return Promise.resolve(window.__slowRes(ch, ch.length - 1, 1200));
+        });`);
+    let telErr = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000)"); } catch (e) { telErr = e; }
+    ok('a drop mid-think names what the model was doing when the line went dead',
+       !!telErr && /still thinking/.test(telErr.message), telErr && telErr.message);
+    ok('and how much had arrived, so "nothing came back" can be told from "most of it did"',
+       !!telErr && /\d+(\.\d+)? [BK]B? in over 3 events/.test(telErr.message), telErr && telErr.message);
+    // The silence still running when the connection died is closed by nothing, so without
+    // aiStreamNote() folding it in, the longest gap here reads 0s -- exactly the measurement
+    // that would tell Safari's 60s idle rule apart from a severed connection.
+    ok('and the longest silence includes the one that was still running when it died',
+       !!telErr && /longest silence [1-9]\d*s/.test(telErr.message), telErr && telErr.message);
+
+    ev(`window.fetch = window.__apiOnly(function(){ return Promise.resolve(window.__sseRes(['DROP'])); });`);
+    let emptyErr = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000)"); } catch (e) { emptyErr = e; }
+    ok('a connection that dies before a single byte says so outright',
+       !!emptyErr && /nothing arrived/.test(emptyErr.message), emptyErr && emptyErr.message);
 
     // --- and a request that never got a reply says so, with how many tries ---
     ev(`window.__fetchN = 0;

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-19-v3">
+<meta name="ironhub-build" content="2026-09-19-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3556,6 +3556,8 @@ async function aiSend(body){
   for(let attempt=0; attempt<=AI_NET_RETRIES; attempt++){
     const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     let timedOut = false, replied = false;
+    // Owned here, not inside aiReadReply, because its whole purpose is to survive the throw.
+    const tel = {bytes:0, events:0, maxGap:0, mark:0, what:''};
     const t0 = Date.now();
     const timer = setTimeout(function(){ timedOut = true; if(ctl) ctl.abort(); }, AI_TIMEOUT_MS);
     try{
@@ -3566,7 +3568,7 @@ async function aiSend(body){
       if(!res.ok){ const t = await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
       // Inside the try on purpose: the timeout has to cover reading the stream, not just
       // waiting for it to start, or a stream that stalls halfway jams the flag all over again.
-      return await aiReadReply(res);
+      return await aiReadReply(res, tel);
     }catch(e){
       // Reworded to the fact it actually is -- and worded so agIsNetworkErr() matches it. A
       // night on which every agent timed out really was a dead connection and should still
@@ -3577,7 +3579,7 @@ async function aiSend(body){
         : e;
       const net = !timedOut && agIsNetworkErr(lastErr);
       if(timedOut || replied || attempt === AI_NET_RETRIES || !net){
-        throw net ? aiNetDetail(lastErr, replied, attempt+1, Date.now()-t0) : lastErr;
+        throw net ? aiNetDetail(lastErr, replied, attempt+1, Date.now()-t0, tel) : lastErr;
       }
     }finally{ clearTimeout(timer); }
     await new Promise(function(r){ setTimeout(r, AI_NET_BACKOFF[attempt] || 3000); });
@@ -3588,14 +3590,35 @@ async function aiSend(body){
    dead connection from one that was cut off mid-reply -- which is exactly the question that had
    to be answered to fix it. Say which, and how long in. Keeps the engine's own wording first and
    the TypeError class, so agIsNetworkErr() reads it the same as before. */
-function aiNetDetail(e, replied, tries, ms){
+function aiNetDetail(e, replied, tries, ms, tel){
   const s = Math.round(ms/1000);
   const why = replied
-    ? 'the reply was cut off '+s+'s in'
+    ? 'the reply was cut off '+s+'s in'+aiStreamNote(tel)
     : 'no reply on any of '+tries+' tries (the last failed after '+s+'s)';
   const E = (typeof TypeError !== 'undefined' && e instanceof TypeError) ? TypeError : Error;
   return new E(String((e && e.message) || e)+' — '+why);
 }
+/* WHAT had arrived when the connection died, which 'cut off 39s in' on its own cannot say --
+   and that difference is the entire diagnosis. A longest silence near 60s is Safari's network
+   idle timeout giving up on a stream that went quiet; a short one with bytes still arriving is
+   the connection itself being taken away, which no amount of keeping it fed would prevent.
+   Those two want opposite fixes, and the cause here has now been guessed at twice and guessed
+   wrong both times -- on 2026-09-19 DELTA died 39s in while CHARLIE, ECHO and ZULU all came
+   back over the same seconds, so it was demonstrably neither the network nor the 60s rule, and
+   there was nothing recorded that could say what it was instead. Same reasoning as the brief's
+   briefNote() trail: the failure has to arrive carrying its own evidence, because reconstructing
+   it the next morning has never once worked. */
+function aiStreamNote(tel){
+  if(!tel || !tel.mark) return '';   // never got as far as reading an event stream
+  // The open gap is the interesting one: the silence that was still running when it died is
+  // not closed by any read, so without this the longest silence is always under-reported.
+  const gap = Math.max(tel.maxGap||0, Date.now()-tel.mark);
+  const bits = [tel.bytes ? aiBytes(tel.bytes)+' in over '+tel.events+' events' : 'nothing arrived'];
+  bits.push('longest silence '+Math.round(gap/1000)+'s');
+  if(tel.what) bits.push(tel.what);
+  return ' ['+bits.join(', ')+']';
+}
+function aiBytes(n){ return n < 1024 ? n+' B' : (n/1024).toFixed(1)+' KB'; }
 /* An error that arrives INSIDE a stream comes with HTTP 200 already sent. Give it the status
    it would have had unstreamed, so it reads as an API reply ('API 529: ...') everywhere that
    matters -- above all in agIsNetworkErr(), which must never mistake one for a dropped
@@ -3607,7 +3630,8 @@ const AI_STREAM_ERR_STATUS = {invalid_request_error:400, authentication_error:40
    object the API returns unstreamed, so callers never know the difference. Thinking blocks keep
    their signature, because callClaudeWithData() echoes them back verbatim and a missing one
    corrupts the next round. A body that is not an event stream is read whole. */
-async function aiReadReply(res){
+async function aiReadReply(res, tel){
+  const T = tel || {};
   const ct = (res.headers && typeof res.headers.get === 'function' && res.headers.get('content-type')) || '';
   if(!res.body || typeof res.body.getReader !== 'function' || ct.indexOf('text/event-stream') < 0){
     return await res.json();
@@ -3616,23 +3640,31 @@ async function aiReadReply(res){
   const dec = new TextDecoder();
   const st = {msg:null, blocks:[], json:{}, done:false};
   let buf = '';
+  T.mark = Date.now();   // also the flag that says a stream was being read at all
   for(;;){
     const chunk = await reader.read();
+    const now = Date.now();
+    if(now - T.mark > T.maxGap) T.maxGap = now - T.mark;
+    T.mark = now;
     if(chunk.done) break;
+    T.bytes += (chunk.value && chunk.value.length) || 0;
     buf += dec.decode(chunk.value, {stream:true});
     // An event ends at a blank line. A network chunk can end anywhere -- mid-line, mid-JSON,
     // mid-character -- so only whole events are consumed and the rest waits for the next read.
     let m;
     while((m = /\r?\n\r?\n/.exec(buf))){
       aiStreamEvent(st, buf.slice(0, m.index));
+      T.events++; T.what = st.what || T.what;
       buf = buf.slice(m.index + m[0].length);
     }
   }
   buf += dec.decode();
-  if(buf.trim()) aiStreamEvent(st, buf);
+  if(buf.trim()){ aiStreamEvent(st, buf); T.events++; T.what = st.what || T.what; }
   // A stream can end early without an error of any kind. Half a message is not a reply, and
   // returning it would let a truncated tool call or summary through as though it were whole.
-  if(!st.msg || !st.done) throw new Error('the reply stream ended before the message was complete');
+  // Carries the same note: a stream that simply stops is the other half of this question, and
+  // it used to be just as mute about how far it got.
+  if(!st.msg || !st.done) throw new Error('the reply stream ended before the message was complete'+aiStreamNote(T));
   st.msg.content = st.blocks.filter(Boolean);
   return st.msg;
 }
@@ -3649,11 +3681,19 @@ function aiStreamEvent(st, raw){
   switch(ev.type){
     case 'message_start':
       st.msg = Object.assign({}, ev.message);
+      st.what = 'before it wrote anything';
       break;
-    case 'content_block_start':
+    case 'content_block_start': {
       st.blocks[ev.index] = Object.assign({}, ev.content_block);
-      if(ev.content_block && ev.content_block.type === 'tool_use') st.json[ev.index] = '';
+      const bt = (ev.content_block && ev.content_block.type) || '';
+      // Plain English, because this ends up in the agent log where he reads it.
+      st.what = bt === 'thinking' ? 'still thinking'
+              : bt === 'text' ? 'writing its answer'
+              : bt === 'tool_use' ? 'writing a tool call'
+              : 'writing a '+bt+' block';
+      if(bt === 'tool_use') st.json[ev.index] = '';
       break;
+    }
     case 'content_block_delta': {
       const d = ev.delta || {};
       if(!b) break;
@@ -3679,6 +3719,7 @@ function aiStreamEvent(st, raw){
       break;
     case 'message_stop':
       st.done = true;
+      st.what = 'after the message was complete';
       break;
     case 'error': {
       const er = ev.error || {};
