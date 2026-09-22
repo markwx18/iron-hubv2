@@ -1466,6 +1466,51 @@ setTimeout(async () => {
   ok('maxed lift never proposes a load increase', mDec.moved === false, 'code=' + mDec.code + ' moved=' + mDec.moved);
   ok('maxed decision points at reps/sets instead', /rep|set|eccentric|ceiling/i.test(mDec.reason || ''), mDec.reason);
 
+  /* ...and the same question asked of recommend(), which is the function that produces the
+     number he actually loads on the machine. classifyDecision() only produces TEXT. For a
+     while the two disagreed: the engine log said "this machine is MAXED" while the LIVE dock
+     prefilled topW+inc. Asserting the returned WEIGHT, not the wording, is the whole point --
+     a version that keeps the copy and still bumps the load is exactly the shipped bug. */
+  const mStall = ev("recommend('Maxed Machine','normal')");
+  ok('maxed lift: recommend() holds the weight rather than breaking a stall',
+     mStall.sets[0].w === 200, JSON.stringify(mStall.sets));
+  ok('maxed hold names the equipment ceiling', /MAXED/.test(mStall.detail), mStall.detail);
+
+  /* At the rep ceiling the engine normally adds load. 20 reps clears any configured repHigh,
+     and all-easy tags would normally earn the DOUBLE jump -- so this fixture exercises the
+     most aggressive climb branch there is. */
+  const mSaveLogs = ev('JSON.stringify(S.logs)');
+  ev(`(function(){
+    S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='Maxed Machine'; }); });
+    var start = new Date('2026-04-01T00:00:00');
+    for(var i=0;i<4;i++){
+      var d = new Date(start.getTime() + i*7*86400000);
+      S.logs.push({date:d.toISOString().slice(0,10), entries:[{exercise:'Maxed Machine', sets:[
+        {w:200,r:20,e:'easy'},{w:200,r:20,e:'easy'}]}]});
+    }
+  })();`);
+  const mCeil = ev("recommend('Maxed Machine','normal')");
+  ok('maxed lift at the rep ceiling still holds the weight',
+     mCeil.sets[0].w === 200, JSON.stringify(mCeil.sets));
+  ok('maxed ceiling explains where progress comes from instead',
+     /MAXED/.test(mCeil.detail) && /rep|set|eccentric/i.test(mCeil.detail), mCeil.detail);
+
+  // The LIVE dock prefills from buildOneLiveExercise().targetW, not from recommend() directly.
+  const mLive = ev("buildOneLiveExercise('Maxed Machine')");
+  ok('LIVE dock prefills the held weight, not a climb', mLive.targetW === 200, 'targetW=' + mLive.targetW);
+  ok('LIVE weight and LIVE decision no longer contradict each other',
+     mLive._decision.moved === false && mLive.targetW === 200,
+     JSON.stringify({moved: mLive._decision.moved, targetW: mLive.targetW}));
+
+  /* Control: the identical history on a NOT-maxed lift must climb. Without this the two
+     assertions above would also pass on a build that simply never adds load to anything. */
+  ev("for(var d in S.split){ (S.split[d].exercises||[]).forEach(function(x){ if(typeof x==='object' && x.name==='Maxed Machine') x.maxed=false; }); }");
+  const mCeil2 = ev("recommend('Maxed Machine','normal')");
+  ok('control: the same history DOES add load when the lift is not maxed',
+     mCeil2.sets[0].w > 200, JSON.stringify(mCeil2.sets));
+  ev("for(var d in S.split){ (S.split[d].exercises||[]).forEach(function(x){ if(typeof x==='object' && x.name==='Maxed Machine') x.maxed=true; }); }");
+  ev('S.logs = ' + mSaveLogs + ';');
+
   // agent context must warn the agents off proposing load
   const mCtx = ev('agContext()');
   ok('agent context lists maxed lifts', mCtx.indexOf('Maxed Machine') >= 0 && /MAXED OUT/.test(mCtx));
@@ -1488,6 +1533,489 @@ setTimeout(async () => {
     S.logs = (S.logs||[]).filter(function(l){ return !l.entries.some(function(e){ return e.exercise==='Maxed Machine'; }); });
     for(var d in S.split){ S.split[d].exercises = (S.split[d].exercises||[]).filter(function(x){ return !(typeof x==='object' && x.name==='Maxed Machine'); }); }
   })();`);
+
+
+  console.log('=== STRENGTH LIFTS ARE JUDGED ON LOAD, NOT REPS ===');
+  try {
+    const strSaved = ev('JSON.stringify({split:S.split, logs:S.logs})');
+    const sDay = ev("Object.keys(S.split)[0]");
+    ev("S.split['" + sDay + "'].exercises.push({name:'Trap Bar Deadlift', inc:10, repMode:'str'});");
+    ok('control: the fixture lift is in strength mode', ev("isStrMode('Trap Bar Deadlift')") === true);
+    ok('strength rep target has one home', ev('STR_LO') === 3 && ev('STR_HI') === 6);
+    ok('strModeList reports it', ev("strModeList().indexOf('Trap Bar Deadlift')") >= 0);
+
+    /* The reported bug: 275x2 after 265x3. The bar went UP; reps under the floor are the cost of
+       the jump, not a missed set. A failure tag is deliberately included -- without one the old
+       code held anyway and the fixture would prove nothing. */
+    function strLog(rows) {
+      ev("S.logs = S.logs.filter(function(l){ return !(l.entries||[]).some(function(e){ return e.exercise==='Trap Bar Deadlift'; }); });");
+      rows.forEach(function (r, i) {
+        ev("S.logs.push({id:99310+" + i + ", date:'" + r.d + "', entries:[{exercise:'Trap Bar Deadlift', sets:" + JSON.stringify(r.sets) + "}]});");
+      });
+    }
+    strLog([
+      { d: '2026-04-01', sets: [{ w: 265, r: 3, e: 'grind' }] },
+      { d: '2026-04-08', sets: [{ w: 275, r: 2, e: 'fail' }] }
+    ]);
+    const sRec = ev("recommend('Trap Bar Deadlift','normal')");
+    ok('a heavier top set is not treated as a failed set', sRec.sets[0].w === 275, JSON.stringify(sRec.sets));
+    ok('...and it says why, in strength terms', /strength lift/i.test(sRec.detail), sRec.detail);
+    const sDec = ev("classifyDecision('Trap Bar Deadlift','normal')");
+    ok('the engine log agrees: no load change', sDec.moved === false && sDec.code === 'str-top',
+      JSON.stringify({ code: sDec.code, moved: sDec.moved }));
+
+    /* Control: the load went DOWN. That is a real regression and must still step back, or the
+       carve-out above would just be "strength lifts never back off", which is a different bug. */
+    strLog([
+      { d: '2026-04-01', sets: [{ w: 275, r: 3, e: 'grind' }] },
+      { d: '2026-04-08', sets: [{ w: 265, r: 2, e: 'fail' }] }
+    ]);
+    const sRec2 = ev("recommend('Trap Bar Deadlift','normal')");
+    ok('control: a LIGHTER failed session still steps the weight back',
+      sRec2.sets[0].w === 255, JSON.stringify(sRec2.sets));
+
+    /* Mid-session: the dock used to say "that set fell short - drop to 265 lb" on a top double. */
+    const liveStr = { name: 'Trap Bar Deadlift', repMode: 'str', lo: 3, hi: 6, targetW: 275, backoffW: 245, recDetail: '', sets: [{ w: 275, r: 2, e: 'grind' }] };
+    const aStr = ev('intraAdvice(' + JSON.stringify(liveStr) + ')');
+    ok('mid-set: a top double does not trigger a back-off', aStr.w === 245 && aStr.tag === 'Backoff',
+      JSON.stringify(aStr));
+    const liveStrNoBk = Object.assign({}, liveStr, { backoffW: null });
+    const aStr2 = ev('intraAdvice(' + JSON.stringify(liveStrNoBk) + ')');
+    ok('mid-set: with no backoff weight it holds rather than drops', aStr2.w === 275, JSON.stringify(aStr2));
+    // safety is NOT mode-dependent: an actual failure tag still backs off
+    const liveStrFail = Object.assign({}, liveStr, { backoffW: null, sets: [{ w: 275, r: 2, e: 'fail' }] });
+    const aStr3 = ev('intraAdvice(' + JSON.stringify(liveStrFail) + ')');
+    ok('mid-set: a real failure tag still backs the weight off on a strength lift',
+      aStr3.w === 265 && aStr3.tag === 'Back off', JSON.stringify(aStr3));
+    // control: the same numbers on a hypertrophy lift must still back off
+    const liveHyp = Object.assign({}, liveStr, { repMode: 'hyp', backoffW: null });
+    const aHyp = ev('intraAdvice(' + JSON.stringify(liveHyp) + ')');
+    ok('control: a hypertrophy lift below the floor DOES back off',
+      aHyp.w === 265 && aHyp.tag === 'Back off', JSON.stringify(aHyp));
+
+    /* investigateLift: Epley makes a move from high reps to a heavy double look like a decline.
+       This fixture needs BOTH a falling e1RM and a rising top weight -- a clean series has no such
+       divergence and any build would pass it. Fixed offsets, no randomness. */
+    strLog([
+      { d: '2026-04-01', sets: [{ w: 225, r: 12 }] },
+      { d: '2026-04-08', sets: [{ w: 245, r: 8 }] },
+      { d: '2026-04-15', sets: [{ w: 255, r: 5 }] },
+      { d: '2026-04-22', sets: [{ w: 265, r: 3 }] },
+      { d: '2026-04-29', sets: [{ w: 275, r: 2 }] }
+    ]);
+    const e1 = ev("e1rmSeries('Trap Bar Deadlift').map(function(p){return p.v;})");
+    ok('control: the fixture really does have a falling e1RM', e1[e1.length - 1] < e1[0], JSON.stringify(e1));
+    ok('control: ...while the load really is rising',
+      ev("invLastWorkingWeight('Trap Bar Deadlift')") === 275);
+    const sInv = ev("investigateLift('Trap Bar Deadlift')");
+    ok('a strength lift with rising load is not flagged as declining', sInv.severity === null,
+      'severity=' + sInv.severity);
+    ok('...and the tab explains the Epley artefact', /LOAD is not|Epley/.test(JSON.stringify(sInv.findings)),
+      JSON.stringify(sInv.findings).slice(0, 300));
+
+    // control: identical data, NOT a strength lift -> must still flag
+    ev("for(var d in S.split){ (S.split[d].exercises||[]).forEach(function(x){ if(typeof x==='object' && x.name==='Trap Bar Deadlift') x.repMode=null; }); }");
+    const sInv2 = ev("investigateLift('Trap Bar Deadlift')");
+    ok('control: the same data DOES flag when the lift is not in strength mode',
+      sInv2.severity === 'red', 'severity=' + sInv2.severity);
+    ev("for(var d in S.split){ (S.split[d].exercises||[]).forEach(function(x){ if(typeof x==='object' && x.name==='Trap Bar Deadlift') x.repMode='str'; }); }");
+
+    // the agents have to be told, or they read the same numbers the same wrong way
+    const sCtx = ev('agContext()');
+    ok('agent context names the strength lifts', sCtx.indexOf('STRENGTH MODE') >= 0 && sCtx.indexOf('Trap Bar Deadlift') >= 0);
+    ok('agent context says low reps are intentional there', /INTENTIONAL/.test(sCtx));
+    ok('agent context warns off cutting load on a rep drop', /Never propose reducing load/.test(sCtx));
+    const sTool = ev("agRunDataTool('get_e1rm_series', {exercise:'Trap Bar Deadlift'})");
+    ok('the e1RM tool warns that a dip can mean heavier, not weaker', /STRENGTH lift/.test(sTool), sTool.slice(-240));
+    const sTool2 = ev("agRunDataTool('get_lift_history', {exercise:'Trap Bar Deadlift'})");
+    ok('the history tool shows top weight per session for a strength lift',
+      /top weight 275 lb/.test(sTool2), sTool2.slice(0, 300));
+
+    const strRest = JSON.parse(strSaved);
+    ev('S.split = ' + JSON.stringify(strRest.split) + '; S.logs = ' + JSON.stringify(strRest.logs) + ';');
+    ok('strength fixture cleaned up', ev("S.logs.every(function(l){return !(l.entries||[]).some(function(e){return e.exercise==='Trap Bar Deadlift';});})"));
+  } catch (e) {
+    ok('strength-lift section', false, e.message);
+  }
+
+
+  console.log('=== CUSTOM WEIGHT INCREMENT ===');
+  try {
+    const incSaved = ev('JSON.stringify({split:S.split, logs:S.logs})');
+
+    ok('roundToInc exists', ev('typeof roundToInc') === 'function');
+    /* 100 is the discriminating value: it is a clean multiple of 5, so a build that still
+       hard-codes /5 returns 100 and every assertion below that uses a multiple of 5 would pass. */
+    ok('roundToInc snaps to the ladder it is given', ev('roundToInc(100, 7.5)') === 97.5, String(ev('roundToInc(100, 7.5)')));
+    ok('roundToInc keeps the half-pound rather than rounding it away', ev('roundToInc(13, 2.5)') === 12.5, String(ev('roundToInc(13, 2.5)')));
+    ok('roundToInc falls back to 5 when no increment is set', ev('roundToInc(103, 0)') === 105, String(ev('roundToInc(103, 0)')));
+
+    ok('the four presets are unchanged', ev('JSON.stringify(INC_PRESETS)') === '[2.5,5,10,15]');
+    ok('a preset value is not treated as custom', ev('isCustomInc(5)') === false && ev('isCustomInc(2.5)') === false);
+    ok('an off-ladder value IS treated as custom', ev('isCustomInc(7.5)') === true && ev('isCustomInc(20)') === true);
+    ok('setIncCustom exists', ev('typeof setIncCustom') === 'function');
+    ok('the custom bounds are stated once', ev('INC_MIN') === 0.5 && ev('INC_MAX') === 100);
+
+    // the chip renders, and reads as selected when the stored increment is off-ladder
+    const icDay = ev("Object.keys(S.split)[0]");
+    ev("S.split['" + icDay + "'].exercises.push({name:'Custom Stack', inc:7.5});");
+    const icIdx = ev("S.split['" + icDay + "'].exercises.length - 1");
+    const icHTML = ev('splitEditorHTML()');
+    ok('the editor offers a custom increment chip', /setIncCustom\(/.test(icHTML));
+    ok('...showing the custom value as the selected chip', /class="sel"[^>]*setIncCustom[\s\S]{0,80}\+7\.5</.test(icHTML) || /setIncCustom\([^)]*\)">\+7\.5</.test(icHTML), 'chip markup');
+    ok('control: the stored custom increment is what the engine reads',
+      ev("incForExercise('Custom Stack')") === 7.5, String(ev("incForExercise('Custom Stack')")));
+
+    /* The three sites that used to hard-code /5. Every weight below is chosen so the 7.5 answer
+       and the 5 answer DIFFER -- a value that is a clean multiple of both proves nothing. */
+    ev("S.logs = S.logs.filter(function(l){ return !(l.entries||[]).some(function(e){ return e.exercise==='Custom Stack'; }); });");
+    [['2026-04-01', 200, 10], ['2026-04-08', 190, 10], ['2026-04-15', 180, 10], ['2026-04-22', 175, 9], ['2026-04-29', 170, 8]]
+      .forEach(function (r, i) {
+        ev("S.logs.push({id:99420+" + i + ", date:'" + r[0] + "', entries:[{exercise:'Custom Stack', sets:[{w:" + r[1] + ",r:" + r[2] + "}]}]});");
+      });
+
+    // deload: 60% of a 170 lb top set is 102 -> 105 on a 7.5 ladder, but 100 on a 5 ladder
+    const icDel = ev("deloadExercise('Custom Stack')");
+    ok('a deload weight lands on the exercise own ladder, not on 5s',
+      icDel.targetW === 105, 'targetW=' + icDel.targetW);
+
+    // investigation reset: 90% of 170 is 153 -> 150 on a 7.5 ladder, but 155 on a 5 ladder
+    const icInv = ev("investigateLift('Custom Stack')");
+    ok('control: the fixture really does trip the declining branch', icInv.severity === 'red', 'severity=' + icInv.severity);
+    ok('an investigation reset weight lands on the ladder too',
+      icInv.fix && icInv.fix.payload && icInv.fix.payload.w === 150, JSON.stringify(icInv.fix && icInv.fix.payload));
+
+    const incRest = JSON.parse(incSaved);
+    ev('S.split = ' + JSON.stringify(incRest.split) + '; S.logs = ' + JSON.stringify(incRest.logs) + ';');
+    ok('custom-increment fixture cleaned up',
+      ev("S.logs.every(function(l){return !(l.entries||[]).some(function(e){return e.exercise==='Custom Stack';});})"));
+  } catch (e) {
+    ok('custom increment section', false, e.message);
+  }
+
+
+  console.log('=== WINTER ARC ===');
+  try {
+    const waSaved = ev('JSON.stringify({wa:S.winterArc||null, logs:S.logs, road:S.road})');
+
+    /* Which season a date belongs to. Named dates only: today is outside the window for most of
+       the year, so anything written against todayKey() would test the dormant branch by accident
+       and quietly stop testing anything at all once the season opened. */
+    ok('a date before the season points at the one coming',
+      ev("JSON.stringify(waSeasonFor('2026-09-21'))") === '{"start":"2026-10-15","end":"2027-04-01"}',
+      ev("JSON.stringify(waSeasonFor('2026-09-21'))"));
+    ok('a date inside the season, before new year, resolves to it',
+      ev("waSeasonFor('2026-11-01').start") === '2026-10-15');
+    ok('a date inside the season, AFTER new year, still resolves to the same arc',
+      ev("JSON.stringify(waSeasonFor('2027-02-01'))") === '{"start":"2026-10-15","end":"2027-04-01"}',
+      ev("JSON.stringify(waSeasonFor('2027-02-01'))"));
+    ok('a date past the end rolls to next winter',
+      ev("waSeasonFor('2027-06-01').start") === '2027-10-15');
+
+    /* A new top-level S key survives load()'s one-level Object.assign. A field on S.meta would
+       come back ABSENT on an existing install -- the 2026-09-02 shape. */
+    ev('delete S.winterArc;');
+    ev('winterState();');
+    ok('the arc is stored top-level on S', ev('typeof S.winterArc') === 'object' && ev('!!S.winterArc') === true);
+    ok('...and NOT tucked inside S.meta', ev("S.meta && S.meta.winterArc === undefined") === true);
+    ok('load() carries a top-level key through its shallow merge',
+      ev("(function(){ var raw=JSON.stringify(Object.assign({}, S)); var back=JSON.parse(raw); return !!Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), back).winterArc; })()") === true);
+
+    ev("S.winterArc = {start:'2026-10-15', end:'2027-04-01', bwTarget:null, sessionTarget:5};");
+    ok('before the window the arc is dormant', ev("waPhase('2026-10-01')") === 'before');
+    ok('inside the window it is active', ev("waPhase('2026-12-01')") === 'active');
+    ok('after the end it is done', ev("waPhase('2027-05-01')") === 'done');
+    ok('the arc is 169 days long', ev("waDays('2026-12-01').total") === 169, String(ev("waDays('2026-12-01').total")));
+    ok('day counting is inclusive of the first day', ev("waDays('2026-12-01').elapsed") === 48, String(ev("waDays('2026-12-01').elapsed")));
+    ok('days-left and days-elapsed account for the whole window',
+      ev("waDays('2026-12-01').elapsed + waDays('2026-12-01').left") === 169);
+    ok('before it starts it counts down instead', ev("waDays('2026-10-01').untilStart") === 14, String(ev("waDays('2026-10-01').untilStart")));
+
+    // sessions: only logs inside the window, and only up to the date asked about
+    ev("S.logs = S.logs.filter(function(l){ return !(l.entries||[]).some(function(e){ return e.exercise==='Arc Lift'; }); });");
+    ['2026-10-01', '2026-10-20', '2026-11-05', '2026-12-20', '2027-05-10'].forEach(function (d, i) {
+      ev("S.logs.push({id:99510+" + i + ", date:'" + d + "', entries:[{exercise:'Arc Lift', sets:[{w:100,r:8}]}]});");
+    });
+    ok('sessions before the arc do not count', ev("waSessions('2026-12-31')") >= 3 && ev("waSessions('2026-10-10')") === 0,
+      'to 2026-10-10: ' + ev("waSessions('2026-10-10')"));
+    ok('sessions after the asked-about date do not count either',
+      ev("waSessions('2026-11-06')") === 2, String(ev("waSessions('2026-11-06')")));
+    ok('sessions after the window end do not count', ev("waSessions('2027-06-01')") === 3, String(ev("waSessions('2027-06-01')")));
+
+    /* There is ONE bodyweight rate in this app. If the card ever grew its own, the Bulk tab and
+       Home would quote different lb/wk figures off the same weigh-ins -- which has happened here
+       before and is the reason bulkRate() exists at all. */
+    /* Seeded rather than borrowed from whatever history happens to be loaded: bulkRate() returns
+       null below three weekly averages, and with a null the equivalence assertion below would be
+       vacuously true. Several weigh-ins per week on purpose, so weekly AVERAGING is exercised --
+       one per week makes the average equal the raw value and an anchoring bug invisible. Fixed
+       offsets, never randomness, so the suite stays deterministic. */
+    const waWSaved = ev('JSON.stringify(S.weights)');
+    ev('S.weights = [];');
+    [[0,178.0],[2,179.1],[4,178.4],[7,178.9],[9,180.2],[11,179.3],[14,180.1],[16,181.4],[18,180.6],
+     [21,181.2],[23,182.5],[25,181.7],[28,182.4],[30,183.6],[32,182.8],[35,183.5],[37,184.7],[39,184.0]]
+      .forEach(function (r) {
+        ev("S.weights.push({date:mesoAddDays('2026-10-15'," + r[0] + "), lbs:" + r[1] + "});");
+      });
+    const waBr = ev('bulkRate(4)');
+    const waP = ev("waProgress('2026-12-01')");
+    ok('control: the seeded weigh-ins really do produce a rate', waBr !== null && waBr.weeks >= 3,
+      JSON.stringify(waBr));
+    ok('the arc quotes bulkRate(), not arithmetic of its own', waP.bw && waP.bw.rate === waBr.rate,
+      JSON.stringify({ card: waP.bw && waP.bw.rate, bulkRate: waBr.rate }));
+    ok('...and bulkBand() for the verdict, so no fifth set of bands appears',
+      waP.bw.band === ev('bulkBand(' + waBr.rate + ')'), waP.bw.band);
+    ok('the card prints the same rate the Bulk tab would',
+      new RegExp(waBr.rate.toFixed(2).replace('.', '\.')).test(ev("waCardHTML('2026-12-01')")) || waP.bw.target != null);
+    ev('S.weights = ' + waWSaved + ';');
+
+    /* Reaching a target and sailing past it read the same to onPace (rate >= needed), and
+       "on pace for 185 lb (proj. 198.1)" is not a pass mark on a lean bulk. */
+    ev("S.winterArc.bwTarget = 185;");
+    const waOver = ev("waProgress('2026-12-01')");
+    if (waOver.bw && waOver.bw.projected > 187) {
+      ok('a projection that sails past the target is called an overshoot, not "on pace"',
+        waOver.bw.overshoot === true && /clears/.test(ev("waCardHTML('2026-12-01')")),
+        JSON.stringify(waOver.bw));
+    } else {
+      ok('a projection that lands near the target is not called an overshoot', waOver.bw ? waOver.bw.overshoot === false : true);
+    }
+    ev("S.winterArc.bwTarget = null;");
+
+    // pace
+    ev("S.winterArc.sessionTarget = 5;");
+    ok('pace is measured against the sessions-per-week target',
+      ev("waProgress('2026-12-01').expected") === Math.round((48 / 7) * 5), String(ev("waProgress('2026-12-01').expected")));
+
+    // lift goals are READ from S.road, not duplicated into the arc
+    ev("S.road = (S.road||[]).filter(function(g){ return g.exercise!=='Arc Lift'; });");
+    ev("S.road.push({id:99520, exercise:'Arc Lift', target:225, start:180, deadline:'2027-01-15'});");
+    ev("S.road.push({id:99521, exercise:'Arc Lift', target:315, start:180, deadline:'2027-09-01'});");
+    ok('only goals whose deadline lands inside the arc are shown', ev('waGoals().length') === 1, String(ev('waGoals().length')));
+    ok('the arc has no goal store of its own', ev("S.winterArc.goals === undefined") === true);
+
+    /* It is a lens over a date range, never a schedule. A mesocycle still owns what today is. */
+    const waSchedBefore = ev("scheduledDayFor('2026-12-01')");
+    ev("S.winterArc.bwTarget = 185;");
+    ok('the arc never changes what day is scheduled', ev("scheduledDayFor('2026-12-01')") === waSchedBefore,
+      waSchedBefore + ' -> ' + ev("scheduledDayFor('2026-12-01')"));
+
+    // the card renders in all three phases (jsdom has no layout engine, so this asserts WHICH
+    // branch was taken, not how it looks)
+    const cBefore = ev("waCardHTML('2026-10-01')");
+    const cActive = ev("waCardHTML('2026-12-01')");
+    const cDone = ev("waCardHTML('2027-05-01')");
+    ok('before: the card counts down to the start', /14 days/.test(cBefore), cBefore.slice(0, 200));
+    ok('active: the card shows the day count', /Day<\/div><div class="dt-v">48</.test(cActive), cActive.slice(0, 300));
+    ok('active: the card names the bodyweight target', /185/.test(cActive));
+    ok('done: the card offers the next arc instead', /waStartNext/.test(cDone) && !/waStartNext/.test(cActive));
+    ok('the card escapes into HTML and uses theme variables, not hex',
+      /var\(--cyan\)/.test(cActive) && !/#[0-9a-fA-F]{6}/.test(cActive));
+
+    // one line of agent context, computed -- no model call anywhere in this feature
+    const waCtx = ev("waContext('2026-12-01')");
+    ok('the agents are told the arc exists', /WINTER ARC/.test(waCtx) && /day 48 of 169/.test(waCtx), waCtx.slice(0, 200));
+    ok('...and told not to treat it as a training block', /not a training block/.test(waCtx));
+    ok('before it starts the agents are told that instead', /Not underway yet/.test(ev("waContext('2026-10-01')")));
+    ok('after it ends it says nothing at all', ev("waContext('2027-05-01')") === '');
+    ok('agContext carries the arc line', /WINTER ARC/.test(ev('agContext()')));
+
+    const waRest = JSON.parse(waSaved);
+    ev('S.logs = ' + JSON.stringify(waRest.logs) + '; S.road = ' + JSON.stringify(waRest.road) + ';');
+    ev(waRest.wa === null ? 'delete S.winterArc;' : 'S.winterArc = ' + JSON.stringify(waRest.wa) + ';');
+    ok('winter arc fixture cleaned up',
+      ev("S.logs.every(function(l){return !(l.entries||[]).some(function(e){return e.exercise==='Arc Lift';});})") &&
+      ev("(S.road||[]).every(function(g){return g.exercise!=='Arc Lift';})"));
+  } catch (e) {
+    ok('winter arc section', false, e.message);
+  }
+
+
+  console.log('=== EXERCISE NAME EDITOR ===');
+  try {
+    const exSaved = ev('JSON.stringify({split:S.split, logs:S.logs, prHistory:S.prHistory, pain:S.pain, road:S.road, invest:S.invest, agents:S.agents})');
+
+    /* The duplicate detector. invNormName() preserves word order, so it does NOT see these two as
+       the same lift -- which is the whole reason a separate key exists. It must stay ADDITIVE:
+       agResolveExName() validates model-supplied names through invNormName(), and loosening that
+       would widen what the agent layer accepts. */
+    ok('invNormName does not collapse a reordered name',
+      ev("invNormName('Machine Leg Curl')") !== ev("invNormName('Leg Curl Machine')"));
+    ok('exDupeKey does', ev("exDupeKey('Machine Leg Curl')") === ev("exDupeKey('Leg Curl Machine')"),
+      ev("exDupeKey('Machine Leg Curl')") + ' vs ' + ev("exDupeKey('Leg Curl Machine')"));
+    ok('exDupeKey ignores a trailing plural too', ev("exDupeKey('Hanging Leg Raise')") === ev("exDupeKey('Hanging Leg Raises')"));
+    ok('exDupeKey keeps genuinely different lifts apart', ev("exDupeKey('Leg Curl')") !== ev("exDupeKey('Leg Extension')"));
+
+    /* Stand up one name in every store that keys on it. */
+    /* Synthetic names on purpose: 'Machine Leg Curl' is already in the default split, so a
+       fixture built on it would report inSplit:true and the history-only assertion would be
+       testing nothing. They still collide under exDupeKey, which is the property under test. */
+    const OLD = 'Zzz Curl Machine', NEW = 'Machine Zzz Curl';
+    const exDay = ev("Object.keys(S.split)[0]");
+    ev("S.split['" + exDay + "'].exercises.push({name:'" + OLD + "', inc:5, maxed:true, homeSub:{name:'" + OLD + "', equip:'db'}});");
+    ev("S.logs = S.logs.filter(function(l){ return !(l.entries||[]).some(function(e){ return e.exercise==='" + OLD + "' || e.exercise==='" + NEW + "'; }); });");
+    ev("S.logs.push({id:99600, date:'2026-05-01', t:1000, entries:[" +
+      "{exercise:'" + OLD + "', sets:[{w:100,r:10}]}," +
+      "{exercise:'" + NEW + "', sets:[{w:110,r:8}]}" +
+      "], decisions:{'" + OLD + "':{code:'hold', reason:'r'}}});");
+    ev("S.prHistory = (S.prHistory||[]).filter(function(r){ return r.exercise!=='" + OLD + "' && r.exercise!=='" + NEW + "'; });");
+    ev("S.prHistory.push({exercise:'" + OLD + "', date:'2026-05-01', e1rm:133.3, weight:100, reps:10, t:1000});");
+    ev("S.pain = (S.pain||[]).filter(function(r){ return r.exercise!=='" + OLD + "'; });");
+    ev("S.pain.push({id:99601, date:'2026-05-01', exercise:'" + OLD + "', joint:'knee', level:2, t:1000});");
+    ev("S.road = (S.road||[]).filter(function(g){ return g.exercise!=='" + OLD + "'; });");
+    ev("S.road.push({id:99602, exercise:'" + OLD + "', target:200, start:100, deadline:'2026-12-01'});");
+    ev("invState(); S.invest.overrides['" + OLD + "'] = {w:90, until:'2026-06-01', note:'reset'};");
+    ev("S.invest.flags.push({id:'x99', key:'lift:" + OLD + "', status:'active', severity:'yellow', title:'" + OLD + " flat', findings:[]});");
+    ev("S.invest.history.push({key:'lift:" + OLD + "', at:'2026-04-01', action:'dismissed'});");
+    ev("agState(); S.agents.proposals.push({id:'p99', agent:'delta', status:'pending', title:'t', fix:{type:'liftReset', payload:{name:'" + OLD + "', w:90, days:14}}});");
+    ev("S.agents.overload = {lifts:[{lift:'" + OLD + "', dir:'flat', pct:0}]};");
+
+    ok('a name known only to history shows up in the editor list',
+      ev("exNameUsage().some(function(u){ return u.name==='" + NEW + "' && !u.inSplit; })") === true);
+    ok('...with its session count', ev("exNameUsage().filter(function(u){return u.name==='" + OLD + "';})[0].sessions") === 1);
+    ok('the two look like duplicates to the suggester',
+      ev("exDupeGroups().some(function(g){ return g.length===2 && g.map(function(u){return u.name;}).sort().join('|')==='" + [NEW, OLD].sort().join('|') + "'; })") === true);
+
+    /* A meso block split is a deep COPY taken when the block was generated, so it holds the name
+       independently of S.split. Missing it is the V4 invariant this file keeps re-learning: the
+       block is what activeSplitObj() resolves through while it is in force. */
+    ev("S.meso = S.meso || {template:null, active:null};");
+    ev("window.__exMesoSaved = JSON.stringify(S.meso);");
+    ev("S.meso.active = S.meso.active || {startedAt:'2026-05-01', startKey:'2026-05-01', weeks:[], splits:{}};");
+    ev("S.meso.active.splits = S.meso.active.splits || {};");
+    ev("S.meso.active.splits['b99'] = {status:'approved', split:{S1:{name:'Squat', exercises:[{name:'Zzz Curl Machine', inc:5}]}}};");
+
+    // --- the migration ---
+    const moved = ev("exRenameEverywhere('" + OLD + "','" + NEW + "')");
+    ok('the rename reports how much it touched', moved > 5, String(moved));
+    ok('split slot renamed', ev("S.split['" + exDay + "'].exercises.some(function(x){ return exName(x)==='" + NEW + "'; })") === true);
+    ok('the nested HOME substitute name moved too',
+      ev("S.split['" + exDay + "'].exercises.filter(function(x){return exName(x)==='" + NEW + "';})[0].homeSub.name") === NEW);
+    ok('flags on the slot are untouched by a rename',
+      ev("S.split['" + exDay + "'].exercises.filter(function(x){return exName(x)==='" + NEW + "';})[0].maxed") === true);
+    ok('a meso block split holds its own copy of the name, and it moved too',
+      ev("S.meso.active.splits['b99'].split.S1.exercises[0].name") === NEW,
+      ev("S.meso.active.splits['b99'].split.S1.exercises[0].name"));
+    ok('PR history moved', ev("S.prHistory.some(function(r){return r.exercise==='" + NEW + "';})") === true &&
+      ev("S.prHistory.every(function(r){return r.exercise!=='" + OLD + "';})") === true);
+    ok('pain flags moved', ev("S.pain.some(function(r){return r.exercise==='" + NEW + "';})") === true);
+    ok('road goals moved', ev("S.road.some(function(g){return g.exercise==='" + NEW + "';})") === true);
+    ok('investigation override moved', ev("S.invest.overrides['" + NEW + "'] && !S.invest.overrides['" + OLD + "']") === true);
+    ok('investigation flag key moved', ev("S.invest.flags.some(function(f){return f.key==='lift:" + NEW + "';})") === true);
+    ok('...and its title reads right', ev("S.invest.flags.filter(function(f){return f.id==='x99';})[0].title").indexOf(NEW) === 0);
+    ok('a dismissal keeps suppressing the flag under the new name',
+      ev("S.invest.history.some(function(h){return h.key==='lift:" + NEW + "';})") === true);
+    ok('a queued proposal now points at a name that exists',
+      ev("S.agents.proposals.filter(function(p){return p.id==='p99';})[0].fix.payload.name") === NEW);
+    ok('the overload report row moved', ev("S.agents.overload.lifts[0].lift") === NEW);
+
+    /* The trap. A merge can leave ONE log record holding two entries under the same name, and
+       historyFor() reads entries.find() -- first match only. Without folding them, the second
+       entry's sets vanish from every trend, chart and PR calculation with nothing on screen to
+       say so, and the suite would still be green. */
+    const rec = ev("S.logs.filter(function(l){return l.id===99600;})[0]");
+    ok('the two entries in one record are folded into one', rec.entries.length === 1, JSON.stringify(rec.entries));
+    ok('...keeping BOTH sets, not just the first', rec.entries[0].sets.length === 2, JSON.stringify(rec.entries[0].sets));
+    ok('historyFor sees both sets', ev("historyFor('" + NEW + "')[0].sets.length") === 2);
+    ok('the decisions map, keyed by name beside the entries, moved with them',
+      ev("!!S.logs.filter(function(l){return l.id===99600;})[0].decisions['" + NEW + "']") === true &&
+      ev("S.logs.filter(function(l){return l.id===99600;})[0].decisions['" + OLD + "'] === undefined") === true);
+
+    /* prHistory's sync key is exercise|date|e1rm -- the only collection whose identity contains the
+       name being migrated. Two rows can collide on it after a merge, and a duplicate would be
+       indistinguishable to mergeUnseenHistory() forever. */
+    ev("S.prHistory.push({exercise:'" + NEW + "', date:'2026-05-01', e1rm:133.3, weight:100, reps:10, t:1001});");
+    ev("S.prHistory.push({exercise:'dupe-src', date:'2026-05-01', e1rm:133.3, weight:100, reps:10, t:1002});");
+    ev("exRenameEverywhere('dupe-src','" + NEW + "');");
+    ok('a merge does not leave two PR rows that collide on the sync key',
+      ev("S.prHistory.filter(function(r){return r.exercise==='" + NEW + "' && r.date==='2026-05-01' && r.e1rm===133.3;}).length") === 1,
+      JSON.stringify(ev("S.prHistory.filter(function(r){return r.exercise==='" + NEW + "';})")));
+
+    /* Re-stamping. A renamed PR row has a DIFFERENT merge key, so it reads as unseen work and its
+       't' is what decides whether it survives a pull. Without a fresh stamp the old stamp loses and
+       the un-renamed row wins. */
+    ev("S.prHistory = [{exercise:'" + NEW + "', date:'2026-07-07', e1rm:150, weight:120, reps:8, t:1000}];");
+    ev("exRenameEverywhere('" + NEW + "','Renamed Curl');");
+    ok('a renamed PR row is re-stamped', ev("S.prHistory[0].t") > 1000, String(ev("S.prHistory[0].t")));
+    ev("window.__prevLocal = JSON.parse(JSON.stringify({prHistory:S.prHistory}));");
+    ev("S.prHistory = [{exercise:'" + NEW + "', date:'2026-07-07', e1rm:150, weight:120, reps:8, t:1000}];");
+    ev("mergeUnseenHistory(window.__prevLocal, 2000);");
+    ok('...so a pull of a snapshot exported before the rename cannot drop it',
+      ev("S.prHistory.some(function(r){return r.exercise==='Renamed Curl';})") === true,
+      JSON.stringify(ev('S.prHistory')));
+    ev("delete window.__prevLocal;");
+
+    /* Merging two names that sat on the SAME day must not leave that day holding the exercise
+       twice: dayExNames() feeds buildLiveExercises() directly, so a duplicate slot would
+       prescribe the same machine twice in one session. Both earlier fixtures happened to put the
+       two names on different days, which is exactly why this needed a browser to find. */
+    ev("S.split['" + exDay + "'].exercises.push({name:'Same Day A', inc:5});");
+    ev("S.split['" + exDay + "'].exercises.push({name:'Same Day B', inc:5});");
+    ok('control: both names are on the one day',
+      ev("S.split['" + exDay + "'].exercises.filter(function(x){return exName(x).indexOf('Same Day')===0;}).length") === 2);
+    ev("exRenameEverywhere('Same Day A','Same Day B');");
+    ok('a merge within one day leaves exactly one slot',
+      ev("S.split['" + exDay + "'].exercises.filter(function(x){return exName(x)==='Same Day B';}).length") === 1,
+      ev("JSON.stringify(S.split['" + exDay + "'].exercises.map(exName))"));
+    ok('...so a LIVE session cannot be built with the lift twice',
+      ev("dayExNames('" + exDay + "').filter(function(nm){return nm==='Same Day B';}).length") === 1);
+    ev("var dsd=Object.keys(S.split)[0]; S.split[dsd].exercises = S.split[dsd].exercises.filter(function(x){ return exName(x).indexOf('Same Day')<0; });");
+
+    // --- guards ---
+    ok('a blank name is refused', typeof ev("exRenameBlocker('" + NEW + "','   ')") === 'string');
+    ok('renaming to itself is a no-op, not an error', ev("exRenameBlocker('" + NEW + "','" + NEW + "')") === null);
+    /* PR_LIFTS is keyed by these exact strings and they feed strengthScore()/prWatchList(). */
+    ok('a milestone lift cannot be renamed away',
+      typeof ev("exRenameBlocker('Barbell Bench Press','Bench Press')") === 'string',
+      String(ev("exRenameBlocker('Barbell Bench Press','Bench Press')")).slice(0, 80));
+    ok('...but something else can still be merged INTO it',
+      ev("exRenameBlocker('Some Other Bench','Barbell Bench Press')") === null);
+    ok('a rename is refused while a LIVE session is open', ev(
+      "(function(){ var had=(typeof live!=='undefined')?live:null; live={day:'D1',exercises:[]};" +
+      " var r=exRenameBlocker('" + NEW + "','Whatever'); live=had; return typeof r; })()") === 'string');
+
+    // --- removing a name nothing was ever logged under ---
+    ev("S.split['" + exDay + "'].exercises.push({name:'Typoo Press', inc:5});");
+    ok('control: it has no logged sets', ev("exLoggedSets('Typoo Press')") === 0);
+    ok('an untrained name can be removed outright', ev("exPurgeUnused('Typoo Press')") === true);
+    ok('...and it is gone from the split', ev("S.split['" + exDay + "'].exercises.some(function(x){return exName(x)==='Typoo Press';})") === false);
+    ok('a name WITH logged sets refuses to be purged', ev("exPurgeUnused('Renamed Curl')") === false ||
+      ev("exLoggedSets('Renamed Curl')") === 0, 'sets=' + ev("exLoggedSets('Renamed Curl')"));
+
+    // --- the card renders (jsdom has no layout engine: this asserts the branch, not the look) ---
+    /* Render the card while a duplicate group still EXISTS. Every earlier fixture had already
+       merged its duplicates away by this point, so the suggestions branch never ran -- and it was
+       carrying a reference to a variable that does not exist. A real browser found that; the suite
+       could not, because the branch was unreachable in the state the suite had built. */
+    ev("S.split[Object.keys(S.split)[0]].exercises.push({name:'Dupe Row Cable', inc:5});");
+    ev("S.split[Object.keys(S.split)[0]].exercises.push({name:'Cable Row Dupe', inc:5});");
+    ok('control: the fixture really does present a duplicate group',
+      ev("exDupeGroups().some(function(g){ return g.some(function(u){ return u.name==='Dupe Row Cable'; }); })") === true);
+    const exDupHTML = ev('exNameEditorHTML()');
+    ok('the duplicate-suggestions branch renders without throwing',
+      /Possible duplicates/.test(exDupHTML) && /Dupe Row Cable/.test(exDupHTML), exDupHTML.slice(0, 220));
+    ev("var d0=Object.keys(S.split)[0]; S.split[d0].exercises = S.split[d0].exercises.filter(function(x){ return exName(x).indexOf('Dupe')<0 && exName(x).indexOf('Cable Row')<0; });");
+
+    const exHTML = ev('exNameEditorHTML()');
+    ok('the editor lists names with an apply control', /exnApply\(\)/.test(exHTML) || /exnPick\(/.test(exHTML));
+    ok('the editor escapes names into HTML', ev(
+      "(function(){ var d=Object.keys(S.split)[0]; S.split[d].exercises.push({name:'Evil <img> \\\"x\\\"', inc:5});" +
+      " var h=exNameEditorHTML(); S.split[d].exercises=S.split[d].exercises.filter(function(x){return exName(x).indexOf('Evil')<0;});" +
+      " return h.indexOf('<img>')<0 && h.indexOf('&lt;img&gt;')>=0; })()") === true);
+
+    const exRest = JSON.parse(exSaved);
+    ev('S.split = ' + JSON.stringify(exRest.split) + '; S.logs = ' + JSON.stringify(exRest.logs) +
+      '; S.prHistory = ' + JSON.stringify(exRest.prHistory) + '; S.pain = ' + JSON.stringify(exRest.pain) +
+      '; S.road = ' + JSON.stringify(exRest.road) + '; S.invest = ' + JSON.stringify(exRest.invest) +
+      '; S.agents = ' + JSON.stringify(exRest.agents) + ';');
+    ev('S.meso = JSON.parse(window.__exMesoSaved); delete window.__exMesoSaved;');
+    ev('exnSel = null;');
+    ok('name editor fixture cleaned up',
+      ev("S.logs.every(function(l){return l.id!==99600;})") &&
+      ev("(S.road||[]).every(function(g){return g.id!==99602;})"));
+  } catch (e) {
+    ok('exercise name editor section', false, e.message);
+  }
 
   console.log('=== BACKOFF SETS ===');
   ok('backoffWeightFor exists', ev('typeof backoffWeightFor') === 'function');
@@ -3703,6 +4231,25 @@ setTimeout(async () => {
     // formFocus resolves through the same path
     ev("mesoActive().splits[" + JSON.stringify(bid) + "].split.S1.exercises[1] = {name:'Barbell Bench Press', inc:5, formFocus:true};");
     ok('isFormFocus sees a block exercise too', ev("isFormFocus('Barbell Bench Press')") === true);
+
+    /* The WRITE side of the same divergence. toggleMaxed()/setInc() used to touch S.split only,
+       while isMaxed()/incForExercise() read activeSplitObj() -- so during a block the MAX button
+       and the increment chips were dead controls with no feedback saying so. The flag has to be
+       asserted WHILE the block is in force; checking it after mesoStop() passes either way. */
+    ev("S.split.D1 = S.split.D1 || {name:'D1', exercises:[]};");
+    ev("S.split.D1.exercises.push({name:'Leg Press', inc:15});");
+    const lpIdx = ev("S.split.D1.exercises.length - 1");
+    ok('control: Leg Press is not maxed to begin with', ev("isMaxed('Leg Press')") === false);
+    ev("toggleMaxed('D1'," + lpIdx + ")");
+    ok('toggleMaxed reaches the block split while the block is in force',
+       ev("isMaxed('Leg Press')") === true);
+    ok('...and it landed on the block copy, not only on S.split',
+       ev("mesoActive().splits[" + JSON.stringify(bid) + "].split.S1.exercises[0].maxed") === true);
+    ev("setInc('D1'," + lpIdx + ",7.5)");
+    ok('setInc reaches the block split too', ev("incForExercise('Leg Press')") === 7.5,
+       String(ev("incForExercise('Leg Press')")));
+    ev("toggleMaxed('D1'," + lpIdx + ")");   // back off, the rest of the section assumes not-maxed
+    ev("setInc('D1'," + lpIdx + ",15)");
 
     ev('mesoStop();');
     const restInc = JSON.parse(savedInc);
@@ -6526,6 +7073,28 @@ setTimeout(async () => {
     ok('a letter is due on a Sunday that shares a training pass with last Sunday',
        withDay(0, function(){ return ev('agLetterDue()'); }) === true);
     ev("weekStartKey = window.__realWsk; delete window.__realWsk; delete window.__lastSun;");
+    withDay(0, function(){ ev("agSetLetter('a letter about the week');"); });
+
+
+    /* The Monday catch-up. Named dates, not a pinned getDay(): "the Monday after that Sunday" is
+       two different calendar days and the pinning trick cannot express it -- it would make one real
+       date claim to be both. 2026-09-20 is a Sunday, 2026-09-21 the Monday after it. */
+    const SUN = '2026-09-20', MON = '2026-09-21', TUE = '2026-09-22';
+    ok('letterWeekKey: a Sunday covers itself', ev("letterWeekKey('" + SUN + "')") === SUN);
+    ok('letterWeekKey: a Monday covers the Sunday just gone', ev("letterWeekKey('" + MON + "')") === SUN);
+    ev("delete agState().letter;");
+    ok('a letter is due on Sunday', ev("agLetterDue('" + SUN + "')") === true);
+    ok('a letter is NOT due on Tuesday', ev("agLetterDue('" + TUE + "')") === false);
+    /* The regression: agMaybeAutoRun() only fires with the app open after 9 PM. A Sunday evening he
+       never opened used to cost that week's letter outright, because Monday's cycle saw getDay()===1
+       and returned false, and nothing ever looked back. */
+    ok('a missed Sunday is caught up on the Monday', ev("agLetterDue('" + MON + "')") === true);
+    ev("agState().letter = {text:'written on the Sunday', at:'x', week:'" + SUN + "'};");
+    ok('...but a Sunday letter already written stops the Monday writing a second one',
+       ev("agLetterDue('" + MON + "')") === false);
+    ok('...and Sunday itself does not write twice either',
+       ev("agLetterDue('" + SUN + "')") === false);
+    // put back the letter this block borrowed -- the render assertions below read it
     withDay(0, function(){ ev("agSetLetter('a letter about the week');"); });
 
     // both surfaces render, and the brief renders as text he would actually read

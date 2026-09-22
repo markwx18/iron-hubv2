@@ -253,7 +253,10 @@ export function alertKeys(data) {
   const flags = (((data && data.invest) || {}).flags || []).filter((f) => f && f.status === 'active').map((f) => String(f.id));
   const proposals = ((data && data.agents && data.agents.proposals) || []).filter((p) => p && p.status === 'pending').map((p) => String(p.id));
   const brief = (data && data.agents && data.agents.brief && data.agents.brief.date) || '';
-  return { prs, flags, proposals, brief };
+  // Keyed on `at`, not `week`: S.agents.letter is replaced in place, so a letter rewritten for
+  // the same Sunday would be invisible under `week` and would never reach the channel.
+  const letter = (data && data.agents && data.agents.letter && data.agents.letter.at) || '';
+  return { prs, flags, proposals, brief, letter };
 }
 /* Each alert kind goes to its own Discord channel, and each channel owns the part of the
    watermark it is responsible for. That pairing is the point: with one shared watermark, a post
@@ -263,6 +266,10 @@ export const ALERT_CHANNELS = {
   prs: { keys: ['prs'] },
   alerts: { keys: ['flags', 'proposals'] },
   brief: { keys: ['brief'] },
+  // The weekly letter gets its own channel and its own watermark slice for the same reason as
+  // the rest: sharing the brief's key would let a Sunday letter and that day's brief suppress
+  // each other, since both would advance one scalar.
+  letter: { keys: ['letter'] },
 };
 /* Returns {init, cur, channels:{prs:[msgs], alerts:[msgs], brief:[msgs]}}. `cur` is the full
    current key set; the caller adopts each channel's slice of it only once that channel's posts
@@ -270,7 +277,7 @@ export const ALERT_CHANNELS = {
    flood the channels on day one. */
 export function diffAlerts(data, prevSeen) {
   const cur = alertKeys(data);
-  const channels = { prs: [], alerts: [], brief: [] };
+  const channels = { prs: [], alerts: [], brief: [], letter: [] };
   if (!prevSeen || !prevSeen.init) return { init: true, cur, channels };
   const had = (arr) => new Set(arr || []);
   const pSeen = had(prevSeen.prs), fSeen = had(prevSeen.flags), qSeen = had(prevSeen.proposals);
@@ -297,6 +304,17 @@ export function diffAlerts(data, prevSeen) {
   const brief = data.agents && data.agents.brief;
   if (cur.brief && cur.brief !== prevSeen.brief && brief && brief.text) {
     channels.brief = packEmbeds(splitText(safe(brief.text), 4000).map((part, i) => ({ title: i === 0 ? '☀️ Daily brief · ' + brief.date : undefined, color: COLORS.zulu, description: part })));
+  }
+  const letter = data.agents && data.agents.letter;
+  /* `undefined` means this deployment has never tracked the letter key at all -- the channel was
+     added after the first run, so prevSeen.init is already true and the init guard above does not
+     cover it. Posting here would fire off whatever letter happens to be sitting in state, quite
+     possibly one from several Sundays ago. Adopt it silently instead; runAlerts() advances the
+     watermark for a key it has never seen. Same reasoning as init, one level down. */
+  if (prevSeen.letter !== undefined && cur.letter && cur.letter !== prevSeen.letter && letter && letter.text) {
+    channels.letter = packEmbeds(splitText(safe(letter.text), 4000).map((part, i) => ({
+      title: i === 0 ? '\u{1F4EC} Weekly letter' + (letter.week ? ' \u00b7 ' + letter.week : '') : undefined,
+      color: COLORS.zulu, description: part })));
   }
   return { init: false, cur, channels };
 }

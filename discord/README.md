@@ -21,7 +21,7 @@ are all free at this usage.
 
 ## The channels
 
-Five channels, each with one job. **Four of them get a webhook, and each webhook goes in exactly
+Six channels, each with one job. **Five of them get a webhook, and each webhook goes in exactly
 one place.** This table is the part that's easiest to mix up, so come back to it while setting up.
 
 | Channel | What lands there | Posted by | Webhook? | Where the webhook URL goes |
@@ -30,6 +30,7 @@ one place.** This table is the part that's easiest to mix up, so come back to it
 | `#prs` | 🏆 New PRs | Worker, checked every 5 min | Yes | Worker secret **`WEBHOOK_PRS`** |
 | `#alerts` | 🔎 New investigation flags · 📋 new agent proposals | Worker, checked every 5 min | Yes | Worker secret **`WEBHOOK_ALERTS`** |
 | `#daily-brief` | ☀️ The morning brief | Worker, checked every 5 min | Yes | Worker secret **`WEBHOOK_BRIEF`** |
+| `#weekly-letter` | 📬 ZULU's Sunday letter | Worker, checked every 5 min | Yes | Worker secret **`WEBHOOK_LETTER`** |
 | `#releases` | 🚀 A note when a new app build ships | GitHub Action | Yes | GitHub repo secret **`DISCORD_RELEASES_WEBHOOK_URL`** |
 
 Things that trip people up:
@@ -38,6 +39,10 @@ Things that trip people up:
   and name it after the channel so you can tell them apart.
 - **`#releases` is the odd one out.** Its webhook goes into **GitHub**, not Cloudflare. The Worker
   never posts releases, and GitHub never posts PRs.
+- **Adding a channel later never dumps a backlog.** A watermark key the Worker has not tracked
+  before is adopted silently on its first run, and an unset webhook marks its items seen rather
+  than queuing them. So `#weekly-letter` starts from the next letter ZULU writes, not from
+  whichever one happens to be sitting in the gist when you add the secret.
 - **`#commands` gets no webhook.** Command replies don't use one.
 - **A channel with no webhook is simply off.** Nothing is posted there, and nothing piles up
   waiting. If you add the webhook later, it starts with the *next* new item, not with everything
@@ -58,6 +63,7 @@ Cloudflare Worker (this folder)
   every 5 min    → reads the gist → WEBHOOK_PRS → #prs
                                   → WEBHOOK_ALERTS → #alerts
                                   → WEBHOOK_BRIEF → #daily-brief
+                                  → WEBHOOK_LETTER → #weekly-letter
 
 GitHub Action discord-release.yml → DISCORD_RELEASES_WEBHOOK_URL → #releases
                                     (only when the build marker changes)
@@ -85,6 +91,7 @@ DISCORD_GUILD_ID       step 1   (server ID; only used by register-commands.js)
 WEBHOOK_PRS            step 1   (#prs webhook URL)
 WEBHOOK_ALERTS         step 1   (#alerts webhook URL)
 WEBHOOK_BRIEF          step 1   (#daily-brief webhook URL)
+WEBHOOK_LETTER         step 1   (#weekly-letter webhook URL)
 DISCORD_RELEASES_WEBHOOK_URL  step 1   (#releases webhook URL; goes to GitHub, not Cloudflare)
 DISCORD_APP_ID         step 2
 DISCORD_PUBLIC_KEY     step 2
@@ -95,10 +102,11 @@ GIST_TOKEN             step 3
 
 ### 1. Discord server, channels and webhooks
 1. Create a **private** server. Anyone who can see these channels can see your training data.
-2. Create five text channels: `#commands`, `#prs`, `#alerts`, `#daily-brief`, `#releases`.
+2. Create six text channels: `#commands`, `#prs`, `#alerts`, `#daily-brief`, `#weekly-letter`,
+   `#releases`.
    A category such as "IRON HUB" keeps them together.
-3. Make **four** webhooks, one per channel, created *inside* that channel. `#commands` doesn't get one.
-   For each of `#prs`, `#alerts`, `#daily-brief` and `#releases`:
+3. Make **five** webhooks, one per channel, created *inside* that channel. `#commands` doesn't get one.
+   For each of `#prs`, `#alerts`, `#daily-brief`, `#weekly-letter` and `#releases`:
    - Hover the channel → ⚙️ *Edit Channel* → *Integrations* → *Webhooks* → **New Webhook**
    - Name the webhook after its channel (e.g. "prs"). The name is just a label, but it's how
      you'll tell the URLs apart later.
@@ -109,6 +117,7 @@ GIST_TOKEN             step 3
    | `#prs` | `WEBHOOK_PRS` |
    | `#alerts` | `WEBHOOK_ALERTS` |
    | `#daily-brief` | `WEBHOOK_BRIEF` |
+   | `#weekly-letter` | `WEBHOOK_LETTER` |
    | `#releases` | `DISCORD_RELEASES_WEBHOOK_URL` |
 
 4. Discord *Settings* → *Advanced* → turn on **Developer Mode**.
@@ -150,8 +159,9 @@ npx wrangler secret put DISCORD_OWNER_ID
 npx wrangler secret put WEBHOOK_PRS
 npx wrangler secret put WEBHOOK_ALERTS
 npx wrangler secret put WEBHOOK_BRIEF
+npx wrangler secret put WEBHOOK_LETTER
 ```
-Check the list before deploying. It should show exactly those 8 names, and
+Check the list before deploying. It should show exactly those 9 names, and
 `DISCORD_RELEASES_WEBHOOK_URL` should **not** be among them:
 ```bash
 npx wrangler secret list

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-19-v4">
+<meta name="ironhub-build" content="2026-09-22-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1313,8 +1313,12 @@ function dayMeta(dk){
 }
 function dayName(dk){ const d = dayMeta(dk); return (d && d.name) || ''; }
 /* Rep-mode helpers — per-exercise override of the global rep range. */
+/* The strength-mode rep target. Was a bare {lo:3, hi:6} here with the string "3-6" retyped in
+   four bits of markup; the agent prompts need the same numbers, and a target that disagrees
+   with itself across surfaces is the exact failure this file keeps writing comments about. */
+const STR_LO = 3, STR_HI = 6;
 function exRepMode(ex){
-  if(isStrMode(ex)) return {lo:3, hi:6};   // explicit per-exercise strength mode always wins
+  if(isStrMode(ex)) return {lo:STR_LO, hi:STR_HI};   // explicit per-exercise strength mode always wins
   const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
   if(mw && mw.repLo>0 && mw.repHi>0) return {lo:mw.repLo, hi:mw.repHi};  // then the active phase
   return {lo:S.settings.repLow, hi:S.settings.repHigh};
@@ -1325,6 +1329,16 @@ function isStrMode(ex){
     for(const x of (src[dk].exercises||[]))
       if(exName(x)===ex && typeof x==='object' && x.repMode==='str') return true;
   return false;
+}
+/* Every lift currently in strength mode, across the split in force. Companion to maxedList():
+   both exist so a prompt can state a fact about a lift that the raw numbers misrepresent. */
+function strModeList(){
+  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  const out = [];
+  for(const dk in src)
+    for(const x of (src[dk].exercises||[]))
+      if(typeof x==='object' && x.repMode==='str' && out.indexOf(exName(x))<0) out.push(exName(x));
+  return out;
 }
 function toggleRepMode(dk, i){
   ensureObj(dk, i);
@@ -1571,6 +1585,15 @@ function roundToEquipList(target, list){
   }
   return best;
 }
+/* Round a computed weight to an exercise's own increment ladder. deloadExercise() and the two
+   investigation resets used to hard-code /5, which silently defeats a 2.5, 7.5 or 12.5 lb
+   increment: the reset lands on a weight the machine cannot actually be set to, and nothing
+   downstream can tell that the number was never reachable. */
+function roundToInc(v, inc){
+  const step = (+inc > 0) ? +inc : 5;
+  const out = Math.round((+v||0)/step)*step;
+  return Math.round(out*100)/100;   // a 7.5 ladder produces .5s \u2014 kill float dust, keep the half
+}
 function backoffWeightFor(nm, topW){
   if(!topW || topW<=0) return null;
   if(!isStrMode(nm)) return null;          // strength lifts only
@@ -1581,37 +1604,46 @@ function backoffWeightFor(nm, topW){
   if(bw >= topW) bw = topW - inc;          // rounding collapsed it \u2014 force at least one step down
   return bw > 0 ? bw : null;
 }
+/* Write a per-exercise property onto EVERY slot that names this exercise: on every split day,
+   AND inside an approved meso strength block. Two separate reasons, and missing either one is
+   invisible until it bites:
+   - The same machine appears on several days. MAX, the increment and the HOME mapping are
+     properties of the equipment, not of the day, so they have to stay consistent across them.
+   - isMaxed(), incForExercise(), isFormFocus(), isNoBackoff(), homeSkipFor() and homeSubFor()
+     all resolve through activeSplitObj(), which during a block is a deep copy frozen when the
+     block was generated. A write that only touched S.split was therefore silently dead for the
+     whole life of the block \u2014 tapping MAX did nothing at all. Same divergence that turned a
+     +15 increment into a -5, arriving from the write side instead of the read side.
+   The patch is deep-copied per slot so nested values (homeSub) are never shared between days. */
+function applyExFlag(nm, patch){
+  const targets = [S.split];
+  try{
+    const ms = (typeof mesoActiveSplit==='function') ? mesoActiveSplit() : null;
+    if(ms) targets.push(ms);
+  }catch(e){}
+  targets.forEach(src=>{
+    for(const d in src){
+      const list = (src[d]||{}).exercises;
+      if(!Array.isArray(list)) continue;
+      list.forEach((x,j)=>{
+        const hit = (typeof x === 'object') ? exName(x)===nm : String(x)===nm;
+        if(!hit) return;
+        if(typeof list[j] !== 'object') list[j] = {name:nm, inc:incFor(nm)};
+        Object.assign(list[j], JSON.parse(JSON.stringify(patch)));
+      });
+    }
+  });
+}
 function toggleNoBackoff(dk,i){
-  const list = S.split[dk].exercises;
-  if(typeof list[i] !== 'object') list[i] = {name:String(list[i]), inc:incFor(String(list[i]))};
-  const o = list[i];
+  const o = ensureObj(dk,i);
   o.noBackoff = !o.noBackoff;
-  const nm = exName(o);
-  for(const d in S.split){
-    (S.split[d].exercises||[]).forEach((x,j)=>{
-      if(typeof x === 'object' && exName(x)===nm) x.noBackoff = o.noBackoff;
-      else if(typeof x !== 'object' && String(x)===nm){
-        S.split[d].exercises[j] = {name:nm, inc:incFor(nm), noBackoff:o.noBackoff};
-      }
-    });
-  }
+  applyExFlag(exName(o), {noBackoff:o.noBackoff});
   save(); refreshSplitEditor();
 }
 function toggleMaxed(dk,i){
-  const list = S.split[dk].exercises;
-  if(typeof list[i] !== 'object') list[i] = {name:String(list[i]), inc:incFor(String(list[i]))};
-  const o = list[i];
+  const o = ensureObj(dk,i);
   o.maxed = !o.maxed;
-  // the same machine can appear on several days \u2014 keep the flag consistent everywhere
-  const nm = exName(o);
-  for(const d in S.split){
-    (S.split[d].exercises||[]).forEach((x,j)=>{
-      if(typeof x === 'object' && exName(x)===nm) x.maxed = o.maxed;
-      else if(typeof x !== 'object' && String(x)===nm){
-        S.split[d].exercises[j] = {name:nm, inc:incFor(nm), maxed:o.maxed};
-      }
-    });
-  }
+  applyExFlag(exName(o), {maxed:o.maxed});
   save(); refreshSplitEditor();
 }
 /* HOME mode per-exercise control: unchanged (already home-compatible, e.g. barbell/
@@ -1621,45 +1653,25 @@ function toggleMaxed(dk,i){
    propagation shape as toggleMaxed/toggleNoBackoff — the same exercise can appear
    on multiple split days and the mapping should stay consistent everywhere. */
 function setHomeMode(dk,i,mode){
-  const list = S.split[dk].exercises;
-  if(typeof list[i] !== 'object') list[i] = {name:String(list[i]), inc:incFor(String(list[i]))};
-  const o = list[i];
+  const o = ensureObj(dk,i);
   if(mode==='skip'){ o.homeSkip = true; o.homeSub = null; }
   else if(mode==='sub'){ o.homeSkip = false; o.homeSub = o.homeSub || {name:'', equip:'db'}; }
   else { o.homeSkip = false; o.homeSub = null; }
-  const nm = exName(o);
-  for(const d in S.split){
-    (S.split[d].exercises||[]).forEach((x,j)=>{
-      if(typeof x === 'object' && exName(x)===nm){ x.homeSkip = o.homeSkip; x.homeSub = o.homeSub ? Object.assign({}, o.homeSub) : null; }
-      else if(typeof x !== 'object' && String(x)===nm){
-        S.split[d].exercises[j] = {name:nm, inc:incFor(nm), homeSkip:o.homeSkip, homeSub: o.homeSub ? Object.assign({}, o.homeSub) : null};
-      }
-    });
-  }
+  applyExFlag(exName(o), {homeSkip:o.homeSkip, homeSub:o.homeSub||null});
   save(); refreshSplitEditor();
 }
 function setHomeSubName(dk,i,name){
   const o = ensureObj(dk,i);
   if(!o.homeSub) o.homeSub = {name:'', equip:'db'};
   o.homeSub.name = name.trim();
-  const nm = exName(o);
-  for(const d in S.split){
-    (S.split[d].exercises||[]).forEach(x=>{
-      if(typeof x === 'object' && exName(x)===nm && x.homeSub) x.homeSub.name = o.homeSub.name;
-    });
-  }
+  applyExFlag(exName(o), {homeSub:o.homeSub});
   save();
 }
 function setHomeSubEquip(dk,i,equip){
   const o = ensureObj(dk,i);
   if(!o.homeSub) o.homeSub = {name:'', equip:'db'};
   o.homeSub.equip = equip;
-  const nm = exName(o);
-  for(const d in S.split){
-    (S.split[d].exercises||[]).forEach(x=>{
-      if(typeof x === 'object' && exName(x)===nm && x.homeSub) x.homeSub.equip = o.homeSub.equip;
-    });
-  }
+  applyExFlag(exName(o), {homeSub:o.homeSub});
   save();
 }
 let sdHomeOpen = {};
@@ -1726,6 +1738,15 @@ function recommend(ex, ready){
   // HYP mode: weight moves when ALL top sets hit the ceiling (stricter — appropriate for accessory hypertrophy work).
   const str = !ff && isStrMode(ex);
   const ceilReps = str ? maxReps : minReps;
+  /* ceilReps made the UPWARD decision mode-aware and every downward branch still tested raw
+     minReps, which is wrong for a strength lift in a specific and costly way: a top double at
+     a NEW heaviest weight is the entire point of the lift, not a missed set. 275x2 logged after
+     265x3 used to read as "below range with failure tags" and prescribe 265.
+     So on a STR lift, judge the LOAD: if the bar went up (or held), reps under the floor are the
+     cost of the jump. Only step the weight back when the load itself did not move, which is a
+     real regression. No previous session means nothing can be called a regression yet. */
+  const prevTopW = hist.length>1 ? Math.max(0, ...hist[1].sets.map(s=>+s.w||0)) : 0;
+  const strHeavyAttempt = str && (prevTopW===0 || topW >= prevTopW);
   let inc = incForExercise(ex);
   // effort tags from last session's top sets
   const effs = topSets.map(effBucket).filter(Boolean);
@@ -1775,6 +1796,15 @@ function recommend(ex, ready){
     }
   }
   if(ceilReps>=hi){
+    /* MAXED: there is no heavier pin or plate on this machine, so "you earned the jump" has
+       nowhere to go. classifyDecision() has always known this; recommend() did not \u2014 and
+       recommend() is the ONLY function in the app that produces a prescribed weight. So the LIVE
+       dock, the Today card and the warm-up ramp all went on climbing while the engine log sitting
+       next to them said "this machine is MAXED". That asymmetry is what put 205 lb on a maxed
+       Machine Leg Curl. Keep the two trees in step: any branch added to one belongs in the other. */
+    if(isMaxed(ex)){
+      return {target:topW+' lb \u00d7 '+hi+'+ (maxed)', detail:'You hit the '+hi+'-rep ceiling ('+summ(last.sets)+'), but this machine is MAXED \u2014 there is no heavier setting. Progress from here is a rep beyond '+hi+', an extra set, or a slower eccentric at '+topW+' lb.'+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    }
     if(allEasy) inc = inc*2;
     const nw = topW+inc;
     if(ready==='low'){
@@ -1782,6 +1812,11 @@ function recommend(ex, ready){
     }
     const hitTxt = str ? 'Your top set hit '+hi+' reps ('+summ(last.sets)+').' : 'You hit '+hi+'+ on every top set ('+summ(last.sets)+').';
     return {target:nw+' lb \u00d7 '+lo+'+', detail:hitTxt+(allEasy?' All tagged easy \u2014 taking a double jump of '+inc+' lb.':' Load goes up '+inc+' lb \u2014 reps reset to the bottom of the range.')+(hadGrind?' Last bump was a grind, so expect this to feel heavy \u2014 that\u2019s normal.':'')+pushNote, sets:[{w:nw,r:''},{w:nw,r:''},{w:nw,r:''}]};
+  }
+  if(stall && isMaxed(ex)){
+    // A flat load on a maxed machine is the equipment ceiling, not a stall. Mirrors
+    // classifyDecision()'s 'maxed-hold'.
+    return {target:topW+' lb \u00d7 add a rep (maxed)', detail:'Three sessions at '+topW+' lb ('+summ(last.sets)+'), but this machine is MAXED \u2014 there is no heavier setting, so a flat load here is expected rather than a problem. Chase a rep, an extra set, or a slower eccentric.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
   }
   if(stall){
     return {target:topW+' lb \u2014 break the stall', detail:'Three sessions at '+topW+' lb without rep progress ('+summ(last.sets)+'). Options: tighten rest to 2\u20133 min and push the first set hard, or drop ~10% for one session and rebuild.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
@@ -1793,9 +1828,14 @@ function recommend(ex, ready){
     if(ready==='low') d += ' Low readiness: matching last session counts as a win today.';
     return {target:topW+' lb \u00d7 beat '+maxReps, detail:d+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
   }
-  if(hadFail){
+  if(hadFail && !strHeavyAttempt){
     const dw = Math.max(topW - inc, inc);
     return {target:dw+' lb \u00d7 '+lo+'+', detail:'Below range with failure tags ('+summ(last.sets)+'). Step back '+inc+' lb, own the rep range, then climb \u2014 backing up to speed up.', sets:[{w:dw,r:''},{w:dw,r:''},{w:dw,r:''}]};
+  }
+  if(strHeavyAttempt){
+    const moveTxt = (prevTopW && topW>prevTopW) ? 'heavier than last session\u2019s '+prevTopW+' lb'
+                  : 'matching your last top weight';
+    return {target:topW+' lb \u00d7 build to '+lo, detail:'Top set '+summ(last.sets)+' \u2014 '+moveTxt+'. On a strength lift that is the work, not a missed set: the load is what is progressing. Hold '+topW+' lb and build toward '+lo+' reps before adding more.'+(ready==='low'?' Low readiness \u2014 no heroics today.':''), sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
   }
   return {target:topW+' lb \u00d7 build to '+lo, detail:'Last session dipped below range ('+summ(last.sets)+'). Hold '+topW+' lb and climb back to '+lo+' reps per set before adding load.'+(ready==='low'?' Low readiness \u2014 no heroics today.':''), sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
 }
@@ -5617,6 +5657,13 @@ function renderSettings(){
     '<p class="small">Tap a day to expand. Rename or reorder exercises, set each one\u2019s weight increment (what the engine adds when you progress), add or remove exercises.</p>'+
     '<div id="sdWrap" style="margin-top:10px">'+splitEditorHTML()+'</div></div>';
 
+  html += '<h2>Exercise Names</h2><div class="card">'+
+    '<p class="small">Every name the app knows, including ones only your history remembers. '+
+    'Renaming moves the logged sessions, PRs, goals and flags with it \u2014 so renaming one duplicate '+
+    'to the other merges them into a single lift with one trend line. Names with no logged sets can '+
+    'be removed outright.</p>'+
+    '<div id="exnWrap" style="margin-top:10px">'+exNameEditorHTML()+'</div></div>';
+
   html += homeEquipmentCardHTML();
 
   html += '<h2>App Version</h2><div class="card">'+
@@ -5923,10 +5970,37 @@ function renameEx(dk,i,v){
   if(nv) o.name = nv;
   save();
 }
-function setInc(dk,i,v){ ensureObj(dk,i).inc = v; save(); refreshSplitEditor(); sdSetOpen(dk, true); }
+/* The four presets cover most of his gym; some stacks move in 7.5s and a heavy compound can want
+   20 or 25. VALIDATED rather than coerced: every back-off, deload and investigation reset weight
+   is built from this number, so a silently corrected increment is worse than a rejected one.
+   Half-pound resolution because that is the finest thing a real plate set offers. */
+const INC_MIN = 0.5, INC_MAX = 100;
+function setIncCustom(dk,i){
+  const slot = S.split[dk].exercises[i];
+  if(!slot) return;
+  const raw = prompt('Weight increment for '+exName(slot)+' (lb).\nHalf-pound steps, '+
+    INC_MIN+' to '+INC_MAX+'.', String(exInc(slot)));
+  if(raw===null) return;
+  const v = parseFloat(String(raw).trim());
+  if(!isFinite(v) || v < INC_MIN || v > INC_MAX || Math.abs(v*2 - Math.round(v*2)) > 1e-9){
+    alert('Not a usable increment. Use a number between '+INC_MIN+' and '+INC_MAX+', in half-pound steps.');
+    return;
+  }
+  setInc(dk, i, Math.round(v*2)/2);
+}
+/* True when the stored increment is not one of the four preset chips, i.e. the custom chip is
+   the one that should read as selected. */
+function isCustomInc(inc){ return INC_PRESETS.every(function(v){ return Math.abs(inc-v) >= 0.01; }); }
+function setInc(dk,i,v){
+  const o = ensureObj(dk,i);
+  o.inc = v;
+  applyExFlag(exName(o), {inc:v});
+  save(); refreshSplitEditor(); sdSetOpen(dk, true);
+}
 function toggleFormFocus(dk,i){
   const o = ensureObj(dk,i);
   o.formFocus = !o.formFocus;
+  applyExFlag(exName(o), {formFocus:o.formFocus});
   save(); refreshSplitEditor(); sdSetOpen(dk, true); renderToday();
 }
 function moveEx(dk,i,dir){
@@ -6309,7 +6383,14 @@ function intraAdvice(ex){
   const last = sets[sets.length-1];
   const r=+last.r||0, e=last.e, w=+last.w||0;
   const lo=ex.lo, hi=ex.hi, inc=incForExercise(ex.name);
-  if(e==='fail' || (r>0 && r<lo)){
+  /* On a strength lift a set under the rep floor is usually a heavy top single or double, which
+     is the point of the lift \u2014 telling him to drop 10 lb mid-session is exactly backwards. So
+     only a real failure tag backs the weight off there; a low-rep top set falls through to the
+     backoff branch below, which already prescribes the right thing for the remaining sets (and
+     when there is no backoff weight, lands on a hold). On a hypertrophy lift, missing the floor
+     genuinely does mean the load is too heavy, so that behaviour is unchanged. */
+  const _str = ex.repMode==='str';
+  if(e==='fail' || (!_str && r>0 && r<lo)){
     let dw=Math.max(w-inc,inc);
     if(ex._homeEquipList) dw = roundToEquipList(dw, ex._homeEquipList);
     return {w:dw, lo:lo, hi:hi, tag:'Back off', cls:'back', msg:'That set fell short — drop to '+dw+' lb and keep the reps clean.'};
@@ -7945,6 +8026,7 @@ function splitEditorHTML(){
         '<input class="nm" value="'+esc(nm)+'" onchange="renameEx(\''+dk+'\','+i+',this.value)">'+
         '<div class="inc-presets" title="Weight increment">'+
           INC_PRESETS.map(v=>'<button class="'+(Math.abs(inc-v)<0.01?'sel':'')+'" onclick="setInc(\''+dk+'\','+i+','+v+')">+'+v+'</button>').join('')+
+          '<button class="'+(isCustomInc(inc)?'sel':'')+'" title="Custom increment \u2014 for a machine whose stack does not move in 2.5, 5, 10 or 15 lb steps." onclick="setIncCustom(\''+dk+'\','+i+')">'+(isCustomInc(inc)?'+'+inc:'+\u2026')+'</button>'+
         '</div>'+
         '<button class="ord ff-toggle" style="'+(ff?'color:var(--cyan);border-color:var(--cyan);font-weight:800':'')+'" onclick="toggleFormFocus(\''+dk+'\','+i+')">FORM</button>'+
         '<button class="ord ff-toggle" style="'+(str?'color:var(--violet);border-color:var(--violet);font-weight:800':'')+'" onclick="toggleRepMode(\''+dk+'\','+i+')">'+(str?'STR':'HYP')+'</button>'+
@@ -7974,6 +8056,341 @@ function splitEditorHTML(){
     h+='<div style="padding:8px 0 2px"><button class="btn ghost sm" onclick="addEx(\''+dk+'\')">+ add exercise</button></div>';
     h+='</div></div>';
   });
+  return h;
+}
+/* ============================================================
+   EXERCISE NAME EDITOR \u2014 rename, merge, remove
+   ============================================================
+   A rename here is a primary-key migration, not a label change: the exercise NAME is the key into
+   fifteen separate stores. The app's long-standing position was the opposite \u2014 openSplitSwap()
+   still says a replaced lift's history stays under its own name, and for a SWAP that is right,
+   because it is a different exercise. But it is also exactly what produces the duplicates this
+   editor exists to clear: 'Machine Leg Curl' and 'Leg Curl Machine' are one machine wearing two
+   trend lines, two PR groups and half the volume each.
+
+   Deliberately synchronous from end to end. There is no await anywhere inside exRenameEverywhere(),
+   which is the only way to be certain applyPulled() cannot replace S half way through and throw
+   the rest of the migration away.
+
+   Every touched history record is re-stamped, and prHistory is why. mergeUnseenHistory() keeps a
+   local record only when r.t > exportedAt, and prHistory's merge key is exercise|date|e1rm \u2014 the
+   one collection whose identity CONTAINS the name being migrated. A renamed row therefore looks
+   brand new to the merge, and without a fresh stamp it would be dropped and the un-renamed row
+   would win. logs and pain key on an id instead, so a record present on both sides is taken from
+   the snapshot wholesale whatever its stamp says; what protects those is save() bumping changedAt
+   to now (applyPulled() then refuses any snapshot exported before the rename) plus
+   syncReconcileBeforePush(). The stamp is cheap and correct either way. */
+
+/* Word-order- and plural-insensitive, so 'Machine Leg Curl' and 'Leg Curl Machine' collide.
+   invNormName() alone does not, because it preserves word order.
+   ADDITIVE ON PURPOSE: invNormName() is what agResolveExName() resolves model-supplied names
+   through, and loosening it there would widen what the agent layer accepts. This is only ever used
+   to SUGGEST pairs \u2014 every merge is confirmed by hand. */
+function exDupeKey(nm){
+  return invNormName(nm).replace(/s\b/g,'').split(' ').filter(Boolean).sort().join(' ');
+}
+/* Every split object that could hold this name: the permanent split, plus every meso block split
+   (not just the one in force \u2014 an approved block for next month holds names too). */
+function exAllSplitObjs(){
+  const out = [S.split];
+  try{
+    const a = (S.meso && S.meso.active) || null;
+    if(a && a.splits) Object.keys(a.splits).forEach(function(bid){
+      const rec = a.splits[bid];
+      if(rec && rec.split && out.indexOf(rec.split) < 0) out.push(rec.split);
+    });
+  }catch(e){}
+  return out;
+}
+/* Total sets ever logged under a name. Zero means nothing is lost by removing it outright. */
+function exLoggedSets(nm){
+  let c = 0;
+  (S.logs||[]).forEach(function(l){
+    (l.entries||[]).forEach(function(e){ if(e && e.exercise===nm) c += (e.sets||[]).length; });
+  });
+  return c;
+}
+/* Every name the app knows, with the history standing behind it. Drives the editor list. */
+function exNameUsage(){
+  const out = {};
+  const row = function(nm){
+    if(!out[nm]) out[nm] = {name:nm, sessions:0, sets:0, last:'', inSplit:false};
+    return out[nm];
+  };
+  exAllSplitObjs().forEach(function(src){
+    for(const dk in src){
+      ((src[dk]||{}).exercises||[]).forEach(function(x){
+        const nm = exName(x); if(nm) row(nm).inSplit = true;
+        const hs = (typeof x==='object' && x.homeSub && x.homeSub.name) ? x.homeSub.name : '';
+        if(hs) row(hs).inSplit = true;
+      });
+    }
+  });
+  (S.logs||[]).forEach(function(l){
+    (l.entries||[]).forEach(function(e){
+      if(!e || !e.exercise) return;
+      const r = row(e.exercise);
+      r.sessions++; r.sets += (e.sets||[]).length;
+      if(l.date && l.date > r.last) r.last = l.date;
+    });
+  });
+  return Object.keys(out).sort(function(a,b){ return a.localeCompare(b); }).map(function(k){ return out[k]; });
+}
+/* Groups of names that look like the same exercise. Suggestion only. */
+function exDupeGroups(){
+  const by = {};
+  exNameUsage().forEach(function(u){
+    const k = exDupeKey(u.name); if(!k) return;
+    (by[k] = by[k] || []).push(u);
+  });
+  return Object.keys(by).sort().map(function(k){ return by[k]; }).filter(function(g){ return g.length > 1; });
+}
+/* Why this rename must not go ahead, as one sentence, or null. */
+function exRenameBlocker(oldName, newName){
+  const nv = String(newName==null?'':newName).trim();
+  if(!nv) return 'Give it a name.';
+  if(nv.length > 60) return 'That name is too long (60 characters max).';
+  if(nv === oldName) return null;
+  /* The LIVE draft in localStorage and the in-memory `live` object both carry their own copy of
+     the names, so a rename underneath an open session would log that session under the old one. */
+  if(typeof live !== 'undefined' && live)
+    return 'Finish or discard the LIVE session first. An open session holds its own copy of the exercise names, so renaming underneath it would log today under the old name.';
+  /* PR_LIFTS is keyed by these exact strings, and they feed strengthScore() and prWatchList().
+     Renaming away from one takes the lift out of the Progress verdict with no warning anywhere.
+     Merging a duplicate INTO one is the useful direction and stays allowed. */
+  if(Object.prototype.hasOwnProperty.call(PR_LIFTS, oldName))
+    return oldName+' is one of the two milestone lifts. Its exact name feeds the Progress verdict and the PR watch list, and both would go quiet with nothing to explain it. You can merge another name INTO it, but not rename it away.';
+  return null;
+}
+/* Rewrite an exercise name across every store that keys on it. Returns how many places changed.
+   When newName already exists this is a MERGE, and the two histories become one. */
+function exRenameEverywhere(oldName, newName){
+  if(!oldName || !newName || oldName === newName) return 0;
+  let touched = 0;
+
+  // 1. split slots on every day, in the permanent split and in every meso block split
+  exAllSplitObjs().forEach(function(src){
+    for(const dk in src){
+      const list = (src[dk]||{}).exercises;
+      if(!Array.isArray(list)) continue;
+      list.forEach(function(x,j){
+        if(typeof x === 'object' && x){
+          if(x.name === oldName){ x.name = newName; touched++; }
+          if(x.homeSub && x.homeSub.name === oldName){ x.homeSub.name = newName; touched++; }
+        } else if(String(x) === oldName){ list[j] = newName; touched++; }
+      });
+      /* A merge where both names lived on the SAME day leaves that day holding the exercise
+         twice, and dayExNames() would hand buildLiveExercises() two identical entries -- the
+         session would prescribe the same machine twice, back to back. Keep the first slot
+         (already in position, with its flags) and drop the rest. */
+      const seenNm = {};
+      const kept = [];
+      list.forEach(function(x){
+        const nm = exName(x);
+        if(nm && seenNm[nm]) return;
+        if(nm) seenNm[nm] = 1;
+        kept.push(x);
+      });
+      if(kept.length !== list.length){ src[dk].exercises = kept; touched++; }
+    }
+  });
+
+  // 2. logs: the entries, and the decisions map that sits beside them keyed by the same name
+  (S.logs||[]).forEach(function(l){
+    if(!l) return;
+    let hit = false;
+    (l.entries||[]).forEach(function(e){ if(e && e.exercise === oldName){ e.exercise = newName; hit = true; touched++; } });
+    if(hit && Array.isArray(l.entries)){
+      /* A merge can leave ONE record holding two entries under the same name. historyFor() reads
+         entries.find(), which returns the first match only, so the second entry's sets would drop
+         out of every trend, chart and PR calculation with nothing on screen to show for it. */
+      const merged = []; let keep = null;
+      l.entries.forEach(function(e){
+        if(!e) return;
+        if(e.exercise !== newName){ merged.push(e); return; }
+        if(keep){ keep.sets = (keep.sets||[]).concat(e.sets||[]); return; }
+        keep = e; merged.push(e);
+      });
+      l.entries = merged;
+    }
+    if(l.decisions && Object.prototype.hasOwnProperty.call(l.decisions, oldName)){
+      if(!Object.prototype.hasOwnProperty.call(l.decisions, newName)) l.decisions[newName] = l.decisions[oldName];
+      delete l.decisions[oldName];
+      hit = true; touched++;
+    }
+    if(hit) stampRec(l);
+  });
+
+  // 3. PR history, then de-duplicate on the sync merge key this rename can make collide
+  if(Array.isArray(S.prHistory)){
+    const seen = {}, out = [];
+    S.prHistory.forEach(function(r){
+      if(!r) return;
+      if(r.exercise === oldName){ r.exercise = newName; stampRec(r); touched++; }
+      const k = r.exercise+'|'+r.date+'|'+r.e1rm;
+      if(seen[k]) return;   // two rows that are now indistinguishable to mergeUnseenHistory()
+      seen[k] = 1; out.push(r);
+    });
+    S.prHistory = out;
+  }
+
+  // 4. pain flags, road goals, the weekly audit's proposals, today's coach plan
+  (S.pain||[]).forEach(function(r){ if(r && r.exercise === oldName){ r.exercise = newName; stampRec(r); touched++; } });
+  (S.road||[]).forEach(function(g){ if(g && g.exercise === oldName){ g.exercise = newName; touched++; } });
+  try{
+    const ap = S.audit && S.audit.proposals;
+    if(Array.isArray(ap)) ap.forEach(function(p){
+      if(!p) return;
+      if(p.exercise === oldName){ p.exercise = newName; touched++; }
+      if(p.fromExercise === oldName){ p.fromExercise = newName; touched++; }
+    });
+  }catch(e){}
+  try{
+    if(S.coachDayPlan && Array.isArray(S.coachDayPlan.exercises)){
+      S.coachDayPlan.exercises = S.coachDayPlan.exercises.map(function(v){ return v === oldName ? newName : v; });
+    }
+  }catch(e){}
+
+  // 5. investigation: overrides are keyed by name, flags and dismissals by 'lift:'+name
+  try{
+    const iv = S.invest || {};
+    if(iv.overrides && Object.prototype.hasOwnProperty.call(iv.overrides, oldName)){
+      if(!Object.prototype.hasOwnProperty.call(iv.overrides, newName)) iv.overrides[newName] = iv.overrides[oldName];
+      delete iv.overrides[oldName]; touched++;
+    }
+    (iv.flags||[]).forEach(function(f){
+      if(!f) return;
+      if(f.key === 'lift:'+oldName){ f.key = 'lift:'+newName; touched++; }
+      if(typeof f.title === 'string' && f.title.indexOf(oldName) >= 0) f.title = f.title.split(oldName).join(newName);
+    });
+    (iv.history||[]).forEach(function(h){ if(h && h.key === 'lift:'+oldName){ h.key = 'lift:'+newName; touched++; } });
+  }catch(e){}
+
+  // 6. anything the agents are still holding: queued proposals, the overload report's rows
+  try{
+    const ag = S.agents || {};
+    (ag.proposals||[]).forEach(function(p){
+      const pl = p && p.fix && p.fix.payload;
+      if(!pl) return;
+      ['name','from','to','exercise'].forEach(function(k){ if(pl[k] === oldName){ pl[k] = newName; touched++; } });
+    });
+    if(ag.overload && Array.isArray(ag.overload.lifts)){
+      ag.overload.lifts.forEach(function(r){ if(r && r.lift === oldName){ r.lift = newName; touched++; } });
+    }
+  }catch(e){}
+
+  return touched;
+}
+/* Drop a name that was never actually trained \u2014 a typo, or an exercise added and pulled the same
+   day. Nothing is lost, which is the whole reason this is allowed and a destructive purge is not:
+   a junk name that DOES carry sets is cleared by merging it into the right one instead. */
+function exPurgeUnused(nm){
+  if(!nm || exLoggedSets(nm) > 0) return false;
+  let touched = 0;
+  exAllSplitObjs().forEach(function(src){
+    for(const dk in src){
+      const d = src[dk]; if(!d || !Array.isArray(d.exercises)) continue;
+      const before = d.exercises.length;
+      d.exercises = d.exercises.filter(function(x){ return exName(x) !== nm; });
+      touched += before - d.exercises.length;
+      d.exercises.forEach(function(x){ if(typeof x==='object' && x.homeSub && x.homeSub.name === nm){ x.homeSub = null; touched++; } });
+    }
+  });
+  // entries with no sets at all can exist; they carry no history, so they go too
+  (S.logs||[]).forEach(function(l){
+    if(!l || !Array.isArray(l.entries)) return;
+    const before = l.entries.length;
+    l.entries = l.entries.filter(function(e){ return !e || e.exercise !== nm; });
+    if(l.entries.length !== before){ stampRec(l); touched++; }
+    if(l.decisions && Object.prototype.hasOwnProperty.call(l.decisions, nm)) delete l.decisions[nm];
+  });
+  S.road = (S.road||[]).filter(function(g){ return !g || g.exercise !== nm; });
+  try{
+    const iv = S.invest || {};
+    if(iv.overrides) delete iv.overrides[nm];
+    if(Array.isArray(iv.flags)) iv.flags = iv.flags.filter(function(f){ return !f || f.key !== 'lift:'+nm; });
+    if(Array.isArray(iv.history)) iv.history = iv.history.filter(function(h){ return !h || h.key !== 'lift:'+nm; });
+    S.invest = iv;
+  }catch(e){}
+  return touched > 0;
+}
+
+/* ---- the Settings card ----
+   exnSel is module-scoped, not on the DOM node: rerenderActive() regenerates the whole active tab
+   every 30 s and after every sync pull, so a selection kept in markup is wiped on a timer with
+   nothing to blame it on. _exnRows carries the names so an onclick never has to escape one. */
+let exnSel = null;
+let _exnRows = [];
+function exnName(i){ const r = _exnRows[i]; return r ? r.name : null; }
+function exnPick(i){ const nm = exnName(i); exnSel = (exnSel === nm) ? null : nm; refreshExNames(); }
+function refreshExNames(){ const w = document.getElementById('exnWrap'); if(w) w.innerHTML = exNameEditorHTML(); }
+function exnApply(){
+  const nm = exnSel; if(!nm) return;
+  const el = document.getElementById('exnNew');
+  const nv = el ? String(el.value||'').trim() : '';
+  const why = exRenameBlocker(nm, nv);
+  if(why){ alert(why); return; }
+  if(nv === nm){ exnSel = null; refreshExNames(); return; }
+  const usage = exNameUsage();
+  const mine = usage.filter(function(u){ return u.name === nm; })[0] || {sessions:0};
+  const target = usage.filter(function(u){ return u.name === nv; })[0] || null;
+  const sess = mine.sessions + ' logged session' + (mine.sessions === 1 ? '' : 's');
+  const msg = target
+    ? 'Merge "'+nm+'" into "'+nv+'"?\n\n'+sess+', plus its PRs, goals, pain flags and overrides, move across. They become ONE lift with one trend line. This cannot be undone from inside the app.'
+    : 'Rename "'+nm+'" to "'+nv+'" everywhere?\n\n'+sess+' move with it, along with its PRs, goals, pain flags and overrides.';
+  if(!confirm(msg)) return;
+  exRenameEverywhere(nm, nv);
+  exnSel = nv;
+  save();   // a user action: touch + push, or the next background pull reverts the whole migration
+  refreshExNames(); refreshSplitEditor();
+}
+function exnPurge(i){
+  const nm = exnName(i); if(!nm) return;
+  if(exLoggedSets(nm) > 0){ alert('"'+nm+'" has logged sets, so removing it would throw training away. Merge it into the right name instead.'); return; }
+  if(typeof live !== 'undefined' && live){ alert('Finish or discard the LIVE session first.'); return; }
+  if(!confirm('Remove "'+nm+'" completely?\n\nIt has no logged sets, so nothing is lost.')) return;
+  exPurgeUnused(nm);
+  if(exnSel === nm) exnSel = null;
+  save();
+  refreshExNames(); refreshSplitEditor();
+}
+function exNameEditorHTML(){
+  const rows = exNameUsage();
+  _exnRows = rows;
+  const groups = exDupeGroups();
+  let h = '';
+  if(groups.length){
+    h += '<div class="small" style="color:var(--amber);margin-bottom:6px">Possible duplicates</div>';
+    groups.forEach(function(g){
+      h += '<p class="small" style="color:var(--dim);margin:0 0 6px">'+
+        esc(g.map(function(u){ return u.name+' ('+u.sessions+')'; }).join('  \u00b7  '))+
+        ' \u2014 open one below and rename it to the other to merge them.</p>';
+    });
+  }
+  h += '<div style="display:flex;flex-direction:column;gap:2px">';
+  rows.forEach(function(u,i){
+    const open = (exnSel === u.name);
+    h += '<div class="sd-ex" style="flex-wrap:wrap">'+
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(u.name)+'</span>'+
+      '<span class="small mono" style="color:var(--dim);white-space:nowrap">'+
+        (u.sessions ? u.sessions+'\u00d7'+(u.last?' \u00b7 '+esc(u.last):'') : 'never logged')+
+        (u.inSplit?'':' \u00b7 not in split')+'</span>'+
+      '<button class="ord" onclick="exnPick('+i+')">'+(open?'close':'edit')+'</button>'+
+      (u.sets===0 ? '<button class="xx" title="Remove \u2014 nothing has ever been logged under this name" onclick="exnPurge('+i+')">\u00d7</button>' : '')+
+    '</div>';
+    if(open){
+      h += '<div style="padding:6px 0 10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
+        '<input id="exnNew" value="'+esc(u.name)+'" list="exnList" '+
+          'style="flex:1;min-width:160px;background:var(--base);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:6px 8px;font-size:12px">'+
+        '<button class="btn primary sm" onclick="exnApply()">Apply</button>'+
+        '<p class="small" style="color:var(--dim);flex-basis:100%;margin:2px 0 0">'+
+          'Type a new name to rename it everywhere, or an existing name to merge the two into one lift. '+
+          u.sessions+' session'+(u.sessions===1?'':'s')+' and '+u.sets+' set'+(u.sets===1?'':'s')+' move with it.</p>'+
+      '</div>';
+    }
+  });
+  h += '</div>';
+  h += '<datalist id="exnList">'+rows.map(function(u){ return '<option value="'+esc(u.name)+'"></option>'; }).join('')+'</datalist>';
   return h;
 }
 function refreshSplitEditor(){ const w=$('#sdWrap'); if(w){ w.innerHTML=splitEditorHTML(); enableSplitDrag(); } }
@@ -8226,6 +8643,8 @@ function saveEditSession(id){
 
 /* ===================== ENGINE DECISION CLASSIFIER ===================== */
 /* Mirrors recommend()'s decision tree, returns a structured, concise decision
+   (the two really do have to stay in step \u2014 for a while this one checked isMaxed() and
+   recommend() did not, so the log explained a hold while the dock prescribed a climb)
    for the internal system logger. One entry per exercise per session. */
 function classifyDecision(ex, ready){
   const nm = exName(ex);
@@ -8242,6 +8661,9 @@ function classifyDecision(ex, ready){
   const maxReps = Math.max(...topSets.map(s=>+s.r||0));
   const str = !ff && isStrMode(nm);
   const ceilReps = str ? maxReps : minReps;
+  // Mirrors recommend()'s strHeavyAttempt -- see the reasoning there.
+  const prevTopW = hist.length>1 ? Math.max(0, ...hist[1].sets.map(s=>+s.w||0)) : 0;
+  const strHeavyAttempt = str && (prevTopW===0 || topW >= prevTopW);
   let inc = incForExercise(nm);
   const effs = topSets.map(effBucket).filter(Boolean);
   const hadFail = effs.includes('fail');
@@ -8299,6 +8721,9 @@ function classifyDecision(ex, ready){
     else if(hadFail) r='In range with a failed set \u2014 held at '+topW+' lb to win back the reps cleanly.';
     return {code:'hold', from:topW, to:topW, moved:false, reason:r};
   }
+  if(strHeavyAttempt) return {code:'str-top', from:topW, to:topW, moved:false,
+    reason:'Top set '+summ(last.sets)+' at '+topW+' lb'+((prevTopW && topW>prevTopW)?' (up from '+prevTopW+')':'')+
+           '. Strength lift \u2014 low reps at a top weight are intentional, so the load holds and the reps build toward '+lo+'.'};
   if(hadFail){ const dw=Math.max(topW-inc,inc); return {code:'deload-back', from:topW, to:dw, moved:true,
     reason:'Below range with failure tags \u2014 stepped back '+topW+'\u2192'+dw+' lb to own the range, then climb.'}; }
   return {code:'build', from:topW, to:topW, moved:false,
@@ -8387,7 +8812,7 @@ function deloadExercise(nm){
   const rm = exRepMode(nm);
   let baseW = '';
   if(hist.length){ const topW = Math.max(...hist[0].sets.map(s=>+s.w||0)); baseW = topW; }
-  const dw = baseW ? Math.max(Math.round((baseW*0.6)/5)*5, 5) : '';
+  const dw = baseW ? Math.max(roundToInc(baseW*0.6, incForExercise(nm)), 5) : '';
   const reps = rm.lo;
   return {
     name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
@@ -8892,13 +9317,38 @@ function investigateLift(nm){
   // stall length: sessions at same top weight without ceiling
   const declinePct = recent.length>=2 ? (cur - Math.max(...recent.map(p=>p.v)))/Math.max(...recent.map(p=>p.v)) : 0;
 
+  /* A strength lift moving from 225x10 to 275x2 is getting STRONGER, but Epley reads that as a
+     7 lb e1RM drop (300.0 -> 293.3), so the decline branches below would flag his heaviest-ever
+     deadlift session as "losing ground" and propose resetting to 90%. Judge a STR lift by the
+     load: if the weight actually loaded is at or above the heaviest in the SAME window the slope
+     was measured over, nothing is declining. Same window on both sides deliberately \u2014 an
+     all-time comparison would never clear after one old high-rep outlier, and last-session-only
+     would clear on any single heavy day. Same carve-out shape as MAXED and the hyp block below. */
+  const strLift = isStrMode(nm);
+  let strLoadHolding = false, strTopW = 0, strBestW = 0;
+  if(strLift){
+    const inWin = {}; recent.forEach(function(p){ inWin[p.date]=1; });
+    historyFor(nm).forEach(function(h){
+      if(!inWin[h.date]) return;
+      const tw = Math.max(0, ...h.sets.map(function(x){ return +x.w||0; }));
+      if(tw>strBestW) strBestW = tw;
+    });
+    strTopW = invLastWorkingWeight(nm);
+    strLoadHolding = strTopW>0 && strTopW >= strBestW;
+  }
   let severity=null, title=nm+' on track', fix=null;
   const bestRecent = Math.max(...recent.map(p=>p.v));
+  if(strLoadHolding && slope < -0.3){
+    findings.push('e1RM is down, but the LOAD is not: '+strTopW+' lb is the heaviest top set in this window. '+
+      'This is a strength lift, so a drop from high-rep to low-rep work lowers the Epley estimate while the '+
+      'bar gets heavier. Not flagged \u2014 judge this one on weight, not estimated 1RM.');
+    return {severity:null, key:'lift:'+nm, title:nm+' (low-rep work, load holding)', findings, fix:null};
+  }
   if(slope < -1.0 && cur < bestRecent*0.96){
     severity='red'; title=nm+' declining';
     findings.push('Clear downward trend \u2014 you\u2019re losing ground on this lift, not just plateauing.');
     const baseW = invLastWorkingWeight(nm);
-    const resetW = baseW ? Math.max(Math.round((baseW*0.9)/5)*5, 5) : 0;
+    const resetW = baseW ? Math.max(roundToInc(baseW*0.9, incForExercise(nm)), 5) : 0;
     fix = resetW ? {label:'Reset & rebuild at ~90%', desc:'Set next targets to ~'+resetW+' lb \u2014 about 90% of your last working weight ('+baseW+' lb) \u2014 for 2 weeks and climb back with clean reps. Momentum beats grinding a declining max. (Auto-expires after 14 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:14}} : null;
   } else if(slope < -0.3){
     severity='orange'; title=nm+' trending down';
@@ -8907,7 +9357,7 @@ function investigateLift(nm){
       fix={label:'Start deload week', desc:'High grind density plus a downward trend is the classic overreach signature. A deload week ('+'~60% loads) usually restores the trend within 1\u20132 weeks after.', type:'deload', payload:{}};
     } else {
       const baseW = invLastWorkingWeight(nm);
-      const resetW = baseW ? Math.max(Math.round((baseW*0.92)/5)*5, 5) : 0;
+      const resetW = baseW ? Math.max(roundToInc(baseW*0.92, incForExercise(nm)), 5) : 0;
       fix = resetW ? {label:'Light reset at ~92%', desc:'Take next sessions at ~'+resetW+' lb \u2014 about 92% of your last working weight ('+baseW+' lb) \u2014 and rebuild rep quality. (Auto-expires after 10 days.)', type:'liftReset', payload:{name:nm, w:resetW, days:10}} : null;
     }
   } else if(Math.abs(slope) <= 0.3 && spanWks >= 3){
@@ -9547,9 +9997,19 @@ function agRunDataTool(name, inp){
       const lim = Math.max(1, Math.min(200, Math.round(+p.limit||30)));
       const h = historyFor(nm, {includeDeload:true}).slice(0, lim);
       if(!h.length) return nm+' has never been logged.';
+      // Mode is stated the same way a deload is: an unexplained number is one the model will
+      // explain to itself, and it guessed wrong about low-rep strength work.
+      const strNote = isStrMode(nm) ? '\n'+'NOTE: '+nm+' is a STRENGTH lift ('+STR_LO+'-'+STR_HI+
+        ' rep target). Low-rep top sets are intentional. Top weight per session is shown so you '+
+        'can judge it on load rather than reps.' : '';
       return nm+' - '+h.length+' session'+(h.length===1?'':'s')+' (newest first):'+'\n'+
-        h.map(function(sn){ return '  '+sn.date+': '+summ(sn.sets)+(sn.deload?'  [DELOAD week \u2014 intentionally light, not a regression]':''); }).join('\n')+
-        '\n'+'Effort tags: e=easy, g=grind, x=failed.';
+        h.map(function(sn){
+          const tw = Math.max(0, ...sn.sets.map(function(x){ return +x.w||0; }));
+          return '  '+sn.date+': '+summ(sn.sets)+
+            (isStrMode(nm)?'  (top weight '+tw+' lb)':'')+
+            (sn.deload?'  [DELOAD week \u2014 intentionally light, not a regression]':'');
+        }).join('\n')+
+        '\n'+'Effort tags: e=easy, g=grind, x=failed.'+strNote;
     }
     if(name==='get_e1rm_series'){
       const nm = agResolveExName(p.exercise);
@@ -9559,8 +10019,14 @@ function agRunDataTool(name, inp){
       // State the exclusion rather than leaving a hole in the dates for the model to explain
       // to itself. get_lift_history DOES show these sessions.
       const dl = deloadDatesFor(nm);
+      // An Epley estimate FALLS when a lifter moves from high reps to a heavy double, so on a
+      // strength lift this series alone will read as a decline while the bar gets heavier.
+      const strWarn = isStrMode(nm) ? '\n'+'NOTE: '+nm+' is a STRENGTH lift ('+STR_LO+'-'+STR_HI+
+        ' rep target). A move from high-rep to low-rep work LOWERS this estimate even as the load '+
+        'climbs, so do not read a dip here as lost strength. Call get_lift_history and compare top '+
+        'weights before judging this lift.' : '';
       return nm+' estimated 1RM (oldest first):'+'\n'+
-        pts.map(function(x){ return '  '+x.date+': '+Math.round(x.v)+' lb'; }).join('\n')+
+        pts.map(function(x){ return '  '+x.date+': '+Math.round(x.v)+' lb'; }).join('\n')+strWarn+
         (dl.length ? '\n'+'Excluded from this trend (deload weeks, deliberately light): '+dl.join(', ')+
                      '. Use get_lift_history to see what was actually lifted on those days.' : '');
     }
@@ -12026,7 +12492,8 @@ function agValidateFix(fx){
 
    DELTA proposed 130 lb for a Chest Fly machine whose stack goes 120 -> 135. Nothing rejected
    it, because 130 is a perfectly sane number in the abstract -- it is only unmakeable on that
-   specific machine. The per-exercise increment in Settings (+2.5 / +5 / +10 / +15) is exactly
+   specific machine. The per-exercise increment in Settings (+2.5 / +5 / +10 / +15, or a custom
+   value for a stack that moves in anything else) is exactly
    the statement of what that machine can do, and nothing outside the LIVE progression engine
    was reading it.
 
@@ -12208,6 +12675,17 @@ function agContext(){
     ? mx.join('; ')+' \u2014 these machines are at their heaviest setting. NEVER propose adding load to '+
       'these; progression must come from reps, sets or tempo. A flat weight trend on these is expected, not a stall.'
     : 'none';
+  /* Nothing in any prompt used to say a lift was in strength mode, so a deliberate 275x2 read to
+     the models as a collapse from 225x10 and DELTA treated it as an emergency. Stated in the same
+     register as MAXED above, because the failure mode is the same: a correct number, read against
+     the wrong yardstick. */
+  const strl = (typeof strModeList==='function') ? strModeList() : [];
+  const strTxt = strl.length
+    ? strl.join('; ')+' \u2014 these are STRENGTH lifts on a '+STR_LO+'-'+STR_HI+' rep target. Low-rep top sets '+
+      'are INTENTIONAL, not a failure: judge them on the weight on the bar, not on rep count or on '+
+      'estimated 1RM (a shift from high reps to a heavy double LOWERS an Epley estimate while the '+
+      'lifter gets stronger). Never propose reducing load on one of these because reps fell.'
+    : 'none';
   const recentRejects = agState().proposals.filter(p=>p.status==='rejected').slice(-6)
     .map(p=>p.agent.toUpperCase()+': '+p.title).join('; ') || 'none';
   // Only ZULU used to be told what was pending, so a specialist had no way of knowing its own
@@ -12225,6 +12703,8 @@ function agContext(){
     painContext()+
     '\n\nACTIVE LIFT OVERRIDES: '+ovTxt+
     '\nMAXED OUT (at machine ceiling): '+mxTxt+
+    '\nSTRENGTH MODE (low reps are the goal): '+strTxt+
+    ((typeof waContext==='function') ? waContext() : '')+
     '\nINVESTIGATION FLAGS: '+flags+
     '\n\nALREADY IN HIS APPROVAL QUEUE, UNDECIDED (do NOT propose any of these again \u2014 he '+
       'has them and has not answered yet, and a repeat is discarded. Raise something against one '+
@@ -12567,7 +13047,7 @@ async function agRunAll(manual){
         }catch(e){
           agLog('zulu','I couldn\u2019t write this week\u2019s letter ('+e.message+'). Everything else above still stands.');
         }
-      } else if(new Date().getDay() === 0){
+      } else if(new Date().getDay() === 0 || new Date().getDay() === 1){
         // A Sunday skip used to leave nothing behind, which is how a wrongly-closed gate went
         // unnoticed on 2026-09-13. Say so, so a skip is always distinguishable from a failure.
         agLog('zulu','This week\u2019s letter was already written, so I didn\u2019t write another.');
@@ -12672,16 +13152,31 @@ async function agRunLead(digest, manual){
    four tabs of numbers he has to assemble himself. One extra call a week -- about a penny --
    and it deliberately runs at the END of the nightly cycle so it can use everything the
    specialists just found rather than re-deriving it. */
-function agLetterDue(){
+/* The Sunday a letter written on day `key` belongs to: that day if it is a Sunday, otherwise
+   the Sunday just gone. This is what makes "one per week" mean the WEEK rather than the day the
+   cycle happened to run. */
+function letterWeekKey(key){
+  const k = key || todayKey();
+  const dow = new Date(k+'T00:00:00').getDay();
+  return mesoAddDays(k, -dow);
+}
+function agLetterDue(key){
   const a = agState();
-  // Sunday night: the week is finished, and it is the natural moment to look back at it.
-  if(new Date().getDay() !== 0) return false;
+  const k = key || todayKey();
+  /* Sunday night, or Monday as a catch-up. agMaybeAutoRun() only fires with the app open after
+     9 PM, which on a phone is far from guaranteed \u2014 and a Sunday he never opened used to cost
+     the letter for that week permanently, because Monday's cycle saw getDay()===1 and skipped,
+     and nothing ever looked back. Still exactly one letter per week: the gate below is the SUNDAY
+     the letter covers, not the day it happens to get written, so a Monday catch-up and a Sunday
+     run cannot both fire. Costs nothing extra; it just stops the call being silently skipped. */
+  const dow = new Date(k+'T00:00:00').getDay();
+  if(dow !== 0 && dow !== 1) return false;
   /* Keyed on the Sunday itself, NOT weekStartKey(). That is the TRAINING week, and in cycle
      mode it is one pass through the pattern -- 8 days on his split -- so two consecutive Sundays
      can share a pass. On 2026-09-13 exactly that happened: Sep 6 opened a pass, Sep 13 was its
      last slot, both resolved to "2026-09-06", and the letter was skipped as already written with
      nothing logged. One letter per calendar Sunday is what "weekly" means here. */
-  return !(a.letter && a.letter.week === todayKey());
+  return !(a.letter && a.letter.week === letterWeekKey(k));
 }
 async function agWriteLetter(digest){
   const sys = agSharedBrief()+
@@ -12706,7 +13201,7 @@ async function agWriteLetter(digest){
 function agSetLetter(text){
   const a = agState();
   // `week` is the Sunday it was written for -- see agLetterDue() for why not weekStartKey().
-  a.letter = {text:text, at:new Date().toISOString(), week:todayKey()};
+  a.letter = {text:text, at:new Date().toISOString(), week:letterWeekKey()};
 }
 function agLetter(){
   const a = agState();
@@ -12854,6 +13349,184 @@ function renderStatusStrip(){
 }
 
 /* ---- the dashboard ---- */
+/* ============================================================
+   WINTER ARC \u2014 a season-length container, Oct 15 to Apr 1
+   ============================================================
+   Deliberately computed and deliberately quiet. Every number here comes from data already on
+   the device: sessions out of S.logs, bodyweight pace out of bulkRate(), lift goals out of
+   S.road. No model call is involved and none should be added -- an arc summary is a pure
+   function of state, and Sonnet would produce it expensively and sometimes wrongly.
+
+   It must NEVER reach scheduledDayFor(). It is a lens over a date range, not a schedule: a
+   mesocycle still owns what today is, and this only reads mesoCurrentWeek() the way
+   mesoCoachContext() does. That is also why it needs no REMOVED_STATE_KEYS exit -- deleting
+   the card can never leave the calendar wrong.
+
+   S.winterArc is a new TOP-LEVEL key, created lazily like mesoState()/invState(). load() does
+   Object.assign one level deep, so a top-level key lands correctly on every existing install.
+   A field on S.meta (or inside any other nested object) would come back ABSENT instead \u2014 that
+   is the shape that erased two months of training on 2026-09-02. */
+const WA_START_MD = '10-15', WA_END_MD = '04-01';
+const WA_DEFAULT_SESSIONS = 5;
+/* The arc window containing or next following `key`. Oct 15 of one year to Apr 1 of the next,
+   so which year the window belongs to depends on which side of Apr 1 the date falls. */
+function waSeasonFor(key){
+  const k = key || todayKey();
+  const y = +k.slice(0,4);
+  const start = (k >= y+'-'+WA_START_MD) ? y : (k <= y+'-'+WA_END_MD ? y-1 : y);
+  return {start: start+'-'+WA_START_MD, end: (start+1)+'-'+WA_END_MD};
+}
+function winterState(){
+  if(!S.winterArc || !S.winterArc.start || !S.winterArc.end){
+    const se = waSeasonFor();
+    S.winterArc = Object.assign({bwTarget:null, sessionTarget:WA_DEFAULT_SESSIONS}, S.winterArc||{}, se);
+  }
+  if(S.winterArc.sessionTarget == null) S.winterArc.sessionTarget = WA_DEFAULT_SESSIONS;
+  return S.winterArc;
+}
+/* 'before' | 'active' | 'done'. String compares on YYYY-MM-DD, like every other window here. */
+function waPhase(key){
+  const w = winterState(), k = key || todayKey();
+  if(k < w.start) return 'before';
+  if(k > w.end) return 'done';
+  return 'active';
+}
+function waDays(key){
+  const w = winterState(), k = key || todayKey();
+  const total = daysBetween(w.start, w.end) + 1;
+  const elapsed = Math.max(0, Math.min(total, daysBetween(w.start, k) + 1));
+  return {total:total, elapsed:elapsed, left:Math.max(0, total-elapsed), untilStart:Math.max(0, daysBetween(k, w.start))};
+}
+/* Sessions logged inside the window, up to and including `key`. Counts log records, not
+   exercises, and does not care which day key they were trained under. */
+function waSessions(key){
+  const w = winterState(), k = key || todayKey();
+  return (S.logs||[]).filter(function(l){
+    return l && l.date && l.date >= w.start && l.date <= w.end && l.date <= k &&
+           (l.entries||[]).some(function(e){ return e.sets && e.sets.length; });
+  }).length;
+}
+/* Lift goals whose deadline lands inside the arc. Reads S.road rather than storing its own
+   copy: two goal stores would be two answers to the same question. */
+function waGoals(){
+  const w = winterState();
+  return (S.road||[]).filter(function(g){ return g && g.deadline && g.deadline >= w.start && g.deadline <= w.end; });
+}
+/* The whole model in one object, so the card and the agent line cannot disagree. */
+function waProgress(key){
+  const w = winterState(), k = key || todayKey();
+  const phase = waPhase(k), days = waDays(k);
+  const wksElapsed = days.elapsed/7, wksLeft = days.left/7;
+  const sessions = waSessions(k);
+  const expected = Math.round(wksElapsed * (w.sessionTarget||WA_DEFAULT_SESSIONS));
+  /* Bodyweight goes through bulkRate()/bulkBand() and nothing else. There is ONE lb/wk rate in
+     this app and one set of bands; a fifth would be a surface quoting a number the Bulk tab
+     contradicts. */
+  const br = (typeof bulkRate==='function') ? bulkRate(4) : null;
+  let bw = null;
+  if(br){
+    const needed = (w.bwTarget && wksLeft > 0) ? (w.bwTarget - br.cur)/wksLeft : null;
+    bw = {cur:br.cur, rate:br.rate, band:bulkBand(br.rate), target:w.bwTarget||null,
+          needed: needed===null ? null : Math.round(needed*100)/100,
+          projected: wksLeft>0 ? Math.round((br.cur + br.rate*wksLeft)*10)/10 : br.cur,
+          onPace: (w.bwTarget && needed!==null) ? br.rate >= needed : null,
+          /* Reaching a target and sailing past it are different outcomes, and onPace (rate >=
+             needed) is true for both. On a lean bulk an overshoot is not a pass mark. */
+          overshoot: (w.bwTarget && wksLeft > 0) ? (br.cur + br.rate*wksLeft) > (w.bwTarget + 2) : false};
+  }
+  // bwTarget is reported at the top level too: bulkRate() returns null until there are three
+  // weekly averages, and a target he typed in must not vanish while that is true.
+  return {phase:phase, start:w.start, end:w.end, days:days, sessions:sessions, bwTarget:w.bwTarget||null,
+          sessionTarget:w.sessionTarget||WA_DEFAULT_SESSIONS, expected:expected,
+          onPace: sessions >= expected, bw:bw, goals:waGoals()};
+}
+/* One line for the agent prompts, built the way mesoCoachContext() is: a pure string, no call. */
+function waContext(key){
+  const p = waProgress(key);
+  if(p.phase==='done') return '';
+  if(p.phase==='before') return '\nWINTER ARC: starts '+p.start+' ('+p.days.untilStart+' days away), runs to '+p.end+'. Not underway yet.';
+  let t = '\nWINTER ARC: day '+p.days.elapsed+' of '+p.days.total+' ('+p.start+' to '+p.end+'), '+p.days.left+' days left. '+
+    p.sessions+' sessions logged against a '+p.sessionTarget+'/week target ('+(p.onPace?'on pace':'behind pace, expected ~'+p.expected)+').';
+  if(p.bwTarget && !p.bw) t += ' Bodyweight target '+p.bwTarget+' lb by '+p.end+' (too few weigh-ins to judge pace).';
+  if(p.bw && p.bw.target) t += ' Bodyweight '+p.bw.cur+' lb, target '+p.bw.target+' lb by '+p.end+' ('+
+    (p.bw.onPace ? (p.bw.overshoot?'projected to overshoot at '+p.bw.projected+' lb':'on pace')
+                 : 'needs '+p.bw.needed+' lb/wk, currently '+p.bw.rate.toFixed(2))+').';
+  return t+' This is a season-long frame, not a training block \u2014 do not propose schedule changes because of it.';
+}
+/* Open-state for the target editor. Module-scoped, not on the DOM node: rerenderActive()
+   regenerates Home every 30 s and after every sync pull. */
+let waEditOpen = false;
+function waToggleEdit(){ waEditOpen = !waEditOpen; renderHome(); }
+function waSaveTargets(){
+  const w = winterState();
+  const bwEl = document.getElementById('waBw'), stEl = document.getElementById('waSess');
+  const bwv = bwEl ? parseFloat(bwEl.value) : NaN;
+  const stv = stEl ? parseInt(stEl.value,10) : NaN;
+  w.bwTarget = (isFinite(bwv) && bwv > 0) ? Math.round(bwv*10)/10 : null;
+  if(isFinite(stv) && stv >= 1 && stv <= 7) w.sessionTarget = stv;
+  waEditOpen = false;
+  save();   // a user action: touch+push, or the next background pull reverts it
+  renderHome();
+}
+function waStartNext(){
+  const se = waSeasonFor(mesoAddDays(todayKey(), 1));
+  S.winterArc = {start:se.start, end:se.end, bwTarget:null, sessionTarget:WA_DEFAULT_SESSIONS};
+  save(); renderHome();
+}
+function waEditHTML(){
+  const w = winterState();
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">'+
+    '<label class="small" style="color:var(--dim)">Bodyweight target (lb)<br>'+
+      '<input id="waBw" type="number" step="0.5" value="'+(w.bwTarget==null?'':esc(String(w.bwTarget)))+'" '+
+      'style="width:110px;background:var(--base);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:5px 8px"></label>'+
+    '<label class="small" style="color:var(--dim)">Sessions / week<br>'+
+      '<input id="waSess" type="number" min="1" max="7" value="'+esc(String(w.sessionTarget))+'" '+
+      'style="width:90px;background:var(--base);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:5px 8px"></label>'+
+    '<button class="btn primary sm" onclick="waSaveTargets()">Save</button>'+
+    '<button class="btn ghost sm" onclick="waToggleEdit()">Cancel</button>'+
+  '</div>';
+}
+function waCardHTML(key){
+  const p = waProgress(key);
+  if(p.phase==='done'){
+    return '<div class="dash-sec">Winter Arc</div><div class="card" style="border-left:3px solid var(--line2)">'+
+      '<p class="small" style="color:var(--dim)">The arc ended '+esc(fmtDate(p.end))+' \u2014 '+p.sessions+' sessions over '+
+      p.days.total+' days.</p>'+
+      '<button class="btn ghost sm" style="margin-top:8px" onclick="waStartNext()">Start the next arc</button></div>';
+  }
+  let h = '<div class="dash-sec">Winter Arc</div><div class="card" style="border-left:3px solid var(--cyan)">';
+  if(p.phase==='before'){
+    h += '<p class="small">Starts '+esc(fmtDate(p.start))+' \u2014 <b>'+p.days.untilStart+' day'+(p.days.untilStart===1?'':'s')+
+      '</b> out. Runs to '+esc(fmtDate(p.end))+'.</p>'+
+      '<p class="small" style="color:var(--dim);margin-top:4px">Target '+p.sessionTarget+' sessions a week'+
+      (p.bw&&p.bw.target?', bodyweight to '+p.bw.target+' lb':'')+
+      '. Set them now and the arc just runs in the background.</p>';
+  } else {
+    const pct = Math.round(100*p.days.elapsed/p.days.total);
+    h += '<div class="dash-hero" style="margin:0 0 8px">'+
+      '<div class="dash-tile"><div class="dt-l">Day</div><div class="dt-v">'+p.days.elapsed+'</div>'+
+        '<div class="dt-s">of '+p.days.total+' \u2014 '+pct+'% in, '+p.days.left+' left</div></div>'+
+      '<div class="dash-tile"><div class="dt-l">Sessions</div>'+
+        '<div class="dt-v" style="color:'+(p.onPace?'var(--cyan)':'var(--warn)')+'">'+p.sessions+'</div>'+
+        '<div class="dt-s">'+(p.onPace?'on pace':'behind \u2014 ~'+p.expected+' by now')+'</div></div>'+
+      '<div class="dash-tile"><div class="dt-l">Bodyweight</div>'+
+        '<div class="dt-v">'+(p.bw?p.bw.cur:'\u2014')+'</div>'+
+        '<div class="dt-s">'+(p.bw
+            ? (p.bw.target
+                ? (p.bw.onPace ? (p.bw.overshoot?'clears ':'on pace for ') : 'short of ')+p.bw.target+' lb (proj. '+p.bw.projected+')'
+                : esc(p.bw.rate>=0?'+':'')+p.bw.rate.toFixed(2)+' lb/wk \u00b7 '+esc(p.bw.band))
+            : (p.bwTarget ? 'target '+p.bwTarget+' lb \u00b7 not enough weigh-ins yet to judge pace'
+                          : 'no weigh-ins yet'))+'</div></div>'+
+      '</div>';
+    if(p.goals.length){
+      h += '<p class="small" style="color:var(--dim)">'+p.goals.length+' lift goal'+(p.goals.length===1?'':'s')+' land inside the arc: '+
+        esc(p.goals.map(function(g){ return g.exercise+' '+g.target+' lb'; }).join(', '))+'.</p>';
+    }
+  }
+  h += waEditOpen ? waEditHTML()
+    : '<button class="btn ghost sm" style="margin-top:8px" onclick="waToggleEdit()">Set targets</button>';
+  return h + '</div>';
+}
 function renderHome(){
   const el = document.getElementById('home');
   if(!el) return;
@@ -12879,6 +13552,9 @@ function renderHome(){
        '<div class="dt-v" style="color:'+(streak>=3?'var(--cyan)':'var(--text)')+'">'+(streak>0?streak:'\u2014')+'</div>'+
        '<div class="dt-s">'+(streak>0?'session'+(streak===1?'':'s')+' without a missed day':'Start one today.')+'</div></div>';
   h += '</div>';
+
+  // Under the hero and above the brief: a background frame for the day, not a call to action.
+  try{ h += waCardHTML(); }catch(e){ console.warn('winter arc card failed', e); }
 
   if(brief){
     h += '<div class="dash-sec">Brief</div>'+

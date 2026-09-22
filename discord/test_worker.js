@@ -77,6 +77,7 @@ function makeEnv(extra) {
   return Object.assign({
     GIST_ID: 'g1', GIST_TOKEN: 'tok', DISCORD_APP_ID: 'app1', DISCORD_PUBLIC_KEY: pubHex, DISCORD_OWNER_ID: OWNER,
     WEBHOOK_PRS: 'https://discord.com/api/webhooks/10/prs', WEBHOOK_ALERTS: 'https://discord.com/api/webhooks/20/alerts', WEBHOOK_BRIEF: 'https://discord.com/api/webhooks/30/brief',
+    WEBHOOK_LETTER: 'https://discord.com/api/webhooks/40/letter',
     ALERTS: { _m: kv, async get(k, t) { const v = kv.get(k); return v == null ? null : t === 'json' ? JSON.parse(v) : v; }, async put(k, v) { kv.set(k, v); } },
   }, extra || {});
 }
@@ -383,6 +384,66 @@ console.log('=== ALERTS ===');
 
   const noHook = await app.runAlerts(makeEnv({ WEBHOOK_PRS: '', WEBHOOK_ALERTS: '', WEBHOOK_BRIEF: '' }), makeDeps(DATA, VIEW));
   ok('alerts: no webhooks configured is a clean no-op', noHook.posted === 0);
+
+
+  /* ---- the weekly letter ----
+     Its channel was added long after the first alert run, so prevSeen.init is already true and the
+     init flood guard does not cover it. Simulate exactly that: a KV watermark from before the
+     letter existed, with a letter sitting in state. */
+  const envL = makeEnv();
+  const withLetter = JSON.parse(JSON.stringify(DATA));
+  withLetter.agents.letter = { text: 'A long quiet week, and the bar still moved.', at: '2026-09-06T21:30:00Z', week: '2026-09-06' };
+  envL.ALERTS._m.set('alerts:seen:v1', JSON.stringify({
+    init: true, prs: core.alertKeys(withLetter).prs, flags: core.alertKeys(withLetter).flags,
+    proposals: core.alertKeys(withLetter).proposals, brief: '2026-09-10'
+  }));
+  const dL0 = makeDeps(withLetter, VIEW);
+  const rL0 = await app.runAlerts(envL, dL0);
+  ok('letter: a channel added after the first run does not post its backlog',
+    discordCalls(dL0).length === 0 && rL0.posted === 0, discordCalls(dL0).map((c) => c.url).join());
+  ok('letter: ...but it does adopt the watermark, or it would deadlock and never post at all',
+    JSON.parse(envL.ALERTS._m.get('alerts:seen:v1')).letter === '2026-09-06T21:30:00Z');
+
+  // Now a genuinely new letter must go out, to its own channel and nowhere else.
+  const nextL = JSON.parse(JSON.stringify(withLetter));
+  nextL.agents.letter = { text: 'Second week. Squat finally moved.', at: '2026-09-13T21:30:00Z', week: '2026-09-13' };
+  const dL1 = makeDeps(nextL, VIEW);
+  await app.runAlerts(envL, dL1);
+  const lPosts = discordCalls(dL1);
+  const lText = lPosts.filter((c) => c.url.includes('/webhooks/40/')).map((c) => JSON.stringify(payloadOf(c))).join('');
+  ok('letter: a new letter posts to the letter channel', /Squat finally moved/.test(lText), lText.slice(0, 200));
+  ok('letter: ...titled as a weekly letter, not a brief', /Weekly letter/.test(lText) && !/Daily brief/.test(lText));
+  ok('letter: it goes ONLY to its own channel',
+    lPosts.every((c) => c.url.includes('/webhooks/40/')), lPosts.map((c) => c.url).join());
+  ok('letter: mentions are disabled on it too', lPosts.every((c) => payloadOf(c).allowed_mentions.parse.length === 0));
+
+  const dL2 = makeDeps(nextL, VIEW);
+  await app.runAlerts(envL, dL2);
+  ok('letter: the same letter never posts twice', discordCalls(dL2).length === 0);
+
+  /* A rewritten letter for the SAME Sunday must still go out -- which is why the watermark is the
+     letter's 'at', not its 'week'. S.agents.letter is replaced in place, so 'week' would not move. */
+  const reL = JSON.parse(JSON.stringify(nextL));
+  reL.agents.letter = { text: 'Second week, rewritten.', at: '2026-09-13T22:10:00Z', week: '2026-09-13' };
+  const dL3 = makeDeps(reL, VIEW);
+  await app.runAlerts(envL, dL3);
+  ok('letter: a letter rewritten for the same week still posts',
+    /rewritten/.test(discordCalls(dL3).map((c) => JSON.stringify(payloadOf(c))).join('')),
+    discordCalls(dL3).map((c) => c.url).join());
+
+  // A letter failing must not hold back the daily brief, and vice versa.
+  const bothNew = JSON.parse(JSON.stringify(reL));
+  bothNew.agents.letter = { text: 'Third week.', at: '2026-09-20T21:30:00Z', week: '2026-09-20' };
+  bothNew.agents.brief = { text: 'Sunday. Rest.', date: '2026-09-20', at: '2026-09-20T11:00:00Z' };
+  let lThrew = false;
+  await app.runAlerts(envL, makeDeps(bothNew, VIEW, { discordFail: '/webhooks/40/' })).catch(() => { lThrew = true; });
+  ok('letter: a failed letter post surfaces as an error', lThrew);
+  const dL4 = makeDeps(bothNew, VIEW);
+  await app.runAlerts(envL, dL4);
+  const retryText = discordCalls(dL4).map((c) => JSON.stringify(payloadOf(c))).join('');
+  ok('letter: the failed letter retries next tick', /Third week/.test(retryText));
+  ok('letter: ...and the brief that went out alongside it is NOT posted twice',
+    !/Sunday. Rest/.test(retryText), retryText.slice(0, 200));
 
   // Alerts must read fresh, not from the 60s command cache.
   const env3 = makeEnv(); const d5 = makeDeps(DATA, VIEW);

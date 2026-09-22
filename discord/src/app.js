@@ -172,7 +172,7 @@ function followup(ix, env, deps, payload) {
 const SEEN_KEY = 'alerts:seen:v1';
 // One webhook per channel. Each webhook URL is bound to exactly one Discord channel, so this
 // map IS the routing. The release note channel is not here; it is posted by GitHub Actions.
-export const CHANNEL_ENV = { prs: 'WEBHOOK_PRS', alerts: 'WEBHOOK_ALERTS', brief: 'WEBHOOK_BRIEF' };
+export const CHANNEL_ENV = { prs: 'WEBHOOK_PRS', alerts: 'WEBHOOK_ALERTS', brief: 'WEBHOOK_BRIEF', letter: 'WEBHOOK_LETTER' };
 export async function runAlerts(env, deps) {
   const g = await loadGist(env, deps, 0); // always fresh: a cached copy could delay an alert by a whole cycle
   const prev = await env.ALERTS.get(SEEN_KEY, 'json');
@@ -182,6 +182,16 @@ export async function runAlerts(env, deps) {
   const failed = [], disabled = [];
   if (init) Object.assign(next, cur);
   else {
+    /* A key this deployment has never tracked belongs to a channel added after the first run.
+       Adopt it without posting: the `init` flood guard is already true by then, so otherwise the
+       new channel opens by dumping whatever is currently in state. diffAlerts() declines to build
+       messages for such a key; this is the half that stops it deadlocking, because the posting
+       loop below skips a channel with no messages and would never advance its watermark. */
+    for (const k of Object.keys(cur)) {
+      if (prev && Object.prototype.hasOwnProperty.call(prev, k)) continue;
+      next[k] = cur[k];
+      changed = true;
+    }
     for (const ch of Object.keys(core.ALERT_CHANNELS)) {
       const msgs = channels[ch];
       if (!msgs.length) continue;
