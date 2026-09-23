@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-22-v1">
+<meta name="ironhub-build" content="2026-09-22-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4814,7 +4814,12 @@ async function syncPull(force){
   }catch(e){ setSyncMsg(e.message, true); }
 }
 function applyPulled(d, exportedAt){
-  const keep = {apiKey:S.settings.apiKey, ghToken:S.settings.ghToken, gistId:S.settings.gistId, autoSync:S.settings.autoSync};
+  // gdocUrl/gdocSecret are a per-device credential pair, same reasoning as ghToken below --
+  // syncPayload() strips them before every push, so d.settings NEVER carries them. Without
+  // keeping them here, every pull (including the silent 60s bgSyncTick one) overwrote them
+  // with DEFAULT_STATE's empty strings, and Settings looked like it had "reset" on its own.
+  const keep = {apiKey:S.settings.apiKey, ghToken:S.settings.ghToken, gistId:S.settings.gistId, autoSync:S.settings.autoSync,
+    gdocUrl:S.settings.gdocUrl, gdocSecret:S.settings.gdocSecret};
   // A daily gate (agents.lastRun) is far more fragile to a wholesale overwrite than a weekly
   // one (invest.lastAuto): if the incoming snapshot predates today's local run \u2014 entirely
   // possible, since a pull can race a push that hasn't landed on the gist yet \u2014 blindly

@@ -7798,7 +7798,21 @@ setTimeout(async () => {
        !/callClaude|aiSend|aiRequest/.test(ev('gdocPush.toString()') + ev('gdocPayload.toString()') +
                                            ev('gdocWeekModel.toString()')));
     ok('doc: nothing it sends can come back as state',
-       !/gdoc/i.test(ev('applyPulled.toString()')) && !/gdoc/i.test(ev('fetchGistData.toString()')));
+       !/gdoc/i.test(ev('fetchGistData.toString()')));
+
+    // --- the credential pair must survive a sync pull, not just a save ---
+    // syncPayload() strips gdocUrl/gdocSecret (asserted above), so an incoming snapshot never
+    // carries them, and applyPulled() rebuilds S.settings from DEFAULT_STATE + the incoming
+    // settings -- which wiped them back to empty on every pull (including the silent 60s
+    // bgSyncTick one) unless they are explicitly carried across the swap, the same way ghToken
+    // and gistId already are.
+    ev("S.settings.gdocUrl='https://script.google.com/y/exec'; S.settings.gdocSecret='keepme';");
+    ev('window.__gdSavedS = JSON.stringify(S);');
+    ev('(function(){ var p = JSON.parse(syncPayload()); applyPulled(p.data, Date.now() + 5000); })();');
+    ok('doc: a sync pull does not wipe the web-app URL', ev('S.settings.gdocUrl') === 'https://script.google.com/y/exec',
+       ev('S.settings.gdocUrl'));
+    ok('doc: ...or the secret', ev('S.settings.gdocSecret') === 'keepme', ev('S.settings.gdocSecret'));
+    ev('S = JSON.parse(window.__gdSavedS); delete window.__gdSavedS;');
   } catch (e) {
     ok('workout schedule doc section', false, e.stack);
   }
