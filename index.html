@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-22-v2">
+<meta name="ironhub-build" content="2026-09-24-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4427,6 +4427,9 @@ async function syncPush(manual){
    ironhub_data.json, so the two writers never collide.
    Reading it costs nothing extra: it is already in the gist response the app fetches anyway. */
 const WHOOP_FILE = 'whoop_data.json';
+/* Hard cap on stored history rows. The relay keeps ~180 days; this only bounds what a
+   malformed or hostile file could make the app hold in localStorage. */
+const WHOOP_HIST_MAX = 200;
 async function fetchGistData(){
   const res = await fetch('https://api.github.com/gists/'+S.settings.gistId,{headers:ghHeaders()});
   if(!res.ok) throw new Error('Pull failed ('+res.status+')');
@@ -4477,7 +4480,30 @@ function applyWhoop(raw){
   if(raw.strain && dateOk(raw.strain.date)){
     out.strain = {date:raw.strain.date, score: num(raw.strain.score, 0, 21)};
   }
-  if(!out.recovery && !out.sleep && !out.strain) return false;
+  /* Daily history, kept by the relay as a rolling window so there is something to correlate
+     against -- until this existed S.whoop held today and nothing else, and every past recovery
+     was gone the moment the next one landed. Row by row, with the same clamps as the sections
+     above: a bad row is dropped, never coerced, and a row with no measurement in it at all is
+     dropped too rather than kept as an empty date.
+     It is history and only history. whoopFresh(), whoopContext() and readinessNow() read the
+     dated sections above and never this, so a history row -- even one dated today -- can never
+     pass for a current reading. */
+  if(Array.isArray(raw.history)){
+    const byDate = {};
+    raw.history.forEach(function(h){
+      if(!h || typeof h !== 'object' || !dateOk(h.date)) return;
+      const rec = num(h.recovery, 0, 100);
+      const row = {date:h.date, recovery: rec === null ? null : Math.round(rec),
+        hrv: num(h.hrv, 0, 400), rhr: num(h.rhr, 20, 200),
+        sleepHours: num(h.sleepHours, 0, 24), sleepPerf: num(h.sleepPerf, 0, 100),
+        strain: num(h.strain, 0, 21)};
+      const any = ['recovery','hrv','rhr','sleepHours','sleepPerf','strain'].some(function(k){ return row[k] !== null; });
+      if(any) byDate[h.date] = row;   // a repeated date keeps the later row
+    });
+    const hist = Object.keys(byDate).sort().slice(-WHOOP_HIST_MAX).map(function(k){ return byDate[k]; });
+    if(hist.length) out.history = hist;
+  }
+  if(!out.recovery && !out.sleep && !out.strain && !out.history) return false;
   S.whoop = out;
   // save(false): this came FROM the cloud, so it is not a local change and must not bump
   // changedAt -- doing so would make autoPullOnLoad() skip its pull and push stale local
@@ -6769,8 +6795,10 @@ function logLiveSet(i){
   if(!(w>0) || !(r>0)){ alert('Enter weight and reps for this set.'); return; }
   // Both are stored: s.e keeps every existing reader working untouched, s.ef carries the
   // precision. effBucket() prefers s.ef and falls back to s.e, so the two can never disagree.
+  // ts is when the set was logged. Named ts, not t: on a record, t is the sync write stamp
+  // that mergeUnseenHistory() reads, and a set timestamp must never be mistaken for one.
   ex.sets.push({w:w, r:r, e:liveDockEff||undefined,
-                ef:(liveDockLever===null?undefined:liveDockLever)});
+                ef:(liveDockLever===null?undefined:liveDockLever), ts:Date.now()});
   liveDockEff = ''; liveDockLever = null;
   saveLiveDraft();
   if(ex._1rm && ex._1rmRamp){
@@ -6801,9 +6829,21 @@ function updateSessionBar(){
   if(prog){ const done=live.exercises.filter(e=>e.done).length; prog.textContent=done+' / '+live.exercises.length+' done'; }
 }
 
+/* One live set, as it is kept in the log. This used to be an inline {w,r,e}, which left the
+   lever value behind: from 2026-08-24 every set carried s.ef through the whole session and
+   then lost it on this line, so every saved session kept only the coarse bucket and effMean()
+   over history could only ever see the four anchor values. Absent stays absent -- a set logged
+   with no effort opinion gets no ef key, not ef:null. */
+function liveSetToLog(s){
+  const o = {w:s.w, r:s.r};
+  if(s.e) o.e = s.e;
+  if(s.ef !== undefined && s.ef !== null && s.ef !== '' && isFinite(+s.ef)) o.ef = +s.ef;
+  if(s.ts) o.ts = s.ts;
+  return o;
+}
 /* ---- end session: consolidate -> log -> PRs -> summary ---- */
 function endLiveSession(){
-  const entries = live.exercises.filter(e=>e.sets.length).map(e=>({exercise:e.name, sets:e.sets.map(s=>({w:s.w,r:s.r,e:s.e}))}));
+  const entries = live.exercises.filter(e=>e.sets.length).map(e=>({exercise:e.name, sets:e.sets.map(liveSetToLog)}));
   if(!entries.length){ live=null; clearLiveDraft(); renderLive(); return; }
   const before = snapshotPRs();
   const prsBefore = {};
@@ -6822,6 +6862,11 @@ function endLiveSession(){
   // full-plan sessions, and "field missing" has to stay distinguishable from
   // "answered no" — every log written before this existed is genuinely unknown.
   logRec.trimmed = !!live.trimmed;
+  // Session timing, for density later. Both are ms. Anything measuring training time should
+  // prefer the first and last set's ts over these: endedAt is when End was tapped, and a
+  // session left open while he drove home is not a slower session.
+  if(isFinite(+live.startedAt) && +live.startedAt > 0) logRec.startedAt = +live.startedAt;
+  logRec.endedAt = Date.now();
   S.logs.push(stampRec(logRec));
   save();
   // Today just turned green. Waiting for the next foreground check would be correct but slow,

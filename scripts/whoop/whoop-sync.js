@@ -6,12 +6,16 @@
  *
  * This is not part of the app. iron_hub.html stays a single file with no build step; this
  * runs on GitHub's infrastructure on a schedule and the app only ever reads its output.
+ *
+ * test_agents.js require()s this file for the pure history helpers at the bottom, which is
+ * why the not-configured exit and main() only run when it is executed directly.
  */
 'use strict';
 
 const WHOOP_TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token';
 const WHOOP_API = 'https://api.prod.whoop.com/developer/v2';
 const GH_API = 'https://api.github.com';
+const IS_MAIN = require.main === module;
 
 /* Not-configured is a SKIP, not a failure. This job is on a 2-hourly schedule, so treating
  * missing secrets as an error would mean a red run and a notification email every two hours
@@ -20,7 +24,7 @@ const GH_API = 'https://api.github.com';
 const REQUIRED = ['WHOOP_CLIENT_ID', 'WHOOP_CLIENT_SECRET', 'IRONHUB_GIST_ID',
                   'IRONHUB_GIST_TOKEN', 'IRONHUB_STATE_GIST_ID'];
 const missing = REQUIRED.filter((k) => !process.env[k]);
-if (missing.length) {
+if (IS_MAIN && missing.length) {
   console.log('WHOOP sync is not set up yet - missing: ' + missing.join(', ') + '.');
   console.log('See the setup notes at the top of .github/workflows/whoop-sync.yml.');
   console.log('Nothing to do; this is not a failure.');
@@ -204,10 +208,11 @@ async function main() {
    * date === todayKey() independently (whoopFresh(), whoopContext(), readinessNow()), so an
    * out-of-date reading is already treated as absent -- it can be ignored, never mistaken for
    * current. */
+  let prev = null;
   try {
     const prevFiles = (await ghGet(GIST_ID)).files || {};
     const prevRaw = prevFiles['whoop_data.json'] && prevFiles['whoop_data.json'].content;
-    const prev = prevRaw ? JSON.parse(prevRaw) : null;
+    prev = prevRaw ? JSON.parse(prevRaw) : null;
     if (prev) {
       for (const k of ['recovery', 'sleep', 'strain']) {
         if (!out[k] && prev[k]) {
@@ -220,10 +225,128 @@ async function main() {
     console.error('Could not read the previous whoop_data.json (' + e.message + ') -- writing this run alone.');
   }
 
+  /* The rolling daily history. Strictly best-effort: today's three sections above are what the
+   * morning brief waits on, so nothing here may cost them. A failed fetch keeps the previous
+   * history as it was. If the previous file could not be read either, this run writes no
+   * history -- and the next run, finding none, backfills the whole window from WHOOP again, so
+   * the worst case is a delay, never a permanent loss. */
+  const prevHist = prev && Array.isArray(prev.history) ? prev.history : [];
+  try {
+    const backfill = prevHist.length === 0;
+    const days = backfill ? HIST_DAYS : HIST_REFRESH_DAYS;
+    const pages = backfill ? HIST_BACKFILL_PAGES : HIST_REFRESH_PAGES;
+    const startIso = new Date(Date.now() - days * 86400000).toISOString();
+    // Sequential, not parallel: a one-time backfill is ~25 requests and WHOOP does not publish
+    // its rate limit, so there is no reason to find it the hard way.
+    const recs = await whoopCollect('/recovery', access, startIso, pages);
+    const sleeps = await whoopCollect('/activity/sleep', access, startIso, pages);
+    const cycles = await whoopCollect('/cycle', access, startIso, pages);
+    out.history = mergeHistory(prevHist, historyRows(recs, sleeps, cycles), Date.now());
+    console.log('History: ' + out.history.length + ' days' + (backfill ? ' (backfilled ' + days + ' days)' : '') + '.');
+  } catch (e) {
+    console.error('History update failed (' + e.message + ') -- keeping the previous history.');
+    if (prevHist.length) out.history = prevHist;
+  }
+
   // Only ever touch whoop_data.json. ironhub_data.json belongs to the app, and a PATCH that
   // named it would race the phone and could overwrite a session.
-  await ghPatch(GIST_ID, { 'whoop_data.json': { content: JSON.stringify(out, null, 2) } });
-  console.log('Wrote whoop_data.json:', JSON.stringify(out));
+  await ghPatch(GIST_ID, { 'whoop_data.json': { content: serializeWhoop(out) } });
+  const { history, ...today } = out;
+  console.log('Wrote whoop_data.json:', JSON.stringify(today), history ? '+ ' + history.length + ' history rows' : '');
 }
 
-main().catch((e) => { console.error(e.message); process.exit(1); });
+/* ---------------- daily history (pure; tested from test_agents.js) ----------------
+ *
+ * whoop_data.json used to hold today and nothing else, so every recovery was overwritten by
+ * the next one and there was nothing to correlate training against. It now also carries a
+ * rolling window of one row per day: {date, recovery, hrv, rhr, sleepHours, sleepPerf, strain}.
+ *
+ * Each field is dated exactly the way today's section for it is dated above (recovery by
+ * created_at, sleep by its end, strain by its cycle's start), so the history row for today can
+ * never disagree with today's sections about which day a number belongs to. */
+const HIST_DAYS = 180;
+const HIST_REFRESH_DAYS = 30;     // a normal run re-reads a month, so missed runs heal themselves
+const HIST_BACKFILL_PAGES = 12;   // 25 per page: ~300 records, enough for 180 days of sleeps with naps
+const HIST_REFRESH_PAGES = 3;
+
+async function whoopCollect(path, accessToken, startIso, maxPages) {
+  const all = [];
+  let next = null;
+  for (let p = 0; p < maxPages; p++) {
+    const q = '?limit=25&start=' + encodeURIComponent(startIso) +
+              (next ? '&nextToken=' + encodeURIComponent(next) : '');
+    const page = await whoopGet(path + q, accessToken);
+    const got = (page && page.records) || [];
+    all.push(...got);
+    next = page && page.next_token;   // the response says next_token; the query takes nextToken
+    if (!next || !got.length) break;
+  }
+  return all;
+}
+
+const round1 = (v) => Math.round(v * 10) / 10;
+
+/* WHOOP lists newest first, so on a date collision the first value seen -- the newest -- wins.
+ * Unscored records (PENDING_SCORE omits the score object) and naps contribute nothing: a nap
+ * is not the night's sleep, and an absent score must stay absent rather than become 0. */
+function historyRows(recoveries, sleeps, cycles) {
+  const by = {};
+  const put = (d, k, v) => {
+    if (!d || v === null || v === undefined || v === '' || !isFinite(+v)) return;
+    const row = by[d] || (by[d] = { date: d });
+    if (row[k] === undefined) row[k] = +v;
+  };
+  for (const r of recoveries || []) {
+    if (!r || !r.score) continue;
+    const d = dayOf(r.created_at) || dayOf(r.updated_at);
+    put(d, 'recovery', r.score.recovery_score);
+    put(d, 'hrv', r.score.hrv_rmssd_milli == null ? null : round1(r.score.hrv_rmssd_milli));
+    put(d, 'rhr', r.score.resting_heart_rate);
+  }
+  for (const s of sleeps || []) {
+    if (!s || s.nap || !s.score || !s.score.stage_summary) continue;
+    const st = s.score.stage_summary;
+    const asleepMs = (st.total_light_sleep_time_milli || 0) +
+                     (st.total_slow_wave_sleep_time_milli || 0) +
+                     (st.total_rem_sleep_time_milli || 0);
+    const d = dayOf(s.end) || dayOf(s.created_at);
+    if (asleepMs > 0) put(d, 'sleepHours', +(asleepMs / 3600000).toFixed(2));
+    put(d, 'sleepPerf', s.score.sleep_performance_percentage);
+  }
+  for (const c of cycles || []) {
+    if (!c || !c.score) continue;
+    put(dayOf(c.start), 'strain', c.score.strain == null ? null : round1(c.score.strain));
+  }
+  return by;
+}
+
+/* Fresh values win field by field; a field this run did not get keeps its previous value. That
+ * is the same carry-forward rule as today's sections: a recovery still PENDING_SCORE on this
+ * run must not erase the score an earlier run already recorded for that day. Rows older than
+ * the window are dropped, and the result is oldest first. */
+function mergeHistory(prevRows, freshByDate, nowMs) {
+  const merged = {};
+  for (const r of prevRows || []) {
+    if (r && typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) merged[r.date] = Object.assign({}, r);
+  }
+  for (const d of Object.keys(freshByDate || {})) merged[d] = Object.assign(merged[d] || {}, freshByDate[d]);
+  const cutoff = new Date(nowMs - HIST_DAYS * 86400000).toISOString().slice(0, 10);
+  return Object.keys(merged).filter((d) => d >= cutoff).sort().map((d) => merged[d]);
+}
+
+/* Today's sections stay pretty-printed; history rows are one line each. The app re-reads this
+ * file on every 60-second pull, so 180 rows at one line apiece (~15 KB) instead of seven lines
+ * apiece is worth the small custom step. The output is ordinary JSON either way. */
+function serializeWhoop(out) {
+  const { history, ...rest } = out;
+  let s = JSON.stringify(rest, null, 2);
+  if (history && history.length) {
+    s = s.slice(0, -2) + ',\n  "history": [\n' +
+        history.map((h) => '    ' + JSON.stringify(h)).join(',\n') + '\n  ]\n}';
+  }
+  return s;
+}
+
+module.exports = { historyRows, mergeHistory, serializeWhoop, HIST_DAYS };
+
+if (IS_MAIN) main().catch((e) => { console.error(e.message); process.exit(1); });

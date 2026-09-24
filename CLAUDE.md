@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1668 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1840 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -255,10 +255,10 @@ so the two orders can no longer disagree.
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
 | Home / strip | `renderHome()`, `renderStatusStrip()`, `readinessNow()`, `renderNotif()` |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
-| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopContext()`, `whoopMaybeKick()`, `scripts/whoop/whoop-sync.js` |
+| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopContext()`, `whoopMaybeKick()`, `S.whoop.history`, `scripts/whoop/whoop-sync.js` (`historyRows()`, `mergeHistory()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
-| Live session | `renderLive()`, the dock, `liveDeltaSend()` |
+| Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`) |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()` |
 | Agents | `agRunAll()`, `agValidateFix()`, `agApplyFix()`, `agSendChat()`, `renderOps()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
@@ -467,6 +467,16 @@ model does not read an estimate as precise.
 to the legacy tag (`s.e`), which is what lets months of already-logged sessions keep working
 with no migration pass. Anything writing effort must write both fields.
 
+**And anything *copying* a set must carry both fields.** `endLiveSession()` used to rebuild each
+set as `{w,r,e}`, so from 2026-08-24 to 2026-09-24 every set carried the lever for the whole
+session and then lost it at save; only the bucket reached `S.logs`. The only test looked at the
+in-progress set, so it stayed green the entire time. `liveSetToLog()` is the one copy now, and
+it also carries `ts` (ms, when the set was logged). The log record gets `startedAt`/`endedAt`
+(ms). Sets use `ts`, not `t`, on purpose: on a *record*, `t` is the sync write stamp
+`mergeUnseenHistory()` reads. Measure training time from the first to the last set's `ts`,
+not `endedAt`, which is only when End was tapped. Sessions from before 2026-09-24 have none of
+these fields.
+
 **The status strip never renders during LIVE**, and is painted *before* the
 `refreshBlocked()` gate. That gate stops a repaint eating half-typed input; a read-only bar
 cannot do that, and behind the gate it would go stale exactly when the app is in use.
@@ -587,6 +597,19 @@ stale-data bug.
 **WHOOP comes in, never out.** `syncPayload()` deletes `d.whoop`. The Action owns
 `whoop_data.json`; the app owns `ironhub_data.json`. Data not dated today is treated as
 absent — a stale recovery score is worse than none because it looks current.
+
+**The WHOOP history is history, never today.** `whoop_data.json` also carries `history`: one row
+per day, `{date, recovery, hrv, rhr, sleepHours, sleepPerf, strain}`, a rolling 180 days. The
+relay backfills the whole window when it finds none, then re-reads the last 30 days on every run
+(so missed runs heal), and merges field by field with the same carry-forward rule as today's
+sections. Each field is dated exactly the way its today-section is, and naps are skipped.
+History is best-effort: it can never cost today's sections, and a failed fetch keeps the
+previous rows. `applyWhoop()` validates it row by row and stores `S.whoop.history`, capped at
+`WHOOP_HIST_MAX`. **Nothing that asks "what is today" may read it.** `whoopFresh()`,
+`whoopContext()` and `readinessNow()` read the dated sections only, and the suite checks that a
+history row dated today is neither fresh nor in the prompt. The relay's pure helpers
+(`historyRows()`, `mergeHistory()`, `serializeWhoop()`) are `require()`d by the suite, which is
+why the relay runs `main()` only under `require.main === module`.
 
 **Discord is a window, not a door.** `discord/` reads the gist and nothing else. GitHub only ever
 gets GETs from it, and the suite checks this two ways: by scanning the source, and by recording

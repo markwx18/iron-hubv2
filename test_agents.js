@@ -4560,6 +4560,97 @@ setTimeout(async () => {
        ev('whoopContext()').indexOf('70%') >= 0 && ev('whoopContext()').indexOf('RHR') < 0,
        ev('whoopContext()').slice(0, 120));
 
+    // --- daily history: the relay keeps a rolling window, the app validates it row by row ---
+    // Messy on purpose: uneven values, a missing field, an out-of-range row, a bad date, an
+    // empty row and a repeated date -- a clean series cannot tell a validator from a setter.
+    ev('delete S.whoop;');
+    const histRaw = {recovery:{date:'2026-09-20', score:58}, history:[
+      {date:'2026-09-18', recovery:63, hrv:77.4, rhr:51, sleepHours:6.82, sleepPerf:79, strain:12.3},
+      {date:'2026-09-19', recovery:41.6, hrv:62.1, rhr:54},
+      {date:'2026-09-17', recovery:250, hrv:88, rhr:47, strain:30},
+      {date:'yesterday', recovery:70},
+      {date:'2026-09-16', recovery:'lots', hrv:null, sleepHours:''},
+      {date:'2026-09-19', recovery:44.4, hrv:60.9, rhr:53}
+    ]};
+    ok('history: a payload carrying history lands', ev('applyWhoop(' + JSON.stringify(histRaw) + ')') === true);
+    const wh = ev('S.whoop.history') || [];
+    ok('history: sorted oldest first, the bad-date and empty rows dropped',
+       wh.map(function(h){ return h.date; }).join(',') === '2026-09-17,2026-09-18,2026-09-19',
+       JSON.stringify(wh.map(function(h){ return h.date; })));
+    ok('history: an out-of-range row is clamped, not taken raw',
+       wh[0] && wh[0].recovery === 100 && wh[0].strain === 21, JSON.stringify(wh[0]));
+    ok('history: a repeated date keeps the later row, rounded like today’s score',
+       wh[2] && wh[2].recovery === 44 && wh[2].rhr === 53, JSON.stringify(wh[2]));
+    ok('history: a field that day did not have stays null, never 0',
+       wh[2] && wh[2].sleepHours === null && wh[2].strain === null, JSON.stringify(wh[2]));
+    ok('history: today’s sections are still stored alongside it', ev('S.whoop.recovery.score') === 58);
+
+    ev('delete S.whoop;');
+    ok('history alone is enough to store', ev("applyWhoop({history:[{date:'2026-09-18', recovery:63}]})") === true);
+    ok('...and it does not invent a recovery section', ev('!S.whoop.recovery') === true);
+
+    // The rule that makes history safe to hold at all: it is never read as TODAY.
+    ev('delete S.whoop;');
+    ev("applyWhoop({history:[{date:todayKey(), recovery:77, hrv:90, rhr:48, sleepHours:7.9}]});");
+    ok('control: a history row dated today was stored', ev('S.whoop.history[0].recovery') === 77);
+    ok('a history row dated today is not a current reading', ev('whoopFresh()') === false);
+    ok('...and never reaches the agent prompt as today’s recovery', ev('whoopContext()').indexOf('77%') < 0,
+       ev('whoopContext()'));
+
+    // bounded: a file cannot make the app hold an unbounded list
+    const manyRows = [];
+    for (let i = 0; i < 250; i++) {
+      manyRows.push({date: new Date(Date.UTC(2026, 0, 1) + i * 86400000).toISOString().slice(0, 10), recovery: 40 + (i * 7) % 45});
+    }
+    ev('delete S.whoop;');
+    ev('applyWhoop(' + JSON.stringify({history: manyRows}) + ');');
+    ok('history is capped', ev('S.whoop.history.length') === 200, String(ev('S.whoop.history.length')));
+    ok('...keeping the newest days, not the oldest',
+       ev('S.whoop.history[S.whoop.history.length-1].date') === manyRows[249].date);
+    ok('history does not ride out in the sync payload either',
+       JSON.parse(ev('syncPayload()')).data.whoop === undefined);
+
+    // --- the relay half (scripts/whoop/whoop-sync.js), through its pure helpers ---
+    const relay = require(require('path').join(__dirname, 'scripts/whoop/whoop-sync.js'));
+    const relayRows = relay.historyRows(
+      [ {created_at:'2026-09-19T11:02:00.000Z'},   // newest, still PENDING_SCORE: no score object
+        {created_at:'2026-09-19T10:04:00.000Z', score:{recovery_score:44, hrv_rmssd_milli:60.93, resting_heart_rate:53}},
+        {created_at:'2026-09-18T11:40:00.000Z', score:{recovery_score:63, hrv_rmssd_milli:77.41, resting_heart_rate:51}} ],
+      [ {end:'2026-09-19T21:10:00.000Z', nap:true, score:{stage_summary:{total_light_sleep_time_milli:1500000}, sleep_performance_percentage:12}},
+        {end:'2026-09-19T10:30:00.000Z', nap:false, score:{stage_summary:{total_light_sleep_time_milli:13320000,
+          total_slow_wave_sleep_time_milli:5040000, total_rem_sleep_time_milli:6120000}, sleep_performance_percentage:81}} ],
+      [ {start:'2026-09-19T03:12:00.000Z', score:{strain:9.84}}, {start:'2026-09-18T02:55:00.000Z'} ]);
+    const r19 = relayRows['2026-09-19'] || {}, r18 = relayRows['2026-09-18'] || {};
+    ok('relay: an unscored recovery contributes nothing, the scored one is used', r19.recovery === 44 && r19.hrv === 60.9,
+       JSON.stringify(r19));
+    ok('relay: a nap is not the night’s sleep', r19.sleepPerf === 81 && r19.sleepHours === 6.8, JSON.stringify(r19));
+    ok('relay: an unscored cycle leaves strain absent, not 0', r18.strain === undefined && r19.strain === 9.8,
+       JSON.stringify({r18: r18, r19: r19}));
+
+    const relayMerged = relay.mergeHistory(
+      [ {date:'2026-09-20', recovery:66, hrv:84.2, rhr:50},   // an earlier run already scored today
+        {date:'2026-09-19', recovery:47, sleepHours:6.5},
+        {date:'2026-01-02', recovery:39} ],                  // older than the window
+      Object.assign({}, relayRows, {'2026-09-20': {date:'2026-09-20', strain:3.2}}),   // this run: recovery pending
+      Date.parse('2026-09-20T15:00:00.000Z'));
+    const m20 = relayMerged.find(function(r){ return r.date === '2026-09-20'; }) || {};
+    const m19 = relayMerged.find(function(r){ return r.date === '2026-09-19'; }) || {};
+    ok('relay merge: a score this run did not get keeps the earlier run’s value',
+       m20.recovery === 66 && m20.strain === 3.2, JSON.stringify(m20));
+    ok('relay merge: fresh values win field by field', m19.recovery === 44 && m19.sleepHours === 6.8, JSON.stringify(m19));
+    ok('relay merge: rows older than the window are dropped', !relayMerged.some(function(r){ return r.date === '2026-01-02'; }));
+    ok('relay merge: oldest first', relayMerged.map(function(r){ return r.date; }).join(',') === '2026-09-18,2026-09-19,2026-09-20',
+       JSON.stringify(relayMerged.map(function(r){ return r.date; })));
+
+    // end to end: what the relay writes is exactly what the app accepts
+    const relayFile = relay.serializeWhoop({fetchedAt:'2026-09-20T15:00:00.000Z', recovery:{date:'2026-09-20', score:66}, history: relayMerged});
+    let relayParsed = null; try { relayParsed = JSON.parse(relayFile); } catch (e) {}
+    ok('relay output is valid JSON', !!relayParsed && relayParsed.history.length === relayMerged.length);
+    ev('delete S.whoop;');
+    ok('relay output passes the app validator', ev('applyWhoop(' + relayFile + ')') === true);
+    ok('...with every relay row intact', ev('S.whoop.history.length') === relayMerged.length &&
+       ev("S.whoop.history.filter(function(h){ return h.date==='2026-09-20'; })[0].recovery") === 66);
+
     ev('delete S.whoop; S.readiness = [];');
   } catch (e) {
     ok('whoop section', false, e.message);
@@ -5264,6 +5355,45 @@ setTimeout(async () => {
        edited.e === 'easy' && edited.ef === 90, JSON.stringify(edited));
     ok('and effBucket agrees with what was tapped', ev("effBucket(live.exercises[0].sets[0])") === 'easy');
     ev("live = null; MODE = 'review'; liveDockLever = null; liveDockEff = '';");
+
+    // ...and it has to survive the SAVE, not just the session. endLiveSession() used to copy each
+    // set as {w,r,e}, which dropped ef for a month (from 2026-08-24). The checks above only ever
+    // looked at the in-progress set, so they stayed green the whole time the value was being lost.
+    const lpSavedLogs = ev('JSON.stringify(S.logs)');
+    const lpSavedPR = ev('JSON.stringify(S.prHistory || [])');
+    ev("live = {date:todayKey(), day:'D1', startedAt:Date.now() - 50*60000, curIdx:0, trimmed:false," +
+       " exercises:[{name:'Lever Persist Test', sets:[], done:false, planned:3, lo:8, hi:12, targetW:95, advW:95, advLo:8, advHi:12}]};");
+    ev('liveActiveIdx = 0; MODE = "live"; renderLive();');
+    ev('setEffLever(35);');
+    ev("document.getElementById('dockW').value = '95'; document.getElementById('dockR').value = '11';");
+    ev('logLiveSet(0)');
+    // a second set logged with NO effort opinion at all
+    ev("document.getElementById('dockW').value = '95'; document.getElementById('dockR').value = '9';");
+    ev('logLiveSet(0)');
+    ev('endLiveSession()');
+    const lpLog = ev("S.logs.slice().reverse().find(function(l){ return l.entries.some(function(e){ return e.exercise==='Lever Persist Test'; }); })");
+    const lpSets = lpLog ? lpLog.entries.find(function(e){ return e.exercise === 'Lever Persist Test'; }).sets : [];
+    ok('the SAVED log keeps the lever value, not just the bucket',
+       lpSets[0] && lpSets[0].ef === 35 && lpSets[0].e === 'grind', JSON.stringify(lpSets));
+    // Behaviour, not just shape: 35 is the real value; the grind anchor a bucket-only set falls
+    // back to is 25. So this reads 35 only if the lever itself reached the log.
+    ok('effMean over the saved log sees the real value, not the grind anchor',
+       ev('effMean(' + JSON.stringify(lpSets) + ')') === 35, String(ev('effMean(' + JSON.stringify(lpSets) + ')')));
+    ok('a set logged with no effort is saved with no ef key at all',
+       lpSets[1] && !('ef' in lpSets[1]) && !('e' in lpSets[1]), JSON.stringify(lpSets[1]));
+    ok('every saved set carries when it was logged',
+       lpSets.length === 2 && lpSets.every(function(s){ return typeof s.ts === 'number' && s.ts > 0; }), JSON.stringify(lpSets));
+    ok('...in the order it was logged', lpSets[0].ts <= lpSets[1].ts);
+    ok('the log records when the session started and when it was ended',
+       lpLog && lpLog.startedAt > 0 && lpLog.endedAt - lpLog.startedAt >= 49 * 60000,
+       JSON.stringify({startedAt: lpLog && lpLog.startedAt, endedAt: lpLog && lpLog.endedAt}));
+    ok('the set timestamp is not the record sync stamp (t stays on the record only)',
+       typeof lpLog.t === 'number' && lpSets.every(function(s){ return !('t' in s); }));
+    ev('S.logs = ' + lpSavedLogs + '; S.prHistory = ' + lpSavedPR + ';');
+    ev("Array.prototype.slice.call(document.querySelectorAll('.pr-overlay')).forEach(function(o){ o.remove(); });");
+    ev("live = null; MODE = 'review'; liveDockLever = null; liveDockEff = '';");
+    ok('lever persistence fixture cleaned up',
+       ev("S.logs.every(function(l){ return !l.entries.some(function(e){ return e.exercise==='Lever Persist Test'; }); })"));
   } catch (e) {
     ok('effort lever section', false, e.message);
   }
