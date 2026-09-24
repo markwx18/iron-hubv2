@@ -3,37 +3,48 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0E1217">
+<meta name="theme-color" content="#16110E">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-24-v1">
+<meta name="ironhub-build" content="2026-09-24-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --base:#0E1217; --base2:#0A0D11; --panel:#161B22; --panel2:#1B212A;
-    --line:#262E38; --line2:#37414E;
-    --amber:#F6862F; --amber-soft:#FFB877; --amber-dim:#5e4127;
-    --cyan:#46CDBA; --cyan-dim:#2c5e54;
-    --red:#E15842; --red-dim:#5e2c27;
+    /* Forge x Ember (V3): Forge's amber and condensed caps on Ember's warm brown-black.
+       The token NAMES are unchanged on purpose -- --cyan is still "positive/CHARLIE" and
+       --amber is still the accent -- so every var() in the render code picks this up as is.
+       --red is re-stepped away from the amber: the old #E15842 sat within a few delta-E of the
+       accent for a deuteranope, so "back off" and "your next set" read as the same colour. */
+    --base:#16110E; --base2:#120E0B; --panel:#201915; --panel2:#2A211B;
+    --line:#3A2E26; --line2:#4A3B31;
+    --amber:#F28A3A; --amber-soft:#F6AE72; --amber-dim:#6A4428;
+    --cyan:#54C2A4; --cyan-dim:#2E5E52;
+    --red:#D2476B; --red-dim:#5E2436;
     --violet:#B79BFF; --violet-dim:#4b3f78;
-    --text:#EAEFF4; --muted:#8B94A1; --dim:#59626E;
-    --good:#46CDBA; --warn:#F6862F; --bad:#E15842;
+    --text:#F4EADF; --muted:#BCAB9B; --dim:#978779;
+    --good:#54C2A4; --warn:#E9B44C; --bad:#D2476B;
+    /* --card and --bg were read by the agent cards but never defined, so those cards drew with
+       no background at all. */
+    --card:var(--panel); --bg:var(--base);
+    --on-accent:#1B1007;
+    --r-card:18px; --r-ctl:12px;
+    --lift:inset 0 1px 0 rgba(255,236,214,.05);
     /* Progress-status ladder. One token per tier so the verdict label, the step bar and the
        next-level card can never drift apart the way the two colour maps here used to. */
     --tier-none:#d23b3b; --tier-slow:#dfae36; --tier-prog:#3da25f;
     --tier-accel:#2f6fd0; --tier-rapid:var(--violet);
-    --glow:rgba(246,134,47,.20);
-    --disp:'Saira Condensed',sans-serif; --body:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
+    --glow:rgba(242,138,58,.20);
+    --disp:'Saira Condensed',sans-serif; --body:'Figtree','Segoe UI',system-ui,sans-serif; --mono:'IBM Plex Mono',monospace;
     --accent:var(--amber); --d1:#d23b3b; --d2:#2f6fd0; --d3:#dfae36; --d4:#3da25f; --d5:#e9e7e2; --d6:#9aa0ab;
   }
   *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
   html,body{background:
-      radial-gradient(900px 480px at 18% -8%, rgba(246,134,47,.05), transparent 60%),
-      radial-gradient(760px 560px at 112% 8%, rgba(70,205,186,.045), transparent 55%),
+      radial-gradient(900px 480px at 18% -8%, rgba(242,138,58,.05), transparent 60%),
+      radial-gradient(760px 560px at 112% 8%, rgba(84,194,164,.045), transparent 55%),
       var(--base2);
     color:var(--text); font-family:var(--body); min-height:100vh; -webkit-font-smoothing:antialiased; line-height:1.55;}
   ::-webkit-scrollbar{width:9px;height:9px} ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
@@ -49,7 +60,7 @@
   .app-shell{max-width:780px; margin:0 auto; min-height:100vh; padding:0 0 96px; position:relative;}
 
   .topbar{position:sticky; top:0; z-index:40; backdrop-filter:blur(12px);
-    background:linear-gradient(180deg,rgba(10,13,17,.92),rgba(10,13,17,.72)); border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(22,17,14,.92),rgba(22,17,14,.72)); border-bottom:1px solid var(--line);
     padding:calc(env(safe-area-inset-top) + 10px) 16px 10px; display:flex; align-items:center; gap:12px;}
   .logo-mark{width:18px; height:18px; border:2px solid var(--amber); border-radius:4px; position:relative; transform:rotate(45deg); flex:none;}
   .logo-mark::after{content:""; position:absolute; inset:3.5px; background:var(--amber); border-radius:1px;}
@@ -62,7 +73,7 @@
   .modeswitch button.on.live{color:#1a0e02; background:var(--amber);}
   .modeswitch button.on.review{color:var(--base); background:var(--cyan);}
 
-  .welcome{margin:16px; padding:18px 18px 16px; border:1px solid var(--line); border-left:3px solid var(--amber); border-radius:4px; background:linear-gradient(180deg,rgba(246,134,47,.06),transparent 70%),var(--panel);}
+  .welcome{margin:16px; padding:18px 18px 16px; border:1px solid var(--line); border-left:3px solid var(--amber); border-radius:4px; background:linear-gradient(180deg,rgba(242,138,58,.06),transparent 70%),var(--panel);}
   .welcome .greet{font-family:var(--disp); font-weight:700; font-size:25px; line-height:1.02; text-transform:uppercase; letter-spacing:.01em;}
   .welcome .greet .accent{color:var(--amber);}
   .welcome .submsg{font-size:13.5px; color:var(--muted); margin-top:7px; line-height:1.5;}
@@ -133,7 +144,7 @@
   .chat-in{display:flex; gap:8px; margin-top:10px;}
   .chat-in textarea{flex:1; resize:none; height:44px;}
 
-  .prop-card{margin:12px 0; padding:14px; border:1px solid var(--amber-dim); border-left:3px solid var(--amber); border-radius:4px; background:linear-gradient(180deg,rgba(246,134,47,.05),transparent),var(--panel);}
+  .prop-card{margin:12px 0; padding:14px; border:1px solid var(--amber-dim); border-left:3px solid var(--amber); border-radius:4px; background:linear-gradient(180deg,rgba(242,138,58,.05),transparent),var(--panel);}
   .prop-card .pt{font-family:var(--disp); font-weight:700; font-size:15px; letter-spacing:.05em; text-transform:uppercase; color:var(--amber);}
   .prop-act{display:flex; gap:8px; margin-top:8px;}
 
@@ -184,7 +195,7 @@
   .fopt{padding:9px 13px; border-top:1px solid var(--line); font-size:13px;}
   .fn{font-weight:600;} .fopt .mono{color:var(--amber); font-size:11px;}
 
-  .daychip{display:inline-block; padding:3px 10px; border-radius:3px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#0c0f13; font-weight:600;}
+  .daychip{display:inline-block; padding:3px 10px; border-radius:3px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#1B1007; font-weight:600;}
 
   .review-body{padding:0 16px;}
   .rnav{position:sticky; top:54px; z-index:30; display:flex; gap:6px; overflow-x:auto; padding:12px 0 10px; background:linear-gradient(180deg,var(--base2) 70%,transparent); -ms-overflow-style:none; scrollbar-width:none;}
@@ -310,7 +321,7 @@
   .pain-lv button{font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; padding:5px 8px; border:1px solid var(--line2); border-radius:2px; background:var(--base); color:var(--muted); cursor:pointer;}
   .pain-lv button.sel{background:var(--red); border-color:var(--red); color:#fff;}
   .pain-note{flex:1; min-width:120px;}
-  .pain-flagged{display:flex; align-items:center; gap:6px; margin-top:8px; padding:6px 8px; border-left:2px solid var(--red); background:rgba(220,80,70,.07); font-size:11px; color:var(--muted);}
+  .pain-flagged{display:flex; align-items:center; gap:6px; margin-top:8px; padding:6px 8px; border-left:2px solid var(--red); background:rgba(210,71,107,.07); font-size:11px; color:var(--muted);}
   .efflv{margin-top:9px;}
   .efflv-top{display:flex; align-items:baseline; justify-content:space-between; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);}
   .efflv-val{font-size:12px; font-weight:700;}
@@ -332,7 +343,7 @@
   .efftog button.sel.e-fail{background:var(--red); border-color:var(--red); color:#fff;}
   .dockbtns{display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px;}
 
-  .resttimer{margin:12px 0; border:1px solid var(--line2); border-radius:5px; padding:15px; background:radial-gradient(120% 90% at 50% 0%,rgba(246,134,47,.07),transparent 70%),var(--panel2); text-align:center;}
+  .resttimer{margin:12px 0; border:1px solid var(--line2); border-radius:5px; padding:15px; background:radial-gradient(120% 90% at 50% 0%,rgba(242,138,58,.07),transparent 70%),var(--panel2); text-align:center;}
   .rt-arcwrap{position:relative; width:158px; height:158px; margin:6px auto 2px;}
   .rt-arcwrap svg{transform:rotate(-90deg);}
   .rt-bg{fill:none; stroke:var(--line); stroke-width:7;}
@@ -343,7 +354,7 @@
   .rt-btns{display:flex; gap:8px; justify-content:center; margin-top:12px;}
   .rt-btns button{font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:7px 14px; border:1px solid var(--line2); border-radius:3px; background:var(--base); color:var(--muted);}
 
-  .overlay{position:fixed; inset:0; z-index:100; background:rgba(8,11,15,.95); backdrop-filter:blur(4px); display:none; flex-direction:column; align-items:center; justify-content:center; padding:28px; text-align:center; overflow-y:auto;}
+  .overlay{position:fixed; inset:0; z-index:100; background:rgba(18,14,11,.95); backdrop-filter:blur(4px); display:none; flex-direction:column; align-items:center; justify-content:center; padding:28px; text-align:center; overflow-y:auto;}
   .overlay.show{display:flex; animation:fade .35s ease;}
   @keyframes fade{from{opacity:0}to{opacity:1}}
   .pr-eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.3em; text-transform:uppercase; color:var(--amber);}
@@ -426,7 +437,7 @@
   /* 1RM lab */
   .rm-step{display:flex; align-items:center; gap:10px; padding:11px 14px; border-bottom:1px solid var(--line);}
   .rm-step:last-child{border-bottom:none;}
-  .rm-step.attempt{background:linear-gradient(90deg,rgba(246,134,47,.08),transparent);}
+  .rm-step.attempt{background:linear-gradient(90deg,rgba(242,138,58,.08),transparent);}
   .rm-w{font-family:var(--mono); font-weight:600; font-size:18px; min-width:74px;}
   .rm-w .rm-lb{font-size:10px; color:var(--dim); margin-left:2px;}
   .rm-mid{flex:1; min-width:0;}
@@ -495,7 +506,7 @@
   .inv-fix{background:var(--base); border:1px solid var(--line); border-radius:4px; padding:10px 12px; margin:8px 0;}
   .inv-fix-h{font-family:var(--mono); font-size:9px; letter-spacing:.12em; color:var(--dim); margin-bottom:4px;}
   .inv-fix b{font-size:13.5px; color:var(--amber);}
-  .inv-applied{font-size:12px; color:var(--cyan); background:rgba(70,205,186,0.06); border:1px solid var(--cyan-dim); border-radius:4px; padding:9px 11px; margin:8px 0; line-height:1.5;}
+  .inv-applied{font-size:12px; color:var(--cyan); background:rgba(84,194,164,0.06); border:1px solid var(--cyan-dim); border-radius:4px; padding:9px 11px; margin:8px 0; line-height:1.5;}
   .inv-acts{display:flex; gap:8px; margin-top:8px;}
   .inv-trigger-row{display:flex; gap:8px; align-items:stretch;}
   .inv-trigger-row select{background:var(--base); border:1px solid var(--line2); color:var(--text); border-radius:3px; padding:8px 10px; font-family:var(--body); font-size:13px;}
@@ -596,7 +607,7 @@
   .meso-ex.heavy{color:var(--amber-soft); border-color:var(--amber-dim);}
   .meso-ex b{font-family:var(--mono); font-size:9.5px;}
   .meso-why{border-top:1px solid var(--line); padding-top:8px; margin-bottom:9px; font-size:11.5px; color:var(--dim); line-height:1.6;}
-  .meso-warn{font-size:11.5px; color:var(--amber); background:rgba(246,134,47,.07); border:1px solid var(--amber-dim); border-radius:3px; padding:7px 9px; margin-bottom:9px; line-height:1.45;}
+  .meso-warn{font-size:11.5px; color:var(--amber); background:rgba(242,138,58,.07); border:1px solid var(--amber-dim); border-radius:3px; padding:7px 9px; margin-bottom:9px; line-height:1.45;}
   .meso-prop-acts{display:flex; gap:7px; flex-wrap:wrap;}
 
   .meso-ed-day{border:1px solid var(--line); border-radius:4px; padding:9px 10px; margin-bottom:9px; text-align:left;}
@@ -645,8 +656,8 @@
     .sn-item:hover{color:var(--text); background:var(--panel);}
     .sn-item.on{color:var(--cyan); background:var(--panel); border-left-color:var(--cyan);}
     .sn-item.sn-live{color:var(--amber);}
-    .sn-item.sn-live:hover{background:rgba(246,134,47,.08);}
-    .sn-item.sn-live.on{background:rgba(246,134,47,.10); border-left-color:var(--amber); color:var(--amber);}
+    .sn-item.sn-live:hover{background:rgba(242,138,58,.08);}
+    .sn-item.sn-live.on{background:rgba(242,138,58,.10); border-left-color:var(--amber); color:var(--amber);}
     .sn-ic{font-size:16px; width:20px; text-align:center; flex:none;}
     .sn-sep{height:1px; background:var(--line); margin:8px 10px;}
     .sn-badge{width:7px; height:7px; border-radius:50%; margin-left:auto; opacity:0; transition:.2s;}
@@ -742,7 +753,7 @@
   .lv3-set-big{font-family:var(--disp); font-size:19px; font-weight:700; color:var(--amber); line-height:1.1;}
   .lv3-presc{padding:0 15px 8px; font-size:12.5px; color:var(--muted); line-height:1.5;}
   .lset.ghost{opacity:.45; border-style:dashed;}
-  .lset.lv3-next{border-color:var(--amber-dim); background:rgba(246,134,47,.04);}
+  .lset.lv3-next{border-color:var(--amber-dim); background:rgba(242,138,58,.04);}
   .lset.lv3-tap{cursor:pointer; transition:border-color .12s;}
   .lset.lv3-tap:active{border-color:var(--cyan);}
   .lv3-edithint{color:var(--dim); font-size:11px; margin-left:4px; flex:none;}
@@ -771,7 +782,7 @@
   .rd3-pills{display:flex; gap:6px; flex-wrap:wrap;}
   .rd3-pill{flex:1; min-width:60px; padding:11px 6px; background:var(--panel2); border:1px solid var(--line); border-radius:4px; color:var(--muted); font-size:12.5px; transition:.12s; cursor:pointer;}
   .rd3-pill:active{transform:scale(.97);}
-  .rd3-pill.on{border-color:var(--cyan); color:var(--cyan); background:rgba(70,205,186,.07);}
+  .rd3-pill.on{border-color:var(--cyan); color:var(--cyan); background:rgba(84,194,164,.07);}
 
   /* ===== COACH MEMORY + BUBBLES ===== */
   .cmem-card{margin:0 0 12px; padding:12px 14px; background:var(--panel); border:1px solid var(--line);
@@ -826,7 +837,7 @@
   .btn.primary:active, .btn.cyan:active{filter:brightness(.95);}
 
   /* focus states — cyan means "you're editing this" app-wide */
-  input:focus,select:focus,textarea:focus{border-color:var(--cyan); box-shadow:0 0 0 2px rgba(70,205,186,.13);}
+  input:focus,select:focus,textarea:focus{border-color:var(--cyan); box-shadow:0 0 0 2px rgba(84,194,164,.13);}
 
   /* pills and rows settle into the same rhythm */
   .pill{padding:3px 9px;}
@@ -995,6 +1006,91 @@
   /* The screenshot-import file input was never styled, so it sat at the UA's
      intrinsic width and pushed the Log tab past the viewport on a small phone. */
   input[type=file]{width:100%; max-width:100%; min-width:0; font-size:12px; color:var(--muted);}
+
+  /* ============================================================
+     FORGE x EMBER -- slice 1: base components.
+     Forge keeps the identity (Saira caps, amber, big numbers); Ember brings the ground and the
+     softness (rounded cards separated by shade rather than outline, no steel rail). Appended
+     last so it layers over every earlier sheet without re-ordering them. Screen-specific
+     restyles come in later slices; this only touches classes shared across the app.
+     ============================================================ */
+  html,body{background:
+      radial-gradient(900px 520px at 12% -10%, rgba(242,138,58,.06), transparent 60%),
+      radial-gradient(700px 520px at 110% 6%, rgba(233,180,76,.035), transparent 55%),
+      var(--base2);}
+  body{font-size:15px;}
+  h2{font-size:16px; letter-spacing:.05em;}
+  .small{font-size:13px;}
+
+  /* cards: shade, not outline. The V3 refresh's steel left edge goes -- a coloured rail on a
+     rounded card is the look this pass is moving away from. Cards that set their own
+     border-left inline (status cards) keep it until their screen's slice. */
+  .card,.sub,.bodymap-card,.goal-card{border:none; border-radius:var(--r-card); box-shadow:var(--lift);}
+  .card{border-left:none;}
+  .card.flat{box-shadow:none; border-radius:0;}
+  /* 25 cards set border-left inline, and on many it is the status colour (fatigue severity, day
+     colour, agent identity), so it cannot simply go. On an 18px-radius card it curved into a
+     rail, so it is redrawn as a short straight marker beside the title instead. The marker takes
+     the card's own inline border-left-color through inherit, so no render code changes. */
+  .card[style*="border-left"]{border-left-width:0 !important; position:relative;}
+  .card[style*="border-left"]::before{content:""; position:absolute; left:7px; top:17px; width:3px; height:20px;
+    border-radius:2px; border-left:3px solid; border-left-color:inherit; pointer-events:none;}
+  .cmem-card{border-left:1px solid var(--line);}
+  .sub-head{padding:14px 16px;}
+  .sub-body{padding:0 16px 16px;}
+  .ex,.hist,.fuel-slot,.sd-day,.exinfo-modal{border-radius:16px;}
+  .lib-ex,.swap-row,.inv-banner,.inv-fix,.inv-applied,.elog,.cmem-card,.cmem-item,.meso-ed-day{border-radius:14px;}
+
+  /* numbers: Saira, big, tabular -- the Forge half of the look */
+  .stat,.dash-tile,.an-stat,.hm-cell,.summary .s-cell{border:none; border-radius:14px; background:var(--panel2);}
+  .stat .v,.hm-cell .n,.summary .s-cell .n{font-family:var(--disp); font-weight:700; font-size:30px; line-height:1; font-variant-numeric:tabular-nums;}
+  .dash-tile .dt-v{font-family:var(--disp); font-weight:700; font-size:30px; line-height:1.05; font-variant-numeric:tabular-nums;}
+  .an-stat-n{font-size:30px; font-variant-numeric:tabular-nums;}
+  .stat .l,.dash-tile .dt-l,.an-stat-l,.hm-cell .g,.summary .s-cell .l,.dash-sec{font-family:var(--disp); font-weight:600; font-size:12.5px; letter-spacing:.05em; color:var(--muted);}
+
+  /* controls */
+  /* radius only: padding and size stay with the component classes (.lv3-log, .rt-btns...), which
+     sit earlier at the same specificity and would otherwise lose to this layer */
+  .btn{border-radius:var(--r-ctl);}
+  .btn.sm{border-radius:10px;}
+  .btn.primary{color:var(--on-accent);}
+  .btn.cyan{color:var(--on-accent);}
+  .pill{font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em; border-radius:999px; padding:3px 10px;}
+  label{font-family:var(--disp); font-weight:600; font-size:12.5px; letter-spacing:.05em; margin-bottom:6px;}
+  input[type=text],input[type=number],input[type=date],input[type=password],select,textarea,input:where(:not([type])){
+    border-radius:var(--r-ctl); font-family:var(--body); border-color:var(--line);}
+  input:focus,select:focus,textarea:focus{border-color:var(--amber); box-shadow:0 0 0 3px rgba(242,138,58,.16);}
+  .chat-in textarea:focus{border-color:var(--amber);}
+  .nut-pill,.rd3-pill,.sleep-btns button,.efftog button,.pain-lv button,.bm-modes button,.inc-presets button,.rt-btns button{border-radius:10px;}
+  .del,.xx,.ord,.editex,.notif-btn,.cprop-scope,.ag-tag,.nut-badge,.delta,.leff,.cpb-tag,.cmem-tag{border-radius:8px;}
+
+  /* sub-section strips: a selected tab is amber type on a lifted chip, not a filled cyan block */
+  .subnav button,.rnav button{border-radius:999px; border-color:transparent; background:var(--panel); font-size:14px;}
+  .subnav button.on,.rnav button.on{background:var(--panel2); color:var(--amber); border-color:var(--amber-dim);}
+  .modeswitch{border-radius:12px;}
+  .modeswitch button.on.review{color:var(--on-accent);}
+
+  /* surfaces that floated on the old steel */
+  .welcome{border:none; border-radius:20px; box-shadow:var(--lift);
+    background:radial-gradient(120% 140% at 0% 0%,rgba(242,138,58,.12),transparent 55%),var(--panel);}
+  .prop-card{border:1px solid var(--amber-dim); border-radius:16px;}
+  .cprop{border:1px solid var(--violet-dim); border-radius:14px;}
+  .coach-plan-banner{border-radius:14px;}
+  .notif-panel{border-radius:16px; border-color:var(--line);}
+  .resttimer{border:none; border-radius:20px; box-shadow:var(--lift);}
+  .msg{border-radius:16px; font-size:14px;}
+  .msg.me{color:var(--on-accent); border-radius:16px 16px 4px 16px;}
+  .msg.ai{border-radius:16px 16px 16px 4px;}
+  .ag-lead,.ag-card,.ag-prop,.ag-chat{border-radius:16px;}
+  .ag-card{border-left-width:1px;}
+  .upd-bar{border-top-color:var(--amber-dim);}
+  .upd-dot{background:var(--amber);}
+
+  /* less monospace: small caps labels read in Saira now; mono stays for genuinely tabular data */
+  .rd3-gl,.nut-gl,.lv3-eyebrow,.ptier-cap,.chart-sub,.meso-wk-n,.notif-head,.ag-chat-head .t{font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em;}
+  .chart-h{font-size:15px;}
+  .botnav .ni{font-family:var(--disp); font-weight:600; font-size:11px; letter-spacing:.05em;}
+  @media(max-width:899px){ .botnav .ni{font-size:10px; letter-spacing:.03em;} }
 </style>
 
 
@@ -1471,10 +1567,10 @@ function toggleHomeToday(){
   S.homeToday = homeActiveToday() ? null : {date:todayKey()};
   save(); renderLive();
 }
-function dayColor(d){ const m = dayMeta(d); return (m && m.hex) || '#8d909a'; }
+function dayColor(d){ const m = dayMeta(d); return (m && m.hex) || '#9A8B7E'; }
 function setAccent(){
   const d = currentDayKey();
-  document.documentElement.style.setProperty('--accent', d==='REST' ? '#8d909a' : dayColor(d));
+  document.documentElement.style.setProperty('--accent', d==='REST' ? '#9A8B7E' : dayColor(d));
 }
 function incFor(name){
   const n = name.toLowerCase();
@@ -5854,7 +5950,7 @@ function cycleScheduleEditorHTML(){
     const isToday = i===todayPos;
     let opts = '<option value="REST"'+(day==='REST'?' selected':'')+'>Rest</option>';
     Object.keys(S.split).forEach(k=>{ opts += '<option value="'+k+'"'+(day===k?' selected':'')+'>'+k+' \u2014 '+esc(S.split[k].name)+'</option>'; });
-    h += '<div class="row" style="align-items:center'+(isToday?';background:rgba(246,134,47,.08);border-radius:8px;padding:4px 6px':'')+'">'+
+    h += '<div class="row" style="align-items:center'+(isToday?';background:rgba(242,138,58,.08);border-radius:8px;padding:4px 6px':'')+'">'+
       '<div style="flex:0 0 80px" class="small"><b>Day '+(i+1)+'</b>'+(isToday?' <span style="color:var(--amber)">\u2190 today</span>':'')+'</div>'+
       '<div style="flex:0 0 auto"><select onchange="cycleSetDay('+i+',this.value)">'+opts+'</select></div>'+
       '<div style="margin-left:auto;display:flex;gap:4px">'+
@@ -5950,7 +6046,7 @@ function splitEditorHTML(){
     const d = S.split[dk];
     const list = d.exercises || [];
     h += '<div class="sd-day"><div class="sd-dhead" onclick="toggleSdDay(\''+dk+'\')">'+
-      '<span class="dk" style="color:'+(d.hex||'#8d909a')+'">'+dk+'</span>'+
+      '<span class="dk" style="color:'+(d.hex||'#9A8B7E')+'">'+dk+'</span>'+
       '<input class="dn" style="background:var(--bg);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:4px 8px;font-size:12px;flex:1;max-width:240px" value="'+esc(d.name||'')+'" onclick="event.stopPropagation()" onchange="renameDay(\''+dk+'\',this.value)">'+
       '<span class="chev" id="chev-'+dk+'">'+(sdOpen[dk]?'\u25b4':'\u25be')+'</span></div>'+
       '<div class="sd-body'+(sdOpen[dk]?' open':'')+'" id="sdbody-'+dk+'">';
@@ -6082,7 +6178,7 @@ function renderHeader(){
   const dk = currentDayKey();
   $('#hdrDate').innerHTML = '<b>'+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+'</b>';
   $('#hdrDay').textContent = dk==='REST' ? 'Rest Day' : dk+' · '+dayName(dk);
-  $('#hdrDay').style.background = dk==='REST' ? '#8d909a' : dayColor(dk);
+  $('#hdrDay').style.background = dk==='REST' ? '#9A8B7E' : dayColor(dk);
 }
 </script>
 <script>
@@ -7432,11 +7528,11 @@ function setupPWA(){
     // generate a forge-diamond home-screen icon at runtime (no second file needed)
     function iconURL(size){
       const c=document.createElement('canvas'); c.width=c.height=size; const x=c.getContext('2d');
-      x.fillStyle='#0E1217'; x.fillRect(0,0,size,size);
+      x.fillStyle='#16110E'; x.fillRect(0,0,size,size);
       const cx=size/2, r=size*0.27;
       x.save(); x.translate(cx,cx); x.rotate(Math.PI/4);
-      x.strokeStyle='#F6862F'; x.lineWidth=size*0.05; x.strokeRect(-r,-r,2*r,2*r);
-      x.fillStyle='#F6862F'; const ir=r*0.5; x.fillRect(-ir,-ir,2*ir,2*ir);
+      x.strokeStyle='#F28A3A'; x.lineWidth=size*0.05; x.strokeRect(-r,-r,2*r,2*r);
+      x.fillStyle='#F28A3A'; const ir=r*0.5; x.fillRect(-ir,-ir,2*ir,2*ir);
       x.restore();
       return c.toDataURL('image/png');
     }
@@ -7444,7 +7540,7 @@ function setupPWA(){
     const al=document.createElement('link'); al.rel='apple-touch-icon'; al.href=i180; document.head.appendChild(al);
     const fav=document.createElement('link'); fav.rel='icon'; fav.href=i180; document.head.appendChild(fav);
     const manifest={ name:'Iron Hub', short_name:'Iron Hub', start_url:'.', scope:'.', display:'standalone',
-      background_color:'#0A0D11', theme_color:'#0E1217', orientation:'portrait',
+      background_color:'#120E0B', theme_color:'#16110E', orientation:'portrait',
       icons:[ {src:i512, sizes:'512x512', type:'image/png', purpose:'any maskable'}, {src:i180, sizes:'180x180', type:'image/png'} ] };
     const blob=new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'});
     const ml=document.createElement('link'); ml.rel='manifest'; ml.href=URL.createObjectURL(blob); document.head.appendChild(ml);
@@ -7621,7 +7717,7 @@ function injectRoadCharts(){
     const c=cards[gi]; if(!c || c.querySelector('.goal-chart')) return;
     const pts=prSeries(g.exercise); if(pts.length<1) return;
     const div=document.createElement('div'); div.className='goal-chart'; div.style.marginTop='12px';
-    div.innerHTML='<div class="chart-h" style="font-size:11px">PR progression</div>'+lineChart(pts,'#F6862F');
+    div.innerHTML='<div class="chart-h" style="font-size:11px">PR progression</div>'+lineChart(pts,'#F28A3A');
     c.appendChild(div);
   });
 }
@@ -7629,7 +7725,7 @@ function injectBulkChart(){
   const sec=document.getElementById('bulk'); if(!sec || sec.querySelector('.bw-chart')) return;
   const pts=bodyweightSeries(); if(pts.length<1) return;
   const div=document.createElement('div'); div.className='card bw-chart';
-  div.innerHTML='<div class="chart-h">Bodyweight trend<span class="chart-sub">'+pts.length+' weigh-ins</span></div>'+lineChart(pts,'#46CDBA');
+  div.innerHTML='<div class="chart-h">Bodyweight trend<span class="chart-sub">'+pts.length+' weigh-ins</span></div>'+lineChart(pts,'#54C2A4');
   sec.insertBefore(div, sec.firstChild.nextSibling||null);
 }
 /* ---- bodyweight projection: the lift-prediction model, pointed at the scale ----
@@ -7664,7 +7760,7 @@ function bwProjectionCardHTML(){
     '<select onchange="bwProjChangeRange(this.value)" style="flex:none;width:auto">'+
     BW_RANGES.map(r=>'<option value="'+r.days+'"'+(r.days===bwProjRange?' selected':'')+'>'+r.label+'</option>').join('')+
     '</select></div>';
-  h += anFanChartSVG(res, 640, 240, {bandFill:'rgba(70,205,186,.08)'});
+  h += anFanChartSVG(res, 640, 240, {bandFill:'rgba(84,194,164,.08)'});
   h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
   h += '<div style="display:flex;align-items:center;gap:6px">'+
     '<span style="width:9px;height:2px;background:var(--muted);display:inline-block"></span>'+
@@ -8017,7 +8113,7 @@ function renderLibrary(){
   Object.keys(S.split).forEach(dk=>{
     const d=S.split[dk]; const list=(d.exercises||[]).map(exName);
     if(!list.length) return;
-    h+='<div class="lib-day"><div class="lib-dh" style="color:'+(d.hex||'#8d909a')+'">'+dk+' \u00b7 '+esc(d.name||'')+'</div>';
+    h+='<div class="lib-day"><div class="lib-dh" style="color:'+(d.hex||'#9A8B7E')+'">'+dk+' \u00b7 '+esc(d.name||'')+'</div>';
     list.forEach(nm=>{
       h+='<button class="lib-ex" onclick="showExInfo(\''+esc(nm).replace(/'/g,"\\'")+'\')"><span>'+esc(nm)+'</span><span class="lib-arrow">view \u203a</span></button>';
     });
@@ -8057,7 +8153,7 @@ function splitEditorHTML(){
   Object.keys(S.split).forEach(dk=>{
     const d=S.split[dk]; const list=d.exercises||[];
     h+='<div class="sd-day"><div class="sd-dhead" onclick="toggleSdDay(\''+dk+'\')">'+
-      '<span class="dk" style="color:'+(d.hex||'#8d909a')+'">'+dk+'</span>'+
+      '<span class="dk" style="color:'+(d.hex||'#9A8B7E')+'">'+dk+'</span>'+
       '<input class="dn" style="background:var(--base);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:4px 8px;font-size:12px;flex:1;max-width:240px" value="'+esc(d.name||'')+'" onclick="event.stopPropagation()" onchange="renameDay(\''+dk+'\',this.value)">'+
       '<span class="chev" id="chev-'+dk+'">'+(sdOpen[dk]?'\u25b4':'\u25be')+'</span></div>'+
       '<div class="sd-body'+(sdOpen[dk]?' open':'')+'" id="sdbody-'+dk+'">';
@@ -8585,7 +8681,7 @@ function liveExHTML_1rm(ex, i, active){
     const logged = ex.sets[si];
     const isPast = si < curStep;
     const isCur  = si === curStep && !allDone;
-    h += '<div class="lset '+(isPast?'logged':'')+'" style="'+(isCur?'background:rgba(246,134,47,0.05)':'')+'">'+
+    h += '<div class="lset '+(isPast?'logged':'')+'" style="'+(isCur?'background:rgba(242,138,58,0.05)':'')+'">'+
       '<span class="lsn" style="min-width:18px">'+(isPast?'\u2713':isCur?'\u25b8':'\u25cb')+'</span>'+
       '<span class="lval" style="color:var('+(isPast?'--cyan':isCur?'--text':'--dim')+')">'+(step.w==='Bar'?'Bar':step.w+' lb')+
         '<span class="x" style="margin:0 3px">\u00d7</span>'+(isPast&&logged?logged.r:step.reps)+'</span>'+
@@ -8841,7 +8937,7 @@ function fatigueBannerHTML(){
   try{ fi = fatigueSuggestsDeload(); }catch(e){ return ''; }
   if(!fi) return '';
   const hard = fi.status==='overreached';
-  return '<div class="card fat-banner" style="border-left:3px solid '+(hard?'var(--red)':'var(--amber)')+';background:'+(hard?'rgba(225,88,66,.06)':'rgba(246,134,47,.05)')+'">'+
+  return '<div class="card fat-banner" style="border-left:3px solid '+(hard?'var(--red)':'var(--amber)')+';background:'+(hard?'rgba(210,71,107,.06)':'rgba(242,138,58,.05)')+'">'+
     '<div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">'+
     '<b style="color:'+(hard?'var(--red)':'var(--amber)')+';letter-spacing:.04em;font-family:var(--disp);font-size:15px">'+
       (hard?'FATIGUE: OVERREACHED':'FATIGUE RUNNING HIGH')+'</b>'+
@@ -8975,7 +9071,7 @@ function renderLibrary(){
   Object.keys(S.split).forEach(dk=>{
     const d=S.split[dk]; const list=(d.exercises||[]).map(exName);
     if(!list.length) return;
-    h+='<div class="lib-day"><div class="lib-dh" style="color:'+(d.hex||'#8d909a')+'">'+dk+' \u00b7 '+esc(d.name||'')+'</div>';
+    h+='<div class="lib-day"><div class="lib-dh" style="color:'+(d.hex||'#9A8B7E')+'">'+dk+' \u00b7 '+esc(d.name||'')+'</div>';
     list.forEach(nm=>{
       const myIdx=idx++;
       const sessions=e1rmSeries(nm).length;
@@ -11198,7 +11294,7 @@ function anSpark(pts, w, h, color, opts){
   let extra = '';
   if(opts.band){ // reference band [lo,hi] in value space
     const y1=py(opts.band[1]), y2=py(opts.band[0]);
-    extra += '<rect x="0" y="'+y1.toFixed(1)+'" width="'+w+'" height="'+(y2-y1).toFixed(1)+'" fill="'+(opts.bandColor||'rgba(70,205,186,.08)')+'"/>';
+    extra += '<rect x="0" y="'+y1.toFixed(1)+'" width="'+w+'" height="'+(y2-y1).toFixed(1)+'" fill="'+(opts.bandColor||'rgba(84,194,164,.08)')+'"/>';
   }
   const last = pts[pts.length-1];
   return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block">'+extra+
@@ -11746,7 +11842,7 @@ function anFanChartSVG(res, w, h, opts){
   s += '<polygon points="'+
     res.series[90].map(p=>px(p.date).toFixed(1)+','+py(p.v).toFixed(1)).join(' ')+' '+
     res.series[10].slice().reverse().map(p=>px(p.date).toFixed(1)+','+py(p.v).toFixed(1)).join(' ')+
-    '" fill="'+(opts.bandFill||'rgba(246,134,47,.08)')+'"/>';
+    '" fill="'+(opts.bandFill||'rgba(242,138,58,.08)')+'"/>';
   // y labels
   s += '<text x="4" y="'+(py(hi)+4).toFixed(1)+'" class="mono" font-size="10" fill="var(--dim)">'+Math.round(hi)+'</text>';
   s += '<text x="4" y="'+(py(lo)+4).toFixed(1)+'" class="mono" font-size="10" fill="var(--dim)">'+Math.round(lo)+'</text>';
@@ -12281,9 +12377,9 @@ function coachMemCardHTML(){
 const AGENTS = {
   zulu:    {name:'ZULU',    lead:true, col:'#dfae36',
             role:'Lead \u2014 oversight, coaching and cross-domain synthesis'},
-  charlie: {name:'CHARLIE', col:'#46CDBA',
+  charlie: {name:'CHARLIE', col:'#54C2A4',
             role:'App logistics, data health and workout schedule'},
-  delta:   {name:'DELTA',   col:'#F6862F',
+  delta:   {name:'DELTA',   col:'#F28A3A',
             role:'Workouts, splits and progressive overload'},
   echo:    {name:'ECHO',    col:'#B79BFF',
             role:'Bulk, fuel and bodyweight trend'}

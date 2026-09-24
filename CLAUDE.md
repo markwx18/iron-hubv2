@@ -661,14 +661,36 @@ on demand. Everything in `S` is re-serialized on every save and re-uploaded on e
 
 ## UI conventions
 
-Design language: "forge on steel" — near-black background, industrial/mono accents.
+Design language: **"Forge × Ember"** (V3, chosen 2026-09-24). Forge keeps the identity: Saira
+Condensed caps, industrial amber, big tabular numbers, dense rows with thin dividers. Ember brings
+the warm brown-black ground, cream text, and rounded cards that are separated by shade rather than
+outline. The mockups are the "Forge × Ember" page of the V3 Looks canvas (private artifact
+`XVRZXGjKLeYeokfD4dpY5n`). The reskin ships in slices: 1 tokens/type/components (done),
+2 chart kit, 3 navigation (5-slot bar), 4 screen layouts, 5 LIVE visual pass, 6 stored and
+off-CSS colours (`S.split[*].hex`, `BM_C`/`bm3dColors()`, Discord `COLORS`).
 
 | Token | Value | Use |
 |---|---|---|
-| `--amber` | `#F6862F` | primary accent, DELTA |
-| `--cyan` | `#46CDBA` | CHARLIE, positive trend |
-| `--violet` | `#B79BFF` | ECHO |
+| `--base` / `--panel` / `--panel2` | `#16110E` / `#201915` / `#2A211B` | ground, card, raised element |
+| `--amber` | `#F28A3A` | the one accent, DELTA |
+| `--cyan` | `#54C2A4` | CHARLIE, positive trend (same value as `--good`) |
+| `--good` / `--warn` / `--bad` | `#54C2A4` / `#E9B44C` / `#D2476B` | status, always with a word or icon |
+| `--violet` | `#B79BFF` | ECHO, strength mode |
 | ZULU | `#dfae36` | lead agent |
+| `--text` / `--muted` / `--dim` | `#F4EADF` / `#BCAB9B` / `#978779` | ink, three levels |
+
+Type: `--disp` Saira Condensed (caps, numbers, labels), `--body` Figtree, `--mono` IBM Plex Mono
+only for genuinely tabular data. `--r-card` 18px and `--r-ctl` 12px are the radii.
+
+**`--bad` is deliberately not the old red.** `#E15842` sat within a few ΔE of the amber accent for
+a deuteranope, so "back off" and "your next set" read as the same colour. `#D2476B` was chosen with
+the dataviz palette validator (CVD and normal-vision separation against the accent, on the warm
+card surface). Re-run that check before moving either colour.
+
+**A coloured `border-left` on a card is now a marker, not a rail.** 25 cards set it inline, and
+on many it is the only status colour. The slice-1 layer draws it as a short straight tick beside
+the title and inherits the inline colour, so render code did not change. Don't add new ones;
+use a status chip.
 
 Use CSS variables, never hardcoded hex, in new UI.
 
