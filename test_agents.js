@@ -102,6 +102,57 @@ setTimeout(async () => {
   ok('ops section exists in DOM', !!w.document.getElementById('ops'));
   ok('REVIEW_RENDER.ops wired', typeof ev('REVIEW_RENDER').ops === 'function');
 
+  // --- V3 navigation: sections regrouped, nothing orphaned, every old route still lands ---
+  const navSaved = ev('JSON.stringify({mode:MODE, main:activeMainTab, mem:navMemory, rev:activeReviewTab})');
+  const domSections = ev("Array.prototype.map.call(document.querySelectorAll('#reviewMode main section'), function(s){ return s.id; })");
+  const navSubs = ev("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs.map(function(s){ return s.id; })); }, [])");
+  // Two sections are deliberately unrouted: #today is the hidden V1 render target renderToday()
+  // still draws into (and the suite reads), and #coach is the empty container left when Coach
+  // folded into Operations. Anything else missing from the nav is a real orphan.
+  const NAV_UNROUTED = ['today', 'coach'];
+  const orphans = domSections.filter(id => NAV_UNROUTED.indexOf(id) < 0 && navSubs.filter(x => x === id).length !== 1);
+  ok('every section is reachable from exactly one nav group', domSections.length > 10 && orphans.length === 0,
+     'orphaned or doubled: ' + JSON.stringify(orphans));
+  ok('NAV_LEGACY routes every section to the group that now holds it',
+     navSubs.every(id => { const r = ev('NAV_LEGACY')[id]; return r && ev("navMain('" + r[0] + "').subs.some(function(s){ return s.id==='" + id + "'; })"); }));
+  // callers written before the regroup still name the old groups
+  ev("setMode('review'); showMainTab('analytics','an_fatigue');");
+  ok('an old group name still lands on its section, in its new group',
+     ev('activeMainTab') === 'progress' && ev('activeReviewTab') === 'an_fatigue' &&
+     ev("document.getElementById('an_fatigue').classList.contains('on')"), ev('activeMainTab') + '/' + ev('activeReviewTab'));
+  // the case only the section can decide: Readiness was under Analytics and now lives in Body,
+  // so the old group's alias (Progress) would open the wrong group around it
+  ev("showMainTab('analytics','an_recovery');");
+  ok('...a section that left its old group follows the section, not the group',
+     ev('activeMainTab') === 'body' && ev('activeReviewTab') === 'an_recovery', ev('activeMainTab') + '/' + ev('activeReviewTab'));
+  ev("showMainTab('bulk','fuel');");
+  ok('...Fuel moved to Body', ev('activeMainTab') === 'body' && ev('activeReviewTab') === 'fuel');
+  ev("showMainTab('plan');");
+  ok('...a group that no longer exists lands on its default section', ev('activeMainTab') === 'train' && ev('activeReviewTab') === 'meso');
+  ev("showReviewTab('invest');");
+  ok('...Investigate flags live under Coach', ev('activeMainTab') === 'ops' && ev('activeReviewTab') === 'invest');
+  // a remembered section that moved out of a group must not be reopened inside it
+  ev("navMemory = {progress:'log'}; showMainTab('progress');");
+  ok('a remembered section from the old grouping is not reopened in the wrong group',
+     ev('activeReviewTab') === 'progress' && ev('navMemory.progress') === 'progress', ev('activeReviewTab'));
+  // the bottom bar: four groups, Live raised in the middle, nothing else
+  const bot = ev("Array.prototype.map.call(document.querySelectorAll('#botnav .ni'), function(b){ return b.textContent.trim(); })");
+  ok('the bottom bar is Today / Train / Live / Progress / Body',
+     JSON.stringify(bot) === JSON.stringify(['Today','Train','Live','Progress','Body']), JSON.stringify(bot));
+  ok('Live is the raised middle button', ev("document.querySelectorAll('#botnav .ni')[2].classList.contains('ni-live')"));
+  ok('Coach and Settings sit in the top bar instead',
+     !!w.document.querySelector('#topCoach') && !!w.document.querySelector('#topSettings') &&
+     !!w.document.querySelector('#topCoach #niInvBadge'));
+  ev("showMainTab('ops');");
+  ok('the top-bar Coach button lights up on its own group',
+     ev("document.getElementById('topCoach').classList.contains('on')") && !ev("document.getElementById('topSettings').classList.contains('on')"));
+  ev("setMode('live');");
+  ok('Live lights up in the bottom bar, with no mode switch left to drive',
+     ev("document.querySelector('#botnav .ni-live').classList.contains('on')") && !w.document.getElementById('mLive'));
+  const ns = JSON.parse(navSaved);
+  ev('MODE = ' + JSON.stringify(ns.mode) + '; activeMainTab = ' + JSON.stringify(ns.main) + '; navMemory = ' + JSON.stringify(ns.mem) +
+     '; activeReviewTab = ' + JSON.stringify(ns.rev) + ';');
+
   // --- state shape ---
   const st = ev('agState')();
   ok('agState creates proposals[]', Array.isArray(st.proposals));
@@ -1027,6 +1078,30 @@ setTimeout(async () => {
   ok('chart SVG renders without throwing', !chartThrew);
   ok('chart SVG is well-formed svg markup', svgOut.startsWith('<svg') && svgOut.endsWith('</svg>'));
   ok('chart SVG references all three band colors', ['var(--dim)', 'var(--amber)', 'var(--cyan)'].every(c => svgOut.indexOf(c) >= 0));
+
+  // --- the chart kit (V3) ---
+  // Full-width charts used to draw on a 700-wide viewBox, which a ~345px phone card shrinks to
+  // half, so their 10-unit axis text arrived at about 5px. jsdom cannot measure rendered text,
+  // so this asserts the two things that decide it: the drawing width and the type size in it.
+  const kitPts = "[{date:'2026-06-15',v:164},{date:'2026-07-06',v:171},{date:'2026-08-16',v:176.5},{date:'2026-09-22',v:181}]";
+  const kitLine = ev("lineChart(" + kitPts + ", '#F28A3A')");
+  ok('chart kit: full-width charts draw on the phone-sized base, not 700',
+     /viewBox="0 0 380 /.test(kitLine) && ev('CK_W') === 380, (kitLine.match(/viewBox="[^"]*"/) || [''])[0]);
+  const kitSizes = (kitLine.match(/font-size="([\d.]+)"/g) || []).map(m => parseFloat(m.slice(11)));
+  ok('chart kit: no chart text below 11 units on that base', kitSizes.length > 0 && Math.min(...kitSizes) >= 11, JSON.stringify(kitSizes));
+  ok('chart kit: the latest value is labelled in ink, not in the series colour',
+     /fill="var\(--text\)">181</.test(kitLine) && !/<text[^>]*fill="#F28A3A"/.test(kitLine));
+  // Every chart's wash needs its own gradient id: two charts on one page sharing an id would
+  // both paint with whichever gradient the document found first.
+  const kitIds = [ev("lineChart(" + kitPts + ", 'var(--amber)')"), ev("lineChart(" + kitPts + ", 'var(--cyan)')")]
+    .map(sv => (sv.match(/linearGradient id="([^"]+)"/) || [])[1]);
+  ok('chart kit: two charts on one page get different gradient ids', !!kitIds[0] && !!kitIds[1] && kitIds[0] !== kitIds[1], JSON.stringify(kitIds));
+  // The fan is drawn at whatever width its caller passes, so its type scales with the viewBox:
+  // the 'today' label must be the same size ON SCREEN at 380 and at 640.
+  const fanAt = w => { const sv = ev("anEnsembleChartSVG(anEnsembleFor('Ens Noisy Lift', 84), " + w + ", 230)");
+    const m = sv.match(/font-size="([\d.]+)"[^>]*>today</); return m ? parseFloat(m[1]) / w : NaN; };
+  const fan380 = fanAt(380), fan640 = fanAt(640);
+  ok('chart kit: fan chart type scales with its viewBox', Math.abs(fan380 - fan640) < 0.0006, fan380 + ' vs ' + fan640);
 
   // dropdown wiring: selecting an exercise/range persists and reflects in the rendered card
   ev("anEnsembleChangeEx('Ens Noisy Lift')");
@@ -3134,7 +3209,7 @@ setTimeout(async () => {
     ev("S.prHistory = __savedPR;");
 
     // --- wiring ---
-    const anSubs = ev("NAV_MODEL.find(function(n){ return n.id==='analytics'; }).subs");
+    const anSubs = ev("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs); }, [])");
     ok('nav labels the tab PR history',
       anSubs.some(s => s.id === 'an_strength' && s.label === 'PR history'),
       JSON.stringify(anSubs.map(s => s.label)));
@@ -3287,7 +3362,7 @@ setTimeout(async () => {
       rout.indexOf('Not enough data yet') >= 0 && !/\d+% grind/.test(rout), rout.slice(0, 300));
 
     // --- wiring ---
-    const anSubs2 = ev("NAV_MODEL.find(function(n){ return n.id==='analytics'; }).subs");
+    const anSubs2 = ev("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs); }, [])");
     ok('nav labels the tab Readiness', anSubs2.some(s => s.id === 'an_recovery' && s.label === 'Readiness'),
       JSON.stringify(anSubs2.map(s => s.label)));
     ok('REVIEW_RENDER.an_recovery still wired', typeof ev('REVIEW_RENDER').an_recovery === 'function');
@@ -3495,7 +3570,7 @@ setTimeout(async () => {
       bout.slice(0, 300));
 
     // --- wiring ---
-    const anSubs3 = ev("NAV_MODEL.find(function(n){ return n.id==='analytics'; }).subs");
+    const anSubs3 = ev("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs); }, [])");
     ok('nav labels the tab Bulk quality', anSubs3.some(s => s.id === 'an_dev' && s.label === 'Bulk quality'),
       JSON.stringify(anSubs3.map(s => s.label)));
     ok('REVIEW_RENDER.an_dev still wired', typeof ev('REVIEW_RENDER').an_dev === 'function');

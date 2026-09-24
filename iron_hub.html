@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-24-v2">
+<meta name="ironhub-build" content="2026-09-24-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1091,6 +1091,47 @@
   .chart-h{font-size:15px;}
   .botnav .ni{font-family:var(--disp); font-weight:600; font-size:11px; letter-spacing:.05em;}
   @media(max-width:899px){ .botnav .ni{font-size:10px; letter-spacing:.03em;} }
+
+  /* ============================================================
+     FORGE x EMBER -- slice 3: navigation.
+     A floating bottom bar with four groups and a raised Live in the middle (Ember), labels in
+     Saira caps (Forge). Coach and Settings are round buttons in the top bar.
+     ============================================================ */
+  .botnav{left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom) + 10px); height:66px;
+    padding:0 6px; border:none; border-radius:24px; align-items:center; justify-content:space-around;
+    background:rgba(42,33,27,.94); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    box-shadow:0 14px 30px rgba(0,0,0,.45), var(--lift);}
+  .botnav .ni{flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 0;
+    font-family:var(--disp); font-weight:600; font-size:11.5px; letter-spacing:.05em; text-transform:uppercase;
+    color:var(--dim); background:none; border:none; cursor:pointer;}
+  .botnav .ni svg{display:block; flex:none;}
+  .botnav .ni.on{color:var(--text);}
+  .botnav .ni.on svg{color:var(--amber);}
+  .botnav .ni-live{flex:none; width:62px; height:62px; margin-top:-30px; border-radius:20px; border:4px solid var(--base2);
+    background:var(--amber); color:var(--on-accent); justify-content:center; gap:1px; font-size:11px; font-weight:700;
+    box-shadow:0 8px 18px rgba(0,0,0,.4);}
+  .botnav .ni-live.on{color:var(--on-accent); box-shadow:0 0 0 3px rgba(242,138,58,.35), 0 8px 18px rgba(0,0,0,.4);}
+  .botnav .ni-live.on svg{color:var(--on-accent);}
+  .botnav .ni:active{transform:scale(.96);}
+  @media(max-width:899px){
+    .botnav{padding:0 6px;}
+    .botnav .ni{font-size:11.5px; letter-spacing:.05em; padding:6px 0;}
+    .app-shell{padding-bottom:calc(env(safe-area-inset-bottom) + 108px);}
+  }
+  @media(max-width:360px){ .botnav{left:8px; right:8px;} .botnav .ni{font-size:10.5px; letter-spacing:.03em;} }
+
+  .top-btn,.notif-btn{position:relative; width:40px; height:40px; margin:0; border:none; border-radius:20px;
+    background:var(--panel); color:var(--muted); display:flex; align-items:center; justify-content:center;
+    flex:none; cursor:pointer; box-shadow:var(--lift);}
+  .top-btn.on{color:var(--amber); background:var(--panel2);}
+  .notif-btn.has{color:var(--amber); border:none;}
+  .top-btn .ni-badge{top:6px; right:7px; width:9px; height:9px; border:2px solid var(--panel);}
+  .topbar{gap:8px;}
+  .topbar .spacer{flex:1;}
+
+  .sn-item.on{color:var(--amber); border-left-color:var(--amber);}
+  .sn-sub.on{color:var(--amber); border-left-color:var(--amber);}
+  .sn-ic{display:flex; align-items:center; justify-content:center;}
 </style>
 
 
@@ -1122,10 +1163,8 @@
     <button class="notif-btn" id="notifBtn" onclick="notifToggle()" title="Notifications" aria-label="Notifications">
       <span class="notif-ic">◉</span><span class="notif-badge" id="notifBadge"></span>
     </button>
-    <div class="modeswitch">
-      <button id="mLive" class="live on" onclick="setMode('live')"><span class="pdot"></span>Live</button>
-      <button id="mReview" class="review" onclick="setMode('review')">Review</button>
-    </div>
+    <button class="top-btn" id="topCoach" onclick="setMode('review');showMainTab('ops')" title="Coach" aria-label="Coach"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 5.5h15v10h-9l-4.5 4v-4h-1.5z"/></svg><span class="ni-badge" id="niInvBadge"></span></button>
+    <button class="top-btn" id="topSettings" onclick="setMode('review');showMainTab('settings')" title="Settings" aria-label="Settings"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></svg></button>
   </div>
   <div class="notif-panel" id="notifPanel"></div>
   <div id="globalInvBanner"></div>
@@ -3367,59 +3406,95 @@ function renderProgress(){
   el.innerHTML = html;
 }
 function dayColorForLift(l){ return l.includes('Squat') ? '#dfae36' : '#d23b3b'; }
+/* ================= CHART KIT (V3, Forge x Ember) =================
+   One visual grammar for every chart in the app: a recessive grid, 2px round-capped lines, a
+   soft wash under a single series, the latest point emphasised with a ring in the card colour,
+   and direct labels in ink (never in the series colour, so the number reads on any line).
+   The kit only decides HOW things are drawn. Each chart keeps its own scale and geometry, so a
+   restyle can never move a point -- which is what lets the suite keep asserting coordinates.
+
+   Full-width charts draw on a CK_W-wide viewBox. They used to draw on 700, which a phone card
+   shrinks to about half, so 10-unit axis text arrived at roughly 5px. On 380 it lands near
+   10px on a phone and grows modestly on desktop. */
+const CK_W = 380;
+const CK_FONT = 'Figtree, Segoe UI, system-ui, sans-serif';
+const CK_NUM = 'Saira Condensed, Arial Narrow, sans-serif';
+let _ckSeq = 0;
+function ckD(xy){ return xy.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' '); }
+function ckText(x, y, txt, o){
+  o = o || {};
+  return '<text x="'+(+x).toFixed(1)+'" y="'+(+y).toFixed(1)+'"'+(o.anchor?' text-anchor="'+o.anchor+'"':'')+
+    ' font-family="'+(o.num?CK_NUM:CK_FONT)+'" font-size="'+(o.size||11)+'"'+(o.weight?' font-weight="'+o.weight+'"':'')+
+    ' fill="'+(o.fill||'var(--dim)')+'">'+txt+'</text>';
+}
+function ckGrid(x1, x2, y){
+  return '<line x1="'+(+x1).toFixed(1)+'" x2="'+(+x2).toFixed(1)+'" y1="'+(+y).toFixed(1)+'" y2="'+(+y).toFixed(1)+'" stroke="var(--line)" stroke-width="1"/>';
+}
+function ckPath(d, col, o){
+  o = o || {};
+  return '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="'+(o.w||2)+'" stroke-linejoin="round" stroke-linecap="round"'+
+    (o.dash?' stroke-dasharray="'+o.dash+'"':'')+(o.op!=null?' opacity="'+o.op+'"':'')+'/>';
+}
+/* The wash under a line: its own gradient id per chart, because several charts share a page. */
+function ckArea(d, x0, x1, baseY, col){
+  const id = 'ckA'+(++_ckSeq);
+  return '<defs><linearGradient id="'+id+'" x1="0" y1="0" x2="0" y2="1">'+
+    '<stop offset="0" style="stop-color:'+col+';stop-opacity:.26"/><stop offset="1" style="stop-color:'+col+';stop-opacity:0"/>'+
+    '</linearGradient></defs><path d="'+d+' L'+(+x1).toFixed(1)+' '+(+baseY).toFixed(1)+' L'+(+x0).toFixed(1)+' '+(+baseY).toFixed(1)+' Z" fill="url(#'+id+')" stroke="none"/>';
+}
+function ckDot(cx, cy, col, r){
+  return '<circle cx="'+(+cx).toFixed(1)+'" cy="'+(+cy).toFixed(1)+'" r="'+(r||3)+'" fill="'+col+'" stroke="var(--panel)" stroke-width="2"/>';
+}
+/* Points get a marker only while they are few enough to read as points; past that the line
+   carries the shape and only the latest value is marked. */
+const CK_DOTS_MAX = 24;
+
 function milestoneBarGraphic(cur, milestones){
-  const W=700, H=78;
-  const trackX1=20, trackX2=W-20, trackY=38, trackH=14;
+  const W=CK_W, H=88;
+  const trackX1=16, trackX2=W-16, trackY=42, trackH=12;
   const maxM = milestones[milestones.length-1];
   const scaleX = v => trackX1 + Math.max(0,Math.min(1, v/maxM)) * (trackX2-trackX1);
   const fillX2 = scaleX(Math.min(cur, maxM));
   const reached = milestones.filter(m=>m<=cur).length;
-  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Milestone progress bar" style="width:100%;height:auto">`;
-  // background track
-  svg += `<rect x="${trackX1}" y="${trackY}" width="${trackX2-trackX1}" height="${trackH}" rx="7" fill="#23262d" stroke="#2a2d35"/>`;
-  // filled progress
+  let svg = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Milestone progress: '+reached+' of '+milestones.length+' reached" style="width:100%;height:auto">';
+  svg += '<rect x="'+trackX1+'" y="'+trackY+'" width="'+(trackX2-trackX1)+'" height="'+trackH+'" rx="6" fill="var(--panel2)"/>';
   if(fillX2 > trackX1+2){
-    svg += `<rect x="${trackX1}" y="${trackY}" width="${fillX2-trackX1}" height="${trackH}" rx="7" fill="var(--accent)" opacity="0.85"/>`;
+    svg += '<rect x="'+trackX1+'" y="'+trackY+'" width="'+(fillX2-trackX1)+'" height="'+trackH+'" rx="6" fill="var(--accent)"/>';
   }
-  // tick marks + numbers at each milestone
   milestones.forEach(m=>{
     const x = scaleX(m), hit = m<=cur;
-    svg += `<line x1="${x}" x2="${x}" y1="${trackY-4}" y2="${trackY+trackH+4}" stroke="${hit?'#101114':'#5b5e68'}" stroke-width="2" opacity="${hit?0.55:1}"/>`;
-    svg += `<text x="${x}" y="${trackY+trackH+18}" text-anchor="middle" font-size="10.5" font-weight="${hit?800:400}" fill="${hit?'#e9e7e2':'#5b5e68'}">${m}</text>`;
+    svg += '<line x1="'+x.toFixed(1)+'" x2="'+x.toFixed(1)+'" y1="'+(trackY-3)+'" y2="'+(trackY+trackH+3)+'" stroke="'+(hit?'var(--base)':'var(--line2)')+'" stroke-width="2"/>';
+    svg += ckText(x, trackY+trackH+18, m, {anchor:'middle', size:11.5, weight:hit?700:400, fill:hit?'var(--text)':'var(--dim)'});
   });
-  // current value marker (small arrow + label) above the bar
   const cx = scaleX(Math.min(cur,maxM));
-  svg += `<polygon points="${cx-5},${trackY-6} ${cx+5},${trackY-6} ${cx},${trackY+1}" fill="#e9e7e2"/>`;
-  svg += `<text x="${cx}" y="${trackY-10}" text-anchor="middle" font-size="11" font-weight="800" fill="#e9e7e2">${Math.round(cur)}</text>`;
-  svg += `<text x="${trackX1}" y="14" font-size="10.5" fill="#8d909a">Milestones reached: <tspan font-weight="800" fill="#e9e7e2">${reached}/${milestones.length}</tspan></text>`;
+  svg += '<polygon points="'+(cx-5)+','+(trackY-6)+' '+(cx+5)+','+(trackY-6)+' '+cx+','+(trackY+1)+'" fill="var(--text)"/>';
+  svg += ckText(cx, trackY-10, Math.round(cur), {anchor:'middle', num:true, size:15, weight:700, fill:'var(--text)'});
+  svg += ckText(trackX1, 14, 'Milestones reached: <tspan font-weight="700" fill="var(--text)">'+reached+'/'+milestones.length+'</tspan>', {size:11.5, fill:'var(--muted)'});
   svg += '</svg>';
-  return `<div class="bar-wrap">${svg}</div>`;
+  return '<div class="bar-wrap">'+svg+'</div>';
 }
 function lineChart(pts, color){
-  const W=700, H=200, P=36;
+  const W=CK_W, H=190, L=36, R=W-14, T=20, B=H-28;
   if(pts.length===1){
-    return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto"><circle cx="'+(W/2)+'" cy="'+(H/2)+'" r="4" fill="'+color+'"/><text x="'+(W/2)+'" y="'+(H/2-12)+'" text-anchor="middle" font-size="12" fill="#8d909a">'+pts[0].v+' lb — one point so far</text></svg>';
+    return '<svg viewBox="0 0 '+W+' 110" role="img" aria-label="One point so far: '+pts[0].v+' lb" style="width:100%;height:auto">'+
+      ckDot(W/2, 66, color, 5)+ckText(W/2, 42, pts[0].v+' lb \u2014 one point so far', {anchor:'middle', size:12.5, fill:'var(--muted)'})+'</svg>';
   }
   const t0=new Date(pts[0].date).getTime(), t1=new Date(pts[pts.length-1].date).getTime()||t0+1;
   const vmin=Math.min(...pts.map(p=>p.v)), vmax=Math.max(...pts.map(p=>p.v));
   const pad=(vmax-vmin)*0.15||5;
-  const x=t=>P+( (t-t0)/(t1-t0||1) )*(W-2*P);
-  const y=v=>H-P-((v-(vmin-pad))/((vmax+pad)-(vmin-pad)))*(H-2*P);
-  let path='';
-  pts.forEach((p,i)=>{ path += (i?'L':'M')+x(new Date(p.date).getTime()).toFixed(1)+' '+y(p.v).toFixed(1)+' '; });
-  let svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">';
-  [vmin, (vmin+vmax)/2, vmax].forEach(v=>{
-    svg+='<line x1="'+P+'" x2="'+(W-P)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#2a2d35" stroke-width="1"/>'+
-         '<text x="'+(P-6)+'" y="'+(y(v)+4)+'" text-anchor="end" font-size="10" fill="#5b5e68">'+Math.round(v)+'</text>';
-  });
-  svg+='<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round"/>';
-  pts.forEach(p=>{ svg+='<circle cx="'+x(new Date(p.date).getTime())+'" cy="'+y(p.v)+'" r="3.5" fill="'+color+'"/>'; });
-  svg+='<text x="'+P+'" y="'+(H-8)+'" font-size="10" fill="#5b5e68">'+fmtDate(pts[0].date)+'</text>';
-  svg+='<text x="'+(W-P)+'" y="'+(H-8)+'" text-anchor="end" font-size="10" fill="#5b5e68">'+fmtDate(pts[pts.length-1].date)+'</text>';
-  svg+='</svg>';
-  return svg;
+  const x=t=>L+((t-t0)/(t1-t0||1))*(R-L);
+  const y=v=>B-((v-(vmin-pad))/((vmax+pad)-(vmin-pad)))*(B-T);
+  const xy = pts.map(p=>[x(new Date(p.date).getTime()), y(p.v)]);
+  const d = ckD(xy), last = xy[xy.length-1];
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Trend from '+pts[0].v+' to '+pts[pts.length-1].v+'" style="width:100%;height:auto">';
+  [vmin,(vmin+vmax)/2,vmax].forEach(v=>{ svg += ckGrid(L, R, y(v)) + ckText(L-7, y(v)+4, Math.round(v), {anchor:'end'}); });
+  svg += ckArea(d, xy[0][0], last[0], B, color) + ckPath(d, color);
+  if(xy.length <= CK_DOTS_MAX) xy.slice(0,-1).forEach(p=>{ svg += ckDot(p[0], p[1], color, 3); });
+  svg += ckDot(last[0], last[1], color, 5);
+  svg += ckText(last[0]-9, last[1]-11, Math.round(pts[pts.length-1].v), {anchor:'end', num:true, size:15, weight:700, fill:'var(--text)'});
+  svg += ckText(L, H-8, fmtDate(pts[0].date)) + ckText(R, H-8, fmtDate(pts[pts.length-1].date), {anchor:'end'});
+  return svg+'</svg>';
 }
-
 
 /* ================= ROAD TAB ================= */
 /* ================= LIFT PROGRESSION TIPS (static, curated, free) ================= */
@@ -3558,27 +3633,25 @@ function goalCard(g){
     liftTipsHTML(g.exercise) + '</div>';
 }
 function roadSVG(start, cur, target, done){
-  const W=700, H=84, L=30, R=W-30;
+  const W=CK_W, H=92, L=16, R=W-16, RY=34, RH=26;
   const x = v => L + Math.max(0,Math.min(1,(v-start)/Math.max(target-start,1)))*(R-L);
-  let svg = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Progress road" style="width:100%;height:auto">';
-  svg += '<rect x="'+L+'" y="30" width="'+(R-L)+'" height="26" rx="6" fill="#23262d" stroke="#2a2d35"/>';
-  svg += '<line x1="'+(L+8)+'" x2="'+(R-8)+'" y1="43" y2="43" stroke="#5b5e68" stroke-width="2.5" stroke-dasharray="12 10"/>';
-  // quarter mile markers
+  let svg = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Progress road from '+Math.round(start)+' to '+target+', now at '+Math.round(cur)+'" style="width:100%;height:auto">';
+  svg += '<rect x="'+L+'" y="'+RY+'" width="'+(R-L)+'" height="'+RH+'" rx="9" fill="var(--panel2)"/>';
+  svg += '<line x1="'+(L+10)+'" x2="'+(R-14)+'" y1="'+(RY+RH/2)+'" y2="'+(RY+RH/2)+'" stroke="var(--line2)" stroke-width="2" stroke-dasharray="10 9" stroke-linecap="round"/>';
   for(let q=1;q<4;q++){
     const v = start + (target-start)*q/4;
-    svg += '<line x1="'+x(v)+'" x2="'+x(v)+'" y1="30" y2="56" stroke="#2a2d35" stroke-width="2"/>'+
-           '<text x="'+x(v)+'" y="70" text-anchor="middle" font-size="10" fill="#5b5e68">'+Math.round(v)+'</text>';
+    svg += '<line x1="'+x(v).toFixed(1)+'" x2="'+x(v).toFixed(1)+'" y1="'+RY+'" y2="'+(RY+RH)+'" stroke="var(--base)" stroke-width="2"/>'+
+           ckText(x(v), RY+RH+17, Math.round(v), {anchor:'middle', size:11.5});
   }
-  // finish: checkered
+  // finish line, chequered
   for(let r2=0;r2<4;r2++) for(let c=0;c<2;c++){
-    svg += '<rect x="'+(R-10+c*5)+'" y="'+(30+r2*6.5)+'" width="5" height="6.5" fill="'+(((r2+c)%2)?'#e9e7e2':'#101114')+'"/>';
+    svg += '<rect x="'+(R-12+c*6)+'" y="'+(RY+r2*6.5)+'" width="6" height="6.5" fill="'+(((r2+c)%2)?'var(--text)':'var(--base)')+'"/>';
   }
-  svg += '<text x="'+L+'" y="22" font-size="10" fill="#5b5e68">START '+Math.round(start)+'</text>';
-  svg += '<text x="'+R+'" y="22" text-anchor="end" font-size="11" font-weight="bold" fill="'+(done?'#3da25f':'#e9e7e2')+'">'+target+'</text>';
-  // your plate marker
+  svg += ckText(L, RY-11, 'Start '+Math.round(start), {size:11.5});
+  svg += ckText(R, RY-10, target, {anchor:'end', num:true, size:16, weight:700, fill:done?'var(--good)':'var(--text)'});
   const px = x(cur);
-  svg += '<circle cx="'+px+'" cy="43" r="12" fill="var(--accent)" stroke="#0e0f12" stroke-width="3"/>'+
-         '<circle cx="'+px+'" cy="43" r="3.5" fill="#0e0f12"/>';
+  svg += '<circle cx="'+px.toFixed(1)+'" cy="'+(RY+RH/2)+'" r="12" fill="var(--accent)" stroke="var(--panel)" stroke-width="3"/>'+
+         '<circle cx="'+px.toFixed(1)+'" cy="'+(RY+RH/2)+'" r="3.5" fill="var(--base)"/>';
   svg += '</svg>';
   return svg;
 }
@@ -6197,8 +6270,6 @@ function setMode(m){
   MODE = m;
   document.getElementById('liveMode').classList.toggle('hidden', m!=='live');
   document.getElementById('reviewMode').classList.toggle('hidden', m!=='review');
-  document.getElementById('mLive').classList.toggle('on', m==='live');
-  document.getElementById('mReview').classList.toggle('on', m==='review');
   buildBotNav();
   if(m==='live'){ renderLive(); try{ renderSidenav(); }catch(e){} }
   else { showMainTab(activeMainTab, navMemory[activeMainTab]); }
@@ -6212,65 +6283,94 @@ let activeReviewTab = 'progress';
 const REVIEW_RENDER = {progress:renderProgressV2, road:renderRoad, bulk:renderBulk, fuel:renderFuel, coach:renderCoach, log:renderLog, settings:renderSettings};
 
 /* ============================================================
-   V3 NAVIGATION — 7 main categories with embedded subcategories.
-   Desktop: left sidebar accordion. Mobile: bottom nav + pill strip.
-   Old tab ids keep working through the showReviewTab shim.
+   NAVIGATION (V3 reskin) -- four groups in a five-slot bottom bar (Today, Train, Live,
+   Progress, Body) plus Coach and Settings in the top bar. Desktop: the sidebar lists them all.
+   Every section kept its id: only the GROUP a section sits in moved, so NAV_LEGACY and
+   navResolve() route every existing call (including old group names like 'analytics') to
+   where that section lives now.
    ============================================================ */
 const NAV_MODEL = [
-  {id:'home',      label:'Home',        ic:'\u2302', subs:[
-    {id:'home',     label:'Today'}]},
-  {id:'progress',  label:'Progress',    ic:'\u25d4', subs:[
-    {id:'progress', label:'Overview'},
-    {id:'log',      label:'Log'}]},
-  {id:'plan',      label:'Plan',        ic:'\u25a6', subs:[
-    {id:'meso',     label:'Mesocycle'}]},
-  {id:'analytics', label:'Analytics',   ic:'\u223f', subs:[
-    {id:'an_over',     label:'Overview'},
-    {id:'road',        label:'Road'},
+  {id:'home',     label:'Today',    ic:'today', subs:[
+    {id:'home',        label:'Today'}]},
+  {id:'train',    label:'Train',    ic:'train', subs:[
+    {id:'meso',        label:'Plan'},
+    {id:'log',         label:'Log'},
+    {id:'library',     label:'Library'}]},
+  {id:'progress', label:'Progress', ic:'progress', subs:[
+    {id:'progress',    label:'Overview'},
+    {id:'an_over',     label:'This year'},
     {id:'an_strength', label:'PR history'},
-    {id:'an_fatigue',  label:'Fatigue'},
-    {id:'an_recovery', label:'Readiness'},
-    {id:'an_dev',      label:'Bulk quality'},
     {id:'an_pred',     label:'Predictions'},
-    {id:'an_overload', label:'Overload'}]},
-  {id:'bulk',      label:'Bulk',        ic:'\u25c6', subs:[
-    {id:'bulk',     label:'Bodyweight'},
-    {id:'fuel',     label:'Fuel'}]},
-  {id:'invest',    label:'Investigate', ic:'\u26a0', subs:[
-    {id:'invest',   label:'Flags'}]},
-  {id:'ops',       label:'Operations',  ic:'\u25c9', short:'Ops', subs:[
-    {id:'ops',      label:'Agents'}]},
-  {id:'settings',  label:'Settings',    ic:'\u2699', subs:[
-    {id:'settings', label:'General'},
-    {id:'library',  label:'Library'}]}
+    {id:'road',        label:'Road'},
+    {id:'an_overload', label:'Overload'},
+    {id:'an_fatigue',  label:'Fatigue'}]},
+  {id:'body',     label:'Body',     ic:'body', subs:[
+    {id:'bulk',        label:'Bodyweight'},
+    {id:'fuel',        label:'Fuel'},
+    {id:'an_dev',      label:'Bulk quality'},
+    {id:'an_recovery', label:'Readiness'}]},
+  // Coach keeps the internal id 'ops': the agent layer, its tests and the refresh gate all
+  // key off it, and a rename would buy nothing but churn.
+  {id:'ops',      label:'Coach',    ic:'coach', top:true, subs:[
+    {id:'ops',         label:'Agents'},
+    {id:'invest',      label:'Flags'}]},
+  {id:'settings', label:'Settings', ic:'gear', top:true, subs:[
+    {id:'settings',    label:'General'}]}
 ];
-/* old flat tab id -> [mainId, sectionId] */
+/* The bottom bar, in order. 'live' is not a group -- it is the mode switch, raised in the middle. */
+const NAV_BOTTOM = ['home','train','live','progress','body'];
+/* section id -> [group, section]. Every section, so that anything naming a section lands in
+   the group it lives in NOW, whatever group it was called from. */
 const NAV_LEGACY = {
   home:['home','home'],
-  progress:['progress','progress'], log:['progress','log'],
-  meso:['plan','meso'],
-  road:['analytics','road'], an_over:['analytics','an_over'], an_strength:['analytics','an_strength'],
-  an_fatigue:['analytics','an_fatigue'], an_recovery:['analytics','an_recovery'],
-  an_dev:['analytics','an_dev'], an_pred:['analytics','an_pred'],
-  an_overload:['analytics','an_overload'],
-  bulk:['bulk','bulk'], fuel:['bulk','fuel'],
-  invest:['invest','invest'],
-  // Coach was folded into ZULU inside OPERATIONS \u2014 keep the old id routing so any
-  // existing showReviewTab('coach') call still lands somewhere real instead of Progress.
+  meso:['train','meso'], log:['train','log'], library:['train','library'],
+  progress:['progress','progress'], an_over:['progress','an_over'], an_strength:['progress','an_strength'],
+  an_pred:['progress','an_pred'], road:['progress','road'], an_overload:['progress','an_overload'],
+  an_fatigue:['progress','an_fatigue'],
+  bulk:['body','bulk'], fuel:['body','fuel'], an_dev:['body','an_dev'], an_recovery:['body','an_recovery'],
+  invest:['ops','invest'],
+  // Coach was folded into ZULU inside OPERATIONS -- keep the old id routing so any existing
+  // showReviewTab('coach') call still lands somewhere real instead of Progress.
   coach:['ops','ops'], ops:['ops','ops'],
-  settings:['settings','settings'], library:['settings','library']
+  settings:['settings','settings']
 };
+/* Group ids that no longer exist, and where they went: [group, default section]. */
+const NAV_MAIN_ALIAS = {analytics:['progress','an_over'], plan:['train','meso'], bulk:['body','bulk'], invest:['ops','invest']};
 /* The app lands on the dashboard rather than on whatever was last open. Note this does
    NOT demote LIVE: setMode('live') is still one tap from the strip, the dashboard, and the
-   top bar, and LIVE keeps its own idle screen exactly as it was. */
+   bottom bar, and LIVE keeps its own idle screen exactly as it was. */
 let activeMainTab = 'home';
 let navMemory = {};   // remembers last sub per main tab, session-scoped
 
 function navMain(id){ return NAV_MODEL.find(n=>n.id===id); }
+/* A section named by the caller decides the group, because sections moved between groups in
+   V3 and callers written before that still name the old one (showMainTab('analytics','an_fatigue')). */
+function navResolve(mainId, subId){
+  if(subId && NAV_LEGACY[subId]) return [NAV_LEGACY[subId][0], subId];
+  if(navMain(mainId)) return [mainId, subId];
+  const al = NAV_MAIN_ALIAS[mainId];
+  return al ? [al[0], subId || al[1]] : [null, subId];
+}
+const NAV_IC = {
+  today:'M4 11.5 12 5l8 6.5V20h-5v-5h-6v5H4z',
+  train:'M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11',
+  live:'M13 2.5 5 13.5h6l-1 8 8-11h-6z',
+  progress:'M3.5 17.5l5.5-5.5 4 4 7.5-7.5M15 8.5h5.5V14',
+  body:'M12 3.5a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM6 20.5v-3a6 6 0 0 1 12 0v3',
+  coach:'M4.5 5.5h15v10h-9l-4.5 4v-4h-1.5z',
+  gear:'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8'
+};
+function navIcon(k, size){
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="'+(NAV_IC[k]||'')+'"/></svg>';
+}
 function showMainTab(mainId, subId){
-  const m = navMain(mainId); if(!m) return;
+  const r = navResolve(mainId, subId);
+  const m = navMain(r[0]); if(!m) return;
+  mainId = r[0]; subId = r[1];
   activeMainTab = mainId;
-  const sub = subId || navMemory[mainId] || m.subs[0].id;
+  // a remembered section only counts if it still belongs to this group
+  const mem = navMemory[mainId];
+  const sub = subId || (m.subs.some(x=>x.id===mem) ? mem : m.subs[0].id);
   navMemory[mainId] = sub;
   activeReviewTab = sub;   // keep the legacy pointer accurate for boot re-renders
   try{ renderStatusStrip(); }catch(e){}
@@ -6283,12 +6383,12 @@ function showMainTab(mainId, subId){
 function renderSidenav(){
   const el = document.getElementById('sidenav'); if(!el) return;
   let h = '<div class="sn-brand">IRON<span>HUB</span></div>';
-  h += '<button class="sn-item sn-live '+(MODE==='live'?'on':'')+'" onclick="setMode(\'live\')"><span class="sn-ic">\u26a1</span>Live</button>';
+  h += '<button class="sn-item sn-live '+(MODE==='live'?'on':'')+'" onclick="setMode(\'live\')"><span class="sn-ic">'+navIcon('live',18)+'</span>Live</button>';
   h += '<div class="sn-sep"></div>';
   NAV_MODEL.forEach(m=>{
     const on = MODE==='review' && m.id===activeMainTab;
-    const badge = (m.id==='invest') ? '<span class="sn-badge" id="snInvBadge"></span>' : '';
-    h += '<button class="sn-item '+(on?'on':'')+'" onclick="setMode(\'review\');showMainTab(\''+m.id+'\')"><span class="sn-ic">'+m.ic+'</span>'+m.label+badge+'</button>';
+    const badge = (m.id==='ops') ? '<span class="sn-badge" id="snInvBadge"></span>' : '';
+    h += '<button class="sn-item '+(on?'on':'')+'" onclick="setMode(\'review\');showMainTab(\''+m.id+'\')"><span class="sn-ic">'+navIcon(m.ic,18)+'</span>'+m.label+badge+'</button>';
     if(on && m.subs.length>1){
       h += '<div class="sn-subs">';
       m.subs.forEach(s=>{
@@ -6307,21 +6407,36 @@ function renderSubnav(){
   el.classList.add('has');
   el.innerHTML = m.subs.map(s=>{
     const on = navMemory[m.id]===s.id;
-    return '<button class="'+(on?'on':'')+'" onclick="showMainTab(\''+m.id+'\',\''+s.id+'\')">'+s.label+'</button>';
+    return '<button class="'+(on?'on':'')+'"'+(on?' aria-current="page"':'')+' onclick="showMainTab(\''+m.id+'\',\''+s.id+'\')">'+s.label+'</button>';
   }).join('');
+  // Progress has seven sections, so on a phone the selected one can sit past the right edge
+  // of the strip. Centre it by scrolling the strip itself -- scrollIntoView would also move the
+  // page, which is exactly what a tab switch must not do.
+  const cur = el.querySelector('button.on');
+  if(cur) el.scrollLeft = Math.max(0, cur.offsetLeft - (el.clientWidth - cur.offsetWidth)/2);
 }
 
-/* mobile bottom nav: Live + all 7 categories */
+/* Mobile bottom bar: four groups and a raised Live in the middle. Nine buttons used to share
+   393px, about 43px each, with labels cut to nine characters; five fit without trimming. */
 function buildBotNav(){
   const nav = document.getElementById('botnav'); if(!nav) return;
-  let h = '<button class="ni '+(MODE==='live'?'on':'')+'" onclick="setMode(\x27live\x27)"><span class="ic">\u26a1</span>Live</button>';
-  NAV_MODEL.forEach(m=>{
-    const on = MODE==='review' && m.id===activeMainTab;
-    const badge = (m.id==='invest') ? '<span class="ni-badge" id="niInvBadge"></span>' : '';
-    const short = m.short || m.label.slice(0, m.id==='invest'?6:9);
-    h += '<button class="ni review-tint '+(on?'on':'')+'" onclick="setMode(\x27review\x27);showMainTab(\x27'+m.id+'\x27)"><span class="ic">'+m.ic+badge+'</span>'+short+'</button>';
+  nav.innerHTML = NAV_BOTTOM.map(id=>{
+    if(id==='live') return '<button class="ni ni-live'+(MODE==='live'?' on':'')+'" onclick="setMode(\x27live\x27)" aria-label="Live session"'+
+      (MODE==='live'?' aria-current="page"':'')+'>'+navIcon('live',20)+'<span>Live</span></button>';
+    const m = navMain(id), on = MODE==='review' && activeMainTab===id;
+    return '<button class="ni'+(on?' on':'')+'" onclick="setMode(\x27review\x27);showMainTab(\x27'+id+'\x27)"'+(on?' aria-current="page"':'')+'>'+
+      navIcon(m.ic,22)+'<span>'+m.label+'</span></button>';
+  }).join('');
+  renderTopNav();
+}
+/* Coach and Settings live in the top bar; they light up the same way a bottom-bar group does. */
+function renderTopNav(){
+  [['topCoach','ops'],['topSettings','settings']].forEach(([elId, main])=>{
+    const el = document.getElementById(elId); if(!el) return;
+    const on = MODE==='review' && activeMainTab===main;
+    el.classList.toggle('on', on);
+    if(on) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current');
   });
-  nav.innerHTML = h;
 }
 /* legacy shim: every old showReviewTab('x') call still lands in the right place */
 function showReviewTab(t){
@@ -7760,7 +7875,7 @@ function bwProjectionCardHTML(){
     '<select onchange="bwProjChangeRange(this.value)" style="flex:none;width:auto">'+
     BW_RANGES.map(r=>'<option value="'+r.days+'"'+(r.days===bwProjRange?' selected':'')+'>'+r.label+'</option>').join('')+
     '</select></div>';
-  h += anFanChartSVG(res, 640, 240, {bandFill:'rgba(84,194,164,.08)'});
+  h += anFanChartSVG(res, CK_W, 230, {bandFill:'rgba(84,194,164,.12)'});
   h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
   h += '<div style="display:flex;align-items:center;gap:6px">'+
     '<span style="width:9px;height:2px;background:var(--muted);display:inline-block"></span>'+
@@ -8990,34 +9105,30 @@ function idealSeries(ex, actualPts){
   });
 }
 function dualLineChart(actual, ideal){
-  const W=700, H=200, P=36;
+  const W=CK_W, H=190, L=36, R=W-14, T=20, B=H-28;
   if(!actual.length) return '<p class="small">No data yet.</p>';
   if(actual.length===1){
-    return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto"><circle cx="'+(W/2)+'" cy="'+(H/2)+'" r="4" fill="var(--amber)"/><text x="'+(W/2)+'" y="'+(H/2-12)+'" text-anchor="middle" font-size="12" fill="var(--muted)">'+actual[0].v+' lb e1RM \u2014 log another session to see the trend</text></svg>';
+    return '<svg viewBox="0 0 '+W+' 110" role="img" aria-label="One session so far" style="width:100%;height:auto">'+
+      ckDot(W/2, 66, 'var(--amber)', 5)+ckText(W/2, 42, actual[0].v+' lb e1RM \u2014 log another session to see the trend', {anchor:'middle', size:12, fill:'var(--muted)'})+'</svg>';
   }
   const all = actual.concat(ideal);
   const t0=new Date(actual[0].date).getTime(), t1=new Date(actual[actual.length-1].date).getTime()||t0+1;
   const vmin=Math.min(...all.map(p=>p.v)), vmax=Math.max(...all.map(p=>p.v));
   const pad=(vmax-vmin)*0.15||5;
-  const x=t=>P+((t-t0)/(t1-t0||1))*(W-2*P);
-  const y=v=>H-P-((v-(vmin-pad))/((vmax+pad)-(vmin-pad)))*(H-2*P);
-  const pathOf=pts=>{ let d=''; pts.forEach((p,i)=>{ d+=(i?'L':'M')+x(new Date(p.date).getTime()).toFixed(1)+' '+y(p.v).toFixed(1)+' '; }); return d; };
-  let svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">';
-  [vmin,(vmin+vmax)/2,vmax].forEach(v=>{
-    svg+='<line x1="'+P+'" x2="'+(W-P)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="var(--line)" stroke-width="1"/>'+
-         '<text x="'+(P-6)+'" y="'+(y(v)+4)+'" text-anchor="end" font-size="10" fill="var(--dim)">'+Math.round(v)+'</text>';
-  });
-  // ideal (behind, lower opacity, dashed)
-  if(ideal.length>=2){
-    svg+='<path d="'+pathOf(ideal)+'" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-dasharray="5 5" opacity="0.4" stroke-linejoin="round"/>';
-  }
-  // actual (front, solid)
-  svg+='<path d="'+pathOf(actual)+'" fill="none" stroke="var(--amber)" stroke-width="2.5" stroke-linejoin="round"/>';
-  actual.forEach(p=>{ svg+='<circle cx="'+x(new Date(p.date).getTime())+'" cy="'+y(p.v)+'" r="3.5" fill="var(--amber)"/>'; });
-  svg+='<text x="'+P+'" y="'+(H-8)+'" font-size="10" fill="var(--dim)">'+fmtDate(actual[0].date)+'</text>';
-  svg+='<text x="'+(W-P)+'" y="'+(H-8)+'" text-anchor="end" font-size="10" fill="var(--dim)">'+fmtDate(actual[actual.length-1].date)+'</text>';
-  svg+='</svg>';
-  return svg;
+  const x=t=>L+((t-t0)/(t1-t0||1))*(R-L);
+  const y=v=>B-((v-(vmin-pad))/((vmax+pad)-(vmin-pad)))*(B-T);
+  const xyOf = pts => pts.map(p=>[x(new Date(p.date).getTime()), y(p.v)]);
+  const xa = xyOf(actual), last = xa[xa.length-1];
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Estimated 1RM, actual against ideal pace" style="width:100%;height:auto">';
+  [vmin,(vmin+vmax)/2,vmax].forEach(v=>{ svg += ckGrid(L, R, y(v)) + ckText(L-7, y(v)+4, Math.round(v), {anchor:'end'}); });
+  // ideal pace behind, dashed; the legend under the chart names both lines
+  if(ideal.length>=2) svg += ckPath(ckD(xyOf(ideal)), 'var(--cyan)', {dash:'5 5', op:.55});
+  svg += ckArea(ckD(xa), xa[0][0], last[0], B, 'var(--amber)') + ckPath(ckD(xa), 'var(--amber)');
+  if(xa.length <= CK_DOTS_MAX) xa.slice(0,-1).forEach(p=>{ svg += ckDot(p[0], p[1], 'var(--amber)', 3); });
+  svg += ckDot(last[0], last[1], 'var(--amber)', 5);
+  svg += ckText(last[0]-9, last[1]-11, Math.round(actual[actual.length-1].v), {anchor:'end', num:true, size:15, weight:700, fill:'var(--text)'});
+  svg += ckText(L, H-8, fmtDate(actual[0].date)) + ckText(R, H-8, fmtDate(actual[actual.length-1].date), {anchor:'end'});
+  return svg+'</svg>';
 }
 
 /* ===================== LIBRARY WITH PER-EXERCISE GRAPHS ===================== */
@@ -11290,16 +11401,17 @@ function anSpark(pts, w, h, color, opts){
   const pad = (hi-lo)*0.12; lo-=pad; hi+=pad;
   const px = i => (i/(pts.length-1))*(w-8)+4;
   const py = v => h-6 - ((v-lo)/(hi-lo))*(h-12);
-  const path = pts.map((p,i)=>(i?'L':'M')+px(i).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ');
+  const xy = pts.map((p,i)=>[px(i), py(p.v)]);
+  const path = ckD(xy);
   let extra = '';
   if(opts.band){ // reference band [lo,hi] in value space
     const y1=py(opts.band[1]), y2=py(opts.band[0]);
-    extra += '<rect x="0" y="'+y1.toFixed(1)+'" width="'+w+'" height="'+(y2-y1).toFixed(1)+'" fill="'+(opts.bandColor||'rgba(84,194,164,.08)')+'"/>';
+    extra += '<rect x="0" y="'+y1.toFixed(1)+'" width="'+w+'" height="'+(y2-y1).toFixed(1)+'" rx="4" fill="'+(opts.bandColor||'rgba(84,194,164,.10)')+'"/>';
   }
-  const last = pts[pts.length-1];
-  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block">'+extra+
-    '<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+
-    '<circle cx="'+px(pts.length-1).toFixed(1)+'" cy="'+py(last.v).toFixed(1)+'" r="3" fill="'+color+'"/></svg>';
+  const last = xy[xy.length-1];
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block;overflow:visible">'+extra+
+    (opts.area===false ? '' : ckArea(path, xy[0][0], last[0], h, color))+
+    ckPath(path, color)+ckDot(last[0], last[1], color, 3.5)+'</svg>';
 }
 function anBarRow(label, pct, valTxt, color){
   const p = Math.max(0, Math.min(100, pct));
@@ -11635,10 +11747,10 @@ function anDualSpark(a, b, w, h, colA, colB){
   const line = (pts, col) =>
     '<path d="'+pts.map((p,i)=>(i?'L':'M')+px(p.date).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ')+
     '" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+
-    '<circle cx="'+px(pts[pts.length-1].date).toFixed(1)+'" cy="'+py(pts[pts.length-1].v).toFixed(1)+'" r="3" fill="'+col+'"/>';
+    ckDot(px(pts[pts.length-1].date), py(pts[pts.length-1].v), col, 3.5);
   const zero = (lo < 0 && hi > 0)
     ? '<line x1="0" y1="'+py(0).toFixed(1)+'" x2="'+w+'" y2="'+py(0).toFixed(1)+'" stroke="var(--line2)" stroke-width="1" stroke-dasharray="3 3"/>' : '';
-  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block">'+
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block;overflow:visible">'+
     zero + line(a, colA) + line(b, colB) + '</svg>';
 }
 function anBqSetWindow(n){ anBqWeeks = +n || 12; renderAnBulkQuality(); }
@@ -11832,20 +11944,23 @@ function anFanChartSVG(res, w, h, opts){
 
   const t0 = Math.min(anDayMs(hist.length?hist[0].date:todayKey()), anDayMs(todayKey()));
   const t1 = anDayMs(projEnd);
-  const L = 38, R = w-8, span = Math.max(1, t1-t0);
+  const L = Math.round(40*w/CK_W), R = w-Math.round(14*w/CK_W), span = Math.max(1, t1-t0);
   const px = k => L + ((anDayMs(k)-t0)/span)*(R-L);
   const py = v => h-24 - ((v-lo)/(hi-lo))*(h-42);
   const pathFor = arr => arr.map((p,i)=>(i?'L':'M')+px(p.date).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ');
 
-  let s = '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block">';
+  // Type scales with the viewBox, so a caller drawing at 640 still reads the same on screen.
+  const k = w/CK_W, fs = n => (n*k).toFixed(1);
+  let s = '<svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Projection: history, then a likely range" style="width:100%;height:auto;display:block">';
+  s += ckGrid(L, R, py(hi)) + ckGrid(L, R, py(lo));
   // shaded p10\u2013p90 envelope
   s += '<polygon points="'+
     res.series[90].map(p=>px(p.date).toFixed(1)+','+py(p.v).toFixed(1)).join(' ')+' '+
     res.series[10].slice().reverse().map(p=>px(p.date).toFixed(1)+','+py(p.v).toFixed(1)).join(' ')+
-    '" fill="'+(opts.bandFill||'rgba(242,138,58,.08)')+'"/>';
+    '" fill="'+(opts.bandFill||'rgba(242,138,58,.12)')+'"/>';
   // y labels
-  s += '<text x="4" y="'+(py(hi)+4).toFixed(1)+'" class="mono" font-size="10" fill="var(--dim)">'+Math.round(hi)+'</text>';
-  s += '<text x="4" y="'+(py(lo)+4).toFixed(1)+'" class="mono" font-size="10" fill="var(--dim)">'+Math.round(lo)+'</text>';
+  s += ckText(L-7, py(hi)+4, Math.round(hi), {anchor:'end', size:fs(11)});
+  s += ckText(L-7, py(lo)+4, Math.round(lo), {anchor:'end', size:fs(11)});
 
   if(hist.length){
     // The fitted trend line, drawn back across the real points. Confidence stops being an
@@ -11858,10 +11973,8 @@ function anFanChartSVG(res, w, h, opts){
            'L'+px(todayKey()).toFixed(1)+' '+py(fitAt(todayKey())).toFixed(1)+
            '" fill="none" stroke="'+conf.col+'" stroke-width="1.2" stroke-dasharray="5 4" opacity=".55"/>';
     }
-    s += '<path d="'+pathFor(hist)+'" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity=".75"/>';
-    hist.forEach(p=>{
-      s += '<circle cx="'+px(p.date).toFixed(1)+'" cy="'+py(p.v).toFixed(1)+'" r="2.4" fill="var(--muted)"/>';
-    });
+    s += ckPath(pathFor(hist), 'var(--muted)', {w:1.8, op:.85});
+    hist.forEach(p=>{ s += ckDot(px(p.date), py(p.v), 'var(--muted)', 2.8); });
     // divider between what happened and what is guessed
     s += '<line x1="'+px(todayKey()).toFixed(1)+'" y1="10" x2="'+px(todayKey()).toFixed(1)+'" y2="'+(h-22)+
          '" stroke="var(--line2)" stroke-width="1" stroke-dasharray="2 3"/>';
@@ -11871,7 +11984,9 @@ function anFanChartSVG(res, w, h, opts){
     const dash = pc.p===50 ? '' : ' stroke-dasharray="4 3"';
     s += '<path d="'+pathFor(res.series[pc.p])+'" fill="none" stroke="'+pc.col+'" stroke-width="'+(pc.p===50?2.5:1.5)+'" stroke-linejoin="round" stroke-linecap="round"'+dash+'/>';
     const last = res.series[pc.p][n-1];
-    s += '<circle cx="'+px(last.date).toFixed(1)+'" cy="'+py(last.v).toFixed(1)+'" r="'+(pc.p===50?3.5:2.5)+'" fill="'+pc.col+'"/>';
+    s += ckDot(px(last.date), py(last.v), pc.col, pc.p===50?4.5:3);
+    // the expected value is the one number this chart exists to give: label it in ink
+    if(pc.p===50) s += ckText(px(last.date)-8, py(last.v)-10, '~'+Math.round(last.v), {anchor:'end', num:true, size:fs(15), weight:700, fill:'var(--text)'});
   });
 
   // confidence meter, on the chart itself
@@ -11881,13 +11996,12 @@ function anFanChartSVG(res, w, h, opts){
     s += '<rect x="'+(mx+i*9)+'" y="'+my+'" width="7" height="6" rx="1" fill="'+
       (i<cf.n?cf.col:'var(--line2)')+'"'+(i<cf.n?'':' opacity=".7"')+'/>';
   }
-  s += '<text x="'+(mx+32)+'" y="'+(my+6)+'" class="mono" font-size="9.5" fill="var(--dim)">R\u00b2 '+
-       res.r2.toFixed(2)+' \u00b7 '+res.conf+'</text>';
+  s += ckText(mx+32, my+6, 'R\u00b2 '+res.r2.toFixed(2)+' \u00b7 '+res.conf, {size:fs(10.5)});
 
   // x-axis labels: window start, today, horizon end
-  if(hist.length) s += '<text x="'+px(hist[0].date).toFixed(1)+'" y="'+(h-6)+'" text-anchor="start" class="mono" font-size="10" fill="var(--dim)">'+fmtDate(hist[0].date)+'</text>';
-  s += '<text x="'+px(todayKey()).toFixed(1)+'" y="'+(h-6)+'" text-anchor="middle" class="mono" font-size="10" fill="var(--muted)">today</text>';
-  s += '<text x="'+px(projEnd).toFixed(1)+'" y="'+(h-6)+'" text-anchor="end" class="mono" font-size="10" fill="var(--dim)">'+fmtDate(projEnd)+'</text>';
+  if(hist.length) s += ckText(px(hist[0].date), h-6, fmtDate(hist[0].date), {anchor:'start', size:fs(11)});
+  s += ckText(px(todayKey()), h-6, 'today', {anchor:'middle', size:fs(11), weight:600, fill:'var(--muted)'});
+  s += ckText(px(projEnd), h-6, fmtDate(projEnd), {anchor:'end', size:fs(11)});
   s += '</svg>';
   return s;
 }
@@ -11908,7 +12022,7 @@ function anEnsembleCardHTML(){
   h += '</div>';
   const res = anEnsembleFor(anEnsembleEx, anEnsembleRange);
   if(!res.ok){ h += '<p class="small" style="color:var(--dim)">'+esc(res.why)+'</p></div>'; return h; }
-  h += anEnsembleChartSVG(res, 640, 240);
+  h += anEnsembleChartSVG(res, CK_W, 230);
   h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
   h += '<div style="display:flex;align-items:center;gap:6px">'+
     '<span style="width:9px;height:2px;background:var(--muted);display:inline-block"></span>'+

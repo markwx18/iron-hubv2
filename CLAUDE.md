@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1840 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1858 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -666,8 +666,29 @@ Condensed caps, industrial amber, big tabular numbers, dense rows with thin divi
 the warm brown-black ground, cream text, and rounded cards that are separated by shade rather than
 outline. The mockups are the "Forge × Ember" page of the V3 Looks canvas (private artifact
 `XVRZXGjKLeYeokfD4dpY5n`). The reskin ships in slices: 1 tokens/type/components (done),
-2 chart kit, 3 navigation (5-slot bar), 4 screen layouts, 5 LIVE visual pass, 6 stored and
-off-CSS colours (`S.split[*].hex`, `BM_C`/`bm3dColors()`, Discord `COLORS`).
+2 chart kit and 3 navigation (done together), 4 screen layouts, 5 LIVE visual pass, 6 stored and
+off-CSS colours (`S.split[*].hex`, Discord `COLORS`). **The 3D muscle model keeps its colours**
+(`BM_C`/`bm3dColors()`); Mark asked for it to be left as it is.
+
+**Charts go through the chart kit** (`CK_W`, `ckText()`, `ckPath()`, `ckArea()`, `ckDot()`,
+`ckGrid()`): a recessive grid, 2px round lines, a wash under a single series, the latest point
+ringed in the card colour, and direct labels in ink, never in the series colour. The kit only
+decides how things are drawn; each chart keeps its own scale, so a restyle cannot move a point.
+Full-width charts draw on a 380-wide viewBox (`CK_W`). They used to draw on 700, which a phone card
+shrinks to about half, so their 10-unit axis text rendered near 5px. The fan chart scales its
+type with the width it is given. Each `ckArea()` takes its own gradient id; a shared id would
+make two charts on one page paint with the same gradient. All of this is asserted.
+
+**Navigation is four groups plus Live.** The bottom bar is `NAV_BOTTOM`: Today (`home`), Train,
+Live (raised), Progress, Body. Coach (`ops`, so the agent layer's id did not change) and
+Settings are round buttons in the top bar, and the LIVE/REVIEW switch is gone. Sections kept
+their ids; only their group moved. So `NAV_LEGACY` lists every section's current group, and
+`navResolve()` routes by the section first: `showMainTab('analytics','an_recovery')` lands in
+Body, where Readiness lives now. It then falls back to the group, then `NAV_MAIN_ALIAS` for
+groups that no longer exist. A remembered section is only reopened if it still belongs to the
+group. The suite checks every section is reachable from exactly one group. The exceptions are
+`#today` (the hidden V1 render target) and `#coach` (the empty container left when Coach
+folded into Operations).
 
 | Token | Value | Use |
 |---|---|---|
