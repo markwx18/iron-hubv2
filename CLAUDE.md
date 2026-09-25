@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1887 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1893 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -299,7 +299,8 @@ unbounded bill.
 `max_tokens`.** Two consequences to keep in mind when touching any API call: never set a
 `max_tokens` low enough for a long think to swallow the answer (nothing in the app is below
 4000, and the suite asserts it), and control spend with `output_config.effort`
-(`AI_EFFORT_DEFAULT` is `medium`; the nightly cycle raises it to `high`) rather than by
+(`AI_EFFORT_DEFAULT` is `medium`; the nightly cycle raises CHARLIE, ECHO and ZULU to `high`,
+while DELTA runs at `medium` per `AG_NIGHT_EFFORT`, for the reason below) rather than by
 starving the cap. `temperature`, `top_p`, `top_k`, `budget_tokens` and assistant prefills all
 return a 400 on this model — none are used, and the suite asserts that too.
 
@@ -395,6 +396,18 @@ quiet stream and wants more bytes on the wire; a short one with bytes still flow
 connection being taken away and wants something else entirely. The gap still *running* when it died
 is folded in, or the number is always under-reported by exactly the silence that killed it. Mark
 chose evidence over a retry here: a mid-stream drop is billed work and is still never re-sent.
+
+**The evidence came in, and it was a quiet stream.** On 2026-09-24 DELTA died with
+`cut off 52s in [4.2 KB in over 28 events, longest silence 46s, still thinking]`. CHARLIE, ECHO
+and ZULU reported over the same seconds (ZULU 4s later), so the page was live and the network
+was fine. That is DELTA's fourth failure in 17 nights (9/8, 9/10, 9/19, 9/24), and every one was
+DELTA, the agent with the longest effort-`high` thinks and the most tool rounds. `summarized`
+display shortens the silences but does not bound them, and 46s was enough. Mark chose to run
+**DELTA's nightly check at `medium` effort** (`AG_NIGHT_EFFORT`) over a paid retry. It thinks
+shorter, and costs less. `olValidateReport()` still checks its Overload report, so a thinner night
+costs commentary, not correctness. If DELTA still dies, read the note first: a long silence
+again means the thinks are still too long, and a short one means the connection is being taken
+away, which effort will not fix.
 
 **A repaint must never be able to strand an in-flight flag.** Both runners used to call
 `renderOps()` between raising their module-scoped guard and entering the `try`. A throw from a
@@ -727,9 +740,15 @@ and a schedule doc that is not updating in the Connections summary, visible whil
 same reason the relay verdict sits under the Connected dot. If you add a failure state to a
 Settings card, add it to that summary too.
 
-**Charts stop growing past 480px on desktop** (`svg.ck` inside `@media(min-width:900px)`). They
-are drawn for a phone card; on a 1000px desktop card, width:100% scaled their type to about 29px.
-Every kit chart root carries `class="ck"`, and the suite checks all seven do.
+**Charts are drawn at the width they are shown at** (`ckW()`, `ckH()`, `ckSparkW()`). Phones use
+`CK_W` (380), the size he called perfect. On desktop a chart is drawn at its card's measured
+width (the main column less the card padding, capped at 1000, halved for the ≥1240px two-column
+sections via `ckW(true)`), and `ckH()` makes it proportionally shallower. Two earlier fixes were
+wrong: stretching a 380-wide drawing across a 1000px card gave ~29px type, and capping it at
+480px left the chart filling half the card. Only drawing at the real width fixes both. That is
+also why the fan chart's type is fixed units rather than scaled with `w`. A desktop resize of
+60px or more redraws the active tab. Width only, because the iOS toolbar changes the height on
+every scroll. Every kit chart root still carries `class="ck"`.
 
 **Status chips tint from their own colour.** `.pill`, `.ol-verdict` and the other tag classes
 take `color-mix(currentColor)` for their ground, because chips set their colour inline. The small

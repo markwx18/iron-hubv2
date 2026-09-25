@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-24-v4">
+<meta name="ironhub-build" content="2026-09-24-v5">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1269,9 +1269,6 @@
   .sub.grp > .sub-body{padding:2px 0 0;}
   .sub.grp > .sub-body > h2:first-child{margin-top:12px;}
 
-  /* Charts are drawn for a phone card. On a wide desktop card width:100% scaled them past
-     double, so their type came out near 30px; past 480px they stop growing. */
-  @media(min-width:900px){ svg.ck{max-width:480px;} }
 
   .spark-dates{display:flex; justify-content:space-between; margin-top:4px; font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums;}
 </style>
@@ -3590,9 +3587,39 @@ function ckDot(cx, cy, col, r){
 /* Points get a marker only while they are few enough to read as points; past that the line
    carries the shape and only the latest value is marked. */
 const CK_DOTS_MAX = 24;
+/* The width to draw a chart at: the width it will be SHOWN at, so its type lands at the size it
+   is written in. Phones keep CK_W, which is the size he called perfect. On desktop a chart drawn
+   at 380 and stretched across a 1000px card came out with ~29px type; capping it at 480px then
+   left it filling half the card. Drawing at the card's own width fixes both: the chart fills the
+   card and an 11-unit label is an 11px label. twoCol is for the >=1240px two-column sections
+   (Bulk quality, Predictions), whose cards are half the width. */
+function ckW(twoCol){
+  if(window.innerWidth < 900) return CK_W;
+  const main = document.querySelector('#reviewMode main');
+  let w = main ? main.clientWidth : 0;
+  if(!w) return CK_W;
+  if(twoCol && window.innerWidth >= 1240) w = (w - 16)/2;
+  return Math.round(Math.max(CK_W, Math.min(1000, w - 36)));   // less the card's own padding
+}
+/* A wider chart gets shallower in proportion, or a full-width desktop chart would stand 500px tall. */
+function ckH(w, base){ return w <= CK_W ? base : Math.round(Math.min(base*1.45, Math.max(base, w*0.27))); }
+/* Sparks are drawn at their own small base on a phone, and at the card's width on desktop. */
+function ckSparkW(base, twoCol){ return window.innerWidth < 900 ? base : ckW(twoCol); }
+/* A desktop window resized a real distance needs its charts drawn again at the new width. Width
+   only: the iOS toolbar changes the height on every scroll, and that must not repaint anything. */
+let _ckLastW = (typeof window !== 'undefined') ? window.innerWidth : 0, _ckResizeT = 0;
+window.addEventListener('resize', function(){
+  clearTimeout(_ckResizeT);
+  _ckResizeT = setTimeout(function(){
+    const w = window.innerWidth;
+    if(Math.abs(w - _ckLastW) < 60) return;
+    _ckLastW = w;
+    try{ if(MODE === 'review') rerenderActive(true); }catch(e){}
+  }, 250);
+});
 
 function milestoneBarGraphic(cur, milestones){
-  const W=CK_W, H=88;
+  const W=ckW(), H=88;
   const trackX1=16, trackX2=W-16, trackY=42, trackH=12;
   const maxM = milestones[milestones.length-1];
   const scaleX = v => trackX1 + Math.max(0,Math.min(1, v/maxM)) * (trackX2-trackX1);
@@ -3616,7 +3643,7 @@ function milestoneBarGraphic(cur, milestones){
   return '<div class="bar-wrap">'+svg+'</div>';
 }
 function lineChart(pts, color){
-  const W=CK_W, H=190, L=36, R=W-14, T=20, B=H-28;
+  const W=ckW(), H=ckH(W,190), L=36, R=W-14, T=20, B=H-28;
   if(pts.length===1){
     return '<svg class="ck" viewBox="0 0 '+W+' 110" role="img" aria-label="One point so far: '+pts[0].v+' lb" style="width:100%;height:auto">'+
       ckDot(W/2, 66, color, 5)+ckText(W/2, 42, pts[0].v+' lb \u2014 one point so far', {anchor:'middle', size:12.5, fill:'var(--muted)'})+'</svg>';
@@ -3775,7 +3802,7 @@ function goalCard(g){
     liftTipsHTML(g.exercise) + '</div>';
 }
 function roadSVG(start, cur, target, done){
-  const W=CK_W, H=92, L=16, R=W-16, RY=34, RH=26;
+  const W=ckW(), H=92, L=16, R=W-16, RY=34, RH=26;
   const x = v => L + Math.max(0,Math.min(1,(v-start)/Math.max(target-start,1)))*(R-L);
   let svg = '<svg class="ck" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Progress road from '+Math.round(start)+' to '+target+', now at '+Math.round(cur)+'" style="width:100%;height:auto">';
   svg += '<rect x="'+L+'" y="'+RY+'" width="'+(R-L)+'" height="'+RH+'" rx="9" fill="var(--panel2)"/>';
@@ -8111,7 +8138,8 @@ function bwProjectionCardHTML(){
     '<select onchange="bwProjChangeRange(this.value)" style="flex:none;width:auto">'+
     BW_RANGES.map(r=>'<option value="'+r.days+'"'+(r.days===bwProjRange?' selected':'')+'>'+r.label+'</option>').join('')+
     '</select></div>';
-  h += anFanChartSVG(res, CK_W, 230, {bandFill:'rgba(84,194,164,.12)'});
+  const fw = ckW();
+  h += anFanChartSVG(res, fw, ckH(fw, 230), {bandFill:'rgba(84,194,164,.12)'});
   h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
   h += '<div style="display:flex;align-items:center;gap:6px">'+
     '<span style="width:9px;height:2px;background:var(--muted);display:inline-block"></span>'+
@@ -9341,7 +9369,7 @@ function idealSeries(ex, actualPts){
   });
 }
 function dualLineChart(actual, ideal){
-  const W=CK_W, H=190, L=36, R=W-14, T=20, B=H-28;
+  const W=ckW(), H=ckH(W,190), L=36, R=W-14, T=20, B=H-28;
   if(!actual.length) return '<p class="small">No data yet.</p>';
   if(actual.length===1){
     return '<svg class="ck" viewBox="0 0 '+W+' 110" role="img" aria-label="One session so far" style="width:100%;height:auto">'+
@@ -12040,7 +12068,7 @@ function renderAnBulkQuality(){
     '</p></div>';
   // chart
   h += '<div class="card"><div class="k">Same window, both lines</div>'+
-    anDualSpark(r.bwLine, r.stLine, 300, 74, 'var(--violet)', 'var(--amber)')+
+    anDualSpark(r.bwLine, r.stLine, ckSparkW(300, true), Math.max(74, Math.round(ckSparkW(300, true)*0.16)), 'var(--violet)', 'var(--amber)')+
     anDualSparkDates(r.bwLine, r.stLine)+
     '<div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">'+
       '<span class="small mono" style="color:var(--violet)">— bodyweight</span>'+
@@ -12196,13 +12224,14 @@ function anFanChartSVG(res, w, h, opts){
 
   const t0 = Math.min(anDayMs(hist.length?hist[0].date:todayKey()), anDayMs(todayKey()));
   const t1 = anDayMs(projEnd);
-  const L = Math.round(40*w/CK_W), R = w-Math.round(14*w/CK_W), span = Math.max(1, t1-t0);
+  const L = 40, R = w-14, span = Math.max(1, t1-t0);
   const px = k => L + ((anDayMs(k)-t0)/span)*(R-L);
   const py = v => h-24 - ((v-lo)/(hi-lo))*(h-42);
   const pathFor = arr => arr.map((p,i)=>(i?'L':'M')+px(p.date).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ');
 
-  // Type scales with the viewBox, so a caller drawing at 640 still reads the same on screen.
-  const k = w/CK_W, fs = n => (n*k).toFixed(1);
+  // Callers draw the fan at the width it is shown at (ckW), so its type is fixed units: an
+  // 11-unit label is an 11px label on a phone card and on a desktop one alike.
+  const fs = n => n.toFixed(1);
   let s = '<svg class="ck" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Projection: history, then a likely range" style="width:100%;height:auto;display:block">';
   s += ckGrid(L, R, py(hi)) + ckGrid(L, R, py(lo));
   // shaded p10\u2013p90 envelope
@@ -12274,7 +12303,8 @@ function anEnsembleCardHTML(){
   h += '</div>';
   const res = anEnsembleFor(anEnsembleEx, anEnsembleRange);
   if(!res.ok){ h += '<p class="small" style="color:var(--dim)">'+esc(res.why)+'</p></div>'; return h; }
-  h += anEnsembleChartSVG(res, CK_W, 230);
+  const ew = ckW(true);
+  h += anEnsembleChartSVG(res, ew, ckH(ew, 230));
   h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
   h += '<div style="display:flex;align-items:center;gap:6px">'+
     '<span style="width:9px;height:2px;background:var(--muted);display:inline-block"></span>'+
@@ -12519,7 +12549,7 @@ function renderAnFatigue(){
   const weekly = anStrainByWeek(10);
   if(weekly.filter(w=>w.v>0).length>=3){
     h += '<div class="card"><div class="k">Weekly strain</div>'+
-      anSpark(weekly, 320, 64, col, {band:[fi.chronic*0.75, fi.chronic*1.25]})+
+      anSpark(weekly, ckSparkW(320), Math.max(64, Math.round(ckSparkW(320)*0.14)), col, {band:[fi.chronic*0.75, fi.chronic*1.25]})+
       '<p class="small" style="margin-top:8px;color:var(--dim)">Shaded band = your productive zone (\u00b125% of your 4-week norm). Living above it for weeks at a time is how overreach builds.</p></div>';
   }
   const sug = fatigueSuggestsDeload();
@@ -13358,13 +13388,22 @@ function agToolNote(){
     'come from list_lifts; a name that does not match one of those cannot be applied.'+'\n';
 }
 
+/* Nightly effort per specialist. DELTA runs at medium, by Mark's choice on 2026-09-24. Its long
+   effort-high thinks were the one thing its failures had in common: it died on 4 of 17 nights
+   (9/8, 9/10, 9/19, 9/24), always DELTA, and on the 24th -- the first night aiStreamNote()
+   caught it -- the stream had gone 46s without a byte "still thinking" when the connection was
+   dropped, while CHARLIE, ECHO and ZULU all reported over the same seconds. That is the quiet-
+   stream signature, and it wants shorter silences; a retry would pay twice for the same think.
+   Medium thinks shorter and costs less. Its Overload report is still checked by
+   olValidateReport(), so a thinner night costs commentary, not correctness. */
+const AG_NIGHT_EFFORT = {charlie:'high', delta:'medium', echo:'high'};
 /* Run ONE specialist. Returns {summary, proposals} or null if it failed. */
 async function agRunSpecialist(id, manual){
   const sys = agSharedBrief()+'\n'+AG_ROLE_BRIEF[id]+'\n'+agToolNote()+agJsonSpec(id)+agBaseContext(id);
   const consulted = [];
   const res = await callClaudeWithData(
     [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
-    sys, AG_MAXTOK, {effort:'high'},
+    sys, AG_MAXTOK, {effort: AG_NIGHT_EFFORT[id] || 'high'},
     function(n){ if(consulted.indexOf(n)<0) consulted.push(n); });
   // Throw rather than salvage: agRunAll already has a failure path that says plainly this agent
   // did not report, which is the truth. Half a sentence stored as a summary is not.

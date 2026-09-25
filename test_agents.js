@@ -1135,12 +1135,32 @@ setTimeout(async () => {
   const kitIds = [ev("lineChart(" + kitPts + ", 'var(--amber)')"), ev("lineChart(" + kitPts + ", 'var(--cyan)')")]
     .map(sv => (sv.match(/linearGradient id="([^"]+)"/) || [])[1]);
   ok('chart kit: two charts on one page get different gradient ids', !!kitIds[0] && !!kitIds[1] && kitIds[0] !== kitIds[1], JSON.stringify(kitIds));
-  // The fan is drawn at whatever width its caller passes, so its type scales with the viewBox:
-  // the 'today' label must be the same size ON SCREEN at 380 and at 640.
+  // Callers draw the fan at the width it is shown at (ckW), so its type is FIXED units: the same
+  // 'today' label size at 380 and at 640. (Scaling it with the width would shrink it on desktop.)
   const fanAt = w => { const sv = ev("anEnsembleChartSVG(anEnsembleFor('Ens Noisy Lift', 84), " + w + ", 230)");
-    const m = sv.match(/font-size="([\d.]+)"[^>]*>today</); return m ? parseFloat(m[1]) / w : NaN; };
+    const m = sv.match(/font-size="([\d.]+)"[^>]*>today</); return m ? parseFloat(m[1]) : NaN; };
   const fan380 = fanAt(380), fan640 = fanAt(640);
-  ok('chart kit: fan chart type scales with its viewBox', Math.abs(fan380 - fan640) < 0.0006, fan380 + ' vs ' + fan640);
+  ok('chart kit: fan type is fixed units, because it is drawn at its shown width', fan380 === 11 && fan640 === 11, fan380 + ' vs ' + fan640);
+
+  // --- charts are drawn at the width they are shown at ---
+  // jsdom has no layout, so the widths are stubbed: this asserts which width the kit CHOSE.
+  const ckMain = "document.querySelector('#reviewMode main')";
+  const setW = (inner, main) => ev("Object.defineProperty(window, 'innerWidth', {value:" + inner + ", configurable:true, writable:true});" +
+    "Object.defineProperty(" + ckMain + ", 'clientWidth', {value:" + main + ", configurable:true});");
+  const ckInner0 = ev('window.innerWidth');
+  setW(393, 361);
+  ok('on a phone a chart is drawn at the phone base', ev('ckW()') === 380 && ev('ckW(true)') === 380);
+  setW(1280, 1068);
+  ok('on a desktop it is drawn at its card width (capped at 1000)', ev('ckW()') === 1000, String(ev('ckW()')));
+  ok('...and at half that in the two-column sections', ev('ckW(true)') === 490, String(ev('ckW(true)')));
+  const deskLine = ev("lineChart(" + kitPts + ", '#F28A3A')");
+  ok('a desktop line chart fills its card: drawn 1000 wide and shallower, not 380 stretched',
+     /viewBox="0 0 1000 270"/.test(deskLine), (deskLine.match(/viewBox="[^"]*"/) || [''])[0]);
+  const deskSizes = (deskLine.match(/font-size="([\d.]+)"/g) || []).map(m => parseFloat(m.slice(11)));
+  ok('...so its type is still written, and shown, at 11-15px', deskSizes.length > 0 && Math.min(...deskSizes) >= 11 && Math.max(...deskSizes) <= 15, JSON.stringify(deskSizes));
+  setW(1100, 836);
+  ok('between 900 and 1240px the two-column rule is off, so a two-column chart is full width', ev('ckW(true)') === 800, String(ev('ckW(true)')));
+  ev("delete " + ckMain + ".clientWidth; Object.defineProperty(window, 'innerWidth', {value:" + ckInner0 + ", configurable:true, writable:true});");
 
   // dropdown wiring: selecting an exercise/range persists and reflects in the rendered card
   ev("anEnsembleChangeEx('Ens Noisy Lift')");
@@ -4422,6 +4442,14 @@ setTimeout(async () => {
     const nb = JSON.parse(nightly[0].init.body);
     ok('nightly max_tokens leaves room for thinking + full JSON', nb.max_tokens >= 8000, String(nb.max_tokens));
     ok('nightly runs at raised effort', nb.output_config.effort === 'high', nb.output_config.effort);
+    // ...except DELTA, whose long effort-high thinks kept going silent long enough to be cut off
+    const effBy = {};
+    nightly.forEach(r => {
+      const b = JSON.parse(r.init.body), sysTxt = typeof b.system === 'string' ? b.system : JSON.stringify(b.system);
+      ['charlie', 'delta', 'echo'].forEach(id => { if (sysTxt.indexOf(ev('AG_ROLE_BRIEF')[id].slice(0, 80)) >= 0) effBy[id] = b.output_config.effort; });
+    });
+    ok('DELTA runs its nightly check at medium effort; CHARLIE and ECHO stay on high',
+       effBy.delta === 'medium' && effBy.charlie === 'high' && effBy.echo === 'high', JSON.stringify(effBy));
     ok('nightly still sends a single user turn', nb.messages.length === 1 && nb.messages[0].role === 'user');
 
     // Every cap in the app must leave room for adaptive thinking. The mid-workout DELTA
@@ -8142,8 +8170,7 @@ setTimeout(async () => {
         "r2:0.9, conf:'steady trend', reg:null}, 380, 230); })()")
     };
     const untagged = Object.keys(roots).filter(k => !/<svg class="ck"/.test(roots[k]));
-    ok('every chart carries the class the desktop size cap keys off', untagged.length === 0, JSON.stringify(untagged));
-    ok('...and the cap exists, desktop only', /@media\(min-width:900px\)\{ svg\.ck\{max-width:480px;\} \}/.test(ev('document.documentElement.outerHTML')));
+    ok('every chart root carries the kit class', untagged.length === 0, JSON.stringify(untagged));
 
     // --- Bulk quality: dates under the chart, spanning what it draws ---
     const bqA = [{date:'2026-06-14', v:0}, {date:'2026-07-19', v:2.1}, {date:'2026-09-13', v:4.4}];
