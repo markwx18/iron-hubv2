@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1893 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1927 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -255,7 +255,7 @@ so the two orders can no longer disagree.
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
 | Home / strip | `renderHome()`, `renderStatusStrip()`, `readinessNow()`, `renderNotif()` |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
-| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopContext()`, `whoopMaybeKick()`, `S.whoop.history`, `scripts/whoop/whoop-sync.js` (`historyRows()`, `mergeHistory()`) |
+| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`, `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`) |
@@ -610,6 +610,17 @@ stale-data bug.
 **WHOOP comes in, never out.** `syncPayload()` deletes `d.whoop`. The Action owns
 `whoop_data.json`; the app owns `ironhub_data.json`. Data not dated today is treated as
 absent — a stale recovery score is worse than none because it looks current.
+
+**Dated today is not the same as final.** WHOOP scores the night when it thinks he woke, and a
+brief wake at 3 AM gets scored as the whole night; when he falls back asleep it rescores the same
+record. On 2026-09-25 the 3:33 AM relay run read 28% / 4.55h, the brief went out at 6:41 quoting
+it, and at 7:16 WHOOP said 50% / 7.03h. So the relay stamps `readAt` on recovery and sleep (a
+carried-forward section keeps its own stamp, in `carryForward()`), and `whoopProvisional()` marks
+a reading taken before `AG_BRIEF_HOUR`: `whoopMaybeKick()` asks for a re-read and the brief waits
+for it, up to the same 10 AM cutoff. The brief records the `whoopScore` / `whoopSleep` it was
+written with, and `briefWhoopDrift()` rewrites it **once a morning** (`rescored` flag) if WHOOP
+later moves the score ≥10 points, across a band, or sleep by ≥1h. An unstamped reading or a
+brief with no recorded score is never treated as drifted — no guessing.
 
 **The WHOOP history is history, never today.** `whoop_data.json` also carries `history`: one row
 per day, `{date, recovery, hrv, rhr, sleepHours, sleepPerf, strain}`, a rolling 180 days. The

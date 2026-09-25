@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-24-v5">
+<meta name="ironhub-build" content="2026-09-25-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4804,16 +4804,26 @@ function applyWhoop(raw){
     return isFinite(n) ? Math.max(lo, Math.min(hi, n)) : null;
   };
   const dateOk = function(d){ return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d); };
+  /* When the relay actually READ a section (see whoopProvisional()). The section's own stamp
+     wins; a file from before the relay wrote one falls back to the file's fetchedAt. Never
+     invented: with neither present it stays absent, which whoopProvisional() reads as "not
+     known to be early" -- so an unstamped reading is judged exactly as it was before. */
+  const stampOk = function(v){ return typeof v === 'string' && isFinite(Date.parse(v)); };
+  const readAtOf = function(sec){
+    return stampOk(sec.readAt) ? sec.readAt : stampOk(raw.fetchedAt) ? raw.fetchedAt : undefined;
+  };
   if(raw.recovery && dateOk(raw.recovery.date)){
     const score = num(raw.recovery.score, 0, 100);
     if(score !== null){
       out.recovery = {date:raw.recovery.date, score:Math.round(score),
                       hrv: num(raw.recovery.hrv, 0, 400), rhr: num(raw.recovery.rhr, 20, 200)};
+      const ra = readAtOf(raw.recovery); if(ra) out.recovery.readAt = ra;
     }
   }
   if(raw.sleep && dateOk(raw.sleep.date)){
     out.sleep = {date:raw.sleep.date, hours: num(raw.sleep.hours, 0, 24),
                  performance: num(raw.sleep.performance, 0, 100)};
+    const ra = readAtOf(raw.sleep); if(ra) out.sleep.readAt = ra;
   }
   if(raw.strain && dateOk(raw.strain.date)){
     out.strain = {date:raw.strain.date, score: num(raw.strain.score, 0, 21)};
@@ -4854,6 +4864,27 @@ function applyWhoop(raw){
 function whoopFresh(){
   const w = S.whoop && S.whoop.recovery;
   return !!(w && w.date === todayKey() && typeof w.score === 'number');
+}
+/* Today's recovery is in, but it was read before the morning began -- so it may be WHOOP's
+   provisional score for a night that was not over yet.
+
+   WHOOP scores the night when it decides he has woken. A brief wake at 3 AM can be taken as
+   the end of the night; when he falls back asleep WHOOP extends that sleep and rescores the
+   SAME recovery record. On 2026-09-25 the 3:33 AM relay run read 28% off 4.55h, the brief went
+   out at 6:41 quoting it, and at 7:16 WHOOP said 50% off 7.03h. Both are dated today, so
+   whoopFresh() cannot tell them apart; only when it was read can.
+
+   So a reading taken before AG_BRIEF_HOUR is asked for again (whoopMaybeKick) and the brief
+   waits for the re-read, up to the same AG_BRIEF_WHOOP_CUTOFF as a missing one. It still counts
+   as fresh everywhere else -- the status strip showing a 3 AM score is better than showing
+   nothing, and the next pull corrects it. An unstamped reading is not provisional: there is
+   nothing to say it was early, and treating it so would hold the brief on every old file. */
+function whoopProvisional(){
+  if(!whoopFresh()) return false;
+  const t = Date.parse(S.whoop.recovery.readAt || '');
+  if(!isFinite(t)) return false;
+  const start = new Date(); start.setHours(AG_BRIEF_HOUR, 0, 0, 0);
+  return t < start.getTime();
 }
 
 /* ---- Asking the relay to run NOW, instead of waiting for a cron that mostly does not fire ----
@@ -5101,8 +5132,11 @@ function whoopKickBump(){
 }
 async function whoopMaybeKick(){
   if(!syncReady()) return false;
-  if(whoopFresh()) return false;                 // today's score is already in -- nothing to ask for
   const h = new Date().getHours();
+  // Today's score is already in -- nothing to ask for, unless it was read before the morning
+  // and may since have been rescored (whoopProvisional). Re-asking before AG_BRIEF_HOUR would
+  // only fetch another pre-morning reading, so that case waits for the window to open.
+  if(whoopFresh() && !(whoopProvisional() && h >= AG_BRIEF_HOUR)) return false;
   // Bounded to the window the brief depends on. Outside it, a missing recovery usually means
   // WHOOP genuinely has nothing yet (not worn, or he has not slept), and dispatching all day
   // would spend runs re-learning that every quarter of an hour.
@@ -13784,9 +13818,63 @@ const AG_BRIEF_LATEST = 18;
    score that has actually landed. That is a fifth call a day; it runs at effort 'medium'
    rather than the cycle's 'high' because it is summarising findings the specialists already
    did the thinking for, not deriving them. */
-function agSetBrief(text, hadWhoop){
+function agSetBrief(text, hadWhoop, snap){
   const a = agState();
   a.brief = {text:text, at:new Date().toISOString(), date:todayKey(), hadWhoop:!!hadWhoop};
+  // The numbers it was written WITH, so a later rescore can be recognised (briefWhoopDrift).
+  if(snap){
+    if(typeof snap.score === 'number') a.brief.whoopScore = snap.score;
+    if(typeof snap.sleep === 'number') a.brief.whoopSleep = snap.sleep;
+    if(snap.rescored) a.brief.rescored = true;
+  }
+}
+/* What the brief's WHOOP numbers are now worth, against what WHOOP says now.
+     ''         -- nothing to reconcile
+     'landed'   -- written with no recovery, and one has since arrived
+     'rescored' -- written with a recovery WHOOP has since rescored
+
+   'rescored' is the 2026-09-25 case: a brief quoting a 3 AM provisional 28% / 4.5h while the
+   strip, a few minutes later, read 50%. whoopProvisional() stops most of these from being
+   written at all; this catches the rest -- a morning he sleeps past AG_BRIEF_HOUR, or a re-read
+   that never came before the cutoff.
+
+   A drift worth a paid rewrite, not every wobble: the score moved BRIEF_RESCORE_PTS or crossed
+   a band, or sleep moved BRIEF_RESCORE_SLEEP_H. A brief written before whoopScore was recorded
+   has nothing to compare, so it reads as no drift -- the Rewrite button still covers it. */
+const BRIEF_RESCORE_PTS = 10;
+const BRIEF_RESCORE_SLEEP_H = 1;
+function briefWhoopDrift(b){
+  if(!b || b.date !== todayKey() || !whoopFresh()) return '';
+  if(!b.hadWhoop) return 'landed';
+  const now = S.whoop.recovery.score;
+  if(typeof b.whoopScore === 'number' &&
+     (Math.abs(now - b.whoopScore) >= BRIEF_RESCORE_PTS || recoveryLabel(now) !== recoveryLabel(b.whoopScore))){
+    return 'rescored';
+  }
+  const sl = S.whoop.sleep;
+  if(typeof b.whoopSleep === 'number' && sl && sl.date === todayKey() && typeof sl.hours === 'number' &&
+     Math.abs(sl.hours - b.whoopSleep) >= BRIEF_RESCORE_SLEEP_H){
+    return 'rescored';
+  }
+  return '';
+}
+/* The line under a brief that no longer matches WHOOP, shared by HOME and Ops so the two
+   cards say the same thing. '' when it matches. */
+function briefDriftNote(b){
+  const d = briefWhoopDrift(b);
+  if(d === 'landed') return 'Written before your WHOOP recovery landed — '+
+    Math.round(S.whoop.recovery.score)+'% is in now.';
+  if(d === 'rescored'){
+    // Both numbers each side, since either one moving is enough to get here.
+    const sl = S.whoop.sleep;
+    const slNow = (sl && sl.date === todayKey() && typeof sl.hours === 'number') ? sl.hours : null;
+    const was = [typeof b.whoopScore === 'number' ? Math.round(b.whoopScore)+'%' : '',
+                 typeof b.whoopSleep === 'number' ? b.whoopSleep.toFixed(1)+'h sleep' : ''].filter(Boolean).join(', ');
+    const now = [Math.round(S.whoop.recovery.score)+'%', slNow !== null ? slNow.toFixed(1)+'h sleep' : ''].filter(Boolean).join(', ');
+    return 'Written from an earlier WHOOP reading'+(was ? ' ('+was+')' : '')+
+      ' — WHOOP has since rescored it: '+now+'.';
+  }
+  return '';
 }
 function agBrief(){
   const a = agState();
@@ -13844,11 +13932,14 @@ async function agSendChat(id){
    reads the self-reported check-in today and is written so that adding a WHOOP source later
    is one branch at the top rather than a rewrite of both surfaces. Every caller already
    renders `source`, so the day WHOOP lands the provenance is visible with no further work. */
+/* WHOOP's own bands. One place, because the brief's rescore check (briefWhoopDrift) has to
+   agree with the strip about when a score has crossed from one to another. */
+function recoveryLabel(p){ return p>=67?'high':p>=34?'moderate':'low'; }
 function readinessNow(){
   const w = (S.whoop && S.whoop.recovery) || null;   // reserved for the WHOOP relay
   if(w && w.date === todayKey() && typeof w.score === 'number'){
     const p = Math.max(0, Math.min(100, Math.round(w.score)));
-    return {pct:p, label:(p>=67?'high':p>=34?'moderate':'low'), tone:(p>=67?'good':p>=34?'mid':'low'), source:'WHOOP'};
+    return {pct:p, label:recoveryLabel(p), tone:(p>=67?'good':p>=34?'mid':'low'), source:'WHOOP'};
   }
   const r = todayReadiness();
   if(!r) return null;
@@ -14115,9 +14206,9 @@ function renderHome(){
       // screen he actually reads in the morning -- the Ops tab has had this, HOME had nothing.
       // A brief written before recovery landed is rewritten automatically once, but only while
       // auto-run is on and the device can reach the API, so the button is the way out otherwise.
-      (!brief.hadWhoop && whoopFresh()
-        ? '<p class="small" style="color:var(--warn);margin-top:6px">Written before your WHOOP '+
-          'recovery landed \u2014 '+Math.round(S.whoop.recovery.score)+'% is in now.</p>'+
+      // Also says when WHOOP has rescored the numbers it quotes (briefDriftNote).
+      (briefDriftNote(brief)
+        ? '<p class="small" style="color:var(--warn);margin-top:6px">'+esc(briefDriftNote(brief))+'</p>'+
           '<button class="btn ghost sm" style="margin-top:6px" '+(_agBriefRunning?'disabled':'')+
           ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing\u2026':'Rewrite')+'</button>'
         : '')+
@@ -14434,9 +14525,9 @@ function renderOps(){
       '<p class="small" style="margin-top:6px">'+esc(_brief.text)+'</p>'+
       // Says which of the two stories this card is telling. Without it a brief that opens "no
       // recovery data" next to a status strip showing a real number just looks broken.
-      (_briefToday && !_brief.hadWhoop && whoopFresh()
-        ? '<p class="small" style="margin-top:6px;color:var(--warn)">Written before your WHOOP '+
-          'recovery landed — rewrite to fold it in.</p>' : '')+
+      (_briefToday && briefDriftNote(_brief)
+        ? '<p class="small" style="margin-top:6px;color:var(--warn)">'+esc(briefDriftNote(_brief))+
+          ' Rewrite to fold it in.</p>' : '')+
       '</div>';
   } else {
     // No brief at all is a normal state before the first morning run, not an error -- say which
@@ -14566,7 +14657,18 @@ async function agRunBrief(manual){
     const hadWhoop = whoopFresh();
     // What this write is replacing, so the check after the await can tell "unchanged" from
     // "another device wrote one while we were thinking".
-    const prevAt = (function(){ const p = agBrief(); return (p && p.date === todayKey()) ? (p.at||'') : ''; })();
+    const prevToday = (function(){ const p = agBrief(); return (p && p.date === todayKey()) ? p : null; })();
+    const prevAt = prevToday ? (prevToday.at||'') : '';
+    // And the numbers it is written with, read before the request for the same reason as
+    // hadWhoop: a rescore landing mid-flight must show up as drift afterwards, not be stamped on
+    // a brief that never saw it. rescored caps the automatic rescore rewrite at one a morning:
+    // once a brief that already had WHOOP has been replaced, the next drift is left to the
+    // Rewrite button rather than spending a call per rescore.
+    const snap = hadWhoop ? {
+      score: S.whoop.recovery.score,
+      sleep: (S.whoop.sleep && S.whoop.sleep.date === todayKey() && typeof S.whoop.sleep.hours === 'number') ? S.whoop.sleep.hours : null,
+      rescored: !!(prevToday && (prevToday.hadWhoop || prevToday.rescored))
+    } : null;
     const text = await agWriteBrief(manual);
     // Re-resolve AFTER the await. applyPulled() may have replaced S while the request was in
     // flight, and agSetBrief() resolves through agState() internally, so this is safe -- but
@@ -14578,7 +14680,7 @@ async function agRunBrief(manual){
     if(text && !manual && landed){
       agLog('zulu','Another device had already written this morning\u2019s brief by the time mine was ready \u2014 I kept theirs.');
     }
-    else if(text){ agSetBrief(text, hadWhoop); agLog('zulu','Wrote this morning\u2019s brief.'); }
+    else if(text){ agSetBrief(text, hadWhoop, snap); agLog('zulu','Wrote this morning\u2019s brief.'); }
     else agLog('zulu','I couldn\u2019t write this morning\u2019s brief (unreadable reply). Nothing else changed.');
   }catch(e){
     agLog('zulu','I couldn\u2019t write this morning\u2019s brief ('+e.message+'). Nothing else changed.');
@@ -14631,6 +14733,8 @@ function briefWhoopDetail(){
   if(!w) return 'this device holds no WHOOP recovery at all';
   if(w.date !== todayKey()) return 'the newest WHOOP recovery here is dated '+w.date+
     ' ('+w.score+'%), not today';
+  if(whoopProvisional()) return 'WHOOP has today at '+w.score+'%, but read at '+
+    new Date(w.readAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})+', before the morning';
   return 'WHOOP has today at '+w.score+'%';
 }
 
@@ -14651,7 +14755,12 @@ function agMaybeMorningBrief(confirmed){
   // Mark flagged: the brief and the strip telling two different stories about the same day.
   // One reconciling rewrite closes the gap; a brief that already had WHOOP, or a day WHOOP
   // never reports at all, is untouched.
-  if(b && b.date === todayKey() && (b.hadWhoop || !whoopIn)) return briefNote('written');
+  // The same goes for a brief whose WHOOP numbers WHOOP has since rescored (briefWhoopDrift) --
+  // once a morning, which the rescored flag on the replacement enforces.
+  if(b && b.date === todayKey()){
+    const drift = briefWhoopDrift(b);
+    if(!drift || (drift === 'rescored' && b.rescored)) return briefNote('written');
+  }
   const h = new Date().getHours();
   if(h < AG_BRIEF_HOUR) return briefNote('it is before '+AG_BRIEF_HOUR+' AM, when the morning window opens');
   if(h >= AG_BRIEF_LATEST) return briefNote('the app was not opened between '+AG_BRIEF_HOUR+' AM and '+
@@ -14660,6 +14769,14 @@ function agMaybeMorningBrief(confirmed){
   // Only up to the cutoff, though: a day WHOOP never reports must still get a brief.
   if(!whoopIn && h < AG_BRIEF_WHOOP_CUTOFF) return briefNote(
     'waiting for WHOOP to report today\u2019s recovery (until '+AG_BRIEF_WHOOP_CUTOFF+' AM, then it writes anyway)',
+    briefWhoopDetail());
+  // Same wait, for a recovery that is here but was read before the morning: it may be the
+  // provisional score for a night that was not over (whoopProvisional). whoopMaybeKick() is
+  // asking for the re-read meanwhile; past the cutoff the brief takes what it has, and a rescore
+  // after that is caught by briefWhoopDrift() above.
+  if(whoopProvisional() && h < AG_BRIEF_WHOOP_CUTOFF) return briefNote(
+    'waiting for WHOOP to re-read today\u2019s recovery, because the one here was read before '+
+    AG_BRIEF_HOUR+' AM and may be rescored (until '+AG_BRIEF_WHOOP_CUTOFF+' AM, then it writes anyway)',
     briefWhoopDetail());
   // Every gate above reads LOCAL state, and local state is only as good as this device's last
   // pull -- which at boot and on a foreground is routinely "none yet". On 2026-09-19 the phone

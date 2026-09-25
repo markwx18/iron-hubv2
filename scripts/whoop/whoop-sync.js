@@ -155,39 +155,16 @@ async function main() {
   }
 
   const access = tok.access_token;
-  const out = { fetchedAt: new Date().toISOString() };
+  const fetchedAt = new Date().toISOString();
 
   // Recovery is attached to the most recent physiological cycle.
   const rec = await whoopGet('/recovery?limit=1', access);
-  const r0 = rec && rec.records && rec.records[0];
-  if (r0 && r0.score) {
-    out.recovery = {
-      date: dayOf(r0.created_at) || dayOf(r0.updated_at),
-      score: r0.score.recovery_score,
-      hrv: r0.score.hrv_rmssd_milli,
-      rhr: r0.score.resting_heart_rate,
-    };
-  }
-
   const sleep = await whoopGet('/activity/sleep?limit=1', access);
-  const s0 = sleep && sleep.records && sleep.records[0];
-  if (s0 && s0.score && s0.score.stage_summary) {
-    const st = s0.score.stage_summary;
-    const asleepMs = (st.total_light_sleep_time_milli || 0) +
-                     (st.total_slow_wave_sleep_time_milli || 0) +
-                     (st.total_rem_sleep_time_milli || 0);
-    out.sleep = {
-      date: dayOf(s0.end) || dayOf(s0.created_at),
-      hours: +(asleepMs / 3600000).toFixed(2),
-      performance: s0.score.sleep_performance_percentage,
-    };
-  }
-
   const cycle = await whoopGet('/cycle?limit=1', access);
-  const c0 = cycle && cycle.records && cycle.records[0];
-  if (c0 && c0.score) {
-    out.strain = { date: dayOf(c0.start), score: c0.score.strain };
-  }
+  const out = Object.assign({ fetchedAt },
+    todaySections(rec && rec.records && rec.records[0],
+                  sleep && sleep.records && sleep.records[0],
+                  cycle && cycle.records && cycle.records[0], fetchedAt));
 
   if (!out.recovery && !out.sleep && !out.strain) {
     console.log('WHOOP returned nothing usable this run; leaving the existing file alone.');
@@ -213,14 +190,7 @@ async function main() {
     const prevFiles = (await ghGet(GIST_ID)).files || {};
     const prevRaw = prevFiles['whoop_data.json'] && prevFiles['whoop_data.json'].content;
     prev = prevRaw ? JSON.parse(prevRaw) : null;
-    if (prev) {
-      for (const k of ['recovery', 'sleep', 'strain']) {
-        if (!out[k] && prev[k]) {
-          out[k] = prev[k];
-          console.log('Kept the previous ' + k + ' (this run returned none).');
-        }
-      }
-    }
+    for (const k of carryForward(out, prev)) console.log('Kept the previous ' + k + ' (this run returned none).');
   } catch (e) {
     console.error('Could not read the previous whoop_data.json (' + e.message + ') -- writing this run alone.');
   }
@@ -253,6 +223,65 @@ async function main() {
   await ghPatch(GIST_ID, { 'whoop_data.json': { content: serializeWhoop(out) } });
   const { history, ...today } = out;
   console.log('Wrote whoop_data.json:', JSON.stringify(today), history ? '+ ' + history.length + ' history rows' : '');
+}
+
+/* ---------------- today's sections (pure; tested from test_agents.js) ----------------
+ *
+ * Recovery and sleep carry readAt: the moment THIS relay read them from WHOOP. It is not the
+ * same thing as the file's fetchedAt, because carryForward() below copies a section from an
+ * earlier run into a later file -- and the section is only as current as the run that read it.
+ *
+ * The app needs it because WHOOP scores a night provisionally. On 2026-09-25 a brief wake at
+ * about 3 AM was scored as the end of the night: the 3:33 AM run read recovery 28% off 4.55h of
+ * sleep, and by 7:16 AM WHOOP had extended the sleep and rescored the SAME recovery record to
+ * 50% off 7.03h (HRV and RHR barely moved). Both readings are dated today, so date alone cannot
+ * tell them apart; the morning brief went out at 6:41 quoting the 3 AM one. readAt is what lets
+ * the app see that a reading predates the morning and ask for a fresh one first. */
+function todaySections(r0, s0, c0, readAt) {
+  const out = {};
+  if (r0 && r0.score) {
+    out.recovery = {
+      date: dayOf(r0.created_at) || dayOf(r0.updated_at),
+      score: r0.score.recovery_score,
+      hrv: r0.score.hrv_rmssd_milli,
+      rhr: r0.score.resting_heart_rate,
+      readAt,
+    };
+  }
+  if (s0 && s0.score && s0.score.stage_summary) {
+    const st = s0.score.stage_summary;
+    const asleepMs = (st.total_light_sleep_time_milli || 0) +
+                     (st.total_slow_wave_sleep_time_milli || 0) +
+                     (st.total_rem_sleep_time_milli || 0);
+    out.sleep = {
+      date: dayOf(s0.end) || dayOf(s0.created_at),
+      hours: +(asleepMs / 3600000).toFixed(2),
+      performance: s0.score.sleep_performance_percentage,
+      readAt,
+    };
+  }
+  if (c0 && c0.score) {
+    out.strain = { date: dayOf(c0.start), score: c0.score.strain };
+  }
+  return out;
+}
+
+/* Fills in, from the previous file, any section this run did not get, and returns the names it
+ * kept. A kept section keeps its OWN readAt -- stamping it with this run's time would make a
+ * 3 AM score look like a 7 AM re-read, which is the one thing readAt exists to prevent. A
+ * section written before readAt existed is stamped with the previous file's fetchedAt, the
+ * closest thing it has to when it was read. */
+function carryForward(out, prev) {
+  const kept = [];
+  if (!prev) return kept;
+  for (const k of ['recovery', 'sleep', 'strain']) {
+    if (!out[k] && prev[k]) {
+      out[k] = (k !== 'strain' && !prev[k].readAt && prev.fetchedAt)
+        ? Object.assign({}, prev[k], { readAt: prev.fetchedAt }) : prev[k];
+      kept.push(k);
+    }
+  }
+  return kept;
 }
 
 /* ---------------- daily history (pure; tested from test_agents.js) ----------------
@@ -347,6 +376,6 @@ function serializeWhoop(out) {
   return s;
 }
 
-module.exports = { historyRows, mergeHistory, serializeWhoop, HIST_DAYS };
+module.exports = { todaySections, carryForward, historyRows, mergeHistory, serializeWhoop, HIST_DAYS };
 
 if (IS_MAIN) main().catch((e) => { console.error(e.message); process.exit(1); });

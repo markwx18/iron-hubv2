@@ -8195,6 +8195,180 @@ setTimeout(async () => {
      "; navMemory = " + JSON.stringify(frn.mem) + "; activeReviewTab = " + JSON.stringify(frn.rev) + ";");
   ok('cleanup: real state restored after the fold section', ev('JSON.stringify(S)') === frSaved);
 
+  /* 2026-09-25: WHOOP scored the night at ~3 AM off a brief wake (28%, 4.55h), the 3:33 AM relay
+     run read it, the brief went out at 6:41 quoting it, and by 7:16 WHOOP had rescored the same
+     record to 50% / 7.03h. Nothing corrected the brief: its one rewrite only fires for a brief
+     written WITHOUT WHOOP. Two fixes, tested here: a reading taken before AG_BRIEF_HOUR is
+     provisional (re-kicked, and the brief waits for the re-read), and a brief whose numbers WHOOP
+     later rescores is rewritten once. Every time below is built from TODAY's local date, so the
+     suite reads the same whatever hour it runs at. */
+  console.log('=== A 3 AM WHOOP SCORE IS PROVISIONAL; A RESCORE REWRITES THE BRIEF ===');
+  const pvSaved = ev('JSON.stringify(S)');
+  try {
+    const at = (h, m) => '(function(){ var d=new Date(); d.setHours(' + h + ',' + m + ',0,0); return d.toISOString(); })()';
+    const atNode = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+    const todayNode = ev('todayKey()');
+
+    // --- the relay stamps when it read each section, and a carried section keeps its own ---
+    const relay = require(require('path').join(__dirname, 'scripts/whoop/whoop-sync.js'));
+    const secs = relay.todaySections(
+      {created_at: todayNode + 'T07:30:00.000Z', score:{recovery_score:28, hrv_rmssd_milli:117.9, resting_heart_rate:60}},
+      {end: todayNode + 'T07:20:00.000Z', score:{stage_summary:{total_light_sleep_time_milli:16380000}, sleep_performance_percentage:44}},
+      {start: todayNode + 'T02:00:00.000Z', score:{strain:4.0}}, '2026-09-25T07:33:36.653Z');
+    ok('relay: a freshly read recovery and sleep carry the run that read them',
+       secs.recovery.readAt === '2026-09-25T07:33:36.653Z' && secs.sleep.readAt === '2026-09-25T07:33:36.653Z',
+       JSON.stringify(secs));
+
+    // A run at 7:16 where recovery came back PENDING_SCORE (mid-rescore) carries the 3:33 one
+    // forward -- and that section must still say 3:33, or it passes for the re-read it is not.
+    const later = {fetchedAt:'2026-09-25T11:16:00.000Z', sleep:{date:todayNode, hours:7.03, readAt:'2026-09-25T11:16:00.000Z'}};
+    const kept = relay.carryForward(later, Object.assign({fetchedAt:'2026-09-25T07:33:36.653Z'}, secs));
+    ok('relay: a carried-forward recovery keeps the time it was READ, not this run’s',
+       later.recovery && later.recovery.readAt === '2026-09-25T07:33:36.653Z' && later.recovery.score === 28,
+       JSON.stringify(later.recovery));
+    ok('relay: and this run’s own fresh section is left as read', later.sleep.hours === 7.03 && kept.join() === 'recovery,strain',
+       JSON.stringify({kept: kept, sleep: later.sleep}));
+    const legacy = {fetchedAt:'2026-09-25T11:16:00.000Z'};
+    relay.carryForward(legacy, {fetchedAt:'2026-09-24T22:00:00.000Z', recovery:{date:'2026-09-24', score:83}});
+    ok('relay: a section from before readAt existed is stamped with ITS file’s fetchedAt',
+       legacy.recovery.readAt === '2026-09-24T22:00:00.000Z', JSON.stringify(legacy.recovery));
+
+    // --- the app keeps the stamp ---
+    ev('delete S.whoop;');
+    ev("applyWhoop({fetchedAt:" + at(7, 16) + ", recovery:{date:todayKey(), score:28, readAt:" + at(3, 33) + "}, " +
+       "sleep:{date:todayKey(), hours:4.55, performance:44}});");
+    ok('app: a section’s own readAt wins over the file’s fetchedAt',
+       ev('S.whoop.recovery.readAt') === atNode(3, 33), ev('S.whoop.recovery.readAt'));
+    ok('app: a section with none falls back to the file’s fetchedAt', ev('S.whoop.sleep.readAt') === atNode(7, 16));
+    ev("delete S.whoop; applyWhoop({recovery:{date:todayKey(), score:50}});");
+    ok('app: with neither, nothing is invented', ev('S.whoop.recovery.readAt === undefined'));
+    ok('app: and an unstamped reading is not provisional', ev('whoopProvisional()') === false);
+    ev("delete S.whoop; applyWhoop({recovery:{date:todayKey(), score:50, readAt:'yesterday-ish'}});");
+    ok('app: a malformed stamp is dropped, not stored', ev('S.whoop.recovery.readAt === undefined'));
+
+    const w333 = "delete S.whoop; applyWhoop({fetchedAt:" + at(3, 33) + ", recovery:{date:todayKey(), score:28, hrv:117.9, rhr:60, readAt:" + at(3, 33) + "}, " +
+                 "sleep:{date:todayKey(), hours:4.55, performance:44, readAt:" + at(3, 33) + "}});";
+    const w716 = "applyWhoop({fetchedAt:" + at(7, 16) + ", recovery:{date:todayKey(), score:50, hrv:117.5, rhr:60, readAt:" + at(7, 16) + "}, " +
+                 "sleep:{date:todayKey(), hours:7.03, performance:79, readAt:" + at(7, 16) + "}});";
+    ev(w333);
+    ok('app: a recovery read at 3:33 AM is provisional', ev('whoopProvisional()') === true);
+    ok('app: but still fresh, so the strip keeps showing it meanwhile', ev('whoopFresh()') === true);
+    ev(w716);
+    ok('app: the 7:16 AM re-read is not', ev('whoopProvisional()') === false);
+
+    // --- the kick asks for the re-read, but only once the morning has started ---
+    ev('window.__realFetchP = window.fetch;');
+    ev("S.settings.ghToken='t'; S.settings.gistId='g'; window.__dispP = [];");
+    ev(`window.fetch = async function(url, opts){
+          const u = String(url);
+          if(u.indexOf('/runs?') >= 0) return {ok:true, status:200, json: async()=>({workflow_runs:[]}), text: async()=>''};
+          if(u.indexOf('/dispatches') >= 0) window.__dispP.push(u);
+          return {ok:true, status:204, json: async()=>({}), text: async()=>''};
+        };`);
+    const KRESET = "window.__dispP=[]; _whoopKickAt=0; localStorage.removeItem('ironhub:whoopkick'); localStorage.removeItem(WHOOP_RUNFAIL_KEY);";
+    ev(w333); ev(KRESET);
+    await withHourAt(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('kick: a 3 AM reading at 7 AM asks the relay for a re-read', ev('window.__dispP.length') === 1);
+    ev(KRESET);
+    await withHourAt(5, function(){ return ev('whoopMaybeKick()'); });
+    ok('kick: but not before the morning, when a re-read would be just as early', ev('window.__dispP.length') === 0);
+    ev(w716); ev(KRESET);
+    await withHourAt(7, function(){ return ev('whoopMaybeKick()'); });
+    ok('kick: and nothing once the re-read has landed', ev('window.__dispP.length') === 0);
+    ev('window.fetch = window.__realFetchP; delete window.__realFetchP;');
+    ev(KRESET + " S.settings.ghToken=''; S.settings.gistId='';");
+
+    // --- the brief waits for the re-read ---
+    ev("S.settings.apiKey = 'sk-test'; agState().autoRun = true; agState().log = []; delete agState().brief;");
+    ev("localStorage.removeItem(BRIEF_TRAIL_KEY);");
+    ev("window.__realDataP = callClaudeWithData; window.__pCalls = 0; window.__pSys = '';");
+    ev(`callClaudeWithData = async function(msgs, sys){
+          window.__pCalls++; window.__pSys = sys;
+          return {text: JSON.stringify({brief:'brief #' + window.__pCalls}), toolsUsed:0, stop:'end_turn'};
+        };`);
+    ev(w333);
+    await withHourAt(6, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('brief: at 6:41 with only the 3:33 AM reading, it waits instead of quoting it',
+       ev('window.__pCalls') === 0, ev('window.__pSys').slice(0, 80));
+    ok('brief: and the dashboard trail says why',
+       /re-read today/.test(ev('(briefTrail()||{}).reason') || '') && /before the morning/.test(ev('(briefTrail()||{}).detail') || ''),
+       JSON.stringify(ev('briefTrail()')));
+    await withHourAt(11, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('brief: past the cutoff it stops waiting and writes with what it has', ev('window.__pCalls') === 1);
+    ok('brief: recording the numbers it was written with',
+       ev('agState().brief.whoopScore') === 28 && ev('agState().brief.whoopSleep') === 4.55,
+       JSON.stringify(ev('agState().brief')));
+
+    // --- ...and when WHOOP rescores, the brief is rewritten once ---
+    ev(w716); ev('window.__pCalls = 0;');
+    await withHourAt(11, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('rescore: WHOOP moving 28% -> 50% rewrites the brief', ev('window.__pCalls') === 1);
+    ok('rescore: the rewrite is handed the rescored numbers', /WHOOP TODAY: recovery 50%/.test(ev('window.__pSys')));
+    ok('rescore: and records them', ev('agState().brief.whoopScore') === 50 && ev('agState().brief.whoopSleep') === 7.03);
+    ok('rescore: and is marked as the morning’s rescore rewrite', ev('agState().brief.rescored') === true);
+    ev("applyWhoop({recovery:{date:todayKey(), score:81, readAt:" + at(9, 0) + "}});"); ev('window.__pCalls = 0;');
+    await withHourAt(11, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('rescore: a SECOND rescore the same morning does not spend another call', ev('window.__pCalls') === 0);
+    ev('renderOps();');
+    ok('rescore: but the card still says the numbers moved, with the way out',
+       /Written from an earlier WHOOP reading \(50%, 7\.0h sleep\).*81%/.test(ev("(document.getElementById('ops')||{}).innerHTML || ''")),
+       (ev("(document.getElementById('ops')||{}).innerHTML || ''").match(/Written from[^<]*/) || ['MISSING'])[0]);
+
+    // What counts as a rescore. Every case below starts from a brief that has NOT been rewritten.
+    const briefWith = (score, sleep) => "agState().brief = {text:'b', date:todayKey(), at:new Date().toISOString(), hadWhoop:true, " +
+      "whoopScore:" + score + ", whoopSleep:" + sleep + "}; window.__pCalls = 0;";
+    const nowWhoop = (score, sleep) => "delete S.whoop; applyWhoop({recovery:{date:todayKey(), score:" + score + ", readAt:" + at(7, 16) + "}, " +
+      "sleep:{date:todayKey(), hours:" + sleep + ", readAt:" + at(7, 16) + "}});";
+    ev(nowWhoop(53, 7.1)); ev(briefWith(50, 7.03));
+    await withHourAt(8, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('rescore: a 3-point wobble in the same band is not worth a call', ev('window.__pCalls') === 0);
+    ev(nowWhoop(68, 7.1)); ev(briefWith(64, 7.03));
+    await withHourAt(8, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('rescore: crossing a band is, even by 4 points (moderate -> high)', ev('window.__pCalls') === 1);
+    ev(nowWhoop(50, 5.5)); ev(briefWith(50, 7.03));
+    await withHourAt(8, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('rescore: so is the sleep moving an hour or more with the score unchanged', ev('window.__pCalls') === 1);
+    // A brief written before whoopScore was recorded -- this morning's real one -- has nothing
+    // to compare against, so it is left alone (the Rewrite button still covers it).
+    ev(nowWhoop(50, 7.03));
+    ev("agState().brief = {text:'Recovery is at 28%', date:todayKey(), at:new Date().toISOString(), hadWhoop:true}; window.__pCalls = 0;");
+    await withHourAt(8, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('rescore: a brief with no recorded score is not rewritten on a guess', ev('window.__pCalls') === 0);
+
+    // --- the numbers are the ones read BEFORE the call, not after ---
+    // Same trap as hadWhoop: a rescore landing mid-flight stamped onto the brief would erase the
+    // very drift that should trigger the rewrite.
+    ev(w333); ev("delete agState().brief; window.__pCalls = 0;");
+    ev(`callClaudeWithData = async function(msgs, sys){
+          window.__pCalls++;
+          applyWhoop({recovery:{date:todayKey(), score:50, readAt:new Date().toISOString()}, sleep:{date:todayKey(), hours:7.03}});
+          return {text: JSON.stringify({brief:'written off 28%'}), toolsUsed:0, stop:'end_turn'};
+        };`);
+    await ev('agRunBrief(true)');
+    ok('race: a rescore landing during the call leaves the brief stamped with what it was written from',
+       ev('agState().brief.whoopScore') === 28, JSON.stringify(ev('agState().brief')));
+    ok('race: so it reads as drifted, and the rewrite is still owed', ev('briefWhoopDrift(agState().brief)') === 'rescored');
+
+    // --- HOME shows the same note ---
+    ev("agState().brief = {text:'Recovery is at 28%', date:todayKey(), at:new Date().toISOString(), hadWhoop:true, whoopScore:28, whoopSleep:4.55};");
+    ev(nowWhoop(50, 7.03));
+    ev('renderHome()');
+    const homeP = w.document.getElementById('home').innerHTML;
+    ok('HOME: a rescored brief says so, with both readings',
+       /Written from an earlier WHOOP reading \(28%, 4\.5h sleep\).*50%, 7\.0h sleep/.test(homeP),
+       (homeP.match(/Written from[^<]*/) || ['MISSING'])[0]);
+    ok('HOME: and offers the rewrite', /onclick="agRunBrief\(true\)"/.test(homeP));
+
+    ev('callClaudeWithData = window.__realDataP; delete window.__realDataP;');
+  } catch (e) {
+    ok('provisional WHOOP section', false, e.stack);
+    ev('if(window.__realDataP) callClaudeWithData = window.__realDataP;');
+    ev('if(window.__realFetchP) window.fetch = window.__realFetchP;');
+  }
+  ev('S = ' + pvSaved + ';');
+  ev("localStorage.removeItem('ironhub:whoopkick'); localStorage.removeItem(BRIEF_TRAIL_KEY);");
+  ok('cleanup: real state restored after the provisional WHOOP section', ev('JSON.stringify(S)') === pvSaved);
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
