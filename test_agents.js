@@ -105,7 +105,8 @@ setTimeout(async () => {
   // --- V3 navigation: sections regrouped, nothing orphaned, every old route still lands ---
   const navSaved = ev('JSON.stringify({mode:MODE, main:activeMainTab, mem:navMemory, rev:activeReviewTab})');
   const domSections = ev("Array.prototype.map.call(document.querySelectorAll('#reviewMode main section'), function(s){ return s.id; })");
-  const navSubs = ev("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs.map(function(s){ return s.id; })); }, [])");
+  // the sections each view shows: a merged view (Progress > Strength) lists several in show[]
+  const navSubs = ev("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs.reduce(function(a,s){ return a.concat(s.show || [s.id]); }, [])); }, [])");
   // Two sections are deliberately unrouted: #today is the hidden V1 render target renderToday()
   // still draws into (and the suite reads), and #coach is the empty container left when Coach
   // folded into Operations. Anything else missing from the nav is a real orphan.
@@ -113,8 +114,46 @@ setTimeout(async () => {
   const orphans = domSections.filter(id => NAV_UNROUTED.indexOf(id) < 0 && navSubs.filter(x => x === id).length !== 1);
   ok('every section is reachable from exactly one nav group', domSections.length > 10 && orphans.length === 0,
      'orphaned or doubled: ' + JSON.stringify(orphans));
-  ok('NAV_LEGACY routes every section to the group that now holds it',
-     navSubs.every(id => { const r = ev('NAV_LEGACY')[id]; return r && ev("navMain('" + r[0] + "').subs.some(function(s){ return s.id==='" + id + "'; })"); }));
+  ok('NAV_LEGACY routes every section to the view that now shows it',
+     navSubs.every(id => { const r = ev('NAV_LEGACY')[id]; return r && ev("navShows('" + r[0] + "','" + r[1] + "')").indexOf(id) >= 0; }),
+     JSON.stringify(navSubs.filter(id => { const r = ev('NAV_LEGACY')[id]; return !(r && ev("navShows('" + r[0] + "','" + r[1] + "')").indexOf(id) >= 0); })));
+
+  // --- merged views: Progress is four views over seven sections ---
+  ev("setMode('review'); showMainTab('progress','strength');");
+  const onIds = ev("Array.prototype.filter.call(document.querySelectorAll('#reviewMode main section'), function(s){ return s.classList.contains('on'); }).map(function(s){ return s.id + ':' + s.style.order; })");
+  ok('Strength shows PR history, Predictions and Road, in that order',
+     JSON.stringify(onIds.slice().sort()) === JSON.stringify(['an_pred:1', 'an_strength:0', 'road:2']), JSON.stringify(onIds));
+  ok('...each set apart as its own part',
+     ['an_strength', 'an_pred', 'road'].every(id => ev("document.getElementById('" + id + "').classList.contains('stacked')")));
+  ok('Progress offers four views, not seven', ev("navMain('progress').subs.length") === 4);
+  ev("showMainTab('progress','progress');");
+  ok('Overview heads the year summary but not itself (the tab already names it)',
+     ev("document.getElementById('an_over').classList.contains('on') && document.getElementById('an_over').classList.contains('stacked')") &&
+     !ev("document.getElementById('progress').classList.contains('stacked')"));
+  // a caller naming one part of a merged view opens the view, not a lone section
+  ev("showReviewTab('an_pred');");
+  ok('asking for Predictions opens Strength with Predictions in it',
+     ev('activeMainTab') === 'progress' && ev('activeReviewTab') === 'strength' &&
+     ev("document.getElementById('an_pred').classList.contains('on') && document.getElementById('an_strength').classList.contains('on')"),
+     ev('activeMainTab') + '/' + ev('activeReviewTab'));
+  // ...and so does an old-style call that names the section under its old group, which has to
+  // be turned into the view that now shows it (memory points elsewhere, so only routing can do it)
+  ev("navMemory.progress = 'progress'; showMainTab('analytics','an_pred');");
+  ok('an old call naming Predictions opens the Strength view, not whatever was open last',
+     ev('activeReviewTab') === 'strength' && ev("document.getElementById('an_pred').classList.contains('on')"),
+     ev('activeMainTab') + '/' + ev('activeReviewTab'));
+  // the refresh tick has to repaint every part, or the lower parts of a merged view go stale
+  ev("window.__mvPaint = []; window.__mvReal = {a:REVIEW_RENDER.an_strength, b:REVIEW_RENDER.an_pred, c:REVIEW_RENDER.road};" +
+     "REVIEW_RENDER.an_strength = function(){ __mvPaint.push('an_strength'); }; REVIEW_RENDER.an_pred = function(){ __mvPaint.push('an_pred'); };" +
+     "REVIEW_RENDER.road = function(){ __mvPaint.push('road'); }; activeMainTab = 'progress'; navMemory.progress = 'strength'; MODE = 'review';");
+  ev('rerenderActive(true);');
+  ok('the refresh tick repaints every part of a merged view',
+     JSON.stringify(ev('__mvPaint')) === JSON.stringify(['an_strength', 'an_pred', 'road']), JSON.stringify(ev('__mvPaint')));
+  ev("REVIEW_RENDER.an_strength = __mvReal.a; REVIEW_RENDER.an_pred = __mvReal.b; REVIEW_RENDER.road = __mvReal.c;");
+  // four views or fewer read as a segmented control
+  ev("showMainTab('body','fuel');");
+  ok('a group of four views gets the segmented control',
+     ev("document.getElementById('subnav').classList.contains('seg')") && ev("document.querySelectorAll('#subnav .seg-track button').length") === 4);
   // callers written before the regroup still name the old groups
   ev("setMode('review'); showMainTab('analytics','an_fatigue');");
   ok('an old group name still lands on its section, in its new group',
@@ -3210,8 +3249,10 @@ setTimeout(async () => {
 
     // --- wiring ---
     const anSubs = ev("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs); }, [])");
+    // PR history is now one part of Progress > Strength, headed by its own title
     ok('nav labels the tab PR history',
-      anSubs.some(s => s.id === 'an_strength' && s.label === 'PR history'),
+      w.document.getElementById('an_strength').getAttribute('data-title') === 'PR history' &&
+      ev("navShows('progress','strength')").indexOf('an_strength') >= 0,
       JSON.stringify(anSubs.map(s => s.label)));
     ok('REVIEW_RENDER.an_strength still wired', typeof ev('REVIEW_RENDER').an_strength === 'function');
     ok('the old strength-curve renderer is gone', ev('typeof renderAnStrength') === 'undefined');
@@ -8024,6 +8065,108 @@ setTimeout(async () => {
   ev('S = ' + gdSaved + ';');
   ev("localStorage.removeItem(GDOC_NOTE_KEY); _gdocAt = 0; _gdocWarned = '';");
   ok('cleanup: real state restored after the schedule doc section', ev('JSON.stringify(S)') === gdSaved);
+
+  console.log('=== AFTER THE RESKIN: REMEMBERED FOLDS, CHART CAP, DATES ===');
+  const frSaved = ev('JSON.stringify(S)');
+  const frNav = ev('JSON.stringify({mode:MODE, main:activeMainTab, mem:navMemory, rev:activeReviewTab})');
+  try {
+    ev("localStorage.removeItem(UI_PREF_KEY); subOpen = {};");
+
+    // --- a fold he chose survives a relaunch (subOpen is session-only; the pref is not) ---
+    ev("window.__foldHost = document.createElement('div'); document.body.appendChild(__foldHost);" +
+       "__foldHost.innerHTML = subSection('Fold probe', '<i>x</i>', true, {pref:'test.fold', summary:'Next: something'});");
+    ok('a remembered card opens by default the first time', ev("__foldHost.firstChild.classList.contains('open')"));
+    ok('...and says what it will keep showing while folded', ev('__foldHost.innerHTML').indexOf('Next: something') >= 0);
+    ev("__foldHost.querySelector('.sub-head').click();");
+    ok('folding it records the choice on this device', ev("uiPref()['open.test.fold']") === false);
+    ev("subOpen = {};");   // a relaunch: the session memory is gone
+    ok('...so after a relaunch it comes back folded',
+       ev("subSection('Fold probe', '<i>x</i>', true, {pref:'test.fold'})").indexOf('class="sub"') >= 0 &&
+       ev("subSection('Fold probe', '<i>x</i>', true, {pref:'test.fold'})").indexOf('class="sub open"') < 0);
+    ok('a card without a pref still forgets on relaunch, as before',
+       ev("subSection('Fold probe', '<i>x</i>', true)").indexOf('class="sub open"') >= 0);
+    ev("__foldHost.remove(); delete window.__foldHost;");
+
+    // --- fuel timing on Today: the line a folded card keeps ---
+    ev("S.fuel.workoutTime = '17:00'; S.fuel.sessionLen = 60;");
+    ok('folded fuel card names the next window (10 AM, workout at 5)',
+       ev('fuelNextLine(600)') === 'Next: Main pre-workout meal · 2:15 PM', ev('fuelNextLine(600)'));
+    ok('...moves on as the day does (4:50 PM)', ev('fuelNextLine(16*60+50)') === 'Next: During · 5:20 PM', ev('fuelNextLine(16*60+50)'));
+    ok('...and says when the day is done (9 PM)', /^Done for today/.test(ev('fuelNextLine(21*60)')), ev('fuelNextLine(21*60)'));
+    ok('the Fuel tab keeps its own heading; the Today card drops the duplicate',
+       ev('fuelTimingHTML()').indexOf('Workout Fuel Timing') >= 0 && ev('fuelTimingHTML({bare:true})').indexOf('Workout Fuel Timing') < 0);
+    // Today renders it only on a training day, so make today one whatever day the suite runs
+    const frDow = ev('new Date(todayKey()+"T00:00:00").getDay()');
+    ev("S.scheduleMode = 'dow'; S.schedule[" + frDow + "] = 'D1'; S.deload = null;");
+    ev("MODE = 'review'; activeMainTab = 'home'; navMemory = {home:'home'}; renderHome();");
+    const homeHtml = ev("document.getElementById('home').innerHTML");
+    ok('Today shows fuel timing as a card that can be folded and remembered',
+       homeHtml.indexOf('data-pref="open.home.fuel"') >= 0 && (homeHtml.indexOf('Next:') >= 0 || /Done for today/.test(homeHtml)),
+       homeHtml.slice(homeHtml.indexOf('Fuel timing'), homeHtml.indexOf('Fuel timing') + 300));
+
+    // --- Settings: four remembered groups, folded by default ---
+    ev("S.settings.ghToken = 't'; S.settings.gistId = 'g'; whoopRelaySet(true, 204, '');");
+    ev("activeMainTab = 'settings'; navMemory = {settings:'settings'}; renderSettings();");
+    const setEl = () => ev("document.getElementById('settings').innerHTML");
+    const groups = ev("Array.prototype.map.call(document.querySelectorAll('#settings > .sub.grp'), function(g){ return g.querySelector('.sub-t span').textContent + (g.classList.contains('open') ? ':open' : ':folded'); })");
+    ok('Settings is four groups, folded by default',
+       JSON.stringify(groups) === JSON.stringify(['Training:folded', 'Exercises:folded', 'Connections:folded', 'App & data:folded']), JSON.stringify(groups));
+    ok('every section is still inside a group (the page lost nothing)',
+       ['Anthropic API', 'Training Schedule', 'Deload', 'Rep Range', 'Exercise &amp; Split Editor', 'Exercise Names',
+        'App Version', 'Cloud Sync', 'Data'].every(t => setEl().indexOf('<h2>' + t) >= 0) && setEl().indexOf('id="syncMsg"') >= 0);
+    // a fold must never hide a failure: the relay lesson
+    ok('a healthy connection folds to a quiet summary', setEl().indexOf('WHOOP relay can') < 0);
+    ev("whoopRelaySet(false, 403, 'Must have admin rights to Repository.'); renderSettings();");
+    ok('a relay that cannot run is named in the folded Connections summary',
+       ev("document.querySelectorAll('#settings > .sub.grp')[2].querySelector('.sub-sum').textContent").indexOf('WHOOP relay can’t run from this device') >= 0 &&
+       ev("document.querySelectorAll('#settings > .sub.grp')[2].classList.contains('open')") === false,
+       ev("document.querySelectorAll('#settings > .sub.grp')[2].querySelector('.sub-sum').textContent"));
+    ev("S.settings.gdocUrl = 'https://script.google.com/z/exec'; S.settings.gdocSecret = 's'; gdocNoteSet({ok:false, sig:'', msg:'bad secret'}); renderSettings();");
+    ok('...and so is a schedule doc that is not updating', setEl().indexOf('Schedule doc not updating') >= 0);
+    ev("localStorage.removeItem(GDOC_NOTE_KEY); localStorage.removeItem(WHOOP_RELAY_KEY);");
+
+    // --- charts: tagged so the desktop cap applies; the cap itself is layout, which jsdom cannot
+    // measure, so this asserts the class every chart root carries and that the rule exists ---
+    const kp = "[{date:'2026-06-15',v:164},{date:'2026-07-06',v:171},{date:'2026-09-22',v:181}]";
+    const roots = {
+      lineChart: ev('lineChart(' + kp + ", '#F28A3A')"),
+      dualLineChart: ev('dualLineChart(' + kp + ', ' + kp + ')'),
+      anSpark: ev('anSpark(' + kp + ", 300, 70, 'var(--amber)')"),
+      anDualSpark: ev('anDualSpark(' + kp + ', ' + kp + ", 300, 74, 'a', 'b')"),
+      roadSVG: ev('roadSVG(150, 170, 200, false)'),
+      milestone: ev('milestoneBarGraphic(172, [150,175,200])'),
+      // a minimal hand-built projection: the lift fixtures earlier sections used are cleaned up by now
+      fan: ev("(function(){ var d=function(n){ return mesoAddDays(todayKey(), n); };" +
+        "var s=function(v0,dv){ return [0,14,28].map(function(n,i){ return {date:d(n), v:v0+dv*i}; }); };" +
+        "return anEnsembleChartSVG({series:{10:s(180,2), 50:s(180,4), 90:s(180,6)}, hist:[{date:d(-21),v:172},{date:d(-14),v:175},{date:d(-7),v:178},{date:d(0),v:180}]," +
+        "r2:0.9, conf:'steady trend', reg:null}, 380, 230); })()")
+    };
+    const untagged = Object.keys(roots).filter(k => !/<svg class="ck"/.test(roots[k]));
+    ok('every chart carries the class the desktop size cap keys off', untagged.length === 0, JSON.stringify(untagged));
+    ok('...and the cap exists, desktop only', /@media\(min-width:900px\)\{ svg\.ck\{max-width:480px;\} \}/.test(ev('document.documentElement.outerHTML')));
+
+    // --- Bulk quality: dates under the chart, spanning what it draws ---
+    const bqA = [{date:'2026-06-14', v:0}, {date:'2026-07-19', v:2.1}, {date:'2026-09-13', v:4.4}];
+    // the strength line starts a week before bodyweight does, so only BOTH lines give the real span
+    const bqB = [{date:'2026-06-07', v:0}, {date:'2026-08-09', v:1.2}];
+    const dates = ev('anDualSparkDates(' + JSON.stringify(bqA) + ',' + JSON.stringify(bqB) + ')');
+    const lbls = (dates.match(/<span>([^<]+)<\/span>/g) || []).map(x => x.replace(/<\/?span>/g, ''));
+    ok('Bulk quality dates run from the first point of either line to the last',
+       JSON.stringify(lbls) === JSON.stringify(['Jun 7', 'Jul 26', 'Sep 13']), JSON.stringify(lbls));
+    ok('...and render under the chart', /anDualSparkDates\(r\.bwLine, r\.stLine\)/.test(ev('renderAnBulkQuality.toString()')));
+    // the live chart samples at week ends, so its last point is this week's end -- still ahead
+    const liveEnd = ev("anDualSparkDates([{date:mesoAddDays(todayKey(),-35),v:0},{date:mesoAddDays(todayKey(),3),v:1}]," +
+                       "[{date:mesoAddDays(todayKey(),-28),v:0},{date:mesoAddDays(todayKey(),3),v:2}])");
+    ok('...and the current week reads as this week, not a date still to come',
+       /<span>This week<\/span><\/div>$/.test(liveEnd), liveEnd);
+  } catch (e) {
+    ok('after-the-reskin section', false, e.stack);
+  }
+  ev('S = ' + frSaved + ';');
+  const frn = JSON.parse(frNav);
+  ev("localStorage.removeItem(UI_PREF_KEY); subOpen = {}; MODE = " + JSON.stringify(frn.mode) + "; activeMainTab = " + JSON.stringify(frn.main) +
+     "; navMemory = " + JSON.stringify(frn.mem) + "; activeReviewTab = " + JSON.stringify(frn.rev) + ";");
+  ok('cleanup: real state restored after the fold section', ev('JSON.stringify(S)') === frSaved);
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

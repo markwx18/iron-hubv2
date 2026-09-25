@@ -5,7 +5,8 @@
    There is no function in this file that produces a write to the gist, and there must never be
    one -- approving a proposal, or anything else that mutates training data, happens in the app. */
 
-export const COLORS = { amber: 0xF6862F, cyan: 0x46CDBA, violet: 0xB79BFF, zulu: 0xDFAE36, red: 0xE5534B, dim: 0x39424E };
+// The app's Forge x Ember palette (V3): amber, teal for good, the re-stepped red for bad, a warm dim.
+export const COLORS = { amber: 0xF28A3A, cyan: 0x54C2A4, violet: 0xB79BFF, zulu: 0xDFAE36, red: 0xD2476B, dim: 0x4A3B31 };
 export const AGENT_META = {
   zulu: { name: 'ZULU', color: COLORS.zulu },
   charlie: { name: 'CHARLIE', color: COLORS.cyan },

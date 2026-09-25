@@ -1,7 +1,7 @@
 /* e1RM trend chart as SVG. Pure string-building so it is testable in Node; worker.js turns it
    into a PNG with resvg (Discord will not display SVG). Colours match the app's
-   "forge on steel" palette. */
-const C = { bg: '#0E1217', panel: '#151A21', grid: '#232A33', dim: '#8D909A', text: '#E6E8EB', amber: '#F6862F', cyan: '#46CDBA', red: '#E5534B' };
+   "Forge x Ember" palette (V3); the font stays the one bundled for resvg. */
+const C = { bg: '#16110E', panel: '#201915', grid: '#3A2E26', dim: '#978779', text: '#F4EADF', amber: '#F28A3A', cyan: '#54C2A4', red: '#D2476B' };
 const escXml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export function chartSVG(exercise, pts, opts) {

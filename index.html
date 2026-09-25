@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-24-v3">
+<meta name="ironhub-build" content="2026-09-24-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1132,6 +1132,148 @@
   .sn-item.on{color:var(--amber); border-left-color:var(--amber);}
   .sn-sub.on{color:var(--amber); border-left-color:var(--amber);}
   .sn-ic{display:flex; align-items:center; justify-content:center;}
+
+  /* ============================================================
+     FORGE x EMBER -- slice 4: screen layouts.
+     ============================================================ */
+  /* merged views: the group's sections stack in the order the view lists them */
+  #reviewMode main{display:flex; flex-direction:column;}
+  #reviewMode main > .subnav{order:-1;}
+  #reviewMode main > section{min-width:0;}
+  /* Each part already opens with a card that titles it (its amber kicker), so the part is set
+     apart by space and a hairline rather than a second heading saying the same words. */
+  main section.stacked::before{content:""; display:block; column-span:all; height:1px; background:var(--line); margin:26px 2px 14px;}
+  main section.stacked[style*="order: 0"]::before{display:none;}
+
+  /* the segmented control: a track in the card colour, the current view lifted, amber type */
+  .subnav.has.seg{display:block; overflow:visible;}
+  .seg-track{display:grid; gap:4px; padding:4px; border-radius:16px; background:var(--panel); box-shadow:var(--lift);}
+  .subnav.seg .seg-track button{height:40px; min-width:0; padding:0 4px; border:none; border-radius:12px; background:none;
+    color:var(--muted); font-size:14px; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .subnav.seg .seg-track button.on{background:var(--panel2); color:var(--amber); box-shadow:0 2px 6px rgba(0,0,0,.3);}
+  /* SE-class phones: Body's four labels only fit with a tighter track and no tracking */
+  @media(max-width:360px){ .seg-track{gap:2px; padding:3px;} .subnav.seg .seg-track button{font-size:12px; letter-spacing:0; padding:0 2px;} }
+
+  /* status chips: the colour a chip already carries as text also tints its ground, so a status
+     reads as a filled chip rather than an outlined tag. Chips set their colour inline, which is
+     why this derives the tint from currentColor instead of naming one. */
+  @supports (background: color-mix(in srgb, red 10%, transparent)){
+    .pill,.ol-verdict,.ag-tag,.cpb-tag,.cmem-tag,.lset .leff,.delta,.meso-rot-d{
+      background:color-mix(in srgb, currentColor 13%, transparent);
+      border-color:color-mix(in srgb, currentColor 30%, transparent);}
+  }
+  .ol-verdict,.ag-tag,.meso-rot-d{border-radius:999px; font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em; padding:3px 10px;}
+
+  /* ============================================================
+     FORGE x EMBER -- slice 5: LIVE, visual only. Nothing here moves an element: the order,
+     the ids and every tap target are exactly where they were, so muscle memory at the rack
+     survives. Sizes only grow.
+     ============================================================ */
+  .sessionbar{gap:10px; padding:12px 0;}
+  .sessionbar .sb-day{font-size:19px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sessionbar .sb-prog{font-family:var(--disp); font-weight:600; font-size:13px; letter-spacing:.04em; color:var(--muted); white-space:nowrap;}
+  .sessionbar .sb-clock{font-family:var(--disp); font-weight:700; font-size:22px; color:var(--amber); margin-left:0; font-variant-numeric:tabular-nums;}
+  .sessionbar .pill{font-size:11.5px !important;}
+
+  .liveex{border:none; border-radius:20px; box-shadow:var(--lift);}
+  .liveex.lv3,.liveex.active{border:none;}
+  /* the Forge corner brackets drew a hard frame on a card that is now rounded */
+  .liveex.active .liveex-head::before,.liveex.active .liveex-head::after{display:none;}
+  .lv3-head{padding:16px 16px 10px;}
+  .lv3-eyebrow{font-size:12.5px; margin-bottom:6px;}
+  .liveex-name{font-size:28px !important; line-height:1.02;}
+  .liveex-chips{gap:6px;}
+
+  /* the hero: one panel, three equal cells, big Saira numerals */
+  .lv3-hero{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; margin:4px 16px 12px; padding:0;
+    background:var(--panel2); border-radius:16px; overflow:hidden;}
+  .lv3-hero-x{display:none;}
+  .lv3-hero-cell,.lv3-hero-set{background:none; border:none; border-radius:0; padding:14px 12px 11px; align-items:flex-start;}
+  .lv3-hero-x + .lv3-hero-cell,.lv3-hero-set{border-left:1px solid var(--line);}
+  .lv3-hero-n{font-size:46px; line-height:.92; font-variant-numeric:tabular-nums;}
+  .lv3-set-big{font-size:34px; line-height:.95;}
+  .lv3-hero-l{font-family:var(--body); font-size:12.5px; letter-spacing:0; text-transform:none; color:var(--muted); margin-top:5px;}
+  @media(max-width:360px){ .lv3-hero-n{font-size:38px;} .lv3-set-big{font-size:27px;} .lv3-hero-cell,.lv3-hero-set{padding:12px 9px 10px;} }
+
+  .lv3-presc{margin:0 16px 10px; padding:11px 13px; border-radius:14px; background:var(--panel2); font-size:14px; color:var(--text); line-height:1.45;}
+  .lv3-presc + .lv3-presc{background:none; padding:0 13px; margin-top:-4px;}
+
+  /* sets: hairline rows instead of boxed ones */
+  .liveex-sets{padding:0 16px 8px; gap:0;}
+  .lset{border:none; border-top:1px solid var(--line); border-radius:0; background:none; padding:11px 4px; gap:10px;}
+  .liveex-sets > .lset:first-child{border-top:none;}
+  .lset.logged{border-color:var(--line);}
+  .lset.ghost{opacity:.5; border:none; border-top:1px solid var(--line);}
+  .lset.lv3-next{background:rgba(242,138,58,.07); border-color:transparent; border-radius:10px;}
+  .lset .lsn{font-family:var(--body); font-size:12.5px; letter-spacing:0; text-transform:none; color:var(--dim); width:42px;}
+  .lset .lval{font-family:var(--disp); font-weight:700; font-size:20px; font-variant-numeric:tabular-nums;}
+  .lset .leff{font-family:var(--disp); font-weight:600; font-size:11.5px; letter-spacing:.05em; border-radius:999px; padding:2px 9px;}
+  .lset.lv3-edit{border:none; border-radius:14px; background:var(--panel2); padding:12px; margin:4px 0;}
+
+  /* the dock */
+  .livedock.lv3-dock{margin-top:6px; padding:14px 16px 16px; background:var(--panel2); border-top:none; border-radius:0 0 20px 20px;}
+  .dock-last{font-family:var(--body); font-size:12.5px; background:none; border:none; padding:0 2px 10px; color:var(--muted);}
+  .dock-last .dl-tag{font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em; color:var(--dim);}
+  .lv3-inrow{gap:10px;}
+  .lv3-in{font-family:var(--disp) !important; font-weight:700; font-size:30px !important; padding:8px 12px !important;
+    border-radius:14px !important; background:var(--base) !important; border-color:var(--line) !important;}
+  .lv3-eff{gap:6px; margin-top:12px;}
+  .lv3-eff button{height:46px; padding:0 4px; border-radius:12px; background:var(--base); border:1px solid var(--line); color:var(--text);
+    font-family:var(--disp); font-weight:600; font-size:14px; letter-spacing:.05em; display:flex; align-items:center; justify-content:center; gap:7px;}
+  /* a colour dot per bucket, in the same colours the logged-set chips use */
+  .lv3-eff button::before{content:""; width:8px; height:8px; border-radius:50%; flex:none; background:var(--dim);}
+  .lv3-eff button:nth-child(1)::before{background:var(--cyan);}
+  .lv3-eff button:nth-child(2)::before{background:var(--muted);}
+  .lv3-eff button:nth-child(3)::before{background:var(--amber);}
+  .lv3-eff button:nth-child(4)::before{background:var(--red);}
+  .lv3-eff button.sel::before{background:currentColor; opacity:.55;}
+  .efflv{margin-top:12px;}
+  .efflv-top,.efflv-ends{font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em;}
+  .efflv-val{font-size:13px;}
+  .efflv input[type=range]::-webkit-slider-runnable-track{height:8px; border-radius:4px;}
+  .efflv input[type=range]::-moz-range-track{height:8px; border-radius:4px;}
+  .efflv input[type=range]::-webkit-slider-thumb{margin-top:-9px; border-color:var(--panel2);}
+  .lv3-btns{gap:10px; margin-top:14px;}
+  .btn.lv3-log{height:58px; padding:0; border-radius:16px; font-size:21px;}
+  .btn.lv3-done{height:58px; padding:0; border-radius:16px; font-size:18px; background:none; color:var(--cyan); border:1px solid var(--cyan);}
+  .lv3-restnote{font-family:var(--body); font-size:12.5px; letter-spacing:0; text-transform:none; color:var(--dim); margin-top:10px;}
+
+  /* up next / done: a list, not a stack of dimmed cards */
+  .liveex.lv3-row{opacity:.9; background:none; box-shadow:none; border:none; border-top:1px solid var(--line); border-radius:0; margin:0;}
+  .liveex.done.lv3-row{opacity:.72;}
+  .lv3-row-in{padding:12px 4px;}
+  .lv3-row-n{font-family:var(--disp); font-weight:700; font-size:16px; color:var(--dim);}
+  .lv3-row-mid b{font-size:17px;}
+  .lv3-row-tag{font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em; color:var(--dim);}
+
+  /* rest timer */
+  .rt-bg{stroke:var(--panel2); stroke-width:9;}
+  .rt-fg{stroke-width:9;}
+  .rt-time{font-family:var(--disp); font-weight:700; font-size:42px; letter-spacing:0; font-variant-numeric:tabular-nums;}
+  .rt-label{font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.08em;}
+  .rt-btns button{font-family:var(--disp); font-weight:600; font-size:14px; letter-spacing:.05em; padding:9px 16px; border-radius:12px;
+    background:var(--panel2); border:none; color:var(--text);}
+
+  /* ---- after the reskin ---- */
+  /* a folded card's one-line summary */
+  .sub-t{display:flex; flex-direction:column; gap:3px; min-width:0;}
+  .sub-sum{font-family:var(--body); font-weight:500; font-size:13px; letter-spacing:0; text-transform:none; color:var(--muted);
+    line-height:1.4; overflow-wrap:anywhere;}
+  .sub.open .sub-sum{display:none;}
+  .sub-sum .sum-bad{color:var(--bad); font-weight:600;}
+  .sub-sum .sum-new{color:var(--amber); font-weight:600;}
+  /* a group card holds other cards, so it is a header over them rather than a card around them */
+  .sub.grp{background:none; box-shadow:none; border-radius:0; overflow:visible; margin:10px 0;}
+  .sub.grp > .sub-head{background:var(--panel); border-radius:var(--r-card); box-shadow:var(--lift); padding:15px 16px;}
+  .sub.grp.open > .sub-head{background:var(--panel2);}
+  .sub.grp > .sub-body{padding:2px 0 0;}
+  .sub.grp > .sub-body > h2:first-child{margin-top:12px;}
+
+  /* Charts are drawn for a phone card. On a wide desktop card width:100% scaled them past
+     double, so their type came out near 30px; past 480px they stop growing. */
+  @media(min-width:900px){ svg.ck{max-width:480px;} }
+
+  .spark-dates{display:flex; justify-content:space-between; margin-top:4px; font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums;}
 </style>
 
 
@@ -1181,8 +1323,8 @@
       <main>
         <div class="subnav" id="subnav"></div>
         <section id="home"></section>
-        <section id="progress" class="on"></section>
-        <section id="road"></section>
+        <section id="progress" class="on" data-title="Overview"></section>
+        <section id="road" data-title="Road to target"></section>
         <section id="bulk"></section>
         <section id="fuel"></section>
         <section id="library"></section>
@@ -1192,12 +1334,12 @@
         <section id="meso"></section>
         <section id="log"></section>
         <section id="settings"></section>
-        <section id="an_over"></section>
-        <section id="an_strength"></section>
+        <section id="an_over" data-title="This year"></section>
+        <section id="an_strength" data-title="PR history"></section>
         <section id="an_fatigue"></section>
         <section id="an_recovery"></section>
         <section id="an_dev"></section>
-        <section id="an_pred"></section>
+        <section id="an_pred" data-title="Predictions"></section>
         <section id="an_overload"></section>
         <section id="today" style="display:none"></section>
       </main>
@@ -3456,7 +3598,7 @@ function milestoneBarGraphic(cur, milestones){
   const scaleX = v => trackX1 + Math.max(0,Math.min(1, v/maxM)) * (trackX2-trackX1);
   const fillX2 = scaleX(Math.min(cur, maxM));
   const reached = milestones.filter(m=>m<=cur).length;
-  let svg = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Milestone progress: '+reached+' of '+milestones.length+' reached" style="width:100%;height:auto">';
+  let svg = '<svg class="ck" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Milestone progress: '+reached+' of '+milestones.length+' reached" style="width:100%;height:auto">';
   svg += '<rect x="'+trackX1+'" y="'+trackY+'" width="'+(trackX2-trackX1)+'" height="'+trackH+'" rx="6" fill="var(--panel2)"/>';
   if(fillX2 > trackX1+2){
     svg += '<rect x="'+trackX1+'" y="'+trackY+'" width="'+(fillX2-trackX1)+'" height="'+trackH+'" rx="6" fill="var(--accent)"/>';
@@ -3476,7 +3618,7 @@ function milestoneBarGraphic(cur, milestones){
 function lineChart(pts, color){
   const W=CK_W, H=190, L=36, R=W-14, T=20, B=H-28;
   if(pts.length===1){
-    return '<svg viewBox="0 0 '+W+' 110" role="img" aria-label="One point so far: '+pts[0].v+' lb" style="width:100%;height:auto">'+
+    return '<svg class="ck" viewBox="0 0 '+W+' 110" role="img" aria-label="One point so far: '+pts[0].v+' lb" style="width:100%;height:auto">'+
       ckDot(W/2, 66, color, 5)+ckText(W/2, 42, pts[0].v+' lb \u2014 one point so far', {anchor:'middle', size:12.5, fill:'var(--muted)'})+'</svg>';
   }
   const t0=new Date(pts[0].date).getTime(), t1=new Date(pts[pts.length-1].date).getTime()||t0+1;
@@ -3486,7 +3628,7 @@ function lineChart(pts, color){
   const y=v=>B-((v-(vmin-pad))/((vmax+pad)-(vmin-pad)))*(B-T);
   const xy = pts.map(p=>[x(new Date(p.date).getTime()), y(p.v)]);
   const d = ckD(xy), last = xy[xy.length-1];
-  let svg='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Trend from '+pts[0].v+' to '+pts[pts.length-1].v+'" style="width:100%;height:auto">';
+  let svg='<svg class="ck" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Trend from '+pts[0].v+' to '+pts[pts.length-1].v+'" style="width:100%;height:auto">';
   [vmin,(vmin+vmax)/2,vmax].forEach(v=>{ svg += ckGrid(L, R, y(v)) + ckText(L-7, y(v)+4, Math.round(v), {anchor:'end'}); });
   svg += ckArea(d, xy[0][0], last[0], B, color) + ckPath(d, color);
   if(xy.length <= CK_DOTS_MAX) xy.slice(0,-1).forEach(p=>{ svg += ckDot(p[0], p[1], color, 3); });
@@ -3635,7 +3777,7 @@ function goalCard(g){
 function roadSVG(start, cur, target, done){
   const W=CK_W, H=92, L=16, R=W-16, RY=34, RH=26;
   const x = v => L + Math.max(0,Math.min(1,(v-start)/Math.max(target-start,1)))*(R-L);
-  let svg = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Progress road from '+Math.round(start)+' to '+target+', now at '+Math.round(cur)+'" style="width:100%;height:auto">';
+  let svg = '<svg class="ck" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Progress road from '+Math.round(start)+' to '+target+', now at '+Math.round(cur)+'" style="width:100%;height:auto">';
   svg += '<rect x="'+L+'" y="'+RY+'" width="'+(R-L)+'" height="'+RH+'" rx="9" fill="var(--panel2)"/>';
   svg += '<line x1="'+(L+10)+'" x2="'+(R-14)+'" y1="'+(RY+RH/2)+'" y2="'+(RY+RH/2)+'" stroke="var(--line2)" stroke-width="2" stroke-dasharray="10 9" stroke-linecap="round"/>';
   for(let q=1;q<4;q++){
@@ -5643,11 +5785,24 @@ function fuelClockFrom(hhmm, offsetMin){
 }
 function setFuelWorkoutTime(v){ fuelInit(); S.fuel.workoutTime = v; save(); renderFuel(); }
 function setFuelSessionLen(v){ fuelInit(); S.fuel.sessionLen = +v||60; save(); renderFuel(); }
-function fuelTimingHTML(){
+/* The line Today's fuel card keeps while folded: the next window that has not started yet.
+   nowMin is minutes past midnight, a parameter so the suite does not depend on the clock. */
+function fuelNextLine(nowMin){
+  fuelInit();
+  const m = /^(\d{1,2}):(\d{2})$/.exec(S.fuel.workoutTime || '');
+  if(!m) return '';
+  if(nowMin === undefined){ const d = new Date(); nowMin = d.getHours()*60 + d.getMinutes(); }
+  const start = (+m[1])*60 + (+m[2]);
+  const next = FUEL_WINDOWS.find(w => start + w.off >= nowMin);
+  if(!next) return 'Done for today \u00b7 workout was '+fuelClockFrom(S.fuel.workoutTime, 0);
+  return 'Next: '+esc(next.title)+' \u00b7 '+fuelClockFrom(S.fuel.workoutTime, next.off);
+}
+/* opts.bare: leave out the section heading, for a host card that already titles it (Today). */
+function fuelTimingHTML(opts){
   fuelInit();
   const t = S.fuel.workoutTime || '';
   const len = S.fuel.sessionLen || 60;
-  let h = '<h2>Workout Fuel Timing</h2><div class="card">';
+  let h = (opts && opts.bare ? '' : '<h2>Workout Fuel Timing</h2>')+'<div class="card">';
   h += '<p class="small" style="margin-bottom:10px">Set roughly when you\u2019re training and this lays out what to eat and drink around it \u2014 filtered against your exclusions above.</p>';
   h += '<div class="row"><div><label>Planned workout start</label>'+
     '<input type="time" id="fWorkTime" value="'+esc(t)+'" onchange="setFuelWorkoutTime(this.value)"></div>'+
@@ -5812,13 +5967,40 @@ async function refreshMeal(i){
    every 30s and after every sync pull, so a DOM-only toggle would close itself mid-paste. */
 let tokOpen = false;
 let gdocOpen = false;
+/* What each folded Settings group still has to say. A fold must never hide a failure: the WHOOP
+   relay lesson was a problem sitting unnoticed for days behind a green dot, so anything broken in
+   a group is named in its summary, where it shows whether the group is open or not. */
+function settingsSummaries(){
+  const bad = t => '<b class="sum-bad">'+t+'</b>';
+  const out = {};
+  const rr = S.settings.repLow+'\u2013'+S.settings.repHigh+' reps';
+  out.training = (scheduleMode()==='cycle' ? 'Rotating cycle' : 'Weekly schedule')+' \u00b7 '+rr+
+    (deloadActive() ? ' \u00b7 deload active' : '');
+  const days = Object.keys(S.split||{}).length;
+  const exs = Object.values(S.split||{}).reduce((n,d)=>n+((d.exercises||[]).length),0);
+  out.exercises = days+' days \u00b7 '+exs+' exercises';
+  const parts = [];
+  parts.push(syncReady() ? 'Sync on' : bad('Sync not connected'));
+  parts.push(S.settings.apiKey ? 'API key set' : 'No API key');
+  const rn = syncReady() ? whoopRelayNote() : null;
+  if(rn && !rn.ok) parts.push(bad('WHOOP relay can\u2019t run from this device'));
+  const gn = gdocNote(), gc = gdocCfg();
+  if(gc && gn && gn.ok === false) parts.push(bad('Schedule doc not updating'));
+  out.connections = parts.join(' \u00b7 ');
+  out.app = 'Build '+esc(appBuild())+(_updRemote ? ' \u00b7 <b class="sum-new">update ready</b>' : '');
+  return out;
+}
 function renderSettings(){
   const el = $('#settings');
   const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const sum = settingsSummaries();
+  const grp = (title, key, inner) => subSection(title, inner, false, {pref:'settings.'+key, summary:sum[key], cls:'grp'});
+  let conn = '', training = '', exercises = '', app = '';
   let html = '<h2>Anthropic API</h2><div class="card">'+
     '<label>API Key</label><input type="password" id="apiKey" value="'+esc(S.settings.apiKey||'')+'" placeholder="sk-ant-…">'+
     '<p class="small" style="margin-top:6px">Stored only in this browser\'s localStorage. Powers the Coach and screenshot import. Leave blank if running inside Claude.ai preview.</p>'+
     '<div style="margin-top:10px"><button class="btn sm" onclick="saveSettings()">Save</button> <span class="ok small" id="setMsg"></span></div></div>';
+  conn += html; html = '';
 
   html += '<h2>Training Schedule</h2><div class="card">';
   html += '<div class="row" style="margin-bottom:10px"><div><label>Schedule type</label>'+
@@ -5852,6 +6034,7 @@ function renderSettings(){
     '<div><label>Low</label><input inputmode="numeric" id="repLow" value="'+S.settings.repLow+'"></div>'+
     '<div><label>High (triggers weight increase)</label><input inputmode="numeric" id="repHigh" value="'+S.settings.repHigh+'"></div>'+
     '<div style="flex:none"><button class="btn sm" onclick="saveSettings()">Save</button></div></div></div>';
+  training = html; html = '';
 
   html += '<h2>Exercise &amp; Split Editor</h2><div class="card">'+
     '<p class="small">Tap a day to expand. Rename or reorder exercises, set each one\u2019s weight increment (what the engine adds when you progress), add or remove exercises.</p>'+
@@ -5865,6 +6048,7 @@ function renderSettings(){
     '<div id="exnWrap" style="margin-top:10px">'+exNameEditorHTML()+'</div></div>';
 
   html += homeEquipmentCardHTML();
+  exercises = html; html = '';
 
   html += '<h2>App Version</h2><div class="card">'+
     '<p class="small">Build <span class="mono" style="color:var(--text)">'+esc(appBuild())+'</span>'+
@@ -5875,6 +6059,7 @@ function renderSettings(){
     (_updRemote ? '<button class="btn sm cyan" onclick="applyUpdate()">Reload now</button>' : '')+
     ' <span class="ok small" id="updMsg"></span></div>'+
     '<p class="small" style="margin-top:8px">Checks automatically on open, every 15 minutes, and whenever you return to the app. Updating only reloads the page \u2014 your data is never touched.</p></div>';
+  app = html; html = '';
 
   html += '<h2>Cloud Sync \u2014 GitHub Gist</h2><div class="card">';
   if(syncReady()){
@@ -5938,13 +6123,17 @@ function renderSettings(){
   html += '<p class="small" id="syncMsg" style="margin-top:8px"></p></div>';
 
   html += gdocCardHTML();
+  conn += html; html = '';
 
   html += '<h2>Data</h2><div class="card"><div class="row">'+
     '<div style="flex:none"><button class="btn sm ghost" onclick="exportData()">Export JSON</button></div>'+
     '<div style="flex:none"><label class="btn sm ghost" style="display:inline-block;cursor:pointer">Import JSON<input type="file" accept=".json" style="display:none" onchange="importData(this)"></label></div>'+
     '<div style="flex:none"><button class="btn sm ghost" onclick="resetAll()" style="color:var(--bad);border-color:var(--bad)">Reset Everything</button></div></div>'+
     '<p class="small" style="margin-top:8px">Export regularly — localStorage can be wiped by browser cleanup. The JSON file is your backup.</p></div>';
-  el.innerHTML = html;
+  app += html;
+  // Folded by default and remembered per device: eleven sections on one page was the complaint.
+  el.innerHTML = grp('Training', 'training', training) + grp('Exercises', 'exercises', exercises) +
+    grp('Connections', 'connections', conn) + grp('App & data', 'app', app);
 }
 /* Rendered as its own card rather than folded into Cloud Sync: it is a different endpoint with
    a different credential, and the WHOOP relay lesson was that a failure hidden under somebody
@@ -6296,12 +6485,11 @@ const NAV_MODEL = [
     {id:'meso',        label:'Plan'},
     {id:'log',         label:'Log'},
     {id:'library',     label:'Library'}]},
+  // Seven sections, four views. A merged view lists its sections in show[], in reading order;
+  // each keeps its own renderer and its own id, so nothing that draws them had to change.
   {id:'progress', label:'Progress', ic:'progress', subs:[
-    {id:'progress',    label:'Overview'},
-    {id:'an_over',     label:'This year'},
-    {id:'an_strength', label:'PR history'},
-    {id:'an_pred',     label:'Predictions'},
-    {id:'road',        label:'Road'},
+    {id:'progress',    label:'Overview', show:['progress','an_over']},
+    {id:'strength',    label:'Strength', show:['an_strength','an_pred','road']},
     {id:'an_overload', label:'Overload'},
     {id:'an_fatigue',  label:'Fatigue'}]},
   {id:'body',     label:'Body',     ic:'body', subs:[
@@ -6319,13 +6507,15 @@ const NAV_MODEL = [
 ];
 /* The bottom bar, in order. 'live' is not a group -- it is the mode switch, raised in the middle. */
 const NAV_BOTTOM = ['home','train','live','progress','body'];
-/* section id -> [group, section]. Every section, so that anything naming a section lands in
-   the group it lives in NOW, whatever group it was called from. */
+/* section id -> [group, view]. Every section, so that anything naming a section lands in the
+   group it lives in NOW, whatever group it was called from -- and on the view that shows it,
+   which for a merged view is not the section's own id. */
 const NAV_LEGACY = {
   home:['home','home'],
   meso:['train','meso'], log:['train','log'], library:['train','library'],
-  progress:['progress','progress'], an_over:['progress','an_over'], an_strength:['progress','an_strength'],
-  an_pred:['progress','an_pred'], road:['progress','road'], an_overload:['progress','an_overload'],
+  progress:['progress','progress'], an_over:['progress','progress'],
+  strength:['progress','strength'], an_strength:['progress','strength'], an_pred:['progress','strength'],
+  road:['progress','strength'], an_overload:['progress','an_overload'],
   an_fatigue:['progress','an_fatigue'],
   bulk:['body','bulk'], fuel:['body','fuel'], an_dev:['body','an_dev'], an_recovery:['body','an_recovery'],
   invest:['ops','invest'],
@@ -6344,13 +6534,21 @@ let navMemory = {};   // remembers last sub per main tab, session-scoped
 
 function navMain(id){ return NAV_MODEL.find(n=>n.id===id); }
 /* A section named by the caller decides the group, because sections moved between groups in
-   V3 and callers written before that still name the old one (showMainTab('analytics','an_fatigue')). */
+   V3 and callers written before that still name the old one (showMainTab('analytics','an_fatigue')).
+   Returns [group, view, section asked for]: the third is how a merged view knows to scroll to
+   the part that was asked for rather than open at its top. */
 function navResolve(mainId, subId){
-  if(subId && NAV_LEGACY[subId]) return [NAV_LEGACY[subId][0], subId];
-  if(navMain(mainId)) return [mainId, subId];
+  if(subId && NAV_LEGACY[subId]) return [NAV_LEGACY[subId][0], NAV_LEGACY[subId][1], subId];
+  if(navMain(mainId)) return [mainId, subId, null];
   const al = NAV_MAIN_ALIAS[mainId];
-  return al ? [al[0], subId || al[1]] : [null, subId];
+  return al ? [al[0], subId || al[1], null] : [null, subId, null];
 }
+function navSubObj(mainId, subId){ const m = navMain(mainId); return m ? m.subs.find(x=>x.id===subId) || null : null; }
+/* The sections a view shows, in reading order: its show[] when it merges several, else itself. */
+function navShows(mainId, subId){ const so = navSubObj(mainId, subId); return (so && so.show) || [subId]; }
+/* Paint every part of a view. The one path both a tab switch and the refresh tick use, so a
+   merged view can never have one part go stale. */
+function navRenderSub(mainId, subId){ navShows(mainId, subId).forEach(id=>{ (REVIEW_RENDER[id]||function(){})(); }); }
 const NAV_IC = {
   today:'M4 11.5 12 5l8 6.5V20h-5v-5h-6v5H4z',
   train:'M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11',
@@ -6368,17 +6566,32 @@ function showMainTab(mainId, subId){
   const m = navMain(r[0]); if(!m) return;
   mainId = r[0]; subId = r[1];
   activeMainTab = mainId;
-  // a remembered section only counts if it still belongs to this group
+  // a remembered view only counts if it still belongs to this group
   const mem = navMemory[mainId];
-  const sub = subId || (m.subs.some(x=>x.id===mem) ? mem : m.subs[0].id);
+  const sub = (subId && m.subs.some(x=>x.id===subId)) ? subId : (m.subs.some(x=>x.id===mem) ? mem : m.subs[0].id);
   navMemory[mainId] = sub;
   activeReviewTab = sub;   // keep the legacy pointer accurate for boot re-renders
   try{ renderStatusStrip(); }catch(e){}
-  document.querySelectorAll('#reviewMode main section').forEach(s=>s.classList.toggle('on', s.id===sub));
+  const so = navSubObj(mainId, sub), shows = navShows(mainId, sub);
+  document.querySelectorAll('#reviewMode main section').forEach(sec=>{
+    const i = shows.indexOf(sec.id);
+    sec.classList.toggle('on', i>=0);
+    // In a merged view each part is set apart from the one above it -- except a part that IS
+    // the view (Overview's own section), which leads the page. The first part never gets a
+    // divider either (the order-0 rule in the stylesheet).
+    sec.classList.toggle('stacked', i>=0 && shows.length>1 && (sec.getAttribute('data-title')||'') !== (so ? so.label : ''));
+    sec.style.order = i>=0 ? String(i) : '';
+  });
   renderSidenav(); renderSubnav(); buildBotNav();
-  (REVIEW_RENDER[sub]||function(){})();
+  navRenderSub(mainId, sub);
   try{ invUpdateBadge(); }catch(e){}
   window.scrollTo({top:0, behavior:'instant'});
+  // Asked for a part further down a merged view (Predictions, inside Strength): land on it.
+  const focus = r[2];
+  if(focus && shows.indexOf(focus)>0){
+    const el = document.getElementById(focus);
+    if(el) window.scrollTo({top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - 120), behavior:'instant'});
+  }
 }
 function renderSidenav(){
   const el = document.getElementById('sidenav'); if(!el) return;
@@ -6405,10 +6618,15 @@ function renderSubnav(){
   const m = navMain(activeMainTab);
   if(!m || m.subs.length<2){ el.innerHTML=''; el.classList.remove('has'); return; }
   el.classList.add('has');
-  el.innerHTML = m.subs.map(s=>{
+  // Four views or fewer (every group now) fit one row on a 320px phone, so they read as a
+  // segmented control. More than that falls back to the scrolling strip.
+  const seg = m.subs.length <= 4;
+  el.classList.toggle('seg', seg);
+  const btns = m.subs.map(s=>{
     const on = navMemory[m.id]===s.id;
     return '<button class="'+(on?'on':'')+'"'+(on?' aria-current="page"':'')+' onclick="showMainTab(\''+m.id+'\',\''+s.id+'\')">'+s.label+'</button>';
   }).join('');
+  el.innerHTML = seg ? '<div class="seg-track" role="tablist" style="grid-template-columns:repeat('+m.subs.length+',minmax(0,1fr))">'+btns+'</div>' : btns;
   // Progress has seven sections, so on a phone the selected one can sit past the right edge
   // of the strip. Centre it by scrolling the strip itself -- scrollIntoView would also move the
   // page, which is exactly what a tab switch must not do.
@@ -7695,16 +7913,34 @@ function renderMarkdown(raw){
    one flag. Session-scoped on purpose, exactly like navMemory. */
 let subOpen = {};
 function subKey(title){ return (navMemory[activeMainTab] || activeReviewTab || '?') + '|' + title; }
+/* Cards he has chosen to keep compressed, per device. A session-scoped subOpen flag forgets on
+   every launch, which for "keep this folded away" is the whole point lost. Not in S: this is a
+   choice about this screen, not training data -- in S it would sync one device's layout onto
+   the other, and a new S field would not survive load() on an existing install anyway. */
+const UI_PREF_KEY = 'ironhub:ui';
+function uiPref(){ try{ return JSON.parse(localStorage.getItem(UI_PREF_KEY) || '{}') || {}; }catch(e){ return {}; } }
+function uiPrefSet(k, v){ try{ const p = uiPref(); p[k] = v; localStorage.setItem(UI_PREF_KEY, JSON.stringify(p)); }catch(e){} }
 function toggleSub(head){
   const on = head.parentElement.classList.toggle('open');
+  head.setAttribute('aria-expanded', on ? 'true' : 'false');
   const k = head.getAttribute('data-subkey');
   if(k) subOpen[k] = on;
+  const pk = head.getAttribute('data-pref');
+  if(pk) uiPrefSet(pk, on);
 }
-function subSection(title, bodyHTML, openByDefault){
+/* opts.pref: remember open/closed on this device under that key (else session-only, as before).
+   opts.summary: one line shown under the title while the card is folded -- what a compressed
+   card still has to say. opts.cls: an extra class on the card. */
+function subSection(title, bodyHTML, openByDefault, opts){
+  opts = opts || {};
   const k = subKey(title);
-  const open = (subOpen[k] !== undefined) ? subOpen[k] : !!openByDefault;
-  return '<div class="sub'+(open?' open':'')+'"><div class="sub-head" data-subkey="'+esc(k)+'" onclick="toggleSub(this)">'+
-    '<span>'+esc(title)+'</span><span class="chev">\u25be</span></div><div class="sub-body">'+bodyHTML+'</div></div>';
+  const pk = opts.pref ? 'open.' + opts.pref : '';
+  const saved = pk ? uiPref()[pk] : undefined;
+  const open = (subOpen[k] !== undefined) ? subOpen[k] : (saved !== undefined ? !!saved : !!openByDefault);
+  return '<div class="sub'+(open?' open':'')+(opts.cls?' '+opts.cls:'')+'"><div class="sub-head" data-subkey="'+esc(k)+'"'+
+    (pk?' data-pref="'+esc(pk)+'"':'')+' role="button" aria-expanded="'+(open?'true':'false')+'" onclick="toggleSub(this)">'+
+    '<span class="sub-t"><span>'+esc(title)+'</span>'+(opts.summary?'<span class="sub-sum">'+opts.summary+'</span>':'')+'</span>'+
+    '<span class="chev">\u25be</span></div><div class="sub-body">'+bodyHTML+'</div></div>';
 }
 
 /* ===================== 1. EXERCISE LIBRARY ===================== */
@@ -9108,7 +9344,7 @@ function dualLineChart(actual, ideal){
   const W=CK_W, H=190, L=36, R=W-14, T=20, B=H-28;
   if(!actual.length) return '<p class="small">No data yet.</p>';
   if(actual.length===1){
-    return '<svg viewBox="0 0 '+W+' 110" role="img" aria-label="One session so far" style="width:100%;height:auto">'+
+    return '<svg class="ck" viewBox="0 0 '+W+' 110" role="img" aria-label="One session so far" style="width:100%;height:auto">'+
       ckDot(W/2, 66, 'var(--amber)', 5)+ckText(W/2, 42, actual[0].v+' lb e1RM \u2014 log another session to see the trend', {anchor:'middle', size:12, fill:'var(--muted)'})+'</svg>';
   }
   const all = actual.concat(ideal);
@@ -9119,7 +9355,7 @@ function dualLineChart(actual, ideal){
   const y=v=>B-((v-(vmin-pad))/((vmax+pad)-(vmin-pad)))*(B-T);
   const xyOf = pts => pts.map(p=>[x(new Date(p.date).getTime()), y(p.v)]);
   const xa = xyOf(actual), last = xa[xa.length-1];
-  let svg='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Estimated 1RM, actual against ideal pace" style="width:100%;height:auto">';
+  let svg='<svg class="ck" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Estimated 1RM, actual against ideal pace" style="width:100%;height:auto">';
   [vmin,(vmin+vmax)/2,vmax].forEach(v=>{ svg += ckGrid(L, R, y(v)) + ckText(L-7, y(v)+4, Math.round(v), {anchor:'end'}); });
   // ideal pace behind, dashed; the legend under the chart names both lines
   if(ideal.length>=2) svg += ckPath(ckD(xyOf(ideal)), 'var(--cyan)', {dash:'5 5', op:.55});
@@ -11409,7 +11645,7 @@ function anSpark(pts, w, h, color, opts){
     extra += '<rect x="0" y="'+y1.toFixed(1)+'" width="'+w+'" height="'+(y2-y1).toFixed(1)+'" rx="4" fill="'+(opts.bandColor||'rgba(84,194,164,.10)')+'"/>';
   }
   const last = xy[xy.length-1];
-  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block;overflow:visible">'+extra+
+  return '<svg class="ck" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block;overflow:visible">'+extra+
     (opts.area===false ? '' : ckArea(path, xy[0][0], last[0], h, color))+
     ckPath(path, color)+ckDot(last[0], last[1], color, 3.5)+'</svg>';
 }
@@ -11731,6 +11967,21 @@ function anBulkQuality(weeks){
                         stPct, ratio, flat, losing, key},
                        anBqSeries(startKey, lifts));
 }
+/* The dates under a dual spark: start, midpoint and end of the span it actually draws. The
+   spark maps x by date across both series together, so these are that same span, evenly
+   spaced -- which is what lets a plain space-between row line up under the drawing. */
+function anDualSparkDates(a, b){
+  const ts = (a||[]).concat(b||[]).map(p=>+new Date(p.date+'T00:00:00')).filter(isFinite);
+  if(ts.length < 2) return '';
+  const t0 = Math.min(...ts), t1 = Math.max(...ts);
+  const f = t => new Date(t).toLocaleDateString('en-US', {month:'short', day:'numeric'});
+  // Bulk quality samples at week ENDS (anBqWeekGrid), so its last point is the end of the
+  // current week -- a date still ahead -- while holding values only up to today. Labelling
+  // that "Sep 27" on the 24th would be a date the chart has not reached.
+  const today = +new Date(todayKey()+'T00:00:00');
+  const endLbl = t1 >= today ? 'This week' : f(t1);
+  return '<div class="spark-dates"><span>'+f(t0)+'</span><span>'+f((t0+t1)/2)+'</span><span>'+endLbl+'</span></div>';
+}
 /* Two series on one normalized axis. x is mapped by date, not by index, so the lines stay
    aligned even when bodyweight and lifting cover different numbers of weeks. */
 function anDualSpark(a, b, w, h, colA, colB){
@@ -11750,7 +12001,7 @@ function anDualSpark(a, b, w, h, colA, colB){
     ckDot(px(pts[pts.length-1].date), py(pts[pts.length-1].v), col, 3.5);
   const zero = (lo < 0 && hi > 0)
     ? '<line x1="0" y1="'+py(0).toFixed(1)+'" x2="'+w+'" y2="'+py(0).toFixed(1)+'" stroke="var(--line2)" stroke-width="1" stroke-dasharray="3 3"/>' : '';
-  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block;overflow:visible">'+
+  return '<svg class="ck" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block;overflow:visible">'+
     zero + line(a, colA) + line(b, colB) + '</svg>';
 }
 function anBqSetWindow(n){ anBqWeeks = +n || 12; renderAnBulkQuality(); }
@@ -11790,6 +12041,7 @@ function renderAnBulkQuality(){
   // chart
   h += '<div class="card"><div class="k">Same window, both lines</div>'+
     anDualSpark(r.bwLine, r.stLine, 300, 74, 'var(--violet)', 'var(--amber)')+
+    anDualSparkDates(r.bwLine, r.stLine)+
     '<div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">'+
       '<span class="small mono" style="color:var(--violet)">— bodyweight</span>'+
       '<span class="small mono" style="color:var(--amber)">— strength index</span>'+
@@ -11951,7 +12203,7 @@ function anFanChartSVG(res, w, h, opts){
 
   // Type scales with the viewBox, so a caller drawing at 640 still reads the same on screen.
   const k = w/CK_W, fs = n => (n*k).toFixed(1);
-  let s = '<svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Projection: history, then a likely range" style="width:100%;height:auto;display:block">';
+  let s = '<svg class="ck" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Projection: history, then a likely range" style="width:100%;height:auto;display:block">';
   s += ckGrid(L, R, py(hi)) + ckGrid(L, R, py(lo));
   // shaded p10\u2013p90 envelope
   s += '<polygon points="'+
@@ -13852,7 +14104,11 @@ function renderHome(){
   // it "if a workout time has been set", and an empty clock is worse than no clock.
   fuelInit();
   if(!t.rest && S.fuel.workoutTime){
-    h += '<div class="dash-sec">Fuel timing</div><div class="card">'+fuelTimingHTML()+'</div>';
+    // Foldable, and remembered: on a training day it is a long card, and once he has it
+    // memorised he wants it out of the way. Folded, it still says what is next.
+    h += '<div class="dash-sec">Fuel timing</div>'+
+      subSection('Workout at '+fuelClockFrom(S.fuel.workoutTime, 0), fuelTimingHTML({bare:true}), true,
+        {pref:'home.fuel', summary:fuelNextLine(), cls:'grp'});
   }
 
   h += '<div class="dash-sec">Waiting on you</div>';
@@ -13871,9 +14127,11 @@ function renderHome(){
 
   h += '<div class="dash-sec">Jump to</div><div class="card"><div class="dash-jump">'+
     '<button class="btn sm" onclick="setMode(\'live\')">\u26a1 Start / open LIVE</button>'+
-    '<button class="btn ghost sm" onclick="showReviewTab(\'ops\')">Operations</button>'+
+    // named for where they land since the V3 regroup: Coach, not Operations, and there is no
+    // Analytics any more (its old target is now part of Progress > Overview, the next button)
+    '<button class="btn ghost sm" onclick="showReviewTab(\'ops\')">Coach</button>'+
     '<button class="btn ghost sm" onclick="showReviewTab(\'progress\')">Progress</button>'+
-    '<button class="btn ghost sm" onclick="showReviewTab(\'an_over\')">Analytics</button>'+
+    '<button class="btn ghost sm" onclick="showReviewTab(\'bulk\')">Body</button>'+
     '</div></div>';
 
   el.innerHTML = h;
@@ -14101,7 +14359,7 @@ function renderOps(){
   const msgCountBefore = agSeen[agActiveChat];
   agSweepExpired();
   const pend = agPending();
-  let h = '<h2>Operations</h2>';
+  let h = '<h2>Coach</h2>';
   h += '<div class="ag-bar">'+
     '<button class="btn sm" onclick="agRunAll(true)"'+(_agRunning?' disabled':'')+'>'+(_agRunning?'Running\u2026':'Run cycle now')+'</button>'+
     '<label class="ag-when" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
@@ -14559,13 +14817,14 @@ function rerenderActive(force){
     if(!force && sig === _tabSig) return;
     _tabSig = sig;
     const sub = navMemory[activeMainTab] || activeReviewTab;
-    const fn = REVIEW_RENDER[sub];
+    const shows = navShows(activeMainTab, sub);
+    const fn = shows.length === 1 ? REVIEW_RENDER[shows[0]] : null;
     // Operations holds a live chat transcript. Repainting it on a timer when nothing has
     // actually changed destroys text selection and is visible churn for no benefit, so skip
     // unless the signature moved. The signature includes a 5-minute bucket so relative
     // timestamps ("2m ago") still refresh periodically without thrashing the chat every 30s.
     if(fn === renderOps && opsSignature() === _opsSig) return;
-    if(typeof fn === 'function') fn();
+    navRenderSub(activeMainTab, sub);
   }catch(e){ console.warn('rerenderActive failed', e); }
 }
 let _bgPulling = false;

@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1858 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1887 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -666,9 +666,22 @@ Condensed caps, industrial amber, big tabular numbers, dense rows with thin divi
 the warm brown-black ground, cream text, and rounded cards that are separated by shade rather than
 outline. The mockups are the "Forge × Ember" page of the V3 Looks canvas (private artifact
 `XVRZXGjKLeYeokfD4dpY5n`). The reskin ships in slices: 1 tokens/type/components (done),
-2 chart kit and 3 navigation (done together), 4 screen layouts, 5 LIVE visual pass, 6 stored and
-off-CSS colours (`S.split[*].hex`, Discord `COLORS`). **The 3D muscle model keeps its colours**
-(`BM_C`/`bm3dColors()`); Mark asked for it to be left as it is.
+2 chart kit and 3 navigation (done together), 4 screen layouts and 5 LIVE visual pass (done together), 6 off-CSS
+colours (done). **The 3D muscle model keeps its colours** (`BM_C`/`bm3dColors()`); Mark asked
+for it to be left as it is, and the flat 2D map stays too, because the two must match.
+
+**The day colours (`S.split[*].hex`, `--d1`–`--d6`) were deliberately left alone.** As a
+six-way categorical palette they fail the colour-blindness check: D1 red against D4 green is
+ΔE 5.8, and D5/D6 are near-greys. But three re-stepped candidates that kept each day's colour
+family all failed too. Red, green and gold cannot be made colour-blind-distinct while staying
+red, green and gold. Every day colour always sits beside its label (`D1 · Chest + Triceps`), and
+changing them would mean a migration of saved state for a marginal gain. If they are ever
+changed, migrate only values still equal to the old defaults, so a colour he picked himself
+survives.
+
+**Discord's colours follow the app** (`discord/src/core.js` `COLORS`, `discord/src/chart.js`
+`C`). Pushing does not deploy the Worker: it goes live only after `npx wrangler deploy` from
+`discord/`.
 
 **Charts go through the chart kit** (`CK_W`, `ckText()`, `ckPath()`, `ckArea()`, `ckDot()`,
 `ckGrid()`): a recessive grid, 2px round lines, a wash under a single series, the latest point
@@ -689,6 +702,44 @@ groups that no longer exist. A remembered section is only reopened if it still b
 group. The suite checks every section is reachable from exactly one group. The exceptions are
 `#today` (the hidden V1 render target) and `#coach` (the empty container left when Coach
 folded into Operations).
+
+**A view can merge sections** (slice 4). A view entry lists them in `show[]`, in reading order.
+Progress is four views over seven sections: Overview = `progress` + `an_over`; Strength =
+`an_strength` + `an_pred` + `road`; Overload; Fatigue. Each section keeps its id and its
+renderer. `showMainTab()` lights every part, orders them with CSS `order`, and sets the later
+parts apart with a hairline (no second heading, since each part's first card already titles
+it). **Every repaint goes through `navRenderSub()`**, so the refresh tick paints all parts, not
+just the first. `NAV_LEGACY` maps a section to the view that shows it, so
+`showReviewTab('an_pred')` opens Strength, and an old-style call naming a lower part scrolls to it.
+A group with four views or fewer renders its sub-nav as a segmented control (`.seg`). At 320px
+Body's four labels only fit with the tightened track in the ≤360px rule, so re-measure if you
+lengthen a label.
+
+**A folded card can remember that it is folded.** `subSection(title, body, open, opts)` takes
+`opts.pref` to store the open/closed choice per device in `localStorage['ironhub:ui']`
+(`uiPref()` / `uiPrefSet()`). Without it, `subOpen` is session-only, as before. It isn't kept in
+`S`, because it is a choice about this screen and would sync one device's layout onto the other.
+`opts.summary` is the line a folded card keeps. Today's fuel timing uses it (`fuelNextLine()`, the
+next window that has not started, taking `nowMin` so tests don't depend on the clock). So does
+Settings, which is four folded groups: Training, Exercises, Connections and App & data. **A fold
+must never hide a failure.** `settingsSummaries()` names a relay that cannot run from this device
+and a schedule doc that is not updating in the Connections summary, visible while folded, for the
+same reason the relay verdict sits under the Connected dot. If you add a failure state to a
+Settings card, add it to that summary too.
+
+**Charts stop growing past 480px on desktop** (`svg.ck` inside `@media(min-width:900px)`). They
+are drawn for a phone card; on a 1000px desktop card, width:100% scaled their type to about 29px.
+Every kit chart root carries `class="ck"`, and the suite checks all seven do.
+
+**Status chips tint from their own colour.** `.pill`, `.ol-verdict` and the other tag classes
+take `color-mix(currentColor)` for their ground, because chips set their colour inline. The small
+title tick stays as the colour cue; every card that has one already states its status in words.
+
+**LIVE was restyled without moving anything** (slice 5). Only CSS changed there: the 3-cell hero
+panel, hairline set rows, the dock on a raised panel with 30px Saira inputs, colour-dotted
+effort buttons, Log set (amber) and Done (outlined). The element order, ids and tap targets are
+exactly as before, which keeps his muscle memory at the rack. `.lv3-in` and `.liveex-name` need
+`!important` only because their old sizes are set inline or with `!important`.
 
 | Token | Value | Use |
 |---|---|---|
