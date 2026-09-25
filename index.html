@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-25-v1">
+<meta name="ironhub-build" content="2026-09-25-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1978,8 +1978,13 @@ function historyFor(ex, opts){
     // that hides the newest data is worse than no tool. Opt-in, so nothing else moves.
     if(lg.deload && !withDeload) continue;
     const e = lg.entries.find(en => en.exercise===ex);
-    if(e && e.sets.length) out.push({date:lg.date, sets:e.sets, deload:!!lg.deload});
+    if(e && e.sets.length) out.push({date:lg.date, sets:e.sets, deload:!!lg.deload, home:!!lg.home});
   }
+  // A HOME session is done with whatever dumbbells or kettlebells are at hand, so its weights say
+  // nothing about the gym ladder -- yet a home set could stand in for "last session" and move the
+  // next gym target. Gym history wins whenever there is any. A lift only ever done at home keeps
+  // its home history, or it would read as "first time" every session.
+  if(!(opts && opts.includeHome) && out.some(h => !h.home)) return out.filter(h => !h.home);
   return out;
 }
 /* Dates on which this lift was trained inside a deload. e1rmSeries() leaves those points out
@@ -2739,7 +2744,12 @@ function readinessTier(r){
   const sc = (RD_SLEEP[r.sleep]||0)+(RD_SORE[r.sore]||0)+(RD_ENERGY[r.energy]||0);
   return sc<=2 ? 'low' : sc<=5 ? 'ok' : 'high';
 }
-function todayReadiness(){ return S.readiness.find(r=>r.date===todayKey()) || null; }
+/* A real check-in, as opposed to the stub quickLogSleep() writes when he logs only his sleep.
+   Stubs carry no soreness or energy (older ones also carry a made-up tier:'ok'), and counting one
+   as a check-in skipped the pre-session check-in for the whole day and fed a fake 'ok' into the
+   readiness analytics. */
+function rdComplete(r){ return !!(r && r.tier && !r.partial && (r.sore || r.energy)); }
+function todayReadiness(){ return S.readiness.find(r=>r.date===todayKey() && rdComplete(r)) || null; }
 window._rd = {};
 function pickRd(btn, key, val){
   window._rd[key]=val;
@@ -3346,11 +3356,11 @@ function nextLevelCardHTML(pre){
       const rate = r.bu ? r.bu.rate : 0;
       if(rate<=0){
         actions.push('The scale is flat or going down. You cannot build meaningful muscle in a deficit at your training age \u2014 this is the biggest drag on your progress right now.');
-        actions.push('Open Cal AI and check your last 7 days honestly. Are you actually hitting 3000+ calories most days? One or two big days don\u2019t offset four low ones.');
+        actions.push('Open Cal AI and check your last 7 days honestly. Are you actually hitting your '+calTarget()+' calorie target most days? One or two big days don\u2019t offset four low ones.');
         actions.push('Protein matters, but total calories matter more for the bulk rate score. If you\u2019re hitting protein but not total cals, add calorie-dense foods (olive oil, nut butters, whole milk, rice) rather than more protein.');
       } else if(rate < BULK_LO){
         actions.push('You\u2019re gaining at '+rate.toFixed(2)+' lb/wk \u2014 under the '+BULK_LO+'–'+BULK_HI+' lb/wk lean-bulk pocket, so the surplus is not landing hard enough to be worth much.');
-        actions.push('Add 200\u2013300 calories to your daily target. At your size and training volume, your maintenance is probably around 2600\u20132800 \u2014 so 3000 cal might only be a ~200 cal surplus, which disappears fast on a heavy training day.');
+        actions.push('Add 200\u2013300 calories to your daily target. At your size and training volume, a surplus that looks comfortable on paper disappears fast on a heavy training day, and the scale says this one is not landing.');
       } else if(rate > 1.6){
         actions.push('You\u2019re gaining at '+rate.toFixed(2)+' lb/wk \u2014 faster than ideal. Some of that is fat, which is fine in a bulk, but above ~1 lb/wk the fat gain starts to outpace the muscle gain.');
         actions.push('Pull back ~150\u2013200 cal/day. You don\u2019t need to cut, just slow the rate to 0.5\u20131.0 lb/wk to maximize the muscle-to-fat ratio of the gain.');
@@ -3878,7 +3888,66 @@ function aiBody(messages, system, maxTokens, opts){
   const oc = {effort: o.effort || AI_EFFORT_DEFAULT};
   if(o.format) oc.format = o.format;
   body.output_config = oc;
+  // Which feature made the call, for the usage log. Non-enumerable, so it can never reach the
+  // JSON that goes to the API (an unknown field there is a 400).
+  Object.defineProperty(body, '_route', {value:String(o.route || 'other'), enumerable:false});
   return body;
+}
+/* ---- what the API actually costs ----
+   Every reply carries its token usage, and until 2026-09-25 all of it was thrown away, so nobody
+   could say what a night cost or what adding to a prompt would. Kept per device in its own
+   localStorage key, not in S: each device pays for its own calls, and S re-uploads on every sync. */
+const AI_USAGE_KEY = 'ironhub:usage', AI_USAGE_MAX = 2000;
+// Sonnet 5, USD per million tokens (platform.claude.com pricing, checked 2026-09-25).
+const AI_PRICE = {input:2, output:10, cacheWrite:2.5, cacheRead:0.2};
+function aiUsageNote(route, u){
+  if(!u) return;
+  try{
+    const arr = JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]');
+    arr.push({at:Date.now(), r:String(route||'other'), i:+u.input_tokens||0, o:+u.output_tokens||0,
+              cw:+u.cache_creation_input_tokens||0, cr:+u.cache_read_input_tokens||0});
+    localStorage.setItem(AI_USAGE_KEY, JSON.stringify(arr.slice(-AI_USAGE_MAX)));
+  }catch(e){}
+}
+function aiUsageCost(x){
+  return ((x.i||0)*AI_PRICE.input + (x.o||0)*AI_PRICE.output + (x.cw||0)*AI_PRICE.cacheWrite + (x.cr||0)*AI_PRICE.cacheRead) / 1e6;
+}
+/* Spend over the last N days, grouped by feature (the part of the route before the colon). */
+function aiUsageSummary(days){
+  let arr = [];
+  try{ arr = JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]'); }catch(e){}
+  const n = days || 30, since = Date.now() - n*86400000;
+  const by = {}; let total = 0, calls = 0, first = null;
+  arr.forEach(function(x){
+    if(!x || !(x.at >= since)) return;
+    const k = String(x.r || 'other').split(':')[0];
+    const c = aiUsageCost(x);
+    if(!by[k]) by[k] = {calls:0, cost:0, i:0, o:0};
+    by[k].calls++; by[k].cost += c; by[k].i += x.i||0; by[k].o += x.o||0;
+    total += c; calls++;
+    if(first === null || x.at < first) first = x.at;
+  });
+  return {days:n, calls:calls, total:total, by:by, first:first};
+}
+const AI_ROUTE_LABEL = {night:'Nightly cycle', brief:'Morning brief', letter:'Weekly letter', chat:'Chats',
+  live:'Mid-workout DELTA', audit:'Weekly audit', meals:'Meal ideas', import:'Screenshot import', other:'Other'};
+function aiUsageCardHTML(){
+  const u = aiUsageSummary(30);
+  let body;
+  if(!u.calls){
+    body = '<p class="small">Nothing recorded on this device yet. Every call from now on is counted, so check back in a few days.</p>';
+  } else {
+    const span = Math.max(1, Math.min(30, Math.ceil((Date.now() - u.first) / 86400000)));
+    const row = function(l, r, strong){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0'+(strong?';border-top:1px solid var(--line);margin-top:4px;padding-top:8px':'')+'"><span>'+l+'</span><b>'+r+'</b></div>'; };
+    body = '<p class="small" style="margin-bottom:8px">Estimated from each reply\u2019s token count at Sonnet 5 rates ($2 in / $10 out per million tokens), over the last '+span+' day'+(span===1?'':'s')+'. Each device counts only its own calls.</p>'+
+      Object.keys(u.by).sort(function(a,b){ return u.by[b].cost - u.by[a].cost; }).map(function(k){
+        const r = u.by[k];
+        return row(esc(AI_ROUTE_LABEL[k] || k)+' <span class="small">\u00b7 '+r.calls+' call'+(r.calls===1?'':'s')+'</span>', '$'+r.cost.toFixed(2));
+      }).join('')+
+      row('Total', '$'+u.total.toFixed(2), true);
+  }
+  return subSection('API spend on this device', body, false,
+    {pref:'coach.spend', summary: u.calls ? '$'+u.total.toFixed(2)+' in the last 30 days \u00b7 '+u.calls+' calls' : 'Nothing recorded yet'});
 }
 /* ---- one transport for every API call ----
    The three request builders here used to each run their own fetch, status check and JSON
@@ -3946,7 +4015,9 @@ async function aiSend(body){
       if(!res.ok){ const t = await res.text(); throw new Error('API '+res.status+': '+t.slice(0,200)); }
       // Inside the try on purpose: the timeout has to cover reading the stream, not just
       // waiting for it to start, or a stream that stalls halfway jams the flag all over again.
-      return await aiReadReply(res, tel);
+      const reply = await aiReadReply(res, tel);
+      aiUsageNote(body._route, reply && reply.usage);
+      return reply;
     }catch(e){
       // Reworded to the fact it actually is -- and worded so agIsNetworkErr() matches it. A
       // night on which every agent timed out really was a dead connection and should still
@@ -3957,7 +4028,11 @@ async function aiSend(body){
         : e;
       const net = !timedOut && agIsNetworkErr(lastErr);
       if(timedOut || replied || attempt === AI_NET_RETRIES || !net){
-        throw net ? aiNetDetail(lastErr, replied, attempt+1, Date.now()-t0, tel) : lastErr;
+        // No reply on any try: ask whether the device can reach anything at all. On 2026-09-25
+        // his school's Wi-Fi blocked api.anthropic.com while GitHub (the gist, the WHOOP relay)
+        // worked fine, and the error said only "Failed to fetch" -- which reads like a bug.
+        const where = (net && !replied) ? await aiReachNote() : '';
+        throw net ? aiNetDetail(lastErr, replied, attempt+1, Date.now()-t0, tel, where) : lastErr;
       }
     }finally{ clearTimeout(timer); }
     await new Promise(function(r){ setTimeout(r, AI_NET_BACKOFF[attempt] || 3000); });
@@ -3968,13 +4043,28 @@ async function aiSend(body){
    dead connection from one that was cut off mid-reply -- which is exactly the question that had
    to be answered to fix it. Say which, and how long in. Keeps the engine's own wording first and
    the TypeError class, so agIsNetworkErr() reads it the same as before. */
-function aiNetDetail(e, replied, tries, ms, tel){
+function aiNetDetail(e, replied, tries, ms, tel, where){
   const s = Math.round(ms/1000);
   const why = replied
     ? 'the reply was cut off '+s+'s in'+aiStreamNote(tel)
-    : 'no reply on any of '+tries+' tries (the last failed after '+s+'s)';
+    : 'no reply on any of '+tries+' tries (the last failed after '+s+'s)'+(where ? '; '+where : '');
   const E = (typeof TypeError !== 'undefined' && e instanceof TypeError) ? TypeError : Error;
   return new E(String((e && e.message) || e)+' — '+why);
+}
+/* Which it is when the API cannot be reached at all: this network blocking Anthropic, or no
+   network. One opaque GET to GitHub (no-cors resolves for ANY answer and rejects only when nothing
+   answers), bounded at 4s, and only on this failure path -- a working call never pays for it. */
+async function aiReachNote(){
+  const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = setTimeout(function(){ if(ctl) ctl.abort(); }, 4000);
+  try{
+    const init = {mode:'no-cors', cache:'no-store'};
+    if(ctl) init.signal = ctl.signal;
+    await fetch('https://api.github.com/zen', init);
+    return 'GitHub answered, so this network is blocking api.anthropic.com (school or work Wi-Fi, a VPN or a blocker). Try cellular data';
+  }catch(e){
+    return 'nothing else answered either, so this device looks offline';
+  }finally{ clearTimeout(timer); }
 }
 /* WHAT had arrived when the connection died, which 'cut off 39s in' on its own cannot say --
    and that difference is the entire diagnosis. A longest silence near 60s is Safari's network
@@ -4142,12 +4232,14 @@ function trainingContext(){
   // attribute it to, which reads as a stall.
   const logTxt = recent.map(l=>fmtDate(l.date)+' ['+l.day+' '+(l.dayName||dayName(l.day))+(l.home?' · HOME':'')+(l.deload?' · DELOAD (intentionally light)':'')+']\n'+
     l.entries.map(e=>'  '+e.exercise+': '+summ(e.sets)).join('\n')).join('\n');
-  const wts = S.weights.slice(-10).map(w=>w.date+': '+w.lbs+' lb').join(', ');
+  // By date, not by insertion order: a backdated weigh-in used to become "the latest".
+  const _wByDate = [...(S.weights||[])].sort((a,b)=>a.date.localeCompare(b.date));
+  const wts = _wByDate.slice(-10).map(w=>w.date+': '+w.lbs+' lb').join(', ');
   // '~' marks a value logged by tapping a range rather than typed exactly, so the model does
   // not read a bucket midpoint as a precise measurement.
-  const nut = S.nutrition.slice(-7).map(n=>n.date+': '+(n.est?'~':'')+n.cals+' cal / '+(n.est?'~':'')+n.protein+'g protein').join(', ');
+  const nut = [...S.nutrition].sort((a,b)=>a.date.localeCompare(b.date)).slice(-7).map(n=>n.date+': '+(n.est?'~':'')+n.cals+' cal / '+(n.est?'~':'')+n.protein+'g protein').join(', ');
   const bench = e1rmSeries('Barbell Bench Press'); const squat = e1rmSeries('Barbell Back Squat');
-  const rdHist = [...S.readiness].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(r=>r.date+': '+r.tier+' ('+r.sleep+'h, '+r.sore+', '+r.energy+' energy'+(r.stress?', '+r.stress:'')+(r.motiv?', '+r.motiv+' motivation':'')+')').join('; ');
+  const rdHist = [...S.readiness].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(r=>!rdComplete(r) ? r.date+': sleep only, no check-in ('+r.sleep+'h)' : r.date+': '+r.tier+' ('+r.sleep+'h, '+r.sore+', '+r.energy+' energy'+(r.stress?', '+r.stress:'')+(r.motiv?', '+r.motiv+' motivation':'')+')').join('; ');
   let fatLine = 'not enough history yet';
   try{
     const _fi = fatigueIndex();
@@ -4155,7 +4247,7 @@ function trainingContext(){
   }catch(e){}
   // Derived, never written down. A literal describing state that changes is a bug with a
   // delay on it: this one said ~150 lb against a 158.8 lb weigh-in, and had D3 and D6 swapped.
-  const _lw = (S.weights||[])[S.weights.length-1];
+  const _lw = _wByDate[_wByDate.length-1];
   const _bw = _lw ? _lw.lbs+' lb (weighed '+_lw.date+')' : 'not logged yet';
   const _splitTxt = Object.keys(S.split).sort().map(function(k){ return k+' '+S.split[k].name; }).join(', ');
   let _freq = '5-6x/week';
@@ -4236,13 +4328,15 @@ async function sendChat(){
       }
       return {role:m.role, content};
     });
-    const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs(), 4000);
+    const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs(), 4000, {route:'chat:zulu'});
     const msg = {role:'assistant', content:text || (actions.length?'Here\u2019s what I\u2019d change \u2014 review and apply below:':'')};
     if(actions.length) msg.proposals = coachStageProposals(actions);
     S.chat.push(msg); save(); agThinkingFor = null; renderCoach();
   }catch(e){
     agThinkingFor = null;
-    agChatErr = {id:'zulu', msg:'ZULU unavailable: '+e.message+' \u2014 check your API key in Settings.'};
+    // "Check your API key" is wrong advice for a dropped or blocked connection.
+    agChatErr = {id:'zulu', msg:'ZULU unavailable: '+e.message+(agIsNetworkErr(e) ? '' : ' \u2014 check your API key in Settings.')};
+    try{ agLog('zulu', 'Chat failed: '+e.message); save(); }catch(_){}
     renderCoach();
   }
 }
@@ -4263,7 +4357,7 @@ async function ingestShot(){
     const reply = await callClaude([{role:'user', content:[
       {type:'image', source:{type:'base64', media_type:f.type||'image/png', data:b64}},
       {type:'text', text:prompt}
-    ]}], null, 6000);
+    ]}], null, 6000, {route:'import'});
     const parsed = parseLooseJSON(reply);
     window._pendingShot = parsed;
     let html = '<hr><p class="small"><b>Found '+parsed.exercises.length+' exercises'+(parsed.date?' — '+esc(parsed.date):'')+'</b>. Review, pick the day, then confirm:</p>';
@@ -5684,7 +5778,7 @@ async function maybeRunAudit(){
     const prompt = 'WEEKLY VOLUME (sets, secondary=half): '+volTxt+'\n\nUNDER-TRAINED: '+(weak.length?weak.join(', '):'(none)')+
       '\n\nSTALE ACCESSORIES (no e1RM progress 4+ wks \u2014 propose a swap for each): '+staleTxt+
       '\n\nCURRENT SPLIT:\n'+splitTxt;
-    const reply = await callClaude([{role:'user', content:prompt}], sys, 4000);
+    const reply = await callClaude([{role:'user', content:prompt}], sys, 4000, {route:'audit'});
     const parsed = parseLooseJSON(reply);
     const props = (parsed.proposals||[]).slice(0,4).map(pr=>{
       const base = {
@@ -5986,7 +6080,7 @@ async function genAllMeals(){
       'Within each slot, vary the calorie level so there is a genuine spread from a hearty high-calorie choice down to a lighter one \u2014 e.g. a snack slot might range from a big peanut-butter-and-honey sandwich down to a small handful of chips. '+
       'Respond with ONLY valid JSON, no markdown, no commentary:\n'+
       '{"slots":[{"slot":"Breakfast","options":[{"name":"short food name","cal":650,"protein":40,"how":"one-line prep, under 16 words"}]}]}';
-    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 10000);
+    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 10000, {route:'meals'});
     const parsed = parseLooseJSON(reply);
     const slots = parsed.slots || parsed.meals || [];
     if(!slots.length) throw new Error('No slots returned');
@@ -6011,7 +6105,7 @@ async function refreshMeal(i){
     const prompt = 'Give 9 distinct '+slot+' food options with a genuine spread from high-calorie down to lighter. '+
       'Make them different from these previous ones where possible: '+((f.meals[i].options||[]).map(o=>o.name).join(', ')||'(none)')+'. '+
       'Respond with ONLY valid JSON, no markdown: {"slot":"'+slot+'","options":[{"name":"...","cal":0,"protein":0,"how":"one-line prep under 16 words"}]}';
-    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 6000);
+    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 6000, {route:'meals'});
     const m = parseLooseJSON(reply);
     const opts = (m.options||[]).map(o=>({name:o.name, cal:+o.cal||0, protein:+o.protein||0, how:o.how||''}))
                   .filter(o=>o.name).sort((a,b)=>b.cal-a.cal);
@@ -6080,7 +6174,8 @@ function renderSettings(){
   html += '<h2>Deload</h2><div class="card">'+
     '<p class="small"><b style="color:var(--text)">Custom deload window</b> — lighten loads (~60%, 2 sets, excluded from progression) for an exact date range, instead of the default 7-day-from-today window.</p>'+
     (deloadActive()
-      ? '<p class="small" style="margin-top:6px">Deload active '+esc(S.deload.startedAt)+' through '+esc(S.deload.until)+'.</p>'+
+      ? '<p class="small" style="margin-top:6px">Deload active '+esc(deloadWindow().start)+' through '+esc(deloadWindow().until)+
+        (deloadWindow().source==='meso' ? ' (your meso block\u2019s deload week)' : '')+'.</p>'+
         '<div style="margin-top:8px"><button class="btn sm ghost" onclick="endDeloadWeek();renderSettings()">End deload early</button></div>'
       : (S.deload && S.deload.startedAt && S.deload.until && todayKey() < S.deload.startedAt
         ? '<p class="small" style="margin-top:6px;color:var(--cyan)">Scheduled: '+esc(S.deload.startedAt)+' through '+esc(S.deload.until)+' (not active yet).</p>'+
@@ -6809,7 +6904,10 @@ function buildOneLiveExercise(nm, homeEquipList){
   }
   const rec = recommend(nm, tier);
   let firstW = (rec.sets && rec.sets[0] && rec.sets[0].w!=='') ? +rec.sets[0].w : '';
-  const {lo,hi} = exRepMode(nm);
+  // Form Focus lifts train 12-20, exactly as recommend() and classifyDecision() already say.
+  // Using exRepMode() alone showed 8-12 in LIVE and backed him off below 8 on a lift whose
+  // whole point is the higher range.
+  const {lo,hi} = isFormFocus(nm) ? {lo:FORM_LO, hi:FORM_HI} : exRepMode(nm);
   let decision; try{ decision = classifyDecision(nm, tier); }catch(e){ decision = null; }
   // investigation target override (reset & rebuild)
   const _ov = (typeof invOverrideFor==='function') ? invOverrideFor(nm) : null;
@@ -6862,6 +6960,12 @@ function buildLiveExercises(dk){
     names = mapped;
   }
   const built = names.map(nm=>buildOneLiveExercise(nm, homeEquipByName[nm]));
+  // A coach note that came with a today-only plan ("reduce 15-20 lb, RPE 6-7") belongs in the
+  // advice line. It used to arrive as part of the exercise name.
+  if(plan && plan.notes) built.forEach(function(ex){
+    const n = plan.notes[ex.name];
+    if(n){ ex.recDetail = 'Coach: '+n+'. '+(ex.recDetail||''); ex.advMsg = ex.recDetail; }
+  });
   // a today-only plan is consumed once the session is built for that day
   if(plan){ S.coachDayPlan = null; save(false); }
   return built;
@@ -6902,7 +7006,7 @@ function intraAdvice(ex){
   const sets = ex.sets;
   if(!sets.length) return {w:ex.targetW, lo:ex.lo, hi:ex.hi, tag:'', cls:'', msg:ex.recDetail};
   const last = sets[sets.length-1];
-  const r=+last.r||0, e=last.e, w=+last.w||0;
+  const r=+last.r||0, e=effBucket(last), w=+last.w||0;
   const lo=ex.lo, hi=ex.hi, inc=incForExercise(ex.name);
   /* On a strength lift a set under the rep floor is usually a heavy top single or double, which
      is the point of the lift \u2014 telling him to drop 10 lb mid-session is exactly backwards. So
@@ -7071,12 +7175,13 @@ async function liveDeltaSend(){
       coachMemContext()+trainingContext()+agContext()+liveDeltaContext();
     const msgs = a.chats.delta.slice(-14).map(m=>({role:m.role, content:m.content}));
     // maxRounds 2 rather than the usual 6 -- see the note in callClaudeWithData.
-    const {text} = await callClaudeWithData(msgs, sys, 4000, {maxRounds:2});
+    const {text} = await callClaudeWithData(msgs, sys, 4000, {maxRounds:2, route:'live:delta'});
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
     agState().chats.delta.push({role:'assistant', content:text||'\u2014'});
     save(); renderLive();
   }catch(e){
     if(think) think.textContent = 'DELTA unavailable: '+e.message;
+    try{ agLog('delta', 'Mid-workout chat failed: '+e.message); save(false); }catch(_){}
   }
 }
 function liveDeltaPanelHTML(){
@@ -8091,7 +8196,7 @@ function lastSessionFor(name){ const h=historyFor(name); return h.length?h[0]:nu
 function lastSessionStrip(name){
   const ls=lastSessionFor(name);
   if(!ls) return '<div class="dock-last"><span class="dl-tag">First time</span> no prior data for this lift</div>';
-  const sets=ls.sets.map(s=>s.w+'×'+s.r+(s.e?({easy:'\u1d49',solid:'',grind:'\u1d4d',fail:'\u1da0'}[s.e]||''):'')).join('  ');
+  const sets=ls.sets.map(s=>{ const b=effBucket(s); return s.w+'×'+s.r+(b?({easy:'\u1d49',solid:'',grind:'\u1d4d',fail:'\u1da0'}[b]||''):''); }).join('  ');
   return '<div class="dock-last"><span class="dl-tag">Last \u00b7 '+fmtDate(ls.date)+'</span>'+esc(sets)+'</div>';
 }
 function setDeltaChip(name, setIdx, w, r){
@@ -8218,20 +8323,24 @@ function deloadCheck(){
     }
   });
   // 2) recent grind/fail density across last ~10 logged sessions
-  const recentLogs=[...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+  // Deload sessions are meant to feel easy, so they would only dilute the grind share.
+  const recentLogs=[...S.logs].filter(l=>!l.deload).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
   let grind=0, total=0;
   recentLogs.forEach(l=>l.entries.forEach(e=>e.sets.forEach(s=>{ total++; const b=effBucket(s); if(b==='grind'||b==='fail') grind++; })));
   if(total>=10){ const pct=grind/total; if(pct>=0.4){ reasons.push(Math.round(pct*100)+'% of recent sets tagged grind/fail \u2014 effort is creeping up'); score+=2; } else if(pct>=0.25){ reasons.push('A quarter of recent sets are grinders'); score+=1; } }
-  // 3) consecutive training weeks (sessions logged) without a light week
-  const weeks=new Set(S.logs.map(l=>weekKeyOf(l.date)));
-  if(weeks.size>=6){ reasons.push(weeks.size+' weeks of accumulated training on record'); score+=1; }
+  // 3) training weeks since the last deload. This used to count every week ever logged, which
+  //    passes 6 once and never resets, so from his seventh week on the score carried a permanent
+  //    +1 whether or not he had just deloaded.
+  const _since = lastDeloadEndKey();
+  const weeks=new Set(S.logs.filter(l=>!l.deload && (!_since || l.date > _since)).map(l=>weekKeyOf(l.date)));
+  if(weeks.size>=6){ reasons.push(weeks.size+(_since ? ' training weeks since your last deload ('+fmtDate(_since)+')' : ' training weeks with no deload on record')); score+=1; }
   let severity = score>=4 ? 'recommend' : score>=2 ? 'watch' : 'clear';
   return {severity, score, reasons};
 }
 function deloadCardHTML(){
   if(deloadActive()){
     return '<div class="card" style="border-left:3px solid var(--violet)"><div class="chart-h" style="margin-bottom:4px">Fatigue check <span class="pill" style="border-color:var(--violet);color:var(--violet)">Deloading</span></div>'+
-      '<p class="small">Deload week is active through '+fmtDate(S.deload.until)+'. Sessions this week are auto-lightened and excluded from your progression and trend charts.</p>'+
+      '<p class="small">Deload week is active through '+fmtDate(deloadWindow().until)+'. Sessions this week are auto-lightened and excluded from your progression and trend charts.</p>'+
       '<div style="margin-top:10px"><button class="btn ghost sm" onclick="endDeloadWeek()">End deload early</button></div></div>';
   }
   const d=deloadCheck();
@@ -8242,7 +8351,7 @@ function deloadCardHTML(){
   const head = d.severity==='recommend' ? 'Deload recommended' : 'Watch for fatigue';
   let how = d.severity==='recommend'
     ? 'Take a deload week: keep the same exercises but drop to ~60% of your working weights, cut each lift to 2 sets, and stay 3\u20134 reps shy of failure. You\u2019ll come back stronger \u2014 fatigue is masking fitness right now.'
-    : 'Not urgent, but the signals are building. Make sure you\u2019re hitting 3000+ cal and 8h sleep this week. If the grinders keep stacking up, deload next week.';
+    : 'Not urgent, but the signals are building. Make sure you\u2019re hitting your '+calTarget()+' cal target and 8h sleep this week. If the grinders keep stacking up, deload next week.';
   return '<div class="card" style="border-left:3px solid '+col+'"><div class="chart-h" style="margin-bottom:6px">Fatigue check <span class="pill" style="border-color:'+col+';color:'+col+'">'+head+'</span></div>'+
     '<div class="small" style="margin-bottom:8px">'+d.reasons.map(r=>'<div class="exinfo-cue"><span style="color:'+col+'">\u25b8</span>'+esc(r)+'</div>').join('')+'</div>'+
     '<p class="small" style="color:var(--text)">'+how+'</p>'+
@@ -8470,7 +8579,7 @@ const SLEEP_SCORE={'<6':1,'6-7':2,'7-8':3,'8+':4};
 function quickLogSleep(bucket){
   const k=todayKey();
   let rd=S.readiness.find(r=>r.date===k);
-  if(rd){ rd.sleep=bucket; stampRec(rd); } else { S.readiness.push(stampRec({date:k, sleep:bucket, sore:'', energy:'', tier:'ok'})); }
+  if(rd){ rd.sleep=bucket; stampRec(rd); } else { S.readiness.push(stampRec({date:k, sleep:bucket, sore:'', energy:'', partial:true})); }
   save(); renderSleep();
 }
 function sleepPerfData(){
@@ -9184,12 +9293,21 @@ function saveEditSession(id){
       const rEl = document.getElementById('es-r-'+ei+'-'+si);
       if(!wEl||!rEl) continue;
       const w = parseFloat(wEl.value), r = parseInt(rEl.value);
-      if(w>0 && r>0) newSets.push({w, r});
+      const orig = entry.sets[si];   // undefined on the blank "add a set" row
+      // A bodyweight set has w 0, which the form shows as an empty box. Left empty, it is still
+      // that set -- it used to fail the w>0 test and be deleted by saving.
+      const bwKeep = !!orig && !(+orig.w) && !String(wEl.value).trim();
+      if(!(r>0) || !(w>0 || bwKeep)) continue;
+      // Rebuilt as {w, r}, every edit erased the set's effort (e, ef) and when it was logged (ts):
+      // the data the pattern engine reads. The form only shows weight and reps, so everything
+      // else carries over from the set it was.
+      newSets.push(liveSetToLog(Object.assign({}, orig||{}, {w: w>0 ? w : (+orig.w||0), r})));
     }
     entry.sets = newSets;
   });
   // remove entries with no sets left
   log.entries = log.entries.filter(e=>e.sets.length>0);
+  stampRec(log);   // an edit is a write; without a fresh stamp another device's merge can drop it
   save(); closeEditSession(); renderLog();
   // re-render progress if open
   const prog = document.getElementById('progress');
@@ -9306,10 +9424,33 @@ function retroDecision(log, exercise){
 }
 
 /* ===================== DELOAD WEEK ===================== */
-function deloadActive(){
-  if(S.deload && S.deload.until && S.deload.startedAt && todayKey() >= S.deload.startedAt && todayKey() <= S.deload.until) return true;
+/* The deload in force today, from whichever source put it there: {start, until, source}, or null.
+   A meso block's deload week is a deload with no S.deload behind it, while S.deload can still
+   hold a finished manual window from weeks earlier. Reading S.deload.until directly therefore
+   printed a stale August date through his Oct 12 block deload -- or threw when S.deload was null,
+   and one of those readers builds the agents' prompt, so every agent would have failed that
+   week. Anything that shows or states the deload dates goes through here. */
+function deloadWindow(){
+  const t = todayKey();
+  if(S.deload && S.deload.until && S.deload.startedAt && t >= S.deload.startedAt && t <= S.deload.until)
+    return {start:S.deload.startedAt, until:S.deload.until, source:'manual'};
   const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
-  return !!(mw && mw.type==='deload' && !mw.deloadEnded);
+  if(mw && mw.type==='deload' && !mw.deloadEnded) return {start:mw.startKey, until:mw.endKey, source:'meso', week:mw.n};
+  return null;
+}
+function deloadActive(){ return !!deloadWindow(); }
+/* The last day of the most recent deload that has started: a manual window, a meso deload week,
+   or a session logged as a deload. null if he has never deloaded. */
+function lastDeloadEndKey(){
+  const t = todayKey(); let best = null;
+  const take = function(k){ if(k && k <= t && (!best || k > best)) best = k; };
+  if(S.deload && S.deload.startedAt && S.deload.until && S.deload.startedAt <= t) take(S.deload.until <= t ? S.deload.until : t);
+  try{
+    const a = mesoState().active;
+    if(a) (a.weeks||[]).forEach(function(w){ if(w.type==='deload' && w.startKey <= t) take(w.endKey <= t ? w.endKey : t); });
+  }catch(e){}
+  (S.logs||[]).forEach(function(l){ if(l && l.deload) take(l.date); });
+  return best;
 }
 function startDeloadWeek(untilOverride, startOverride){
   let until = untilOverride;
@@ -9332,9 +9473,10 @@ function endDeloadWeek(){
 }
 function deloadBannerHTML(){
   if(!deloadActive()) return '';
-  const _mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
-  const _sched = !S.deload && _mw && _mw.type==='deload';
-  const _until = S.deload ? S.deload.until : (_mw ? _mw.endKey : todayKey());
+  const _dw = deloadWindow();
+  const _sched = _dw.source==='meso';
+  const _mw = _sched ? {n:_dw.week} : null;
+  const _until = _dw.until;
   return '<div class="card" style="border-left:3px solid var(--violet);background:rgba(183,155,255,0.06)">'+
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">'+
     '<div><b style="color:var(--violet);letter-spacing:.04em">DELOAD WEEK ACTIVE</b>'+
@@ -10401,11 +10543,55 @@ function coachDescribeAction(name, inp){
   }
 }
 
-/* Validate an action against current state; return {ok, error}. */
+/* Validate an action against current state; return {ok, error, inp}. inp is the action as it will
+   be applied: names cleaned and resolved, the same way agValidateFix() treats the nightly queue.
+   ZULU's chat used to skip all of that -- adjust_fuel had no limits at all, and a coaching note
+   inside an exercise name went straight into the session as that exercise's name. */
 function coachValidateAction(name, inp){
+  inp = Object.assign({}, inp||{});
   const dayOk = d => !!S.split[d];
-  if(['add_exercise_permanent','remove_exercise_permanent','swap_exercise_permanent','set_today_workout'].includes(name)){
+  // A today-only plan may be for a strength-block day (S1/S2/S3), which is in the split in force
+  // but not in S.split. The permanent actions stay on S.split, which is all they write to.
+  const todayDayOk = d => { const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split; return !!(src && src[d]); };
+  if(['add_exercise_permanent','remove_exercise_permanent','swap_exercise_permanent'].includes(name)){
     if(!dayOk(inp.day)) return {ok:false, error:'No day "'+inp.day+'" exists in your split.'};
+  }
+  if(name==='set_today_workout' && !todayDayOk(inp.day)) return {ok:false, error:'No day "'+inp.day+'" exists in your split.'};
+  // Known names take their canonical spelling; a name the app has never seen is allowed here,
+  // because he may be asking for a new exercise, but never with a coaching note stuck to it.
+  const clean = exAcceptName;
+  if(name==='add_exercise_permanent'){
+    inp.exercise = clean(inp.exercise);
+    if(!inp.exercise) return {ok:false, error:'No exercise name given.'};
+    if((S.split[inp.day].exercises||[]).some(x=>exName(x)===inp.exercise)) return {ok:false, error:inp.exercise+' is already on '+inp.day+'.'};
+  }
+  if(name==='swap_exercise_permanent'){
+    inp.to = clean(inp.to);
+    if(!inp.to) return {ok:false, error:'No exercise to swap in.'};
+  }
+  if(name==='set_today_workout' && Array.isArray(inp.exercises)){
+    const notes = {};
+    inp.exercises = inp.exercises.map(function(raw){
+      const nm = clean(raw), note = exSplitNote(raw).note;
+      if(nm && note) notes[nm] = note;
+      return nm;
+    }).filter(Boolean);
+    if(Object.keys(notes).length) inp.notes = notes;
+  }
+  if(name==='adjust_fuel'){
+    // Same limits as the nightly queue's cal/pro fixes. Before this, a chat card could set any
+    // number at all as his daily calorie target.
+    if(inp.calories!=null){
+      const c = Math.round(+inp.calories||0), d = c - calTarget();
+      if(!(c >= 1200 && c <= 6000)) return {ok:false, error:c+' cal is outside a sane daily target (1200\u20136000).'};
+      if(Math.abs(d) > 500) return {ok:false, error:'That moves calories '+(d>0?'+':'')+d+'/day; a single change may move them at most \u00b1500 (change it in Fuel for more).'};
+      inp.calories = c;
+    }
+    if(inp.protein!=null){
+      const p = Math.round(+inp.protein||0);
+      if(!(p >= 80 && p <= 300)) return {ok:false, error:p+'g protein is outside the allowed 80\u2013300g.'};
+      inp.protein = p;
+    }
   }
   if(name==='remove_exercise_permanent' || name==='swap_exercise_permanent'){
     const key = name==='swap_exercise_permanent' ? inp.from : inp.exercise;
@@ -10423,7 +10609,7 @@ function coachValidateAction(name, inp){
     const dupe = coachMem().some(m=>m.note.toLowerCase()===String(inp.note).trim().toLowerCase());
     if(dupe) return {ok:false, error:'Already remembered \u2014 that note is saved.'};
   }
-  return {ok:true};
+  return {ok:true, inp:inp};
 }
 
 /* Execute a validated action against S. Returns a short confirmation string. */
@@ -10450,6 +10636,7 @@ function coachExecuteAction(name, inp){
   }
   if(name==='set_today_workout'){
     S.coachDayPlan = {date:todayKey(), day:inp.day, exercises:inp.exercises.slice()};
+    if(inp.notes) S.coachDayPlan.notes = Object.assign({}, inp.notes);
     // if the schedule's today isn't already this day, also set an overrideDay so LIVE opens to it
     if(currentDayKey()!==inp.day) S.overrideDay = {date:todayKey(), day:inp.day};
     save(); setAccent();
@@ -10542,7 +10729,7 @@ function agRunDataTool(name, inp){
       const names = agTrainedExNames();
       if(!names.length) return 'No exercises on record yet.';
       return names.map(function(nm){
-        const h = historyFor(nm, {includeDeload:true});
+        const h = historyFor(nm, {includeDeload:true, includeHome:true});
         return nm+' - '+h.length+' session'+(h.length===1?'':'s')+(h.length?', last '+h[0].date:', never logged');
       }).join('\n');
     }
@@ -10550,7 +10737,7 @@ function agRunDataTool(name, inp){
       const nm = agResolveExName(p.exercise);
       if(!nm) return 'No exercise called "'+String(p.exercise).slice(0,60)+'". Call list_lifts for the real names.';
       const lim = Math.max(1, Math.min(200, Math.round(+p.limit||30)));
-      const h = historyFor(nm, {includeDeload:true}).slice(0, lim);
+      const h = historyFor(nm, {includeDeload:true, includeHome:true}).slice(0, lim);
       if(!h.length) return nm+' has never been logged.';
       // Mode is stated the same way a deload is: an unexplained number is one the model will
       // explain to itself, and it guessed wrong about low-rep strength work.
@@ -10619,6 +10806,7 @@ function agRunDataTool(name, inp){
                               .sort(function(a,b){ return b.date.localeCompare(a.date); });
       if(!rows.length) return 'No readiness check-ins in that window.';
       return rows.map(function(r){
+        if(!rdComplete(r)) return '  '+r.date+': sleep only, no check-in ('+r.sleep+'h sleep)';
         return '  '+r.date+': '+r.tier+' ('+r.sleep+'h sleep, '+r.sore+' soreness, '+r.energy+' energy'+
                (r.stress?', '+r.stress+' stress':'')+(r.motiv?', '+r.motiv+' motivation':'')+')';
       }).join('\n');
@@ -10700,8 +10888,10 @@ function coachStageProposals(actions){
   // returns array of proposal objects with validation state
   return actions.map(a=>{
     const v = coachValidateAction(a.name, a.input);
-    return {id:'p_'+Math.random().toString(36).slice(2,9), name:a.name, input:a.input,
-      desc:coachDescribeAction(a.name, a.input), valid:v.ok, error:v.error||null, status:'pending'};
+    // The card shows, and Apply applies, the cleaned action -- not the raw one the model wrote.
+    const input = (v.ok && v.inp) ? v.inp : a.input;
+    return {id:'p_'+Math.random().toString(36).slice(2,9), name:a.name, input:input,
+      desc:coachDescribeAction(a.name, input), valid:v.ok, error:v.error||null, status:'pending'};
   });
 }
 function coachFindProposal(pid){
@@ -10716,7 +10906,7 @@ function coachApplyProposal(pid){
   const v = coachValidateAction(p.name, p.input);
   if(!v.ok){ p.status='failed'; p.error=v.error; save(); renderCoach(); return; }
   try{
-    const conf = coachExecuteAction(p.name, p.input);
+    const conf = coachExecuteAction(p.name, v.inp || p.input);
     p.status='applied'; p.confirm=conf;
   }catch(e){ p.status='failed'; p.error=e.message; }
   save(); renderCoach();
@@ -11728,7 +11918,7 @@ function anStrainBetween(a, b){
   let s = 0;
   S.logs.filter(l=>l.date>=a && l.date<=b).forEach(l=>{
     const mult = l.deload ? 0.5 : 1;
-    l.entries.forEach(e=>e.sets.forEach(st=>{ s += anEffMult(st.e)*mult; }));
+    l.entries.forEach(e=>e.sets.forEach(st=>{ s += anEffMult(effBucket(st))*mult; }));
   });
   return s;
 }
@@ -11821,7 +12011,7 @@ const AN_RD_MIN_SESSIONS = 4;   // sessions per side before a comparison is show
 const AN_RD_MIN_TRIM     = 3;   // trimmed / kept-full low sessions before that split is shown
 function anReadinessRows(){
   const byDate = {};
-  (S.readiness||[]).forEach(r=>{ if(r && r.date && r.tier) byDate[r.date] = r; });
+  (S.readiness||[]).forEach(r=>{ if(r && r.date && rdComplete(r)) byDate[r.date] = r; });
   const rows = [];
   S.logs.forEach(l=>{
     if(l.deload) return;                       // deload sets are supposed to feel easy
@@ -11831,7 +12021,7 @@ function anReadinessRows(){
       sets++;
       // An untagged set is unknown, not clean. Counting it as clean would drag every
       // partially-tagged session's grind rate toward zero and wash the comparison out.
-      if(!s.e) return;
+      if(!effBucket(s)) return;
       tagged++;
       const _b = effBucket(s); if(_b==='grind' || _b==='fail') hard++;
     }));
@@ -12674,8 +12864,9 @@ function readinessTierV3(r){
   if(r.motiv==='meh')  sc -= 0.5; else if(r.motiv==='fired up') sc += 1;
   return sc<=2 ? 'low' : sc<=5 ? 'ok' : 'high';
 }
+let _rdPre = null;
 function openReadyCheck(dk){
-  _rdPendingDay = dk; _rdV3 = {};
+  _rdPendingDay = dk; _rdV3 = {}; _rdPre = null;
   // Called AFTER the WHOOP prefill below runs, so _rdV3[key] already holds any pre-filled
   // value by the time this actually builds markup -- that's what lets it mark the matching
   // pill 'on' instead of just quietly holding a value nothing on screen shows as selected.
@@ -12692,6 +12883,10 @@ function openReadyCheck(dk){
     }
     _rdV3.energy = wr.score >= 67 ? 'high' : wr.score >= 34 ? 'ok' : 'low';
   }
+  // What was pre-filled, kept beside what he confirmed. Energy comes straight from the WHOOP
+  // recovery score, so an unchanged answer is WHOOP talking, not him -- and anything that weighs
+  // both would count the same signal twice. Stored, not shown: it adds no taps.
+  _rdPre = {energy:_rdV3.energy || null, sleep:_rdV3.sleep || null};
   document.getElementById('readyBody').innerHTML =
     (_wf ? '<p class="small" style="margin-bottom:10px;color:var(--cyan)">WHOOP has you at '+
        S.whoop.recovery.score+'% recovered'+
@@ -12727,6 +12922,8 @@ function rd3Lock(){
   }
   const entry = {date:todayKey(), sleep:_rdV3.sleep, sore:_rdV3.sore, energy:_rdV3.energy, stress:_rdV3.stress, motiv:_rdV3.motiv};
   entry.tier = readinessTierV3(entry);
+  if(_rdPre && _rdPre.energy) entry.energyPre = _rdPre.energy;
+  if(_rdPre && _rdPre.sleep) entry.sleepPre = _rdPre.sleep;
   S.readiness = S.readiness.filter(x=>x.date!==todayKey());
   S.readiness.push(stampRec(entry)); save();
   if(entry.tier==='low'){ rd3ShowTrimPrompt(entry); return; }   // active choice, never silent
@@ -12977,9 +13174,67 @@ function agResolveExName(raw){
   const names = agTrainedExNames();
   return names.find(n=>n===raw) || names.find(n=>invNormName(n)===want) || null;
 }
-function agValidateFix(fx){
+/* A coaching note a model wrapped into an exercise name, e.g. "Barbell Back Squat (reduce top set
+   15-20 lb, 3x10, RPE 7)". On 2026-09-12 ZULU's today-only plan stored four names like that, and
+   the sets logged under them were cut off from each lift's history -- the squat that day was
+   treated as "first time logging this lift". Only a parenthetical that reads like instructions
+   (numbers, lb, RPE, sets, reps, weight) counts, so a real variant like "(Wide Grip)" is left alone. */
+const EX_NOTE_RE = /\s*\(([^()]*(?:\brpe\b|\blbs?\b|\breduce\b|\bweight\b|\bsets?\b|\breps?\b|\d+\s*x\s*\d+|\d+\s*[-\u2013]\s*\d+)[^()]*)\)\s*$/i;
+function exSplitNote(raw){
+  const s = String(raw||'').trim();
+  const m = s.match(EX_NOTE_RE);
+  return m ? {name:s.slice(0, m.index).trim(), note:m[1].trim()} : {name:s, note:''};
+}
+/* Resolve a model-written name against every exercise the app knows (library, muscle map, split,
+   logs), note stripped first. {name, note} in the canonical spelling, or null if nothing matches.
+   Names that are themselves note-carrying leftovers in the logs never count as a match. */
+function exResolveKnown(raw){
+  const sp = exSplitNote(raw);
+  const want = invNormName(sp.name);
+  if(!want) return null;
+  const names = allKnownExerciseNames().filter(function(n){ return !EX_NOTE_RE.test(n); });
+  const hit = names.find(function(n){ return n === sp.name; }) || names.find(function(n){ return invNormName(n) === want; });
+  return hit ? {name:hit, note:sp.note} : null;
+}
+/* A name an agent may write into the split: a known exercise in its canonical spelling, or a new
+   exercise if it reads as a plain name. New exercises are allowed because suggesting one is part of
+   DELTA's job; what is refused is a name carrying instructions, or one too short or long to be real. */
+function exAcceptName(raw){
+  const r = exResolveKnown(raw);
+  if(r) return r.name;
+  const nm = exSplitNote(raw).name;
+  if(EX_NOTE_RE.test(String(raw||'')) && !nm) return null;
+  return /^[A-Za-z0-9][A-Za-z0-9 .'&\/+-]{2,47}$/.test(nm) && !/[()]/.test(nm) ? nm : null;
+}
+/* The fix types each agent may raise. AG_FIX_MENU only shows each agent its own; this enforces it,
+   because a prompt is a hint and ECHO could otherwise queue a liftReset. ZULU, the lead, may use
+   any of the specialists' shapes. */
+const AG_FIX_ALLOWED = {charlie:['schedule','cycleSchedule'], delta:['liftReset','deload','addEx','swapEx'], echo:['cal','pro']};
+function agFixAllowedFor(who, type){
+  const list = AG_FIX_ALLOWED[who];
+  return !list || list.indexOf(type) >= 0;
+}
+/* The heaviest a liftReset may set. A reset exists to rebuild from a lighter weight, and DELTA also
+   uses it to name a next target, so it may sit at most two steps over the last top set. A MAXED
+   machine has no heavier setting, and a lift flagged "sharp" in the last 14 days must get no more
+   load. Both of those rules used to live only in the prompt. */
+function agResetCeiling(name){
+  const inc = incForExercise(name) || 5;
+  let top = 0;
+  try{
+    const last = lastSessionFor(name);
+    if(last && last.sets) top = last.sets.reduce(function(m, st){ return Math.max(m, +st.w || 0); }, 0);
+  }catch(e){}
+  if(!(top > 0)) return {max:Infinity, why:''};
+  if(isMaxed(name)) return {max:top, why:'the machine is MAXED, so nothing over the '+top+' lb last used'};
+  if(painFor(name, 14).some(function(p){ return p.level >= 3; }))
+    return {max:top, why:'it was flagged sharp in the last 14 days, so no more load than the '+top+' lb last used'};
+  return {max:top + 2*inc, why:'at most two steps ('+(2*inc)+' lb) over the '+top+' lb last used'};
+}
+function agValidateFix(fx, who){
   if(!fx || !fx.type) return null;
   if(AG_FIX_TYPES.indexOf(fx.type) < 0) return null;
+  if(who && !agFixAllowedFor(who, fx.type)) return null;
   const p = fx.payload || {};
   if(fx.type==='cal'){
     /* Two shapes, one envelope. The fix menu offers 'delta' for cal and 'to' for pro on adjacent
@@ -13016,16 +13271,31 @@ function agValidateFix(fx){
     if(!name) return null;
     // ...and to a weight the equipment can actually make. Same class of fault as the name: an
     // override is applied VERBATIM, so a number off the ladder becomes a target he cannot load.
-    return {type:'liftReset', payload:{name, w: agSnapWeight(name, w), days}};
+    const sw = agSnapWeight(name, w);
+    if(sw > agResetCeiling(name).max) return null;
+    return {type:'liftReset', payload:{name, w: sw, days}};
   }
   if(fx.type==='deload') return {type:'deload', payload:{}};
   if(fx.type==='addEx'){
     if(!p.name || !p.day || !S.split[p.day]) return null;
-    return {type:'addEx', payload:{name:String(p.name), day:String(p.day)}};
+    // Resolved like every other model-supplied name: an unknown one is refused, and a known one is
+    // stored in its canonical spelling so it shares that lift's history.
+    const nm = exAcceptName(p.name);
+    if(!nm) return null;
+    if((S.split[p.day].exercises||[]).some(function(x){ return exName(x) === nm; })) return null;   // already there
+    return {type:'addEx', payload:{name:nm, day:String(p.day)}};
   }
   if(fx.type==='swapEx'){
     if(!p.from || !p.to) return null;
-    return {type:'swapEx', payload:{from:String(p.from), to:String(p.to)}};
+    // "from" must be in the permanent split, which is all agApplyFix() swaps in; "to" must be a
+    // real exercise. Both are resolved, so the apply's exact match cannot silently miss.
+    const inSplit = [];
+    Object.keys(S.split).forEach(function(dk){ (S.split[dk].exercises||[]).forEach(function(x){ inSplit.push(exName(x)); }); });
+    const fw = invNormName(exSplitNote(p.from).name);
+    const from = inSplit.find(function(n){ return n === p.from; }) || inSplit.find(function(n){ return invNormName(n) === fw; });
+    const to = exAcceptName(p.to);
+    if(!from || !to || to === from) return null;
+    return {type:'swapEx', payload:{from:from, to:to}};
   }
   if(fx.type==='schedule'){
     // A day-of-week map is meaningless once a rotating cycle is active \u2014 currentDayKey()
@@ -13096,12 +13366,18 @@ function agSnapWeight(name, w){
 
 /* Why agValidateFix() turned a fix down, in plain words rather than a code. Purely for the
    activity log \u2014 it has no authority over the decision, which agValidateFix() alone makes. */
-function agRejectReason(fx){
+function agRejectReason(fx, who){
   if(!fx || !fx.type) return 'malformed';
   if(AG_FIX_TYPES.indexOf(fx.type) < 0) return 'unknown fix type \u201c'+String(fx.type).slice(0,24)+'\u201d';
+  if(who && !agFixAllowedFor(who, fx.type)) return '\u201c'+fx.type+'\u201d is outside '+((AGENTS[who]||{}).name||who)+'\u2019s area';
   const p = fx.payload||{};
   if(fx.type==='liftReset'){
-    if(p.name && !agResolveExName(p.name)) return '\u201c'+String(p.name).slice(0,40)+'\u201d is not a lift you train';
+    const nm = p.name ? agResolveExName(p.name) : null;
+    if(p.name && !nm) return '\u201c'+String(p.name).slice(0,40)+'\u201d is not a lift you train';
+    if(nm && +p.w > 0){
+      const c = agResetCeiling(nm);
+      if(agSnapWeight(nm, Math.round(+p.w)) > c.max) return Math.round(+p.w)+' lb is too heavy for '+nm+': '+c.why;
+    }
     return 'weight or duration out of range';
   }
   if(fx.type==='cal'){
@@ -13124,8 +13400,16 @@ function agRejectReason(fx){
   }
   if(fx.type==='schedule')      return scheduleMode()==='cycle' ? 'weekday map sent while a rotating cycle is active' : 'incomplete or invalid week';
   if(fx.type==='cycleSchedule') return scheduleMode()!=='cycle' ? 'cycle pattern sent while on a weekday schedule' : 'invalid cycle pattern';
-  if(fx.type==='addEx')  return 'target day does not exist';
-  if(fx.type==='swapEx') return 'missing from/to exercise';
+  if(fx.type==='addEx'){
+    if(!p.day || !S.split[p.day]) return 'target day does not exist';
+    if(!exAcceptName(p.name)) return '\u201c'+String(p.name||'').slice(0,40)+'\u201d does not read as an exercise name';
+    return 'it is already on '+p.day;
+  }
+  if(fx.type==='swapEx'){
+    if(!p.from || !p.to) return 'missing from/to exercise';
+    if(!exAcceptName(p.to)) return '\u201c'+String(p.to).slice(0,40)+'\u201d does not read as an exercise name';
+    return '\u201c'+String(p.from).slice(0,40)+'\u201d is not in your split';
+  }
   return 'value out of the allowed range';
 }
 function agFixSummary(fx){
@@ -13198,7 +13482,11 @@ function agApprove(pid){
   const p = agState().proposals.find(x=>x.id===pid);
   if(!p || p.status!=='pending') return;
   let ok = true;
-  if(p.fix){ try{ ok = agApplyFix(p.fix); }catch(e){ ok = false; p.error = e.message; } }
+  // Checked again NOW, not only when it was raised. A proposal can wait up to a week, and in that
+  // time the split, the schedule mode or the lift's recent weights can change under it.
+  const fx = p.fix ? agValidateFix(p.fix, p.agent) : null;
+  if(p.fix && !fx){ ok = false; p.error = 'no longer valid: '+agRejectReason(p.fix, p.agent); }
+  else if(fx){ try{ ok = agApplyFix(fx); }catch(e){ ok = false; p.error = e.message; } }
   p.status = ok ? 'approved' : 'failed';
   p.closed = todayKey();
   agLog(p.agent, ok ? 'You approved \u201c'+p.title+'\u201d. '+(p.fix?'Applied: '+agFixSummary(p.fix)+'.':'Noted.')
@@ -13239,7 +13527,8 @@ function agContext(){
       'exercises while this is in force.';
   }
   const deloadTxt = deloadActive()
-    ? '\n\nDELOAD ACTIVE through '+S.deload.until+' (started '+S.deload.startedAt+') — loads and sets are '+
+    ? '\n\nDELOAD ACTIVE through '+deloadWindow().until+' (started '+deloadWindow().start+
+      (deloadWindow().source==='meso' ? ', the meso block\u2019s scheduled deload week' : '')+') — loads and sets are '+
       'intentionally reduced; do not flag this window as a stall, regression, or missed progression.'
     : '';
   const ov = invState().overrides;
@@ -13437,7 +13726,7 @@ async function agRunSpecialist(id, manual){
   const consulted = [];
   const res = await callClaudeWithData(
     [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
-    sys, AG_MAXTOK, {effort: AG_NIGHT_EFFORT[id] || 'high'},
+    sys, AG_MAXTOK, {effort: AG_NIGHT_EFFORT[id] || 'high', route:'night:'+id},
     function(n){ if(consulted.indexOf(n)<0) consulted.push(n); });
   // Throw rather than salvage: agRunAll already has a failure path that says plainly this agent
   // did not report, which is the truth. Half a sentence stored as a summary is not.
@@ -13472,7 +13761,7 @@ function agIngest(a2, id, blk){
   }
   (blk.proposals||[]).slice(0,2).forEach(function(pr){
     if(!pr || !pr.title) return;
-    const fix = agValidateFix(pr.fix);
+    const fix = agValidateFix(pr.fix, id);
     // Advisory-only entries (no fix, or one that failed validation) do not belong in the
     // approval queue -- there is nothing for Approve to apply, so it was a no-op button next
     // to text already read in the summary above.
@@ -13485,7 +13774,7 @@ function agIngest(a2, id, blk){
         // override was live when none had ever been written. Validation is unchanged: this
         // only makes the refusal VISIBLE, it never lets one through.
         agLog(id, 'I proposed \u201c'+pr.title+'\u201d but it did not pass validation ('+
-          agRejectReason(pr.fix)+'), so NOTHING was applied. Ignore any part of my summary '+
+          agRejectReason(pr.fix, id)+'), so NOTHING was applied. Ignore any part of my summary '+
           'above that says otherwise.');
       }
       return;
@@ -13727,7 +14016,7 @@ async function agRunLead(digest, manual){
     '\n'+agBaseContext('zulu');
   const res = await callClaudeWithData(
     [{role:'user', content:'Write tonight\u2019s synthesis.'}],
-    sys, AG_MAXTOK, {effort:'high'});
+    sys, AG_MAXTOK, {effort:'high', route:'night:zulu'});
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   return parseLooseJSON(res.text);
 }
@@ -13779,7 +14068,7 @@ async function agWriteLetter(digest){
     '\n'+'WHAT THE SPECIALISTS FOUND TONIGHT:'+'\n'+(digest||[]).join('\n')+
     '\n'+'\n'+agBaseContext('zulu');
   const res = await callClaudeWithData(
-    [{role:'user', content:'Write this week\u2019s letter.'}], sys, AG_MAXTOK, {effort:'high'});
+    [{role:'user', content:'Write this week\u2019s letter.'}], sys, AG_MAXTOK, {effort:'high', route:'letter'});
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   return (res.text||'').trim();
 }
@@ -13910,13 +14199,15 @@ async function agSendChat(id){
       coachMemContext()+trainingContext()+agContext();
     const msgs = a.chats[id].slice(-14).map(m=>({role:m.role, content:m.content}));
     // Read-only tools only: this chat still cannot change anything, it can look things up.
-    const {text} = await callClaudeWithData(msgs, sys, 4000, {});
+    const {text} = await callClaudeWithData(msgs, sys, 4000, {route:'chat:'+id});
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
     agState().chats[id].push({role:'assistant', content:text||'\u2014'});
     save(); agThinkingFor = null; renderOps();
   }catch(e){
     agThinkingFor = null;
     agChatErr = {id, msg:AGENTS[id].name+' unavailable: '+e.message};
+    // On screen only, it was gone by the time anyone asked what it had said (2026-09-25).
+    try{ agLog(id, 'Chat failed: '+e.message); save(); }catch(_){}
     renderOps();
   }
 }
@@ -13943,8 +14234,10 @@ function readinessNow(){
   }
   const r = todayReadiness();
   if(!r) return null;
-  const pct = {high:80, med:55, low:28}[r.tier];
-  return {pct:pct, label:(r.tier==='med'?'moderate':r.tier), tone:(r.tier==='high'?'good':r.tier==='med'?'mid':'low'),
+  // The middle tier is 'ok'. This map said 'med', a tier that has never existed, so every ok
+  // check-in came out with no percentage and the red 'low' tone.
+  const pct = {high:80, ok:55, low:28}[r.tier];
+  return {pct:pct, label:(r.tier==='ok'?'moderate':r.tier), tone:(r.tier==='high'?'good':r.tier==='ok'?'mid':'low'),
           source:'self-reported'};
 }
 function readinessColor(tone){
@@ -14566,6 +14859,7 @@ function renderOps(){
     }).join('');
   }
   h += '</div>'+(a.log.length?'<div style="margin-top:8px"><button class="btn ghost sm" onclick="if(confirm(\'Clear the activity log? Proposals and memory are kept.\')){agState().log=[];save();renderOps();}">Clear log</button></div>':'')+'</div>';
+  try{ h += aiUsageCardHTML(); }catch(e){}
 
   el.innerHTML = h;
   const box = document.getElementById('agChatBox');
@@ -14627,7 +14921,7 @@ async function agWriteBrief(manual){
     '\n'+'WHAT THE SPECIALISTS FOUND LAST NIGHT:'+'\n'+(digest.length?digest.join('\n'):'(no cycle ran)')+
     '\n'+'\n'+agBaseContext('zulu');
   const res = await callClaudeWithData(
-    [{role:'user', content:'Write this morning\u2019s brief.'}], sys, AG_MAXTOK, {effort:'medium', maxRounds:1});
+    [{role:'user', content:'Write this morning\u2019s brief.'}], sys, AG_MAXTOK, {effort:'medium', maxRounds:1, route:'brief'});
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   const parsed = parseLooseJSON(res.text);
   return parsed && parsed.brief ? String(parsed.brief) : null;

@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1927 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 1995 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -260,13 +260,16 @@ so the two orders can no longer disagree.
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`) |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()` |
-| Agents | `agRunAll()`, `agValidateFix()`, `agApplyFix()`, `agSendChat()`, `renderOps()` |
+| Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()`, `coachValidateAction()` |
+| Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
+| API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network |
+| Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
 | Projections | `anFanProject()` (shared core), `anFanChartSVG()`, `anFanMilestones()`, `bwProjectFor()` |
 | Overload status | `olSignals()`, `olBaselineVerdict()`, `olValidateReport()`, `renderAnOverload()` |
 | Exercise swaps | `swapScore()`, `swapPattern()`, `swapEquip()`, `swapCandidates()`, `swapListHTML()` |
 | PR history | `checkPRs()`, `prAppend()`, `prBackfill()`, `renderAnPRs()` |
-| Readiness | `anReadinessOutcome()`, `anReadinessTrim()`, `renderAnReadiness()` |
+| Readiness | `todayReadiness()`, `rdComplete()`, `readinessNow()`, `anReadinessOutcome()`, `anReadinessTrim()`, `renderAnReadiness()` |
 | Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
 | Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()` |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
@@ -308,14 +311,36 @@ return a 400 on this model — none are used, and the suite asserts that too.
 
 ## Hard rules for the agent layer
 
-**Agents never mutate state silently.** Every change goes through the proposal
-queue and requires the user to tap Approve. `agApplyFix()` is the *only* place a
-proposal may touch state. Do not add side paths.
+**Agents never mutate state silently.** Every change a model suggests needs Mark to tap
+something. The nightly queue applies only through `agApplyFix()`, after `agApprove()` has run
+`agValidateFix()` on it a second time (a proposal can wait a week, and the split or a lift's weights
+can change under it). This used to say `agApplyFix()` was the *only* write path, and it was not.
+These are the others, all tap-to-apply:
+- ZULU's chat cards, which go through `coachValidateAction()` → `coachExecuteAction()`
+- Investigation's Apply fix (`invApplyFix()`)
+- the weekly audit (`acceptProposal()`)
+- the fatigue banner's Start deload (`startDeloadWeek()`)
+- meso split approval
+
+Since 2026-09-25 the chat path shares the queue's limits: calorie and protein bounds, and
+resolved exercise names. Before that, `adjust_fuel` accepted any number at all. Do not add
+another side path. If one is unavoidable, it gets the same checks.
 
 **`agValidateFix()` is a security boundary.** It whitelists fix types, clamps
 numeric ranges, and rejects anything malformed. Never loosen it to make a model's
 output "work." If a model produces something invalid, the correct behavior is to
 discard it, not to coerce it.
+
+Four rules it enforces:
+- **Each agent may only raise its own fix types** (`AG_FIX_ALLOWED`: CHARLIE schedule, DELTA
+  lifts, ECHO intake; ZULU any). The menu in the prompt was the only thing stopping ECHO
+  queueing a `liftReset`.
+- **A `liftReset` has a ceiling** (`agResetCeiling()`). It can be at most two increments over
+  the last top set. A MAXED machine, or a lift flagged "sharp" in the last 14 days, gets
+  nothing over its last weight. Those two rules used to exist only as prompt text.
+- **`addEx`/`swapEx` names are resolved** (`exAcceptName()`). `swapEx.from` must be in the
+  permanent split.
+- **The refusal names its reason** in the activity log (`agRejectReason(fx, who)`).
 
 **Advisory-only proposals are not allowed in the queue.** A proposal with no
 concrete `fix` has nothing to apply, so approving it is a no-op. These are folded
@@ -332,6 +357,17 @@ already proposed a `liftReset` for `Trap Bar Deadlift`, which is not in the spli
 all. `agValidateFix()` now resolves the name through `agResolveExName()` and stores
 the canonical spelling; `invOverrideFor()` additionally matches on a normalised form
 as a second line of defence.
+
+**A coaching note is not part of a name.** On 2026-09-12 ZULU's today-only plan stored
+"Barbell Back Squat (reduce top set 15-20 lb, 3x10, RPE 7)" and three names like it as the exercise
+names. Their sets were cut off from each lift's history, and the squat that day was "first time
+logging this lift". `exSplitNote()` peels off a trailing parenthetical that reads like instructions
+(numbers, lb, RPE, sets, reps, weight), and leaves a real variant like "(Wide Grip)" alone.
+`exResolveKnown()` then maps the name to the app's spelling. `exAcceptName()` also admits a new
+exercise that reads as a plain name, because suggesting one is part of DELTA's job. The note
+itself travels in `S.coachDayPlan.notes` and shows as LIVE's advice line. The four Sep-12
+entries are still in his logs. Merge them with the Library's rename (`exRenameEverywhere()`), not
+a load-time migration.
 
 **Read-only agent output still needs a validator.** The Overload Status tab is
 informational, so it does not go through the proposal queue — but `olValidateReport()`
@@ -409,6 +445,27 @@ costs commentary, not correctness. If DELTA still dies, read the note first: a l
 again means the thinks are still too long, and a short one means the connection is being taken
 away, which effort will not fix.
 
+**An instant failure on every try is the network, not the app.** On 2026-09-25 the brief's Rewrite
+failed twice at 8:18 AM with `Failed to fetch — no reply on any of 3 tries (the last failed after
+0s)`, and DELTA's chat failed the same way. He was on school Wi-Fi, which blocks
+`api.anthropic.com`. GitHub still answered (the WHOOP relay kick had gone out at 7:16). That evening,
+from the same browser with the same key and headers, a request got a 200 in 0.3s. So when no try
+gets any reply, `aiSend()` now asks `aiReachNote()`: one opaque GET to GitHub, bounded at 4s, on
+the failure path only. The error then says either "GitHub answered, so this network is blocking
+api.anthropic.com" or "this device looks offline". The message still starts with the engine's
+own `TypeError` text, so `agIsNetworkErr()` reads it as before. Chat failures now go to the
+activity log too (`agSendChat()`, ZULU's `sendChat()`, mid-workout DELTA). Until this, they
+were only on screen, and nobody could say afterwards what DELTA's chat error had been.
+
+**Every reply's token usage is kept.** `aiBody()` hangs the calling feature on the body as a
+non-enumerable `_route` (`night:delta`, `brief`, `chat:zulu`…), so it can never reach the
+request JSON. `aiSend()` records `usage` with it through `aiUsageNote()`. The log lives in
+`localStorage['ironhub:usage']`, per device and capped at `AI_USAGE_MAX`. It is not kept in `S`,
+because each device pays for its own calls and `S` re-uploads on every sync. `aiUsageSummary()`
+prices it at `AI_PRICE` (Sonnet 5: $2 in / $10 out per million, checked 2026-09-25), and Coach
+shows 30 days by feature. That is the baseline to measure any prompt addition against. Pass a
+`route` in `opts` on any new call site, or it lands under "Other".
+
 **A repaint must never be able to strand an in-flight flag.** Both runners used to call
 `renderOps()` between raising their module-scoped guard and entering the `try`. A throw from a
 pure-UI repaint left the flag `true` for the life of the page, and every later scheduler tick then
@@ -419,6 +476,23 @@ and individually guarded.
 ---
 
 ## V4 invariants — things that will silently break if undone
+
+**The deload in force is not always `S.deload`.** A meso block's deload week is a deload with no
+`S.deload` behind it, and `S.deload` can still hold a finished manual window from weeks earlier.
+Three readers took their dates straight from `S.deload.until`: the fatigue card, Settings and the
+agents' `agContext()`. During his Oct 12 block deload they would have printed August's dates, or
+thrown when `S.deload` was null, and the agents' prompt would have failed with it.
+`deloadWindow()` returns `{start, until, source}` from whichever source is in force, and
+`deloadActive()` is just `!!deloadWindow()`. `deloadCheck()` counts training weeks since
+`lastDeloadEndKey()`, not every week ever logged. The old count passed 6 once and never reset.
+
+**A sleep log is not a check-in.** `quickLogSleep()` writes a stub with `partial:true` and no
+tier. Older stubs carry a made-up `tier:'ok'` with empty soreness and energy. `rdComplete()`
+tells them apart, and `todayReadiness()`, the readiness analytics and the agents' readiness
+lines all use it. Before, a logged sleep skipped the pre-session check-in for the day. The
+check-in also stores what WHOOP pre-filled (`energyPre`, `sleepPre`). Energy comes straight from
+recovery, so an unchanged answer is WHOOP's read, not his, and anything that weighs both must not
+count it twice.
 
 **The split in force is not always `S.split`.** During an approved meso strength block the day
 keys are S1/S2/S3, which do not exist in `S.split` at all. Anything resolving an exercise
@@ -453,7 +527,17 @@ active tab every 30 s and after every sync pull, so DOM-only state is wiped on a
 nothing to blame it on. `subOpen`, `sdOpen`, `sdHomeOpen` and `photoOpen` are module-scoped
 for this reason.
 
-**One bodyweight rate.** `bulkRate()` / `bulkBand()`, over weekly averages. Every surface that
+**One bodyweight rate. Not yet true everywhere.** An audit on 2026-09-24 found six surfaces still
+using their own lb/wk thresholds:
+- `bulkScore()`'s 1.6
+- `investigateBulk()`'s 0.25/1.0/1.5 (pinned by a test)
+- the flag auto-resolve's 0.4–1.2
+- the Bulk-quality rate card
+- `projectionCardHTML()`'s cap
+- the projection card's all-history pace
+
+Folding them into `bulkBand()` is step 3 of the V3 intelligence plan, and until then they can
+disagree. `bulkRate()` / `bulkBand()`, over weekly averages. Every surface that
 quotes a lb/wk figure goes through it: the Bulk tab, the projection card, `investigateBulk()`,
 and `bulkScore()` (the Progress verdict). That last one was missed the first time and kept its
 own raw first-vs-last-weigh-in math, so Progress read +0.35 lb/wk on the same day the Bulk tab

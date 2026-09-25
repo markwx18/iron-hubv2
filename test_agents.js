@@ -235,7 +235,9 @@ setTimeout(async () => {
   const realDay = Object.keys(ev('S').split)[0];
   ok('addEx real day ok', V({ type: 'addEx', payload: { name: 'Face Pull', day: realDay } }) !== null);
   ok('addEx fake day rejected', V({ type: 'addEx', payload: { name: 'Face Pull', day: 'D99' } }) === null);
-  ok('swapEx ok', V({ type: 'swapEx', payload: { from: 'A', to: 'B' } }) !== null);
+  const realEx = ev("exName((S.split[Object.keys(S.split)[0]].exercises||[])[0])");
+  ok('swapEx ok', V({ type: 'swapEx', payload: { from: realEx, to: 'Face Pull' } }) !== null);
+  ok('swapEx from a name not in the split rejected', V({ type: 'swapEx', payload: { from: 'A', to: 'B' } }) === null);
   ok('swapEx missing to rejected', V({ type: 'swapEx', payload: { from: 'A' } }) === null);
 
   // schedule must be a complete, valid week
@@ -1243,10 +1245,10 @@ setTimeout(async () => {
   stubAgents({
     zulu:    {summary:'brief', brief:'nothing needs you today', proposals:[
                {title:'Watch Thursday squat session', reasoning:'fatigue is elevated', fix:null}]},
-    delta:   {summary:'d', proposals:[
-               {title:'Bump bench volume', reasoning:'trend is clean', fix:{type:'cal', payload:{delta:100}}}]},
+    delta:   {summary:'d', proposals:[]},
     charlie: {summary:'c', proposals:[]},
-    echo:    {summary:'e', proposals:[]}
+    echo:    {summary:'e', proposals:[
+               {title:'Bump bench volume', reasoning:'trend is clean', fix:{type:'cal', payload:{delta:100}}}]}
   });
   await ev('agRunAll(true)');
   ok('advisory-only proposal is NOT in the queue', ev("agState().proposals.some(p=>p.title==='Watch Thursday squat session')") === false,
@@ -8368,6 +8370,283 @@ setTimeout(async () => {
   ev('S = ' + pvSaved + ';');
   ev("localStorage.removeItem('ironhub:whoopkick'); localStorage.removeItem(BRIEF_TRAIL_KEY);");
   ok('cleanup: real state restored after the provisional WHOOP section', ev('JSON.stringify(S)') === pvSaved);
+
+  console.log('=== STEP 0: DELOAD WINDOW, EDITS, READINESS, HOME, EFFORT READS ===');
+  const s0Saved = ev('JSON.stringify(S)');
+  try {
+    const dk = n => ev("mesoAddDays(todayKey(), " + n + ")");
+    const today = ev('todayKey()');
+
+    // --- a meso deload week is a deload, with its own dates ---
+    // His real state on the day this was written: a finished manual deload from August still in
+    // S.deload, and a meso block whose deload week runs Oct 12-14.
+    ev("S.deload = {startedAt:'2026-08-25', until:'2026-08-27'};");
+    ev("S.meso = {template:null, active:{startedAt:" + JSON.stringify(dk(-50)) + ", startKey:" + JSON.stringify(dk(-50)) + ", splits:{}, weeks:[" +
+       "{type:'hyp', name:'Hypertrophy', n:7, startKey:" + JSON.stringify(dk(-8)) + ", endKey:" + JSON.stringify(dk(-2)) + ", repLo:8, repHi:12, rpeLo:7, rpeHi:8}," +
+       "{type:'deload', name:'Deload', n:8, startKey:" + JSON.stringify(dk(-1)) + ", endKey:" + JSON.stringify(dk(1)) + ", repLo:8, repHi:12, rpeLo:5, rpeHi:6}]}};");
+    const dw = ev('deloadWindow()');
+    ok('deload window: a meso deload week is the deload in force, with its own dates',
+       dw && dw.source === 'meso' && dw.until === dk(1) && dw.start === dk(-1), JSON.stringify(dw));
+    const card = ev('deloadCardHTML()');
+    ok('deload window: the fatigue card shows the meso week\u2019s end, not August\u2019s',
+       card.indexOf(ev("fmtDate(" + JSON.stringify(dk(1)) + ")")) >= 0 && card.indexOf(ev("fmtDate('2026-08-27')")) < 0, card.slice(0, 300));
+    ok('deload window: so does the LIVE banner', ev('deloadBannerHTML()').indexOf(ev("fmtDate(" + JSON.stringify(dk(1)) + ")")) >= 0);
+    let ctx = '';
+    ev('S.deload = null;');
+    try { ctx = ev('agContext()'); } catch (e) { ctx = 'THREW: ' + e.message; }
+    ok('deload window: the agents\u2019 prompt builds with no S.deload during a meso deload (it used to throw)',
+       /DELOAD ACTIVE through /.test(ctx) && ctx.indexOf(dk(1)) >= 0, ctx.slice(0, 120));
+    ev('S.meso = {template:null, active:null};');
+    ok('deload window: nothing active means null', ev('deloadWindow()') === null && ev('deloadActive()') === false);
+
+    // --- deloadCheck counts weeks since the last deload, not every week ever ---
+    // One session a week for ten weeks, a deload session in week five. Every set solid, and no
+    // bench or squat, so the week count is the only thing that can score.
+    const mk = (d, deload, e) => ({id: 900000 + d, date: dk(-d), day: 'D1', dayName: 'Test', deload: !!deload,
+      entries: [{exercise: 'Zz Step0 Press', sets: [{w: 100, r: 10, e: e || 'solid'}, {w: 100, r: 10, e: e || 'solid'}]}]});
+    const dlLogs = [70, 63, 56, 49, 42, 35, 28, 21, 14, 7].map(d => mk(d, d === 42));
+    ev('S.logs = ' + JSON.stringify(dlLogs) + ';');
+    ev('S.deload = null; S.meso = {template:null, active:null};');
+    const dc = ev('deloadCheck()');
+    ok('deloadCheck: four weeks since a deload do not score as six-plus weeks of accumulated training',
+       !dc.reasons.some(r => /weeks/.test(r)), JSON.stringify(dc));
+    ev('S.logs = ' + JSON.stringify([70, 63, 56, 49, 42, 35, 28, 21, 14, 7].map(d => mk(d, false))) + ';');
+    const dc2 = ev('deloadCheck()');
+    ok('deloadCheck: ten weeks with no deload still do', dc2.reasons.some(r => /10 training weeks with no deload/.test(r)), JSON.stringify(dc2));
+    // Deload sessions are supposed to feel easy -- or, here, awful -- and must not move the grind share.
+    ev('S.logs = ' + JSON.stringify([28, 21, 14, 7].map(d => mk(d, false)).concat([3, 2, 1].map(d => mk(d, true, 'fail')))) + ';');
+    const dc3 = ev('deloadCheck()');
+    ok('deloadCheck: deload sessions are left out of the grind/fail share', !dc3.reasons.some(r => /grind/.test(r)), JSON.stringify(dc3));
+
+    // --- editing a session keeps effort, timing, and bodyweight sets ---
+    ev('S.logs = ' + JSON.stringify([{id: 777001, date: dk(-1), day: 'D1', dayName: 'Test', t: 1, entries: [
+      {exercise: 'Zz Step0 Press', sets: [{w: 135, r: 9, e: 'grind', ef: 31, ts: 1790000000000}, {w: 135, r: 8, e: 'fail', ef: 8, ts: 1790000100000}]},
+      {exercise: 'Hanging Leg Raise', sets: [{w: 0, r: 15, e: 'solid', ef: 60, ts: 1790000200000}]}]}]) + ';');
+    ev('openEditSession(777001)');
+    ev("document.getElementById('es-r-0-1').value = '9';");   // he fixes a miscounted rep
+    ev('saveEditSession(777001)');
+    const ed = ev('JSON.stringify(S.logs[0])'), edo = JSON.parse(ed);
+    const p0 = edo.entries[0].sets;
+    ok('edit: effort and timing survive saving the session editor',
+       p0[0].ef === 31 && p0[0].e === 'grind' && p0[0].ts === 1790000000000 && p0[1].ef === 8 && p0[1].ts === 1790000100000, ed);
+    ok('edit: the edited value lands', p0[1].r === 9, ed);
+    ok('edit: a bodyweight set (weight box empty) is kept, not deleted',
+       edo.entries.length === 2 && edo.entries[1].sets.length === 1 && edo.entries[1].sets[0].r === 15 && edo.entries[1].sets[0].w === 0, ed);
+    ok('edit: the record is restamped as a write', edo.t > 1);
+
+    // --- readinessNow: an ok check-in is moderate, not red ---
+    ev("delete S.whoop; S.readiness = [{date:todayKey(), sleep:'7-8', sore:'mild', energy:'ok', stress:'normal', motiv:'ready', tier:'ok'}];");
+    const rn = ev('readinessNow()');
+    ok('readinessNow: an ok check-in reads moderate at 55%, amber not red',
+       rn && rn.pct === 55 && rn.label === 'moderate' && rn.tone === 'mid', JSON.stringify(rn));
+
+    // --- a sleep log is not a check-in ---
+    ev('S.readiness = [];');
+    ev("quickLogSleep('7-8')");
+    ok('sleep log: logging only sleep does not count as today\u2019s check-in', ev('todayReadiness()') === null,
+       JSON.stringify(ev('S.readiness')));
+    ok('sleep log: and the stub carries no made-up tier', ev('S.readiness[0].tier') === undefined && ev('S.readiness[0].partial') === true);
+    ev("S.readiness = [{date:todayKey(), sleep:'7-8', sore:'', energy:'', tier:'ok'}];");
+    ok('sleep log: an older stub (tier ok, nothing else) is not a check-in either', ev('todayReadiness()') === null);
+    ok('sleep log: and the agents are told it was sleep only', /sleep only, no check-in/.test(ev('trainingContext()')));
+
+    // --- Form Focus lifts get their own range in LIVE ---
+    ev("S.split.D1.exercises.push({name:'Zz Step0 Form Curl', inc:5, formFocus:true});");
+    const ffx = ev("buildOneLiveExercise('Zz Step0 Form Curl')");
+    ok('Form Focus: LIVE prescribes 12-20, the same range recommend() uses', ffx.lo === 12 && ffx.hi === 20, ffx.lo + '-' + ffx.hi);
+
+    // --- HOME sessions do not set the gym target ---
+    ev('S.logs = ' + JSON.stringify([
+      {id: 777101, date: dk(-8), day: 'D1', entries: [{exercise: 'Zz Step0 Press', sets: [{w: 135, r: 10}, {w: 135, r: 10}]}]},
+      {id: 777102, date: dk(-2), day: 'D1', home: true, entries: [{exercise: 'Zz Step0 Press', sets: [{w: 40, r: 12}, {w: 40, r: 12}]},
+                                                        {exercise: 'Zz Step0 KB Swing', sets: [{w: 35, r: 15}]}]}]) + ';');
+    const hf = ev("historyFor('Zz Step0 Press')");
+    ok('HOME: the last GYM session is what the next gym target builds on', hf.length === 1 && hf[0].sets[0].w === 135, JSON.stringify(hf));
+    ok('HOME: the agents still see both, tagged', ev("historyFor('Zz Step0 Press', {includeHome:true}).length") === 2);
+    ok('HOME: a lift only ever done at home keeps its home history', ev("historyFor('Zz Step0 KB Swing').length") === 1);
+
+    // --- effort reads go through effBucket() ---
+    // A set carrying only the lever (no legacy tag) at 10 is a failure.
+    const ia = ev("intraAdvice({name:'Zz Step0 Press', lo:8, hi:12, sets:[{w:135, r:9, ef:10}], targetW:135, recDetail:''})");
+    ok('effort: intraAdvice reads the lever -- a lever-only failure backs off', ia.tag === 'Back off', JSON.stringify(ia));
+
+    // --- the prompt's bodyweight is the latest by DATE ---
+    ev("S.weights = [{date:" + JSON.stringify(dk(-1)) + ", lbs:160.4}, {date:" + JSON.stringify(dk(-9)) + ", lbs:158.0}];");
+    ok('prompt: the current bodyweight is the newest weigh-in, not the last one typed',
+       ev('trainingContext()').indexOf('160.4 lb (weighed ' + dk(-1) + ')') >= 0, (ev('trainingContext()').match(/weighed[^)]*\)/) || [''])[0]);
+
+    // --- no literal 3000-cal advice ---
+    ev('S.fuel.calTarget = 3700;');
+    ev('S.logs = ' + JSON.stringify([7, 6, 5, 4, 3, 2].map(d => mk(d, false, 'grind'))) + ';');
+    const wcard = ev('deloadCardHTML()');
+    ok('calories: the fatigue card names his actual target', /3700 cal target/.test(wcard) && !/3000\+/.test(wcard), wcard.slice(0, 400));
+    ok('calories: no "3000+" advice is left anywhere in the app', !/3000\+/.test(html));
+
+    // --- the check-in keeps what WHOOP pre-filled ---
+    ev("delete S.whoop; applyWhoop({recovery:{date:todayKey(), score:72, hrv:101, rhr:55}, sleep:{date:todayKey(), hours:7.4}});");
+    ev('S.readiness = [];');
+    ev("openReadyCheck('D1')");
+    ok('check-in: WHOOP pre-fills energy from recovery', ev('_rdV3.energy') === 'high' && ev('_rdPre.energy') === 'high');
+    ev("_rdV3.energy = 'ok'; _rdV3.sore = 'fresh'; _rdV3.stress = 'normal'; _rdV3.motiv = 'ready';");
+    ev('rd3Lock()');
+    const rdE = ev('JSON.stringify(S.readiness[0])');
+    ok('check-in: the saved entry keeps his answer AND what was pre-filled', /"energy":"ok"/.test(rdE) && /"energyPre":"high"/.test(rdE) && /"sleepPre":"7-8"/.test(rdE), rdE);
+    ev('live = null; clearLiveDraft(); closeReadyOverlay();');
+  } catch (e) {
+    ok('step 0 group A section', false, e.stack);
+  }
+  ev('live = null; try{ clearLiveDraft(); }catch(e){}');
+  ev('S = ' + s0Saved + ';');
+  ok('cleanup: real state restored after the step 0 section', ev('JSON.stringify(S)') === s0Saved);
+
+  console.log('=== STEP 0: AGENT WRITE PATHS, USAGE LOG, NAMED NETWORK FAILURES ===');
+  const s0bSaved = ev('JSON.stringify(S)');
+  try {
+    const dk = n => ev("mesoAddDays(todayKey(), " + n + ")");
+    const V2 = (fx, who) => { w.__fx = fx; w.__who = who; return ev('agValidateFix(window.__fx, window.__who)'); };
+    const R2 = (fx, who) => { w.__fx = fx; w.__who = who; return ev('agRejectReason(window.__fx, window.__who)'); };
+    // A lift with a known last top set: 135 lb on a +5 ladder.
+    ev("S.split.D1.exercises.push({name:'Zz Step0b Press', inc:5}, {name:'Zz Step0b Machine', inc:5, maxed:true}, {name:'Zz Step0b Sore Row', inc:5});");
+    ev('S.logs.push(' + JSON.stringify({id: 778001, date: dk(-3), day: 'D1', entries: [
+      {exercise: 'Zz Step0b Press', sets: [{w: 135, r: 10}, {w: 135, r: 9}]},
+      {exercise: 'Zz Step0b Machine', sets: [{w: 200, r: 14}]},
+      {exercise: 'Zz Step0b Sore Row', sets: [{w: 120, r: 10}]}]}) + ');');
+    ev("S.pain = [{id:'pnzz1', date:" + JSON.stringify(dk(-2)) + ", exercise:'Zz Step0b Sore Row', level:3, note:'elbow', t:1}];");
+
+    // --- each agent proposes only in its own area ---
+    const reset = w => ({type: 'liftReset', payload: {name: 'Zz Step0b Press', w: w, days: 10}});
+    ok('menu: DELTA may reset a lift', V2(reset(125), 'delta') !== null);
+    ok('menu: ECHO may not, however valid the fix', V2(reset(125), 'echo') === null);
+    ok('menu: and the refusal says why', /outside ECHO/.test(R2(reset(125), 'echo')), R2(reset(125), 'echo'));
+    ok('menu: DELTA may not move calories', V2({type: 'cal', payload: {delta: 100}}, 'delta') === null);
+    ok('menu: ZULU, the lead, may use any shape', V2({type: 'cal', payload: {delta: 100}}, 'zulu') !== null);
+
+    // ...and the nightly run enforces it, not just the validator.
+    ev("agState().lastRun = ''; agState().lastRunAt = ''; agState().proposals = []; agState().log = [];");
+    ev("S.settings.apiKey = 'sk-test'");
+    stubAgents({zulu:{summary:'z', brief:'b', proposals:[]},
+                delta:{summary:'d', proposals:[{title:'Eat more', reasoning:'r', fix:{type:'cal', payload:{delta:200}}}]},
+                charlie:{summary:'c', proposals:[]}, echo:{summary:'e', proposals:[]}});
+    await ev('agRunAll(true)');
+    ev('callClaudeWithData = window.__realData;');
+    ok('menu: a calorie fix from DELTA never reaches the queue', ev("agState().proposals.some(function(p){ return p.title==='Eat more'; })") === false);
+    ok('menu: and the log says it was outside DELTA’s area', ev("agState().log.some(function(l){ return /outside DELTA/.test(l.text); })"),
+       JSON.stringify(ev('agState().log').slice(0,4)));
+
+    // --- a liftReset has a ceiling ---
+    ok('reset: two steps over the last top set is allowed (145 over 135)', V2(reset(145), 'delta') !== null);
+    ok('reset: three steps is not (150 over 135)', V2(reset(150), 'delta') === null);
+    ok('reset: and the reason names the ceiling', /too heavy.*135 lb last used/.test(R2(reset(150), 'delta')), R2(reset(150), 'delta'));
+    ok('reset: a MAXED machine gets nothing over its last weight',
+       V2({type: 'liftReset', payload: {name: 'Zz Step0b Machine', w: 205, days: 7}}, 'delta') === null &&
+       V2({type: 'liftReset', payload: {name: 'Zz Step0b Machine', w: 200, days: 7}}, 'delta') !== null);
+    ok('reset: nor does a lift flagged sharp in the last 14 days',
+       V2({type: 'liftReset', payload: {name: 'Zz Step0b Sore Row', w: 125, days: 7}}, 'delta') === null &&
+       V2({type: 'liftReset', payload: {name: 'Zz Step0b Sore Row', w: 110, days: 7}}, 'delta') !== null);
+
+    // --- names are resolved, and a coaching note never becomes a name ---
+    ok('names: the Sep 12 shape splits into a name and a note',
+       JSON.stringify(ev("exSplitNote('Barbell Back Squat (reduce top set 15-20 lb, 3x10, RPE 7)')")) ===
+       JSON.stringify({name: 'Barbell Back Squat', note: 'reduce top set 15-20 lb, 3x10, RPE 7'}));
+    ok('names: "(normal weight)" is a note too', ev("exSplitNote('Calve Raises (normal weight)').name") === 'Calve Raises');
+    ok('names: a real variant in brackets is left alone', ev("exSplitNote('Cable Row (Wide Grip)').name") === 'Cable Row (Wide Grip)');
+    const dayWithout = ev("Object.keys(S.split).find(function(d){ return !(S.split[d].exercises||[]).some(function(x){ return exName(x)==='Barbell Back Squat'; }); })");
+    const addSq = V2({type: 'addEx', payload: {name: 'barbell back squat (RPE 7, 3x10)', day: dayWithout}}, 'delta');
+    ok('addEx: a known lift is stored in its canonical spelling, note stripped', addSq && addSq.payload.name === 'Barbell Back Squat', JSON.stringify(addSq));
+    ok('addEx: a new plain exercise is allowed', (V2({type: 'addEx', payload: {name: 'Face Pull', day: dayWithout}}, 'delta') || {payload: {}}).payload.name === 'Face Pull');
+    ok('addEx: junk is not', V2({type: 'addEx', payload: {name: '??', day: dayWithout}}, 'delta') === null);
+    ok('addEx: nor is one already on that day', V2({type: 'addEx', payload: {name: 'Zz Step0b Press', day: 'D1'}}, 'delta') === null);
+    const sw = V2({type: 'swapEx', payload: {from: 'zz step0b press', to: 'Face Pull'}}, 'delta');
+    ok('swapEx: "from" resolves to the split\u2019s own spelling, so the apply\u2019s exact match lands',
+       sw && sw.payload.from === 'Zz Step0b Press', JSON.stringify(sw));
+
+    // --- approval checks the fix again ---
+    ev("agState().proposals = [{id:'pz1', agent:'delta', title:'Reset press', status:'pending', raised:todayKey(), fix:{type:'liftReset', payload:{name:'Zz Step0b Press', w:145, days:10}}}];");
+    ev("S.logs = S.logs.map(function(l){ if(l.id===778001) l.entries[0].sets = [{w:115, r:10}]; return l; });");   // his last top set drops to 115
+    ev("invState().overrides = {};");
+    ev("agApprove('pz1')");
+    const pz = ev("JSON.stringify(agState().proposals[0])");
+    ok('approve: a fix that stopped being valid while it waited is not applied',
+       /"status":"failed"/.test(pz) && /no longer valid/.test(pz) && !ev("invState().overrides['Zz Step0b Press']"), pz);
+
+    // --- ZULU's chat gets the same limits ---
+    const cv = (name, inp) => { w.__inp = inp; return ev("coachValidateAction(" + JSON.stringify(name) + ", window.__inp)"); };
+    ev('S.fuel.calTarget = 3700;');
+    ok('chat: a calorie target far outside the day\u2019s range is refused', cv('adjust_fuel', {calories: 9000}).ok === false);
+    ok('chat: so is a single jump of more than 500', cv('adjust_fuel', {calories: 2900}).ok === false);
+    ok('chat: a sane change goes through', cv('adjust_fuel', {calories: 3400}).ok === true);
+    ok('chat: protein outside 80-300g is refused', cv('adjust_fuel', {protein: 500}).ok === false);
+    const tw = cv('set_today_workout', {day: 'D1', exercises: ['Barbell Back Squat (reduce top set 15-20 lb, 3x10, RPE 7)', 'Machine Leg Extension (reduce 15-20 lb, RPE 6-7)']});
+    ok('chat: a today-only plan gets clean names, with the notes kept apart',
+       tw.ok && tw.inp.exercises[0] === 'Barbell Back Squat' && tw.inp.exercises[1] === 'Machine Leg Extension' &&
+       /RPE 7/.test(tw.inp.notes['Barbell Back Squat']), JSON.stringify(tw));
+    w.__acts = [{name: 'set_today_workout', input: {day: 'D1', exercises: ['Barbell Back Squat (reduce top set 15-20 lb, 3x10, RPE 7)']}}];
+    const staged = ev('coachStageProposals(window.__acts)')[0];
+    ok('chat: the card shows, and applies, the cleaned plan', staged.input.exercises[0] === 'Barbell Back Squat', JSON.stringify(staged.input));
+    ev("coachExecuteAction('set_today_workout', " + JSON.stringify(tw.inp) + ")");
+    const built = ev("buildLiveExercises('D1')");
+    const sq = built.find(x => x.name === 'Barbell Back Squat');
+    ok('chat: LIVE runs the real lift, with the note as advice', !!sq && /^Coach: reduce top set/.test(sq.recDetail || ''), JSON.stringify(built.map(x => x.name)));
+
+    // --- the route rides on the body but never reaches the API ---
+    const bd = ev("(function(){ const b = aiBody([{role:'user',content:'x'}], 's', 4000, {route:'brief', effort:'medium'}); return {route:b._route, json:JSON.stringify(b)}; })()");
+    ok('usage: a call knows which feature made it', bd.route === 'brief');
+    ok('usage: and that label is not in the request the API sees', bd.json.indexOf('_route') < 0 && bd.json.indexOf('brief') < 0, bd.json.slice(0, 200));
+
+    // --- every reply's usage is kept and priced ---
+    ev("localStorage.removeItem(AI_USAGE_KEY);");
+    ev("window.__realFetchU = window.fetch; window.fetch = function(u){ if(String(u).indexOf(AI_ENDPOINT) !== 0) return Promise.reject(new TypeError('x')); " +
+       "return Promise.resolve({ok:true, status:200, headers:{get:function(){ return 'application/json'; }}, " +
+       "json:function(){ return Promise.resolve({content:[{type:'text', text:'hi'}], stop_reason:'end_turn', usage:{input_tokens:12000, output_tokens:800}}); }, " +
+       "text:function(){ return Promise.resolve(JSON.stringify({content:[{type:'text', text:'hi'}], stop_reason:'end_turn', usage:{input_tokens:12000, output_tokens:800}})); }}); };");
+    ev("S.settings.apiKey = 'sk-test';");
+    await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'night:delta'})");
+    const u1 = ev("JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]')");
+    ok('usage: a reply\u2019s token count is recorded with its route', u1.length === 1 && u1[0].r === 'night:delta' && u1[0].i === 12000 && u1[0].o === 800, JSON.stringify(u1));
+    ev("window.fetch = window.__realFetchU;");
+    ev("localStorage.setItem(AI_USAGE_KEY, JSON.stringify([" +
+       "{at:Date.now()-86400000, r:'night:delta', i:1000000, o:100000, cw:0, cr:0}," +
+       "{at:Date.now()-2*86400000, r:'night:echo', i:500000, o:0, cw:0, cr:0}," +
+       "{at:Date.now()-3600000, r:'brief', i:0, o:50000, cw:0, cr:0}," +
+       "{at:Date.now()-40*86400000, r:'night:delta', i:9000000, o:0, cw:0, cr:0}]));");
+    const us = ev('aiUsageSummary(30)');
+    ok('usage: priced at Sonnet 5 rates and grouped by feature (night = $3 + $1, brief = $0.50)',
+       us.calls === 3 && Math.abs(us.by.night.cost - 4) < 1e-9 && Math.abs(us.by.brief.cost - 0.5) < 1e-9 && Math.abs(us.total - 4.5) < 1e-9, JSON.stringify(us));
+    ok('usage: calls older than the window are left out', !us.by.night || us.by.night.calls === 2);
+    ok('usage: Coach shows the spend', /\$4\.50 in the last 30 days/.test(ev('aiUsageCardHTML()')));
+    ev("localStorage.removeItem(AI_USAGE_KEY);");
+
+    // --- a blocked network is named as one ---
+    // School Wi-Fi, 2026-09-25: Anthropic refused instantly on every try while GitHub answered.
+    ev("window.fetch = function(u){ return String(u).indexOf(AI_ENDPOINT) === 0 ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve({ok:false, status:0, type:'opaque'}); };");
+    let blk = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000)"); } catch (e) { blk = e; }
+    ok('network: a blocked API with GitHub reachable says this network is blocking it',
+       !!blk && /GitHub answered, so this network is blocking api\.anthropic\.com/.test(blk.message), blk && blk.message);
+    ok('network: and it still reads as a network error, not an API reply', !!blk && ev('agIsNetworkErr')(blk) === true);
+    ev("window.fetch = function(){ return Promise.reject(new TypeError('Failed to fetch')); };");
+    let off = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000)"); } catch (e) { off = e; }
+    ok('network: nothing answering at all reads as offline', !!off && /looks offline/.test(off.message), off && off.message);
+    ev("window.fetch = window.__realFetchU;");
+
+    // --- a chat failure stays on record ---
+    ev("window.__realDataC = callClaudeWithData; callClaudeWithData = async function(){ throw new TypeError('Failed to fetch — no reply on any of 3 tries'); };");
+    ev("agState().log = []; agSelectChat('delta'); renderOps();");
+    ev("document.getElementById('agChatIn').value = 'what should I assign FORM to?';");
+    await ev('agSendChat(\'delta\')');
+    ok('chat failure: the error is written to the activity log, not only flashed on screen',
+       ev("agState().log.some(function(l){ return l.agent==='delta' && /Chat failed: Failed to fetch/.test(l.text); })"), JSON.stringify(ev('agState().log')));
+    ev('callClaudeWithData = window.__realDataC;');
+  } catch (e) {
+    ok('step 0 group B/C section', false, e.stack);
+    ev('if(window.__realFetchU) window.fetch = window.__realFetchU;');
+    ev('if(window.__realDataC) callClaudeWithData = window.__realDataC;');
+  }
+  ev('live = null; try{ clearLiveDraft(); }catch(e){}');
+  ev('S = ' + s0bSaved + ';');
+  ev("localStorage.removeItem(AI_USAGE_KEY);");
+  ok('cleanup: real state restored after the step 0 B/C section', ev('JSON.stringify(S)') === s0bSaved);
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
