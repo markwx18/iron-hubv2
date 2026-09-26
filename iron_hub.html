@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-25-v2">
+<meta name="ironhub-build" content="2026-09-25-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1271,6 +1271,15 @@
 
 
   .spark-dates{display:flex; justify-content:space-between; margin-top:4px; font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums;}
+
+  /* Today's call. The card carries the call's colour as its text colour so the chip tints from it
+     (currentColor, as every status chip does); everything else inside sets its own ink. */
+  .daycall .dc-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;}
+  .daycall .pill{color:inherit; margin:0;}
+  .daycall .dc-top .small{color:var(--dim);}
+  .daycall .dc-why{color:var(--text); line-height:1.5;}
+  .daycall .dc-what{color:var(--muted); line-height:1.5; margin-top:4px;}
+  .daycall .btn{margin-top:10px;}
 </style>
 
 
@@ -1914,6 +1923,17 @@ function toggleNoBackoff(dk,i){
   applyExFlag(exName(o), {noBackoff:o.noBackoff});
   save(); refreshSplitEditor();
 }
+/* Working sets on one day's slot (setCount). undefined = the engine's default of 3. */
+function exSlotSets(dk, name){
+  const x = ((S.split[dk]||{}).exercises||[]).find(function(y){ return exName(y) === name; });
+  return (x && typeof x === 'object' && x.sets) ? x.sets : 3;
+}
+function cycleSets(dk,i){
+  const o = ensureObj(dk,i);
+  const cur = o.sets || 3, next = cur >= 5 ? 2 : cur + 1;
+  if(next === 3) delete o.sets; else o.sets = next;
+  save(); refreshSplitEditor(); sdSetOpen(dk, true);
+}
 function toggleMaxed(dk,i){
   const o = ensureObj(dk,i);
   o.maxed = !o.maxed;
@@ -2088,6 +2108,15 @@ function recommend(ex, ready){
     const nw = topW+inc;
     if(ready==='low'){
       return {target:topW+' lb \u00d7 '+hi+' (bump deferred)', detail:'You earned the jump to '+nw+' lb ('+summ(last.sets)+'), but readiness is low today. Repeat '+topW+' lb, keep it crisp, and take the jump next session at full strength.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    }
+    /* Earned on grinders: the top of the range, but reached by grinding. Repeat the weight once and
+       own it before it goes up -- unless the session before already WAS that repeat (same weight,
+       also at the ceiling), or a lift that always grinds at the top would never climb.
+       classifyDecision() carries the same branch ('grind-hold'). */
+    const _pts = hist.length>1 ? hist[1].sets.filter(s=>(+s.w||0)===topW) : [];
+    const _pCeil = _pts.length ? (str ? Math.max(..._pts.map(s=>+s.r||0)) : Math.min(..._pts.map(s=>+s.r||0))) : 0;
+    if(hadGrind && !allEasy && !(prevTopW===topW && _pCeil>=hi)){
+      return {target:topW+' lb \u00d7 '+hi+' (own it first)', detail:'You reached '+hi+' ('+summ(last.sets)+'), but on grinders. Repeat '+topW+' lb once and make those reps clean \u2014 the jump to '+nw+' lb comes next time.'+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
     }
     const hitTxt = str ? 'Your top set hit '+hi+' reps ('+summ(last.sets)+').' : 'You hit '+hi+'+ on every top set ('+summ(last.sets)+').';
     return {target:nw+' lb \u00d7 '+lo+'+', detail:hitTxt+(allEasy?' All tagged easy \u2014 taking a double jump of '+inc+' lb.':' Load goes up '+inc+' lb \u2014 reps reset to the bottom of the range.')+(hadGrind?' Last bump was a grind, so expect this to feel heavy \u2014 that\u2019s normal.':'')+pushNote, sets:[{w:nw,r:''},{w:nw,r:''},{w:nw,r:''}]};
@@ -6895,8 +6924,11 @@ function loadLiveDraft(){
 function saveLiveDraft(){ if(live) localStorage.setItem(LIVE_KEY, JSON.stringify(live)); }
 function clearLiveDraft(){ localStorage.removeItem(LIVE_KEY); }
 
-function buildOneLiveExercise(nm, homeEquipList){
-  const tier = currentReadinessTier();
+function buildOneLiveExercise(nm, homeEquipList, opts){
+  const o = opts || {};
+  // With today's call, the call sets the tier recommend() reads. Without one (nothing passed),
+  // the check-in's tier, as it always was.
+  const tier = o.call ? callTier(o.call) : currentReadinessTier();
   if(deloadActive()){
     const dex = deloadExercise(nm);
     dex._decision = {code:'deload', moved:false, reason:'Deload week — loaded ~60% for 2 light sets. This session is excluded from progression and trend charts.'};
@@ -6917,8 +6949,35 @@ function buildOneLiveExercise(nm, homeEquipList){
     rec.detail = _ov.note+'. Keep every rep clean \u2014 climbing back fast is the point.';
     decision = {code:'inv-override', moved:true, reason:'Investigation fix active: targets reset to '+_ov.w+' lb through '+fmtDate(_ov.until)+' to rebuild momentum.'};
   }
-  let planned = (rec.sets||[]).length||3;
-  if(liveTrimVol){ planned = Math.max(2, planned-1); rec.detail = (rec.detail||'')+' Volume trimmed for low readiness \u2014 quality over quantity today.'; }
+  // A slot's own set count (Settings, or an approved setCount) wins over the engine's default.
+  let planned = (o.sets >= 2 && o.sets <= 5) ? Math.round(o.sets) : ((rec.sets||[]).length||3);
+  /* Today's call, inside hard bounds: never heavier than the normal plan, and never more than one
+     increment and one set lighter. Accessories give up a set on an easy or recover day; on a
+     recover day compounds also go one step lighter for 2 sets. An investigation override is a
+     deliberate weight and is left alone. */
+  let _callTrim = false, _callNote = '';
+  if(o.call === 'easy' || o.call === 'recover'){
+    if(!mesoIsCompound(nm)){
+      if(planned > 2){ planned -= 1; _callTrim = true; _callNote = DC_LABEL[o.call]+': one set fewer on accessories.'; }
+    } else if(o.call === 'recover' && !_ov && !isBodyweight(nm) && firstW !== '' && +firstW > 0){
+      // One step under the NORMAL plan, not under the already-held weight: when a jump was earned,
+      // holding it is itself a step down, and a second on top would break the bound.
+      const _inc = incForExercise(nm), _nr = recommend(nm, 'ok');
+      const _nw = +(((_nr.sets||[])[0]||{}).w) || +firstW;
+      const _lw = Math.max(_inc, _nw - _inc);
+      if(planned > 2){ planned -= 1; _callTrim = true; }
+      if(_lw < +firstW){
+        firstW = _lw; rec.target = _lw+' lb \u00d7 '+lo+'\u2013'+hi+' (recover day)';
+        // recommend()'s own sentence ("repeat 167.5 lb") would now contradict the weight on
+        // screen, so a recover day replaces it rather than prefixing it.
+        rec.detail = 'Recover day: '+_lw+' lb, one step under the normal plan\u2019s '+_nw+' lb'+(_callTrim ? ', with one set fewer' : '')+
+          '. Clean reps, nothing to prove today.';
+      } else {
+        _callNote = 'Recover day: one set fewer.';
+      }
+    }
+  }
+  if(_callNote) rec.detail = _callNote+' '+(rec.detail||'');
   let backoffW = backoffWeightFor(nm, +firstW||0);
   // HOME mode: the normal progression engine above still computes a suggested weight
   // (and backoff) \u2014 it just gets snapped to what's actually on hand (dumbbells/
@@ -6936,12 +6995,13 @@ function buildOneLiveExercise(nm, homeEquipList){
     planned:planned,
     sets:[], done:false, _decision:decision,
     advW:firstW, advLo:lo, advHi:hi, advTag:'', advCls:'', advMsg:rec.detail,
-    _swapped:false,
+    _swapped:false, _callTrim:_callTrim,
     _homeEquipList: (homeEquipList && homeEquipList.length) ? homeEquipList : null
   };
 }
-function buildLiveExercises(dk){
+function buildLiveExercises(dk, call){
   clearExpiredCoachDayPlan();
+  const _slotSets = liveSlotSets(dk);
   const plan = coachDayPlanFor(dk);
   let names = plan ? plan.exercises.slice() : dayExNames(dk);
   const homeEquipByName = {};
@@ -6959,7 +7019,7 @@ function buildLiveExercises(dk){
     });
     names = mapped;
   }
-  const built = names.map(nm=>buildOneLiveExercise(nm, homeEquipByName[nm]));
+  const built = names.map(nm=>buildOneLiveExercise(nm, homeEquipByName[nm], {call:call, sets:_slotSets[nm]}));
   // A coach note that came with a today-only plan ("reduce 15-20 lb, RPE 6-7") belongs in the
   // advice line. It used to arrive as part of the exercise name.
   if(plan && plan.notes) built.forEach(function(ex){
@@ -6979,10 +7039,16 @@ function startLiveForDay(dk){
   if(!todayReadiness() && S.readySkipDate!==todayKey()){ openReadyCheck(dk); return; }
   _startLiveNow(dk, false);
 }
-function _startLiveNow(dk, trim){
-  liveTrimVol = !!trim;
-  live = { date:todayKey(), day:dk, startedAt:Date.now(), exercises:buildLiveExercises(dk), curIdx:0, trimmed:!!trim, home:homeActiveToday() };
-  liveTrimVol = false;
+function _startLiveNow(dk){
+  // Today's call, from WHOOP against his own baseline plus the check-in. It sets the plan
+  // automatically; the line at the top of LIVE says why and puts the normal plan back in one tap.
+  let dc = null;
+  try{ if(!deloadActive()) dc = dayCall(todayKey(), dk); }catch(e){ dc = null; }
+  const exs = buildLiveExercises(dk, dc ? dc.call : undefined);
+  live = { date:todayKey(), day:dk, startedAt:Date.now(), exercises:exs, curIdx:0,
+           trimmed:exs.some(function(e){ return e._callTrim; }), home:homeActiveToday(),
+           call: dc ? {call:dc.call, score:dc.score, conf:dc.conf, why:dc.why, whoop:dc.whoop, checkIn:dc.checkIn} : null,
+           callOff:false };
   liveActiveIdx = 0;
   saveLiveDraft();
   renderLive();
@@ -7028,6 +7094,21 @@ function intraAdvice(ex){
     const grindNote = e==='grind' ? ' That one was a grind, so the lighter sets should feel right.' : '';
     return {w:bw, lo:lo, hi:hi, tag:'Backoff', cls:'hold',
       msg:'Top set logged at '+w+' lb. Backoff sets run '+bw+' lb \u2014 same rep target, more speed on the bar.'+grindNote};
+  }
+  /* Two sets in a row say more than one. Two easy sets at the top of the range: there is a rep
+     left, so ask for it (never more load mid-session -- that is next session's call). Two grinds
+     under the middle of the range, on a lift where low reps are not the point: the load is too
+     heavy for today, so step back rather than grind out another. */
+  const prev = sets.length >= 2 ? sets[sets.length-2] : null;
+  if(prev && (+prev.w||0) === w){
+    const pl = effLever(prev), ll = effLever(last), pr = +prev.r||0, mid = (lo+hi)/2;
+    if(pl !== null && ll !== null && pl >= 76 && ll >= 76 && r >= hi && pr >= hi)
+      return {w:w, lo:lo, hi:hi, tag:'Strong', cls:'up', msg:'Two easy sets at the top of the range \u2014 stay at '+w+' and go for '+(hi+1)+'.'};
+    if(!_str && effBucket(prev) === 'grind' && e === 'grind' && r < mid && pr < mid){
+      let dw = Math.max(w-inc, inc);
+      if(ex._homeEquipList) dw = roundToEquipList(dw, ex._homeEquipList);
+      return {w:dw, lo:lo, hi:hi, tag:'Back off', cls:'back', msg:'Two grinders under '+Math.ceil(mid)+' reps \u2014 drop to '+dw+' lb and keep the rest clean.'};
+    }
   }
   if(r>=hi && (e==='easy'||!e)){
     return {w:w, lo:lo, hi:hi, tag:'Strong', cls:'up', msg:'Top of the range — hold '+w+'. Keep this up and you earn a jump next session.'};
@@ -7126,6 +7207,7 @@ function renderLive(){
   const _rdChip = _rd ? '<span class="pill" style="font-size:9px;border-color:'+(_rd.tier==='high'?'var(--cyan-dim);color:var(--cyan)':_rd.tier==='low'?'var(--red-dim);color:var(--red)':'var(--line2);color:var(--muted)')+'">'+_rd.tier.toUpperCase()+(live.trimmed?' \u00b7 TRIMMED':'')+'</span>' : '';
   h += '<div class="sessionbar"><span class="sb-day">'+esc(live.day)+' · '+esc(dayName(live.day)||live.day)+'</span>'+_rdChip+
        '<span class="sb-prog" id="sbProg"></span><span class="sb-clock" id="sbClock">00:00</span></div>';
+  h += liveCallHTML();
   h += warmupCardHTML(live.day);
   live.exercises.forEach((ex,i)=>{ h += liveExHTML(ex,i); });
   h += liveDeltaPanelHTML();
@@ -7149,6 +7231,8 @@ function liveDeltaContext(){
   const rd = todayReadiness();
   let t = '\nLIVE SESSION IN PROGRESS \u2014 '+live.day+' ('+dayName(live.day)+').\n';
   if(rd) t += 'Today\u2019s readiness: '+rd.tier+' ('+rd.sleep+'h sleep, '+rd.sore+' soreness, '+rd.energy+' energy).\n';
+  if(live.call) t += 'Today\u2019s call: '+live.call.call+(live.callOff ? ' (he chose the normal plan instead)' : '')+
+    ((live.call.why||[]).length ? ' \u2014 '+live.call.why.join('; ') : '')+'.\n';
   t += 'Completed so far this session: '+(done.length?done.map(e=>e.name+' \u2014 '+summ(e.sets)).join('; '):'none yet')+'.\n';
   if(cur && !cur.done) t += 'Currently on: '+cur.name+', logged this exercise so far: '+(cur.sets&&cur.sets.length?summ(cur.sets):'no sets yet')+'.\n';
   t += 'He is mid-workout \u2014 answer fast and concretely (swap a set, adjust weight/reps right now, whether to push or stop). '+
@@ -7457,6 +7541,9 @@ function endLiveSession(){
   // full-plan sessions, and "field missing" has to stay distinguishable from
   // "answered no" — every log written before this existed is genuinely unknown.
   logRec.trimmed = !!live.trimmed;
+  // What the day was called, and whether he kept it, so the engine can later see how its calls
+  // played out.
+  if(live.call) logRec.call = {call:live.call.call, score:live.call.score, conf:live.call.conf, off:!!live.callOff};
   // Session timing, for density later. Both are ms. Anything measuring training time should
   // prefer the first and last set's ts over these: endedAt is when End was tapped, and a
   // session left open while he drove home is not a slower session.
@@ -8684,6 +8771,7 @@ function splitEditorHTML(){
       const ff=typeof x==='object' && !!x.formFocus;
       const str=typeof x==='object' && x.repMode==='str';
       const mx=typeof x==='object' && !!x.maxed;
+      const sc=(typeof x==='object' && x.sets) ? x.sets : 0;
       const nb=typeof x==='object' && !!x.noBackoff;
       const hSkip=typeof x==='object' && !!x.homeSkip;
       const hSub=typeof x==='object' ? x.homeSub : null;
@@ -8699,6 +8787,7 @@ function splitEditorHTML(){
         '<button class="ord ff-toggle" style="'+(ff?'color:var(--cyan);border-color:var(--cyan);font-weight:800':'')+'" onclick="toggleFormFocus(\''+dk+'\','+i+')">FORM</button>'+
         '<button class="ord ff-toggle" style="'+(str?'color:var(--violet);border-color:var(--violet);font-weight:800':'')+'" onclick="toggleRepMode(\''+dk+'\','+i+')">'+(str?'STR':'HYP')+'</button>'+
         '<button class="ord ff-toggle" title="Maxed out: no heavier setting on this machine. Progression switches to reps instead of load, and stalled-weight warnings are suppressed." style="'+(mx?'color:var(--amber);border-color:var(--amber);font-weight:800':'')+'" onclick="toggleMaxed(\''+dk+'\','+i+')">MAX</button>'+
+        '<button class="ord ff-toggle" title="Working sets for this exercise on this day. Tap to change (2\u20135)." style="'+(sc?'color:var(--amber);border-color:var(--amber);font-weight:800':'')+'" onclick="cycleSets(\''+dk+'\','+i+')">'+(sc||3)+'\u00d7</button>'+
         (str ? '<button class="ord ff-toggle" title="Backoff sets: strength lifts run the first set heavy, then ~10% lighter for the rest. Toggle this on to keep every set at the same weight instead." style="'+(nb?'color:var(--red);border-color:var(--red);font-weight:800':'')+'" onclick="toggleNoBackoff(\''+dk+'\','+i+')">'+(nb?'NOBK':'BACK')+'</button>' : '')+
         '<button class="ord ff-toggle" title="Home mode: what this exercise becomes on a home session \u2014 unchanged, skipped, or substituted with a rounded dumbbell/kettlebell weight." style="'+(hActive?'color:var(--good);border-color:var(--good);font-weight:800':'')+'" onclick="toggleSdExHome(\''+dk+'\','+i+')">HOME</button>'+
         '<button class="ord ff-toggle" title="Ranked replacements for this exercise \u2014 a permanent swap on this day." onclick="openSplitSwap(\''+dk+'\','+i+')">SWAP</button>'+
@@ -9383,6 +9472,11 @@ function classifyDecision(ex, ready){
     }
     if(ready==='low') return {code:'defer', from:topW, to:topW, moved:false,
       reason:'Earned the jump (hit '+hi+' reps), but readiness was low \u2014 deferred, repeated '+topW+' lb to take the jump fresh.'};
+    // Mirrors recommend()'s grind-hold.
+    const _pts = hist.length>1 ? hist[1].sets.filter(s=>(+s.w||0)===topW) : [];
+    const _pCeil = _pts.length ? (str ? Math.max(..._pts.map(s=>+s.r||0)) : Math.min(..._pts.map(s=>+s.r||0))) : 0;
+    if(hadGrind && !allEasy && !(prevTopW===topW && _pCeil>=hi)) return {code:'grind-hold', from:topW, to:topW, moved:false,
+      reason:'Hit the '+hi+'-rep ceiling, but on grinders \u2014 repeated '+topW+' lb once to own it before the jump.'};
     if(allEasy){ const nw=topW+inc*2; return {code:'double', from:topW, to:nw, moved:true,
       reason:'Hit the '+hi+'-rep ceiling AND all sets tagged easy \u2014 double jump '+topW+'\u2192'+nw+' lb.'}; }
     const nw=topW+inc; return {code:'increase', from:topW, to:nw, moved:true,
@@ -9872,7 +9966,7 @@ function confirmSwapLiveEx(i){
   if(ex.sets.length && !confirm('Swap '+ex.name+' \u2192 '+nm+'? This clears the '+ex.sets.length+' logged set'+(ex.sets.length!==1?'s':'')+' for this slot (today only \u2014 your saved split is untouched).')){
     return;
   }
-  const rebuilt = buildOneLiveExercise(nm);
+  const rebuilt = buildOneLiveExercise(nm, null, {call:liveEffectiveCall()});
   rebuilt._swapped = true;
   live.exercises[i] = rebuilt;
   if(liveActiveIdx===i || live.exercises[i].done===false) liveActiveIdx = i;
@@ -9906,7 +10000,7 @@ function openLiveAddEx(){
 function confirmAddLiveEx(){
   const nm = (document.getElementById('liveEditName').value||'').trim();
   if(!nm) return;
-  const rebuilt = buildOneLiveExercise(nm);
+  const rebuilt = buildOneLiveExercise(nm, null, {call:liveEffectiveCall()});
   rebuilt._swapped = true;
   live.exercises.push(rebuilt);
   saveLiveDraft(); closeLiveExEdit(); renderLive();
@@ -11156,7 +11250,8 @@ function mesoRotationPos(dateKey){
 function mesoIsCompound(nm){
   const n = String(nm).toLowerCase();
   if(/curl|pushdown|extension|fly|lateral|raise|rear delt|crunch|abdominal|pec deck|shrug/.test(n)) return false;
-  return /bench|squat|deadlift|trap bar|overhead press|ohp|press|dip|row|pulldown|pull-up|pullup|chin|hip thrust|lunge|hack/.test(n);
+  // \bchin: unanchored, "chin" matches inside "maCHINe", which made any machine a compound.
+  return /bench|squat|deadlift|trap bar|overhead press|ohp|press|dip|row|pulldown|pull-up|pullup|\bchin|hip thrust|lunge|hack/.test(n);
 }
 function mesoLiftScore(nm){
   let score = mesoIsCompound(nm) ? 100 : 0;
@@ -11927,7 +12022,9 @@ function anStrainByWeek(n){
 }
 function fatigueIndex(){
   const acute = anStrainBetween(mesoAddDays(todayKey(),-6), todayKey());
-  const chronic = anStrainBetween(mesoAddDays(todayKey(),-33), mesoAddDays(todayKey(),-6)) / 4; // prior 28d, weekly
+  // Prior 28 days, weekly. It ended at -6, the same day the acute window starts, so that day
+  // counted in both.
+  const chronic = anStrainBetween(mesoAddDays(todayKey(),-34), mesoAddDays(todayKey(),-7)) / 4;
   if(chronic < 4) return {ok:false, reason:'Needs about a month of logged training to establish your baseline.'};
   let ratio = acute/chronic;
   // readiness modifier: a run of low-readiness days makes the same load cost more
@@ -11954,6 +12051,326 @@ function fatigueSuggestsDeload(){
   return fi;
 }
 function fatigueDismiss(){ S.fatigueDismissed = todayKey(); save(false); renderLive(); try{ renderAnFatigue(); }catch(e){} }
+
+/* ============================================================
+   PATTERN ENGINE (V3 intelligence)
+   Pure functions over his own history: the app does the math, the agents only explain it.
+   Today's call (dayCall) sets the day's plan automatically, inside hard bounds, and LIVE says why
+   and undoes it in one tap. Nothing in this block writes state.
+   ============================================================ */
+
+/* Effort as RPE. The lever and RPE describe one thing from opposite ends: lever 0 is a set taken to
+   failure (RPE 10), 100 is easy (RPE 6 or below), linear between, in half steps. The bucket edges
+   line up with it: fail (<=15) is RPE 9.5+, grind (<=40) 8.5+, solid (<=75) 7+. */
+function effRpe(lever){
+  if(lever === null || lever === undefined || lever === '') return null;
+  const v = +lever;
+  if(!isFinite(v)) return null;
+  return Math.round((10 - Math.max(0, Math.min(100, v)) / 25) * 2) / 2;
+}
+/* The RPE a session is meant to land in: the meso phase's own range, else 7-8. */
+function rpeTargetFor(dateKey){
+  const w = (typeof mesoWeekAt==='function') ? mesoWeekAt(dateKey || todayKey()) : null;
+  if(w && w.rpeLo > 0 && w.rpeHi > 0) return {lo:w.rpeLo, hi:w.rpeHi, src:'meso'};
+  return {lo:7, hi:8, src:'default'};
+}
+/* How hard a session felt against its target, from every tagged set. THE "how hard did it feel"
+   path: the carryover, the deload forecast and the agents' summary all read this one, so they can
+   never disagree. delta > 0 means harder than planned. null for a deload, or too few tags to say. */
+function feltVsPlan(log){
+  if(!log || log.deload) return null;
+  const rpes = [];
+  (log.entries||[]).forEach(function(e){ (e.sets||[]).forEach(function(st){ const r = effRpe(effLever(st)); if(r !== null) rpes.push(r); }); });
+  if(rpes.length < 3) return null;
+  const rpe = rpes.reduce(function(a, b){ return a + b; }, 0) / rpes.length;
+  const t = rpeTargetFor(log.date);
+  const delta = rpe > t.hi ? rpe - t.hi : rpe < t.lo ? rpe - t.lo : 0;
+  return {rpe:Math.round(rpe*10)/10, lo:t.lo, hi:t.hi, delta:Math.round(delta*10)/10, n:rpes.length};
+}
+
+function whoopHistRows(){ return (S.whoop && Array.isArray(S.whoop.history)) ? S.whoop.history : []; }
+function pxMedian(a){
+  const v = a.filter(function(x){ return typeof x === 'number' && isFinite(x); }).sort(function(x, y){ return x - y; });
+  if(!v.length) return null;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m-1] + v[m]) / 2;
+}
+/* His own normal: medians over the 30 days BEFORE the day being judged. Never including that day,
+   so a bad morning cannot drag its own yardstick down. null until there are 7 days to go on. */
+function recoveryBaseline(dateKey, days){
+  const end = dateKey || todayKey(), start = mesoAddDays(end, -(days || 30));
+  const rows = whoopHistRows().filter(function(r){ return r && r.date < end && r.date >= start; });
+  const col = function(k){ return rows.map(function(r){ return r[k]; }); };
+  const rec = col('recovery').filter(function(x){ return typeof x === 'number'; });
+  if(rec.length < 7) return null;
+  return {n:rec.length, recovery:pxMedian(rec), hrv:pxMedian(col('hrv')), rhr:pxMedian(col('rhr')), sleepHours:pxMedian(col('sleepHours'))};
+}
+/* One day's WHOOP reading. Today's comes ONLY from today's dated sections: the history is history,
+   never today (CLAUDE.md). Past days -- the replay, whoopResponse() -- come from the history row.
+   strainYday is the day before's strain; the relay dates strain by the cycle's start day. */
+function whoopOn(dateKey){
+  const d = dateKey || todayKey(), out = {};
+  if(d === todayKey()){
+    const w = S.whoop || {};
+    if(w.recovery && w.recovery.date === d && typeof w.recovery.score === 'number'){
+      out.recovery = w.recovery.score; out.hrv = w.recovery.hrv; out.rhr = w.recovery.rhr;
+      try{ out.provisional = whoopProvisional(); }catch(e){}
+    }
+    if(w.sleep && w.sleep.date === d && typeof w.sleep.hours === 'number'){ out.sleepHours = w.sleep.hours; out.sleepPerf = w.sleep.performance; }
+  } else {
+    const r = whoopHistRows().find(function(x){ return x && x.date === d; });
+    if(r){
+      if(typeof r.recovery === 'number'){ out.recovery = r.recovery; out.hrv = r.hrv; out.rhr = r.rhr; }
+      if(typeof r.sleepHours === 'number'){ out.sleepHours = r.sleepHours; out.sleepPerf = r.sleepPerf; }
+    }
+  }
+  const y = whoopHistRows().find(function(x){ return x && x.date === mesoAddDays(d, -1); });
+  if(y && typeof y.strain === 'number') out.strainYday = y.strain;
+  return Object.keys(out).length ? out : null;
+}
+/* How WHOOP predicts HIS sessions, not people in general. Each logged session with a WHOOP row that
+   day is bucketed by recovery against his baseline at the time (15+ under / normal / 15+ over), and
+   each bucket reports how often top sets ran grind or fail, and how often a PR came.
+   The result calibrates how much a low recovery counts in dayCall(): if his below-usual days really
+   do go worse, it counts for more; if they do not, for less. Until each side has WR_MIN sessions it
+   stays at 1 and says it is not calibrated. */
+const WR_MIN = 5;
+function whoopResponse(){
+  const byDate = {};
+  whoopHistRows().forEach(function(r){ if(r && r.date) byDate[r.date] = r; });
+  const prs = {};
+  (S.prHistory||[]).forEach(function(p){ if(p && p.date) prs[p.date] = (prs[p.date]||0) + 1; });
+  const b = {below:[], normal:[], above:[]};
+  (S.logs||[]).forEach(function(l){
+    if(!l || l.deload || l.home) return;
+    const r = byDate[l.date];
+    if(!r || typeof r.recovery !== 'number') return;
+    const base = recoveryBaseline(l.date);
+    if(!base) return;
+    let tagged = 0, hard = 0;
+    (l.entries||[]).forEach(function(e){
+      const top = Math.max(0, ...(e.sets||[]).map(function(st){ return +st.w || 0; }));
+      (e.sets||[]).forEach(function(st){
+        if((+st.w || 0) !== top) return;
+        const k = effBucket(st); if(!k) return;
+        tagged++; if(k === 'grind' || k === 'fail') hard++;
+      });
+    });
+    if(tagged < 3) return;
+    const diff = r.recovery - base.recovery;
+    b[diff <= -15 ? 'below' : diff >= 15 ? 'above' : 'normal'].push({hard:hard/tagged, pr:prs[l.date] ? 1 : 0});
+  });
+  const sum = function(a){ return a.length ? {n:a.length, hard:a.reduce(function(t, x){ return t + x.hard; }, 0)/a.length,
+    prRate:a.reduce(function(t, x){ return t + x.pr; }, 0)/a.length} : {n:0, hard:null, prRate:null}; };
+  const out = {below:sum(b.below), normal:sum(b.normal), above:sum(b.above)};
+  let weight = 1, calibrated = false;
+  if(out.below.n >= WR_MIN && out.normal.n >= WR_MIN){
+    calibrated = true;
+    const gap = out.below.hard - out.normal.hard;
+    weight = gap >= 0.15 ? 1.5 : gap >= 0.05 ? 1 : 0.6;
+  }
+  return {n:out.below.n + out.normal.n + out.above.n, buckets:out, weight:weight, calibrated:calibrated};
+}
+
+/* TODAY'S CALL: push / normal / easy / recover, with its reasons.
+   WHOOP carries about half of it when today's data is in -- recovery and HRV against HIS usual,
+   resting HR over his usual, sleep, yesterday's strain -- and the rest is what WHOOP cannot see:
+   soreness, stress, motivation, training load, and how the same day felt last time. Energy only
+   counts when it is his own read (see below). With no data at all the call is normal. */
+const DC_RECOVER = -4, DC_EASY = -2, DC_PUSH = 1.5;
+const DC_LABEL = {push:'Push day', normal:'Normal day', easy:'Easy day', recover:'Recover day'};
+function dayCall(dateKey, dayKey){
+  const d = dateKey || todayKey();
+  const parts = [];
+  const add = function(pts, txt, src){ if(pts) parts.push({pts:Math.round(pts*100)/100, txt:txt, src:src}); };
+  const wr = whoopOn(d), base = recoveryBaseline(d), cal = whoopResponse();
+  const hasRec = !!(wr && typeof wr.recovery === 'number');
+  if(hasRec){
+    if(base){
+      const diff = wr.recovery - base.recovery;
+      const p = diff <= -25 ? -2.5 : diff <= -15 ? -1.5 : diff <= -8 ? -0.5 : diff >= 15 ? 1 : diff >= 8 ? 0.5 : 0;
+      // The gap is between the numbers shown, so the sentence adds up.
+      const gap = Math.round(wr.recovery) - Math.round(base.recovery);
+      add(p * cal.weight, 'recovery '+Math.round(wr.recovery)+'%, '+Math.abs(gap)+(gap < 0 ? ' under' : ' over')+' your usual '+Math.round(base.recovery)+'%', 'whoop');
+      if(wr.hrv > 0 && base.hrv > 0){ const q = wr.hrv / base.hrv;
+        add(q < 0.8 ? -1 : q < 0.9 ? -0.5 : q > 1.15 ? 0.5 : 0, 'HRV '+Math.round(wr.hrv)+' against your usual '+Math.round(base.hrv), 'whoop'); }
+      if(wr.rhr > 0 && base.rhr > 0){ const dr = wr.rhr - base.rhr;
+        add(dr >= 5 ? -1 : dr >= 3 ? -0.5 : 0, 'resting HR '+Math.round(wr.rhr)+', '+Math.round(dr)+' over your usual', 'whoop'); }
+    } else {
+      // No baseline yet (under a week of history): WHOOP's own bands.
+      add(wr.recovery < 34 ? -2 : wr.recovery < 50 ? -0.5 : wr.recovery >= 67 ? 0.5 : 0, 'recovery '+Math.round(wr.recovery)+'%', 'whoop');
+    }
+  }
+  const rd = (S.readiness||[]).find(function(r){ return r && r.date === d && rdComplete(r); }) || null;
+  const hasSleep = !!(wr && typeof wr.sleepHours === 'number');
+  if(hasSleep){
+    const h = wr.sleepHours;
+    add(h < 5.5 ? -1.5 : h < 6.5 ? -0.75 : h >= 8 ? 0.5 : 0, (Math.round(h*10)/10)+'h sleep', 'whoop');
+    if(wr.sleepPerf > 0 && wr.sleepPerf < 70) add(-0.5, 'sleep performance '+Math.round(wr.sleepPerf)+'%', 'whoop');
+  } else if(rd && rd.sleep){
+    add({'<6':-1.5, '6-7':-0.5, '8+':0.5}[rd.sleep] || 0, rd.sleep+'h sleep', 'check-in');
+  }
+  if(wr && wr.strainYday >= 17) add(-0.5, 'strain '+(Math.round(wr.strainYday*10)/10)+' yesterday', 'whoop');
+  if(rd){
+    add({'beat up':-1.5, mild:-0.5}[rd.sore] || 0, rd.sore === 'beat up' ? 'beat up' : 'mildly sore', 'check-in');
+    add({wired:-0.75, calm:0.25}[rd.stress] || 0, rd.stress === 'wired' ? 'stress wired' : 'calm', 'check-in');
+    add({meh:-0.5, 'fired up':0.5}[rd.motiv] || 0, rd.motiv === 'meh' ? 'motivation meh' : 'fired up', 'check-in');
+    // On a WHOOP day energy is pre-filled from recovery, so an unchanged answer is WHOOP's read, not
+    // his, and counting it would weigh one signal twice. Check-ins from before the pre-fill was
+    // recorded cannot say which it was, so on a WHOOP day they are left out rather than guessed at.
+    const own = !hasRec || (rd.energyPre && rd.energy !== rd.energyPre);
+    if(own) add({low:-1, high:0.5}[rd.energy] || 0, 'energy '+rd.energy, 'check-in');
+  }
+  try{
+    const fi = fatigueIndex();
+    if(fi.ok) add({high:-1, overreached:-2, fresh:0.25}[fi.status] || 0, 'training load '+fi.status+' ('+fi.ratio+'\u00d7 your norm)', 'load');
+  }catch(e){}
+  if(dayKey){
+    const prev = (S.logs||[]).filter(function(l){ return l && l.day === dayKey && l.date < d && !l.deload; })
+                             .sort(function(a, b){ return b.date.localeCompare(a.date); })[0];
+    const f = prev ? feltVsPlan(prev) : null;
+    if(f) add(f.delta >= 1 ? -1 : f.delta <= -1 ? 0.5 : 0, 'last '+dayKey+' felt RPE '+f.rpe+' against '+f.lo+'\u2013'+f.hi, 'history');
+  }
+  const score = Math.round(parts.reduce(function(t, p){ return t + p.pts; }, 0)*100)/100;
+  // Training load and how the last session felt are data too, so they can make a call on their
+  // own (an overreached week with no WHOOP is still an easy day). With nothing at all the score
+  // is 0 and the day is normal.
+  const hasData = hasRec || hasSleep || !!rd || parts.length > 0;
+  let call = 'normal';
+  if(score <= DC_RECOVER) call = 'recover';
+  else if(score <= DC_EASY) call = 'easy';
+  // A push day needs nothing against it, not just a good total.
+  else if(score >= DC_PUSH && !parts.some(function(p){ return p.pts <= -1; })) call = 'push';
+  const conf = (hasRec && rd) ? 'high' : (hasRec || rd) ? 'medium' : hasData ? 'low' : 'none';
+  const dir = call === 'push' ? 1 : (call === 'easy' || call === 'recover') ? -1 : 0;
+  // The reasons that point the way the call went. A normal day has none to give: its parts pull
+  // both ways and cancel, and listing them reads as "why is this normal?" (they stay in parts).
+  const why = !dir ? [] : parts.filter(function(p){ return p.pts * dir > 0; })
+                   .sort(function(a, b){ return Math.abs(b.pts) - Math.abs(a.pts); }).slice(0, 3)
+                   .map(function(p){ return p.txt; });
+  return {date:d, day:dayKey || null, call:call, score:score, conf:conf, why:why, parts:parts,
+          whoop:hasRec, checkIn:!!rd, calibrated:cal.calibrated, provisional:!!(wr && wr.provisional)};
+}
+/* The readiness tier recommend() reads, from a call: an easy or recover day holds an earned jump
+   exactly as a low check-in always has. */
+function callTier(c){ return c === 'push' ? 'high' : (c === 'easy' || c === 'recover') ? 'low' : 'ok'; }
+
+/* Per-lift patterns, for the agents' summary and the investigation: how often a jump sticks, how
+   many sessions a jump takes, where the effort is heading, and the e1RM trend. Gym, non-deload
+   history only (historyFor). null until there are 3 sessions. */
+function liftProfile(name){
+  const hist = historyFor(name).slice().reverse();   // oldest first
+  if(hist.length < 3) return null;
+  const top = function(h){ return Math.max(0, ...h.sets.map(function(st){ return +st.w || 0; })); };
+  let jumps = 0, stuck = 0, judged = 0, lastJump = 0;
+  const gaps = [];
+  for(let i = 1; i < hist.length; i++){
+    const pw = top(hist[i-1]), cw = top(hist[i]);
+    if(cw > pw){
+      jumps++; gaps.push(i - lastJump); lastJump = i;
+      // A jump "sticks" when the next session stays at or above it instead of stepping back.
+      if(i + 1 < hist.length){ judged++; if(top(hist[i+1]) >= cw) stuck++; }
+    }
+  }
+  const eff = function(hs){ const v = []; hs.forEach(function(h){ const t = top(h); h.sets.forEach(function(st){ if((+st.w||0) === t){ const x = effLever(st); if(x !== null) v.push(x); } }); });
+    return v.length ? Math.round(v.reduce(function(a, b){ return a + b; }, 0)/v.length) : null; };
+  const n = hist.length, last3 = hist.slice(-3), prev3 = hist.slice(-6, -3);
+  let slope = null;
+  try{ const pts = e1rmSeries(name).slice(-8); const reg = pts.length >= 3 ? linreg(pts) : null; if(reg) slope = Math.round(reg.slope*7*10)/10; }catch(e){}
+  const tw = last3.map(top);
+  return {name:name, sessions:n, jumps:jumps, stickRate: judged ? Math.round(stuck/judged*100)/100 : null,
+          sessionsPerJump: gaps.length ? pxMedian(gaps) : null, effortNow:eff(last3), effortBefore: prev3.length ? eff(prev3) : null,
+          e1rmPerWeek:slope, flat3: tw.length === 3 && tw[0] === tw[1] && tw[1] === tw[2]};
+}
+/* Weekly hard sets per muscle group against how that group's lifts are moving, over the last N
+   completed weeks. For the agents' volume calls (setCount): more sets where volume is low and
+   nothing moves, fewer where volume is high and sessions grind. */
+function muscleResponse(weeks){
+  const n = weeks || 6, r = lastCompletedWeekRange();
+  const len = Math.max(1, Math.round((Date.parse(r.end) - Date.parse(r.start)) / 86400000) + 1);
+  const vol = {};
+  for(let k = 0; k < n; k++){
+    const v = weeklyVolumeByGroup(mesoAddDays(r.start, -len*k), mesoAddDays(r.end, -len*k));
+    Object.keys(v).forEach(function(g){ vol[g] = (vol[g] || 0) + v[g]; });
+  }
+  const since = mesoAddDays(r.end, -len*n);
+  const trend = {};
+  const names = [...new Set((S.logs||[]).flatMap(function(l){ return (l.entries||[]).map(function(e){ return e.exercise; }); }))];
+  names.forEach(function(nm){
+    const pts = e1rmSeries(nm).filter(function(p){ return p.date >= since; });
+    if(pts.length < 3) return;
+    const reg = linreg(pts); if(!reg) return;
+    const pct = pts[0].v > 0 ? reg.slope*7 / pts[0].v * 100 : 0;
+    (musclesFor(nm).p || []).forEach(function(g){ (trend[g] = trend[g] || []).push(pct); });
+  });
+  const out = {};
+  Object.keys(vol).forEach(function(g){
+    const t = trend[g] || [];
+    out[g] = {setsPerWeek:Math.round(vol[g]/n*10)/10, lifts:t.length,
+              pctPerWeek: t.length ? Math.round(t.reduce(function(a, b){ return a + b; }, 0)/t.length*100)/100 : null};
+  });
+  return {weeks:n, groups:out};
+}
+
+/* ---- today's call on screen ---- */
+function liveEffectiveCall(){ return (live && live.call) ? (live.callOff ? 'normal' : live.call.call) : undefined; }
+function liveSlotSets(dk){
+  const out = {};
+  try{
+    const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+    ((src[dk]||{}).exercises||[]).forEach(function(x){ if(typeof x === 'object' && x && x.sets) out[exName(x)] = x.sets; });
+  }catch(e){}
+  return out;
+}
+const DC_WHAT = {push:'Earned jumps go ahead.', normal:'The plan as written.',
+  easy:'Earned jumps wait, and accessories get one set fewer.',
+  recover:'Earned jumps wait, compounds go one step lighter, and every lift gets one set fewer.'};
+const DC_COL = {push:'var(--good)', normal:'var(--muted)', easy:'var(--warn)', recover:'var(--bad)'};
+function liveCallHTML(){
+  if(!live || !live.call || live.call.conf === 'none') return '';
+  // A normal day changes nothing, so it takes no space at the rack.
+  if(live.call.call === 'normal' && !live.callOff) return '';
+  const c = live.call, off = !!live.callOff, adj = c.call === 'easy' || c.call === 'recover';
+  let h = '<div class="card daycall" style="color:'+DC_COL[c.call]+'">'+
+    '<div class="dc-top"><span class="pill">'+esc(DC_LABEL[c.call])+'</span>'+
+    (off ? '<span class="small">normal plan instead</span>' : '')+'</div>';
+  if(off){
+    h += '<p class="small dc-why">You chose the normal plan today. Anything you have already logged stays as it is.</p>'+
+         '<button class="btn ghost sm" onclick="liveCallToggle()">Use today\u2019s call again</button>';
+  } else {
+    h += '<p class="small dc-why">'+esc((c.why||[]).join(' \u00b7 ') || 'No recovery data today')+'.</p>'+
+         '<p class="small dc-what">'+esc(DC_WHAT[c.call])+'</p>';
+    // Two recover calls in a row are a pattern, not a bad night.
+    const prev = (S.logs||[]).filter(function(l){ return l && l.call && l.date < live.date; }).sort(function(a, b){ return b.date.localeCompare(a.date); })[0];
+    if(c.call === 'recover' && prev && prev.call.call === 'recover' && !prev.call.off)
+      h += '<p class="small dc-what" style="color:var(--bad)">Second recover day running \u2014 a deload week may be due.</p>';
+    if(adj) h += '<button class="btn ghost sm" onclick="liveCallToggle()">Train the normal plan instead</button>';
+  }
+  return h + '</div>';
+}
+/* One tap each way. Only exercises he has not started are rebuilt: a logged set is never rewritten. */
+function liveCallToggle(){
+  if(!live || !live.call) return;
+  live.callOff = !live.callOff;
+  const c = liveEffectiveCall(), sets = liveSlotSets(live.day);
+  live.exercises = live.exercises.map(function(ex){
+    if((ex.sets && ex.sets.length) || ex._swapped || ex.done || ex._deload) return ex;
+    return buildOneLiveExercise(ex.name, ex._homeEquipList, {call:c, sets:sets[ex.name]});
+  });
+  live.trimmed = !live.callOff && live.exercises.some(function(e){ return e._callTrim; });
+  saveLiveDraft(); renderLive();
+}
+/* Today, before the session: what the call is, set automatically once he starts. */
+function dayCallCardHTML(t){
+  if(!t || t.rest || t.logged || live || deloadActive()) return '';
+  const dc = dayCall(todayKey(), t.dayKey);
+  if(dc.conf === 'none') return '';
+  return '<div class="dash-sec">Today\u2019s call</div><div class="card daycall" style="color:'+DC_COL[dc.call]+'">'+
+    '<div class="dc-top"><span class="pill">'+esc(DC_LABEL[dc.call])+'</span>'+
+    (dc.checkIn ? '' : '<span class="small">before your check-in</span>')+'</div>'+
+    (dc.why.length ? '<p class="small dc-why">'+esc(dc.why.join(' \u00b7 '))+'.</p>' : '')+
+    '<p class="small dc-what">'+esc(DC_WHAT[dc.call])+(dc.call === 'easy' || dc.call === 'recover' ? ' Set when you start the session, and one tap there puts the normal plan back.' : '')+'</p></div>';
+}
 
 /* ---------------- PR HISTORY ----------------
    The permanent record behind the one-time celebrate() popup: every e1RM PR ever hit,
@@ -12856,7 +13273,6 @@ const RD_STRESS_OPTS = ['calm','normal','wired'];
 const RD_MOTIV_OPTS  = ['meh','ready','fired up'];
 let _rdV3 = {};
 let _rdPendingDay = null;
-let liveTrimVol = false;
 
 function readinessTierV3(r){
   let sc = (RD_SLEEP[r.sleep]||0)+(RD_SORE[r.sore]||0)+(RD_ENERGY[r.energy]||0);
@@ -12913,7 +13329,7 @@ function rd3Pick(btn){
 }
 function rd3Skip(){
   S.readySkipDate = todayKey(); save(false);
-  closeReadyOverlay(); _startLiveNow(_rdPendingDay, false);
+  closeReadyOverlay(); _startLiveNow(_rdPendingDay);
 }
 function closeReadyOverlay(){ const el=document.getElementById('readyOverlay'); if(el) el.classList.remove('show'); }
 function rd3Lock(){
@@ -12926,22 +13342,9 @@ function rd3Lock(){
   if(_rdPre && _rdPre.sleep) entry.sleepPre = _rdPre.sleep;
   S.readiness = S.readiness.filter(x=>x.date!==todayKey());
   S.readiness.push(stampRec(entry)); save();
-  if(entry.tier==='low'){ rd3ShowTrimPrompt(entry); return; }   // active choice, never silent
-  closeReadyOverlay(); _startLiveNow(_rdPendingDay, false);
-}
-function rd3ShowTrimPrompt(entry){
-  document.getElementById('readyBody').innerHTML =
-    '<div style="border-left:3px solid var(--red);padding-left:12px;margin-bottom:14px">'+
-    '<b style="color:var(--red);text-transform:uppercase;letter-spacing:.08em;font-size:13px">Readiness: low</b>'+
-    '<p class="small" style="margin-top:5px">'+esc(entry.sleep)+'h sleep \u00b7 '+esc(entry.sore)+' \u00b7 '+esc(entry.energy)+' energy \u00b7 '+esc(entry.stress)+' \u00b7 '+esc(entry.motiv)+'</p></div>'+
-    '<p style="font-size:14px;line-height:1.55;margin-bottom:6px">Rough recovery day. Want to trim today\u2019s volume?</p>'+
-    '<p class="small" style="margin-bottom:14px;color:var(--dim)">Trim = one fewer working set per exercise, and weight targets soften automatically. Showing up beats skipping; trimming beats grinding through junk sets.</p>'+
-    '<div style="display:flex;flex-direction:column;gap:8px">'+
-    '<button class="btn primary" style="padding:13px" onclick="rd3Start(true)">Trim volume today</button>'+
-    '<button class="btn ghost" style="padding:12px" onclick="rd3Start(false)">Keep the full plan</button></div>';
-}
-function rd3Start(trim){
-  closeReadyOverlay(); _startLiveNow(_rdPendingDay, trim);
+  // A low check-in used to stop here and ask whether to trim. Today's call now decides that, from
+  // the check-in AND WHOOP, and LIVE shows why with a one-tap way back to the normal plan.
+  closeReadyOverlay(); _startLiveNow(_rdPendingDay);
 }
 
 
@@ -13143,7 +13546,7 @@ function agSweepDuplicates(){
 }
 
 /* ---- fix validation: never trust model output straight into state ---- */
-const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','schedule','cycleSchedule'];
+const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','setCount','schedule','cycleSchedule'];
 /* Every exercise Mark actually trains — split slots plus anything he has logged. NOT
    allKnownExerciseNames(), which folds in the whole EX_LIBRARY: an override on a lift he
    has never performed is inert by construction, so accepting one would just be a different
@@ -13209,7 +13612,7 @@ function exAcceptName(raw){
 /* The fix types each agent may raise. AG_FIX_MENU only shows each agent its own; this enforces it,
    because a prompt is a hint and ECHO could otherwise queue a liftReset. ZULU, the lead, may use
    any of the specialists' shapes. */
-const AG_FIX_ALLOWED = {charlie:['schedule','cycleSchedule'], delta:['liftReset','deload','addEx','swapEx'], echo:['cal','pro']};
+const AG_FIX_ALLOWED = {charlie:['schedule','cycleSchedule'], delta:['liftReset','deload','addEx','swapEx','setCount'], echo:['cal','pro']};
 function agFixAllowedFor(who, type){
   const list = AG_FIX_ALLOWED[who];
   return !list || list.indexOf(type) >= 0;
@@ -13296,6 +13699,18 @@ function agValidateFix(fx, who){
     const to = exAcceptName(p.to);
     if(!from || !to || to === from) return null;
     return {type:'swapEx', payload:{from:from, to:to}};
+  }
+  if(fx.type==='setCount'){
+    // Working sets for one exercise on one day. Clamped to 2-5; the name must be on that day in
+    // the permanent split (all agApplyFix() writes to), and a "change" to the current count is
+    // no change at all.
+    const day = String(p.day || ''), n = Math.round(+p.sets || 0);
+    if(!S.split[day] || !(n >= 2 && n <= 5)) return null;
+    const names = (S.split[day].exercises||[]).map(exName);
+    const want = invNormName(exSplitNote(p.exercise).name);
+    const hit = names.find(function(x){ return x === p.exercise; }) || names.find(function(x){ return invNormName(x) === want; });
+    if(!hit || exSlotSets(day, hit) === n) return null;
+    return {type:'setCount', payload:{exercise:hit, day:day, sets:n}};
   }
   if(fx.type==='schedule'){
     // A day-of-week map is meaningless once a rotating cycle is active \u2014 currentDayKey()
@@ -13405,6 +13820,7 @@ function agRejectReason(fx, who){
     if(!exAcceptName(p.name)) return '\u201c'+String(p.name||'').slice(0,40)+'\u201d does not read as an exercise name';
     return 'it is already on '+p.day;
   }
+  if(fx.type==='setCount') return 'needs a real day, an exercise on it, and 2\u20135 sets that differ from now';
   if(fx.type==='swapEx'){
     if(!p.from || !p.to) return 'missing from/to exercise';
     if(!exAcceptName(p.to)) return '\u201c'+String(p.to).slice(0,40)+'\u201d does not read as an exercise name';
@@ -13421,6 +13837,7 @@ function agFixSummary(fx){
   if(fx.type==='deload')   return 'start a deload week';
   if(fx.type==='addEx')    return 'add '+p.name+' to '+p.day;
   if(fx.type==='swapEx')   return p.from+' \u2192 '+p.to;
+  if(fx.type==='setCount') return p.exercise+' on '+p.day+' \u2192 '+p.sets+' sets';
   if(fx.type==='schedule') return 'reschedule the training week';
   if(fx.type==='cycleSchedule') return 'rotating cycle \u2192 '+p.pattern.join(' \u2192 ');
   return fx.type;
@@ -13473,6 +13890,15 @@ function agApplyFix(fx){
       if(i>=0){ arr[i] = {name:p.to, inc:incFor(p.to)}; return true; }
     }
     return false;
+  }
+  if(fx.type==='setCount'){
+    const list = (S.split[p.day]||{}).exercises;
+    if(!list) return false;
+    const i = list.findIndex(function(x){ return exName(x) === p.exercise; });
+    if(i < 0) return false;
+    if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:incFor(list[i])};
+    list[i].sets = p.sets;
+    return true;
   }
   if(fx.type==='schedule'){ S.schedule = Object.assign({}, p.map); return true; }
   if(fx.type==='cycleSchedule'){ scheduleInit(); S.cycleSchedule.pattern = p.pattern.slice(); return true; }
@@ -13620,7 +14046,8 @@ const AG_FIX_MENU = {
     '  {"type":"liftReset","payload":{"name":"<exact exercise name>","w":<lb, a REAL working weight not an e1RM>,"days":1..30}}'+'\n'+
     '  {"type":"deload","payload":{}}'+'\n'+
     '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}'+'\n'+
-    '  {"type":"swapEx","payload":{"from":"...","to":"..."}}',
+    '  {"type":"swapEx","payload":{"from":"...","to":"..."}}'+'\n'+
+    '  {"type":"setCount","payload":{"exercise":"<exact name>","day":"D1".."D6","sets":2..5}}  -- working sets for that exercise on that day (default 3). For volume: more where a muscle group gets few sets and is not moving, fewer where it gets many, sessions grind, and nothing is moving.',
   echo:
     // The two lines below take DIFFERENT shapes, which is a trap worth naming rather than
     // leaving to be inferred: cal is a change, pro is a target.
@@ -14488,6 +14915,7 @@ function renderHome(){
        '<div class="dt-s">'+(streak>0?'session'+(streak===1?'':'s')+' without a missed day':'Start one today.')+'</div></div>';
   h += '</div>';
 
+  try{ h += dayCallCardHTML(t); }catch(e){ console.warn('day call card failed', e); }
   // Under the hero and above the brief: a background frame for the day, not a call to action.
   try{ h += waCardHTML(); }catch(e){ console.warn('winter arc card failed', e); }
 

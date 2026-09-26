@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 1995 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2063 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -251,7 +251,9 @@ so the two orders can no longer disagree.
 | Sync | `autoPullOnLoad()`, `applyPulled()`, `fetchGistData()`, `schedulePush()`, `syncReconcileBeforePush()` |
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()` (`dow` \| `cycle`) |
 | Week windows | `weekStartKey()`, `lastCompletedWeekRange()`, `weeklyVolumeByGroup()` |
-| Progression | `classifyDecision()`, `buildOneLiveExercise()`, `intraAdvice()` |
+| Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()` |
+| Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
+| Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
 | Home / strip | `renderHome()`, `renderStatusStrip()`, `readinessNow()`, `renderNotif()` |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
@@ -559,6 +561,59 @@ floor, not a ceiling, so at-or-above target is one bucket and there is deliberat
 `est:true` on a `S.nutrition` row means the number is a bucket midpoint, not a measured total;
 it is absent on everything logged before the ladder, and `trainingContext()` marks it `~` so the
 model does not read an estimate as precise.
+
+**Today's call sets the plan automatically, inside hard bounds.** `dayCall(date, dayKey)` returns
+push / normal / easy / recover. WHOOP carries about half of it when today's data is in:
+- recovery and HRV against *his* 30-day medians (`recoveryBaseline()`, never including the day
+  judged);
+- resting HR over his usual;
+- sleep;
+- yesterday's strain.
+
+The rest is what WHOOP cannot see: soreness, stress, motivation, `fatigueIndex()`, and how the
+last session of the same day felt (`feltVsPlan()`, the ONE "how hard did it feel" path).
+`whoopResponse()` calibrates the recovery term from his own sessions: ×1.5 when his below-usual
+days really do grind more, ×0.6 when they do not, and 1 until each side has `WR_MIN` sessions.
+Mark chose automatic with a one-tap undo (2026-09-24).
+
+What a call does, all in `buildOneLiveExercise()` through `opts.call`:
+- **easy and recover** hold an earned jump, through `callTier()` → `recommend(ex,'low')`,
+  exactly as a low check-in always has;
+- **easy** takes one set off each accessory;
+- **recover** also puts compounds one step under the *normal* plan (`recommend(nm,'ok')`) with
+  one set fewer;
+- **push** changes nothing but the words.
+
+The bounds are the guarantee, and the suite loops every call over every lift to check them: never
+heavier than the normal plan, and never more than one increment or one set lighter. An
+investigation override is left alone. `liveCallToggle()` rebuilds only lifts with no logged set,
+so a logged set is never rewritten. `live.call` and `logRec.call` (with `off`) keep what the day
+was called and whether he kept it.
+
+The call replaced the low-check-in "trim?" prompt (`rd3ShowTrimPrompt`, `liveTrimVol`,
+removed). `live.trimmed` / `logRec.trimmed` now mean "the call took sets off", so the Readiness
+tab's trimmed-vs-full comparison still reads the same field.
+
+Energy counts only when it is his own read: on a WHOOP day, only if it differs from `energyPre`.
+A check-in from before the pre-fill was recorded is left out on a WHOOP day, not guessed at.
+`whoopOn(today)` reads ONLY today's dated sections, never the history, which keeps the rule in
+the WHOOP section below.
+
+Replayed over his real Aug 29 – Sep 24 sessions before shipping, against the engine that ran:
+- the calls were 12 normal, 5 easy, 2 push and 1 recover (9/12: 19%, 4.7h sleep);
+- none of 107 lift prescriptions came out heavier;
+- 5 were a step lighter (earned jumps held);
+- 16 accessories lost a set.
+
+`scratchpad/replay.js` in that session did it: two jsdom copies (`git show HEAD` and the
+working copy), `todayKey` stubbed per session, and only the state before that morning.
+
+**A jump earned on grinders repeats once** (`grind-hold`, in both `recommend()` and
+`classifyDecision()`). At the ceiling with grind or fail top sets, the weight repeats. It goes up
+anyway if the session before was already that repeat (same weight, also at the ceiling), or a lift
+that always grinds at the top would never climb. In-session, `intraAdvice()` reads two sets:
+two easy sets at the top of the range ask for another rep, never more load; two grinders under
+mid-range step back one increment, but never on a strength lift.
 
 **Effort reads go through `effBucket()`.** It prefers the 0–100 lever (`s.ef`) and falls back
 to the legacy tag (`s.e`), which is what lets months of already-logged sessions keep working

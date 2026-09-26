@@ -5440,9 +5440,11 @@ setTimeout(async () => {
       return ev("classifyDecision('Barbell Bench Press')");
     };
     const bothVeryEasy = mk(95, 95);
-    const oneMuchHarder = mk(95, 40);
+    // 60 is solid, not a grind: a grind at the ceiling now holds once (grind-hold), which is its
+    // own rule, tested with the day call. This pair is about double versus single.
+    const oneMuchHarder = mk(95, 60);
     ok('two genuinely easy sets earn the double jump', bothVeryEasy.code === 'double', JSON.stringify(bothVeryEasy));
-    ok('a session with one hard set does NOT', oneMuchHarder.code === 'increase', JSON.stringify(oneMuchHarder));
+    ok('a session with one set merely solid does NOT', oneMuchHarder.code === 'increase', JSON.stringify(oneMuchHarder));
     ok('the double jump is twice the single', bothVeryEasy.to - 185 === 2 * (oneMuchHarder.to - 185),
        bothVeryEasy.to + ' vs ' + oneMuchHarder.to);
     // THE case that separates the mean rule from the old bucket rule. 80 and 78 both bucket
@@ -8647,6 +8649,260 @@ setTimeout(async () => {
   ev('S = ' + s0bSaved + ';');
   ev("localStorage.removeItem(AI_USAGE_KEY);");
   ok('cleanup: real state restored after the step 0 B/C section', ev('JSON.stringify(S)') === s0bSaved);
+
+  console.log('=== PATTERN ENGINE AND TODAY\u2019S CALL ===');
+  const peSaved = ev('JSON.stringify(S)');
+  try {
+    const dk = n => ev("mesoAddDays(todayKey(), " + n + ")");
+    const today = ev('todayKey()');
+    // Thirty days of WHOOP history, fixed but uneven: medians come out recovery 70.5, HRV 139,
+    // RHR 55, sleep 7.25h. Every day is different, so a median is a real median.
+    const recs = [72,65,78,70,61,74,69,80,66,71], hrvs = [140,132,151,138,129,146,137,155,131,142],
+          rhrs = [55,57,53,56,58,54,55,52,57,55], sl = [7.4,6.9,7.8,7.2,6.6,7.5,7.1,8.0,6.8,7.3], str = [12,9,14,11,8,13,10,15,9,12];
+    const hist = [];
+    for (let i = 30; i >= 1; i--) { const k = i % 10;
+      hist.push({date: dk(-i), recovery: recs[k], hrv: hrvs[k], rhr: rhrs[k], sleepHours: sl[k], sleepPerf: 80 + k, strain: str[k]}); }
+    const setWhoop = (rec, hrv, rhr, hours, perf) => {
+      ev('S.whoop = ' + JSON.stringify({fetchedAt: new Date().toISOString(), history: hist,
+        recovery: rec == null ? undefined : {date: today, score: rec, hrv: hrv, rhr: rhr},
+        sleep: hours == null ? undefined : {date: today, hours: hours, performance: perf}}) + ';');
+    };
+    ev('S.logs = []; S.readiness = []; S.deload = null; S.meso = {template:null, active:null}; S.settings.repLow = 8; S.settings.repHigh = 12;');
+
+    // --- effort as RPE ---
+    ok('RPE: the lever maps onto RPE end to end (0\u219210, 25\u21929, 50\u21928, 60\u21927.5, 100\u21926)',
+       ev('[effRpe(0), effRpe(25), effRpe(50), effRpe(60), effRpe(100)].join()') === '10,9,8,7.5,6');
+    ok('RPE: no lever, no RPE', ev('effRpe(null)') === null && ev("effRpe('')") === null);
+    ok('RPE: the target is 7-8 outside a block', JSON.stringify(ev('rpeTargetFor()')) === JSON.stringify({lo: 7, hi: 8, src: 'default'}));
+    const felt = ev("feltVsPlan({date:" + JSON.stringify(dk(-2)) + ", entries:[{exercise:'X', sets:[{w:1,r:1,e:'grind'},{w:1,r:1,ef:20},{w:1,r:1,e:'fail'},{w:1,r:1,ef:30}]}]})");
+    ok('felt: a grinding session reads harder than planned', felt && felt.delta > 1 && felt.n === 4, JSON.stringify(felt));
+    ok('felt: an all-solid session is on plan', ev("feltVsPlan({date:" + JSON.stringify(dk(-2)) + ", entries:[{exercise:'X', sets:[{w:1,r:1,e:'solid'},{w:1,r:1,ef:65},{w:1,r:1,ef:58}]}]}).delta") === 0);
+    ok('felt: a deload says nothing', ev("feltVsPlan({deload:true, entries:[{exercise:'X', sets:[{e:'fail'},{e:'fail'},{e:'fail'}]}]})") === null);
+
+    // --- his own baseline, never including the day judged ---
+    setWhoop(28, 117, 60, 4.55, 44);
+    const base = ev('recoveryBaseline(todayKey())');
+    ok('baseline: medians of the 30 days before', base && base.recovery === 70.5 && base.hrv === 139 && base.rhr === 55 && base.n === 30, JSON.stringify(base));
+    ev("S.whoop.history.push({date:todayKey(), recovery:5, hrv:40, rhr:90, sleepHours:2});");
+    ok('baseline: today\u2019s own row never moves its yardstick', ev('recoveryBaseline(todayKey()).recovery') === 70.5);
+    // ...and a history row dated today is never read as today (the rule the whole WHOOP layer keeps).
+    ev('delete S.whoop.recovery; delete S.whoop.sleep;');
+    ok('whoopOn: with no dated section today, a history row for today is not today\u2019s reading',
+       !(ev('whoopOn(todayKey())') || {}).recovery, JSON.stringify(ev('whoopOn(todayKey())')));
+    ok('whoopOn: a past day reads its history row', ev('whoopOn(' + JSON.stringify(dk(-3)) + ').recovery') === recs[3]);
+    ok('baseline: under 7 days of history is no baseline', ev("(function(){ const h = S.whoop.history; S.whoop.history = h.slice(-6); const b = recoveryBaseline(todayKey()); S.whoop.history = h; return b; })()") === null);
+
+    // --- the call ---
+    // 2026-09-25 as it first read: 28% off 4.55h, HRV and RHR both off.
+    setWhoop(28, 117, 60, 4.55, 44);
+    const c1 = ev('dayCall(todayKey())');
+    ok('call: 28% recovery on 4.5h sleep, HRV down, RHR up is a recover day', c1.call === 'recover', JSON.stringify(c1));
+    ok('call: and it says why, in his own numbers', /recovery 28%, 43 under your usual 71%/.test(c1.why.join(' | ')) && c1.why.length <= 3, JSON.stringify(c1.why));
+    // ...and as WHOOP rescored it: 50% off 7.03h.
+    setWhoop(50, 117, 60, 7.03, 79);
+    const c2 = ev('dayCall(todayKey())');
+    ok('call: the rescored 50% on 7h is an easy day, not a recover one', c2.call === 'easy', JSON.stringify(c2));
+    setWhoop(90, 170, 52, 8.2, 92);
+    const c3 = ev('dayCall(todayKey())');
+    ok('call: well over his usual on a long sleep is a push day', c3.call === 'push', JSON.stringify(c3));
+    setWhoop(null, null, null, null, null);
+    const c4 = ev('dayCall(todayKey())');
+    ok('call: no data at all is a normal day, and says so', c4.call === 'normal' && c4.conf === 'none', JSON.stringify(c4));
+    // Sleep on its own: an ordinary recovery after a 4.8h night.
+    setWhoop(70, 139, 55, 4.8, 60);
+    const cS = ev('dayCall(todayKey())');
+    ok('call: a short night moves the call on its own', cS.call === 'easy' && cS.why.indexOf('4.8h sleep') >= 0, JSON.stringify(cS));
+    // A normal day's parts pull both ways; it gives no "why", and LIVE shows nothing for it.
+    setWhoop(60, 139, 55, 8.2, 88);
+    const cNorm = ev('dayCall(todayKey())');
+    ok('call: a normal day lists no reasons, though it had some', cNorm.call === 'normal' && cNorm.why.length === 0 && cNorm.parts.length >= 2, JSON.stringify(cNorm));
+    ok('call: LIVE takes no space for a normal day', ev("(function(){ live = {date:todayKey(), day:'D1', exercises:[], call:{call:'normal', conf:'high', why:[]}, callOff:false}; const h = liveCallHTML(); live = null; return h; })()") === '');
+    ok('call: the Today card for a normal day has no reasons line', !/dc-why/.test(ev("dayCallCardHTML({dayKey:'D1', rest:false, logged:false})")) && /Normal day/.test(ev("dayCallCardHTML({dayKey:'D1', rest:false, logged:false})")));
+    setWhoop(null, null, null, null, null);
+    ok('call: a push day needs nothing against it', ev("(function(){ S.whoop.recovery = {date:todayKey(), score:95, hrv:175, rhr:52}; S.whoop.sleep = {date:todayKey(), hours:8.4, performance:95};" +
+       " S.readiness = [{date:todayKey(), sleep:'8+', sore:'beat up', energy:'high', energyPre:'ok', stress:'calm', motiv:'fired up', tier:'high'}]; const c = dayCall(todayKey()); S.readiness = []; return [c.call, c.score]; })()").join() === 'normal,1.75');
+
+    // --- energy is counted only when it is his own read ---
+    setWhoop(50, 117, 60, 7.03, 79);
+    const rdE = (energy, pre) => { ev("S.readiness = [" + JSON.stringify(Object.assign({date: today, sleep: '7-8', sore: 'fresh', energy: energy, stress: 'normal', motiv: 'ready', tier: 'ok'}, pre ? {energyPre: pre} : {})) + "];"); return ev('dayCall(todayKey()).score'); };
+    const sPre = rdE('low', 'low'), sOwn = rdE('low', 'ok'), sOld = rdE('low', null);
+    ok('energy: left as WHOOP pre-filled it, it is not counted a second time', Math.abs(sOwn - sPre + 1) < 1e-9, sPre + ' vs ' + sOwn);
+    ok('energy: an old check-in with no record of the pre-fill is left out on a WHOOP day', sOld === sPre, sOld + ' vs ' + sPre);
+    ev('S.readiness = [];');
+    ev('delete S.whoop.recovery; delete S.whoop.sleep;');
+    ev("S.readiness = [{date:todayKey(), sleep:'7-8', sore:'fresh', energy:'low', stress:'normal', motiv:'ready', tier:'ok'}];");
+    ok('energy: with no WHOOP today, the check-in\u2019s energy is his own and counts', ev('dayCall(todayKey()).score') === -1);
+    ev('S.readiness = [];');
+
+    // --- the last time this day was trained counts ---
+    setWhoop(70, 139, 55, 7.3, 85);
+    ev('S.logs = ' + JSON.stringify([{id: 881001, date: dk(-3), day: 'D1', entries: [{exercise: 'Zz Call Press', sets: [{w: 185, r: 8, e: 'grind'}, {w: 185, r: 7, ef: 20}, {w: 185, r: 7, e: 'fail'}]}]}]) + ';');
+    const cD1 = ev("dayCall(todayKey(), 'D1')"), cD2 = ev("dayCall(todayKey(), 'D2')");
+    ok('call: a D1 that ran hot last time weighs on this D1, and not on a D2',
+       Math.abs(cD2.score - cD1.score - 1) < 1e-9 && cD1.parts.some(p => /last D1 felt RPE/.test(p.txt)), JSON.stringify([cD1.score, cD2.score]));
+    ev('S.logs = [];');
+
+    // --- training load alone can make a call ---
+    setWhoop(null, null, null, null, null);
+    const ovl = [];
+    for (let d = 8; d <= 33; d += 2) ovl.push({id: 887000 + d, date: dk(-d), day: 'D2', entries: [{exercise: 'Zz Call Row', sets: [{w: 1, r: 1, e: 'solid'}, {w: 1, r: 1, e: 'solid'}, {w: 1, r: 1, e: 'solid'}]}]});
+    for (let d = 1; d <= 4; d++) ovl.push({id: 887100 + d, date: dk(-d), day: 'D2', entries: [{exercise: 'Zz Call Row', sets: [{w: 1, r: 1, e: 'grind'}, {w: 1, r: 1, e: 'grind'}, {w: 1, r: 1, e: 'grind'}, {w: 1, r: 1, e: 'grind'}]}]});
+    ev('S.logs = ' + JSON.stringify(ovl) + '; S.readiness = [];');
+    const cL = ev('dayCall(todayKey())');
+    ok('call: an overreached week makes an easy day even with no WHOOP or check-in', cL.call === 'easy' && cL.conf === 'low', JSON.stringify(cL));
+    ev('S.logs = [];');
+
+    // --- calibration: how HIS below-usual days go ---
+    // Six sessions on days well under his usual that ground, six on usual days that did not.
+    const calLogs = [], dips = [20, 17, 14, 11, 8, 5], usual = [19, 16, 13, 10, 7, 4];
+    dips.forEach(i => { const h = hist.find(r => r.date === dk(-i)); h.recovery = 40;
+      calLogs.push({id: 882000 + i, date: dk(-i), day: 'D1', entries: [{exercise: 'Zz Call Press', sets: [{w: 185, r: 8, e: 'grind'}, {w: 185, r: 7, e: 'grind'}, {w: 185, r: 7, e: 'solid'}]}]}); });
+    usual.forEach(i => calLogs.push({id: 882100 + i, date: dk(-i), day: 'D2', entries: [{exercise: 'Zz Call Row', sets: [{w: 150, r: 10, e: 'solid'}, {w: 150, r: 10, e: 'solid'}, {w: 150, r: 9, e: 'easy'}]}]}));
+    setWhoop(28, 117, 60, 4.55, 44);
+    ev('S.logs = ' + JSON.stringify(calLogs) + ';');
+    const wr = ev('whoopResponse()');
+    ok('calibration: his below-usual days ground far more, so a low recovery counts for more',
+       wr.calibrated === true && wr.weight === 1.5 && wr.buckets.below.n === 6 && wr.buckets.normal.n >= 6, JSON.stringify(wr));
+    const recPart = ev('dayCall(todayKey())').parts.find(p => /^recovery/.test(p.txt));
+    ok('calibration: and the recovery term in the call is scaled by it', recPart && recPart.pts === -3.75, JSON.stringify(recPart));
+    ev('S.logs = [];');
+    hist.forEach((h, j) => { h.recovery = recs[(30 - j) % 10]; });
+
+    // --- the call reaches the plan, inside hard bounds ---
+    ev("S.split.D1.exercises.push({name:'Zz Call Press', inc:5}, {name:'Zz Call Curl', inc:5});");
+    const baseLogs = [
+      {id: 883001, date: dk(-10), day: 'D1', entries: [{exercise: 'Zz Call Press', sets: [{w: 180, r: 12, e: 'solid'}, {w: 180, r: 12, e: 'solid'}]}, {exercise: 'Zz Call Curl', sets: [{w: 40, r: 10, e: 'solid'}]}]},
+      {id: 883002, date: dk(-4), day: 'D1', entries: [{exercise: 'Zz Call Press', sets: [{w: 185, r: 12, e: 'solid'}, {w: 185, r: 12, ef: 62}]}, {exercise: 'Zz Call Curl', sets: [{w: 40, r: 11, e: 'solid'}, {w: 40, r: 10, e: 'solid'}]}]}];
+    ev('S.logs = ' + JSON.stringify(baseLogs) + ';');
+    const b1 = (nm, call) => ev("buildOneLiveExercise('" + nm + "', null, {call:" + JSON.stringify(call) + "})");
+    const pN = b1('Zz Call Press', 'normal'), pE = b1('Zz Call Press', 'easy'), pR = b1('Zz Call Press', 'recover'), pP = b1('Zz Call Press', 'push');
+    ok('plan: a normal day takes the earned jump (185 \u2192 190)', pN.targetW === 190 && pN.planned === 3, pN.targetW + ' x' + pN.planned);
+    ok('plan: an easy day holds it (185), sets unchanged on a compound', pE.targetW === 185 && pE.planned === 3, pE.targetW + ' x' + pE.planned);
+    ok('plan: a recover day is one step under the NORMAL plan (185), with one set fewer', pR.targetW === 185 && pR.planned === 2, pR.targetW + ' x' + pR.planned);
+    ok('plan: a push day is never heavier than the normal plan', pP.targetW === 190 && pP.planned === 3);
+    const cN = b1('Zz Call Curl', 'normal'), cE = b1('Zz Call Curl', 'easy');
+    ok('plan: an easy day takes one set off an accessory', cN.planned === 3 && cE.planned === 2 && cE._callTrim === true, cN.planned + ' -> ' + cE.planned);
+    // The bounds, for every call on both lifts: never heavier, never more than one increment or one set lighter.
+    const bounded = ['Zz Call Press', 'Zz Call Curl'].every(nm => { const n = b1(nm, 'normal');
+      return ['push', 'normal', 'easy', 'recover'].every(c => { const x = b1(nm, c);
+        return x.targetW <= n.targetW && x.targetW >= n.targetW - 5 && x.planned <= n.planned && x.planned >= n.planned - 1; }); });
+    ok('plan: every call stays inside the bounds on every lift', bounded);
+    // A held lift (no jump earned) on a recover day drops one step from where it is.
+    ev("S.logs[1].entries[0].sets = [{w:185, r:10, e:'solid'}, {w:185, r:9, e:'solid'}];");
+    ok('plan: a lift with no jump earned goes one step lighter on a recover day', b1('Zz Call Press', 'recover').targetW === 180 && b1('Zz Call Press', 'normal').targetW === 185);
+    const rdt = b1('Zz Call Press', 'recover').recDetail;
+    ok('plan: and its advice says the weight it shows, not "repeat" the old one',
+       /^Recover day: 180 lb, one step under the normal plan\u2019s 185 lb, with one set fewer/.test(rdt) && !/[Rr]epeat/.test(rdt), rdt);
+    // A slot's own set count is honoured, and a recover day still takes only one set off it.
+    const s5 = ev("buildOneLiveExercise('Zz Call Press', null, {call:'recover', sets:5}).planned");
+    ok('plan: a 5-set slot on a recover day loses one set, not three', s5 === 4, String(s5));
+    // An investigation override is a deliberate weight and is left alone.
+    // At the normal plan's own weight, so lightening it would actually show.
+    ev("invState().overrides['Zz Call Press'] = {w:185, until:" + JSON.stringify(dk(5)) + ", note:'reset'};");
+    ok('plan: an active override is not lightened on a recover day', b1('Zz Call Press', 'recover').targetW === 185, String(b1('Zz Call Press', 'recover').targetW));
+    ev("delete invState().overrides['Zz Call Press'];");
+    ev('S.logs = ' + JSON.stringify(baseLogs) + ';');
+
+    // --- starting a session applies the call; one tap puts the normal plan back ---
+    setWhoop(28, 117, 60, 4.55, 44);
+    ev("S.readiness = [{date:todayKey(), sleep:'<6', sore:'mild', energy:'low', energyPre:'low', stress:'normal', motiv:'ready', tier:'low'}];");
+    ev("_startLiveNow('D1')");
+    const lv = ev('JSON.stringify({call:live.call, off:live.callOff, trimmed:live.trimmed, ex:live.exercises.filter(function(e){ return /^Zz Call/.test(e.name); }).map(function(e){ return [e.name, e.targetW, e.planned]; })})');
+    ok('session: starting applies today\u2019s call', /"call":"recover"/.test(lv) && /"Zz Call Press",185,2/.test(lv) && /"Zz Call Curl",40,2/.test(lv) && /"trimmed":true/.test(lv), lv);
+    ok('session: LIVE says what the day is, why, and offers the normal plan',
+       /Recover day/.test(ev('liveCallHTML()')) && /recovery 28%/.test(ev('liveCallHTML()')) && /Train the normal plan instead/.test(ev('liveCallHTML()')));
+    // He has already logged a set on the press; the undo must not touch it.
+    ev("(function(){ const e = live.exercises.find(function(x){ return x.name==='Zz Call Press'; }); e.sets.push({w:185, r:10, e:'solid', ts:Date.now()}); })()");
+    ev('liveCallToggle()');
+    const lv2 = ev('JSON.stringify(live.exercises.filter(function(e){ return /^Zz Call/.test(e.name); }).map(function(e){ return [e.name, e.targetW, e.planned, e.sets.length]; }))');
+    ok('session: undo rebuilds what he has not started to the normal plan', /"Zz Call Curl",40,3,0/.test(lv2) && ev('live.callOff') === true && ev('live.trimmed') === false, lv2);
+    ok('session: and leaves the lift he has started exactly as it was', /"Zz Call Press",185,2,1/.test(lv2), lv2);
+    ok('session: the line now offers the call back', /Use today\u2019s call again/.test(ev('liveCallHTML()')));
+    ev('liveCallToggle()');
+    ok('session: and the call comes back on the untouched lifts', /"Zz Call Curl",40,2/.test(ev('JSON.stringify(live.exercises.map(function(e){ return [e.name, e.targetW, e.planned]; }))')));
+    ev('endLiveSession()');
+    const rec = ev("JSON.stringify(S.logs.filter(function(l){ return l.date===todayKey(); }).slice(-1)[0].call)");
+    ok('session: the log keeps the call and whether he kept it', /"call":"recover"/.test(rec) && /"off":false/.test(rec), rec);
+    ev('live = null; clearLiveDraft();');
+
+    // --- a low check-in goes straight to the session (the call decides the trim now) ---
+    ev('S.readiness = []; S.logs = ' + JSON.stringify(baseLogs) + ';');
+    ev("openReadyCheck('D1')");
+    ev("_rdV3 = {sleep:'<6', sore:'beat up', energy:'low', stress:'wired', motiv:'meh'};");
+    ev('rd3Lock()');
+    ok('check-in: a low check-in starts the session instead of stopping to ask about a trim', ev('!!live') === true && ev('!!live.call') === true);
+    ev('live = null; clearLiveDraft(); closeReadyOverlay();');
+
+    // --- Today shows the call before the session ---
+    setWhoop(28, 117, 60, 4.55, 44);
+    ev('S.readiness = [];');
+    const card = ev("dayCallCardHTML({dayKey:'D1', rest:false, logged:false})");
+    ok('Today: the card shows the call, before the check-in', /Recover day/.test(card) && /before your check-in/.test(card), card.slice(0, 200));
+    ok('Today: nothing on a rest day', ev("dayCallCardHTML({dayKey:'REST', rest:true, logged:false})") === '');
+
+    // --- a jump earned on grinders repeats once ---
+    const grindLogs = (prevAtCeil) => [
+      {id: 884001, date: dk(-9), day: 'D1', entries: [{exercise: 'Zz Call Press', sets: prevAtCeil ? [{w: 185, r: 12, e: 'grind'}, {w: 185, r: 12, e: 'grind'}] : [{w: 180, r: 12, e: 'solid'}, {w: 180, r: 12, e: 'solid'}]}]},
+      {id: 884002, date: dk(-4), day: 'D1', entries: [{exercise: 'Zz Call Press', sets: [{w: 185, r: 12, e: 'grind'}, {w: 185, r: 12, ef: 55}]}]}];
+    ev('S.logs = ' + JSON.stringify(grindLogs(false)) + ';');
+    const gC = ev("classifyDecision('Zz Call Press', 'ok')"), gR = ev("recommend('Zz Call Press', 'ok')");
+    ok('grind-hold: the top of the range on grinders repeats the weight once', gC.code === 'grind-hold' && gR.sets[0].w === 185, JSON.stringify([gC.code, gR.sets[0].w]));
+    ok('grind-hold: recommend() and classifyDecision() agree on it', gC.to === gR.sets[0].w);
+    ev('S.logs = ' + JSON.stringify(grindLogs(true)) + ';');
+    const gC2 = ev("classifyDecision('Zz Call Press', 'ok')"), gR2 = ev("recommend('Zz Call Press', 'ok')");
+    ok('grind-hold: once repeated, it goes up even if it ground again', gC2.code === 'increase' && gR2.sets[0].w === 190 && gC2.to === 190, JSON.stringify([gC2.code, gR2.sets[0].w]));
+
+    // --- in-session: two sets say more than one ---
+    const ia = (sets, extra) => ev("intraAdvice(" + JSON.stringify(Object.assign({name: 'Zz Call Curl', lo: 8, hi: 12, targetW: 40, recDetail: '', sets: sets}, extra || {})) + ")");
+    const twoEasy = ia([{w: 40, r: 12, ef: 90}, {w: 40, r: 12, ef: 85}]);
+    ok('in-session: two easy sets at the top ask for another rep, at the same weight', /go for 13/.test(twoEasy.msg) && twoEasy.w === 40, JSON.stringify(twoEasy));
+    const twoGrind = ia([{w: 40, r: 9, ef: 30}, {w: 40, r: 8, ef: 25}]);
+    ok('in-session: two grinders under mid-range step the weight back', twoGrind.tag === 'Back off' && twoGrind.w === 35, JSON.stringify(twoGrind));
+    ok('in-session: one grinder still just holds', ia([{w: 40, r: 9, ef: 30}]).tag === 'Hold');
+    ok('in-session: on a strength lift low-rep grinders are the point, not a reason to back off',
+       ia([{w: 40, r: 4, ef: 30}, {w: 40, r: 4, ef: 25}], {repMode: 'str', lo: 3, hi: 6}).tag !== 'Back off');
+
+    // --- set counts: DELTA's volume lever, and his ---
+    const V3 = (fx, who) => { w.__fx = fx; w.__who = who; return ev('agValidateFix(window.__fx, window.__who)'); };
+    const sc = V3({type: 'setCount', payload: {exercise: 'zz call curl', day: 'D1', sets: 4}}, 'delta');
+    ok('setCount: DELTA may set 2-5 sets on a lift in that day, in its canonical spelling', sc && sc.payload.exercise === 'Zz Call Curl' && sc.payload.sets === 4, JSON.stringify(sc));
+    ok('setCount: 6 is out of range', V3({type: 'setCount', payload: {exercise: 'Zz Call Curl', day: 'D1', sets: 6}}, 'delta') === null);
+    ok('setCount: a lift not on that day is refused', V3({type: 'setCount', payload: {exercise: 'Zz Call Curl', day: 'D2', sets: 4}}, 'delta') === null);
+    ok('setCount: "changing" to the current count is no change', V3({type: 'setCount', payload: {exercise: 'Zz Call Curl', day: 'D1', sets: 3}}, 'delta') === null);
+    ok('setCount: it is DELTA\u2019s, not ECHO\u2019s', V3({type: 'setCount', payload: {exercise: 'Zz Call Curl', day: 'D1', sets: 4}}, 'echo') === null);
+    w.__fx = sc; ev('agApplyFix(window.__fx)');
+    const built = ev("buildLiveExercises('D1')").find(x => x.name === 'Zz Call Curl');
+    ok('setCount: applied, the session prescribes that many sets', built && built.planned === 4, built && built.planned);
+    const i = ev("S.split.D1.exercises.findIndex(function(x){ return exName(x)==='Zz Call Curl'; })");
+    const cyc = [];
+    for (let k = 0; k < 4; k++) { ev("cycleSets('D1'," + i + ")"); cyc.push(ev("S.split.D1.exercises[" + i + "].sets || 3")); }
+    ok('setCount: the split editor button cycles 4 \u2192 5 \u2192 2 \u2192 3 \u2192 4', cyc.join() === '5,2,3,4', cyc.join());
+
+    // --- the compound check no longer matches "chin" inside "machine" ---
+    ok('compound: a calf machine is not a compound', ev("mesoIsCompound('Seated Calf Machine')") === false);
+    ok('compound: a chin-up still is', ev("mesoIsCompound('Weighted Chin-Up')") === true);
+
+    // --- the fatigue windows do not share a day ---
+    const fLogs = [];
+    for (let d = 8; d <= 33; d += 2) fLogs.push({id: 885000 + d, date: dk(-d), day: 'D1', entries: [{exercise: 'Zz Call Row', sets: [{w: 1, r: 1, e: 'solid'}, {w: 1, r: 1, e: 'solid'}, {w: 1, r: 1, e: 'solid'}]}]});
+    ev('S.logs = ' + JSON.stringify(fLogs) + ';');
+    const f1 = ev('fatigueIndex().chronic');
+    ev('S.logs.push(' + JSON.stringify({id: 885900, date: dk(-6), day: 'D1', entries: [{exercise: 'Zz Call Row', sets: [{w: 1, r: 1, e: 'grind'}, {w: 1, r: 1, e: 'grind'}, {w: 1, r: 1, e: 'grind'}, {w: 1, r: 1, e: 'grind'}]}]}) + ');');
+    ok('fatigue: a session six days ago counts as this week, not also as the norm', ev('fatigueIndex().chronic') === f1, f1 + ' vs ' + ev('fatigueIndex().chronic'));
+
+    // --- per-lift and per-muscle patterns ---
+    const lp = [100, 105, 105, 110, 105, 110, 115].map((wt, j) => ({id: 886000 + j, date: dk(-70 + j * 7), day: 'D1', entries: [{exercise: 'Zz Call Press', sets: [{w: wt, r: 10, e: 'solid'}, {w: wt, r: 9, e: 'solid'}]}]}));
+    ev('S.logs = ' + JSON.stringify(lp) + ';');
+    const prof = ev("liftProfile('Zz Call Press')");
+    ok('liftProfile: counts the jumps and how many stuck (2 of the 3 that could be judged)', prof && prof.jumps === 4 && prof.stickRate === 0.67, JSON.stringify(prof));
+    const mr = ev('muscleResponse(6)');
+    ok('muscleResponse: reports sets per week and a trend per group', mr && mr.weeks === 6 && mr.groups.Chest && typeof mr.groups.Chest.setsPerWeek === 'number', JSON.stringify(mr.groups.Chest));
+  } catch (e) {
+    ok('pattern engine section', false, e.stack);
+  }
+  ev('live = null; try{ clearLiveDraft(); closeReadyOverlay(); }catch(e){}');
+  ev('S = ' + peSaved + ';');
+  ok('cleanup: real state restored after the pattern engine section', ev('JSON.stringify(S)') === peSaved);
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
