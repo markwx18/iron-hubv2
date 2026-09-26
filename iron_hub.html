@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-25-v3">
+<meta name="ironhub-build" content="2026-09-25-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3191,7 +3191,7 @@ function bulkScore(){
     case 'under':  score=0.4; note='gaining, but under the 0.5–1 lb/wk pocket'; break;
     case 'pocket': score=1;   note='right in the lean-bulk pocket'; break;
     // bulkBand() stops at 'hot'; the blend still separates "a bit fast" from "quite fast".
-    default:       if(rate<=1.6){ score=0.7; note='gaining faster than ideal'; }
+    default:       if(rate<=BULK_FAST){ score=0.7; note='gaining faster than ideal'; }
                    else { score=0.4; note='gaining quite fast — likely some fat with it'; }
   }
   return {available:true, score, note, rate, weeks: br.weeks};
@@ -3390,9 +3390,11 @@ function nextLevelCardHTML(pre){
       } else if(rate < BULK_LO){
         actions.push('You\u2019re gaining at '+rate.toFixed(2)+' lb/wk \u2014 under the '+BULK_LO+'–'+BULK_HI+' lb/wk lean-bulk pocket, so the surplus is not landing hard enough to be worth much.');
         actions.push('Add 200\u2013300 calories to your daily target. At your size and training volume, a surplus that looks comfortable on paper disappears fast on a heavy training day, and the scale says this one is not landing.');
-      } else if(rate > 1.6){
-        actions.push('You\u2019re gaining at '+rate.toFixed(2)+' lb/wk \u2014 faster than ideal. Some of that is fat, which is fine in a bulk, but above ~1 lb/wk the fat gain starts to outpace the muscle gain.');
-        actions.push('Pull back ~150\u2013200 cal/day. You don\u2019t need to cut, just slow the rate to 0.5\u20131.0 lb/wk to maximize the muscle-to-fat ratio of the gain.');
+      } else if(bulkBand(rate) === 'hot'){
+        // Every 'hot' rate gets advice; it used to start at 1.6, leaving 1.0-1.6 with nothing.
+        actions.push('You\u2019re gaining at '+rate.toFixed(2)+' lb/wk \u2014 over the '+BULK_LO+'\u2013'+BULK_HI+' lb/wk pocket. Some of that is fat, which is fine in a bulk, but above ~1 lb/wk the fat gain starts to outpace the muscle gain.');
+        actions.push(rate > BULK_FAST ? 'Pull back ~150\u2013200 cal/day. You don\u2019t need to cut, just slow the rate back into the pocket.'
+                                      : 'A small trim of ~100 cal/day is enough; this is a nudge, not a correction.');
       }
     }
   }
@@ -3487,6 +3489,10 @@ function bulkRate(weeks){
    +0.15 up "right in the lean-bulk pocket (0.5-1 lb/week)" -- a band it was plainly below --
    because the branch was `rate <= 1.1` with nothing at all between 0.15 and 1.1. */
 const BULK_LO = 0.5, BULK_HI = 1.0;
+/* Inside 'hot', the one further line: past it, "a bit fast" becomes "quite fast -- trim". Named here
+   so nothing keeps its own copy: investigateBulk() used 1.5, bulkScore() and the next-level advice
+   1.6, and the advice said nothing at all between 1.0 and 1.6. */
+const BULK_FAST = 1.6;
 function bulkBand(rate){
   if(rate < 0)        return 'losing';
   if(rate < 0.15)     return 'flat';
@@ -6867,18 +6873,24 @@ function greetWord(){
   if(h<17) return 'Good afternoon';
   return 'Good evening';
 }
-function streakDays(){
-  // count consecutive prior calendar days (incl today) that have at least one log
-  const have = new Set(S.logs.map(l=>l.date));
-  let n=0; const d=new Date();
-  for(let i=0;i<60;i++){
-    const k = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    if(scheduledDayFor(k)==='REST'){ d.setDate(d.getDate()-1); continue; } // rest days don't break streak
-    if(have.has(k)) n++; else if(i>0) break; // allow today to be not-yet-done
-    d.setDate(d.getDate()-1);
+/* Current and longest run of scheduled training days with a session, from the first log to today.
+   Rest days neither count nor break it, and today does not break it until it is over. The old
+   count looked back only 60 days, so a longer run silently capped, and there was no longest. */
+function streakStats(){
+  const have = new Set((S.logs||[]).map(l=>l.date));
+  if(!have.size) return {current:0, longest:0};
+  const t = todayKey();
+  let k = [...have].sort()[0], cur = 0, longest = 0, guard = 0;
+  while(k <= t && guard++ < 3700){
+    if(scheduledDayFor(k) !== 'REST'){
+      if(have.has(k)){ cur++; if(cur > longest) longest = cur; }
+      else if(k !== t) cur = 0;
+    }
+    k = mesoAddDays(k, 1);
   }
-  return n;
+  return {current:cur, longest:longest};
 }
+function streakDays(){ return streakStats().current; }
 function coachPlanBannerHTML(){
   clearExpiredCoachDayPlan();
   const p = S.coachDayPlan;
@@ -8432,7 +8444,7 @@ function deloadCardHTML(){
   }
   const d=deloadCheck();
   if(d.severity==='clear'){
-    return '<div class="card" style="border-left:3px solid var(--cyan)"><div class="chart-h" style="margin-bottom:4px">Fatigue check <span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">Clear</span></div><p class="small">No deload signals right now \u2014 recovery is keeping up with the work. Keep pushing.</p></div>';
+    return '<div class="card" style="border-left:3px solid var(--cyan)"><div class="chart-h" style="margin-bottom:4px">Fatigue check <span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">Clear</span></div><p class="small">No deload signals right now \u2014 recovery is keeping up with the work. Keep pushing.</p>'+deloadForecastLineHTML()+'</div>';
   }
   const col = d.severity==='recommend' ? 'var(--red)' : 'var(--amber)';
   const head = d.severity==='recommend' ? 'Deload recommended' : 'Watch for fatigue';
@@ -8441,7 +8453,7 @@ function deloadCardHTML(){
     : 'Not urgent, but the signals are building. Make sure you\u2019re hitting your '+calTarget()+' cal target and 8h sleep this week. If the grinders keep stacking up, deload next week.';
   return '<div class="card" style="border-left:3px solid '+col+'"><div class="chart-h" style="margin-bottom:6px">Fatigue check <span class="pill" style="border-color:'+col+';color:'+col+'">'+head+'</span></div>'+
     '<div class="small" style="margin-bottom:8px">'+d.reasons.map(r=>'<div class="exinfo-cue"><span style="color:'+col+'">\u25b8</span>'+esc(r)+'</div>').join('')+'</div>'+
-    '<p class="small" style="color:var(--text)">'+how+'</p>'+
+    '<p class="small" style="color:var(--text)">'+how+'</p>'+deloadForecastLineHTML()+
     '<div style="margin-top:10px"><button class="btn sm" onclick="if(confirm(\'Start a deload week? Loads drop to ~60% for 2 sets and this week won\\u2019t count toward progression.\'))startDeloadWeek()">Start deload week</button></div></div>';
 }
 
@@ -10043,19 +10055,26 @@ function investigateBulk(){
   findings.push('Trailing rate: '+(rate>=0?'+':'')+rate.toFixed(2)+' lb/week (weekly-averaged, last '+nWeeks+' weeks). Current: '+cur.toFixed(1)+' lb.');
   const proFloor = Math.round(cur*0.95); // ~1g/lb guideline
   let severity=null, title='Bulk on track', fix=null;
-  if(rate < -0.15){
+  // Judged by bulkBand(), the same bands every other surface uses. This had its own: 0.25-0.5
+  // read "on track" here while the Bulk tab called the same rate "under the pocket".
+  const band = bulkBand(rate);
+  if(band === 'losing'){
     severity='red'; title='Losing weight mid-bulk';
     findings.push('You\u2019re in a deficit or at maintenance despite bulking intent \u2014 muscle gain is severely limited without a surplus.');
     fix={label:'Raise calorie target +300', desc:'Bump daily target '+cal+' \u2192 '+(cal+300)+' cal. Re-check in two weeks \u2014 the goal is +0.5\u20131 lb/week.', type:'cal', payload:{delta:300}};
-  } else if(rate < 0.25){
+  } else if(band === 'flat'){
     severity='orange'; title='Bulk rate too slow';
     findings.push('Under the 0.5\u20131 lb/week lean-bulk pocket \u2014 progress is being left on the table.');
     fix={label:'Raise calorie target +250', desc:'Bump daily target '+cal+' \u2192 '+(cal+250)+' cal to get into the 0.5\u20131 lb/week band.', type:'cal', payload:{delta:250}};
-  } else if(rate > 1.5){
+  } else if(band === 'under'){
+    severity='yellow'; title='Bulk slightly slow';
+    findings.push('Gaining, but under the '+BULK_LO+'\u2013'+BULK_HI+' lb/week lean-bulk pocket \u2014 the surplus is not landing hard enough.');
+    fix={label:'Raise calorie target +150', desc:'Bump daily target '+cal+' \u2192 '+(cal+150)+' cal to get into the '+BULK_LO+'\u2013'+BULK_HI+' lb/week band.', type:'cal', payload:{delta:150}};
+  } else if(band === 'hot' && rate > BULK_FAST){
     severity='orange'; title='Bulk rate too fast';
-    findings.push('Above ~1.5 lb/week \u2014 at this pace a meaningful share of the gain is fat, not muscle.');
+    findings.push('Above ~'+BULK_FAST+' lb/week \u2014 at this pace a meaningful share of the gain is fat, not muscle.');
     fix={label:'Trim calorie target \u2212200', desc:'Drop daily target '+cal+' \u2192 '+(cal-200)+' cal to settle back toward 1 lb/week.', type:'cal', payload:{delta:-200}};
-  } else if(rate > 1.0){
+  } else if(band === 'hot'){
     severity='yellow'; title='Bulk slightly hot';
     findings.push('Slightly above the 1 lb/week upper bound \u2014 fine short-term, worth watching.');
     fix=null;
@@ -10361,9 +10380,9 @@ function invCheckResolutions(){
         const sm = bodyweightSeriesSmoothed();
         const newestWeight = S.weights.length ? [...S.weights].sort((a,b)=>b.date.localeCompare(a.date))[0].date : null;
         if(sm.length>=3 && newestWeight && newestWeight>f.created){
-          const reg = linreg(sm.slice(-3));
-          const rate = reg? reg.slope*7 : 0;
-          if(rate>=0.4 && rate<=1.2){ resolved=true; note='rate back in the 0.4\u20131.2 lb/wk band'; }
+          // The same rate and band as everywhere else: back in the pocket clears it.
+          const br = bulkRate(4);
+          if(br && bulkBand(br.rate) === 'pocket'){ resolved=true; note='rate back in the '+BULK_LO+'\u2013'+BULK_HI+' lb/wk band'; }
         }
       } else if(f.cat==='split'){
         const {start,end} = lastCompletedWeekRange();
@@ -10462,7 +10481,7 @@ function invFlagCardHTML(f){
   h += '<div class="inv-findings">'+f.findings.map(x=>'<div class="inv-finding">\u25b8 '+esc(x)+'</div>').join('')+'</div>';
   if(f.status==='applied'){
     h += '<div class="inv-applied">\u2713 Fix applied '+fmtDate(f.appliedAt)+' \u2014 monitoring for resolution. '+
-      (f.cat==='lift'?'Clears after 2 consecutive e1RM improvements.':f.cat==='bulk'?'Clears when your rate is back in the 0.4\u20131.2 lb/wk band.':'Clears when volume gaps close and nothing is stale.')+'</div>';
+      (f.cat==='lift'?'Clears after 2 consecutive e1RM improvements.':f.cat==='bulk'?'Clears when your rate is back in the '+BULK_LO+'\u2013'+BULK_HI+' lb/wk band.':'Clears when volume gaps close and nothing is stale.')+'</div>';
     h += '<div class="inv-acts"><button class="btn ghost sm" onclick="invDismiss(\''+f.id+'\')">Dismiss anyway</button></div>';
   } else if(f.fix){
     h += '<div class="inv-fix"><div class="inv-fix-h">RECOMMENDED FIX</div><b>'+esc(f.fix.label)+'</b><div class="small" style="margin-top:3px">'+esc(f.fix.desc)+'</div></div>';
@@ -12020,15 +12039,17 @@ function anStrainBetween(a, b){
 function anStrainByWeek(n){
   return anLastWeeks(n, true).map(ws=>({date:ws, v:anStrainBetween(ws, mesoAddDays(ws,6))}));
 }
-function fatigueIndex(){
-  const acute = anStrainBetween(mesoAddDays(todayKey(),-6), todayKey());
+function fatigueIndex(endKey){
+  // endKey lets the deload forecast read last week's ratio the same way; default is today.
+  const e = endKey || todayKey();
+  const acute = anStrainBetween(mesoAddDays(e,-6), e);
   // Prior 28 days, weekly. It ended at -6, the same day the acute window starts, so that day
   // counted in both.
-  const chronic = anStrainBetween(mesoAddDays(todayKey(),-34), mesoAddDays(todayKey(),-7)) / 4;
+  const chronic = anStrainBetween(mesoAddDays(e,-34), mesoAddDays(e,-7)) / 4;
   if(chronic < 4) return {ok:false, reason:'Needs about a month of logged training to establish your baseline.'};
   let ratio = acute/chronic;
   // readiness modifier: a run of low-readiness days makes the same load cost more
-  const last7 = S.readiness.filter(r=>r.date>=mesoAddDays(todayKey(),-6));
+  const last7 = S.readiness.filter(r=>r.date>=mesoAddDays(e,-6) && r.date<=e);
   const lows = last7.filter(r=>r.tier==='low').length;
   if(lows>=2) ratio += 0.12;
   const status = ratio<0.75 ? 'fresh' : ratio<=1.25 ? 'productive' : ratio<=1.5 ? 'high' : 'overreached';
@@ -12133,8 +12154,15 @@ function whoopOn(dateKey){
    each bucket reports how often top sets ran grind or fail, and how often a PR came.
    The result calibrates how much a low recovery counts in dayCall(): if his below-usual days really
    do go worse, it counts for more; if they do not, for less. Until each side has WR_MIN sessions it
-   stays at 1 and says it is not calibrated. */
-const WR_MIN = 5;
+   stays at 1 and says it is not calibrated.
+
+   "Worse" is grinding more OR setting PRs less often. Grind share alone read his real data
+   backwards (2026-09-25: 9% grinders under his usual against 8% at it, yet PRs on 29% of those
+   sessions against 71%), and would have made recovery count for less. Sessions the call itself
+   shaped (an easy or recover day he kept) are left out: the call holds jumps on those days, so
+   they set fewer PRs BECAUSE of it, and counting them would let the calibration feed on its own
+   effect. Under WR_FULL sessions a side, the adjustment is halved. */
+const WR_MIN = 5, WR_FULL = 10;
 function whoopResponse(){
   const byDate = {};
   whoopHistRows().forEach(function(r){ if(r && r.date) byDate[r.date] = r; });
@@ -12143,6 +12171,7 @@ function whoopResponse(){
   const b = {below:[], normal:[], above:[]};
   (S.logs||[]).forEach(function(l){
     if(!l || l.deload || l.home) return;
+    if(l.call && !l.call.off && (l.call.call === 'easy' || l.call.call === 'recover')) return;
     const r = byDate[l.date];
     if(!r || typeof r.recovery !== 'number') return;
     const base = recoveryBaseline(l.date);
@@ -12163,13 +12192,16 @@ function whoopResponse(){
   const sum = function(a){ return a.length ? {n:a.length, hard:a.reduce(function(t, x){ return t + x.hard; }, 0)/a.length,
     prRate:a.reduce(function(t, x){ return t + x.pr; }, 0)/a.length} : {n:0, hard:null, prRate:null}; };
   const out = {below:sum(b.below), normal:sum(b.normal), above:sum(b.above)};
-  let weight = 1, calibrated = false;
+  let weight = 1, calibrated = false, effect = null;
   if(out.below.n >= WR_MIN && out.normal.n >= WR_MIN){
     calibrated = true;
-    const gap = out.below.hard - out.normal.hard;
-    weight = gap >= 0.15 ? 1.5 : gap >= 0.05 ? 1 : 0.6;
+    // A 30-point drop in PR rate counts like 10 points more grinding.
+    effect = (out.below.hard - out.normal.hard) + (out.normal.prRate - out.below.prRate) / 3;
+    weight = effect >= 0.15 ? 1.5 : effect >= 0.05 ? 1 : 0.6;
+    if(Math.min(out.below.n, out.normal.n) < WR_FULL) weight = 1 + (weight - 1) / 2;   // small sample: half the step
   }
-  return {n:out.below.n + out.normal.n + out.above.n, buckets:out, weight:weight, calibrated:calibrated};
+  return {n:out.below.n + out.normal.n + out.above.n, buckets:out, weight:weight, calibrated:calibrated,
+          effect: effect === null ? null : Math.round(effect*100)/100};
 }
 
 /* TODAY'S CALL: push / normal / easy / recover, with its reasons.
@@ -12310,6 +12342,275 @@ function muscleResponse(weeks){
               pctPerWeek: t.length ? Math.round(t.reduce(function(a, b){ return a + b; }, 0)/t.length*100)/100 : null};
   });
   return {weeks:n, groups:out};
+}
+
+/* ---- forecasts and insights (V3 intelligence, push 3) ---- */
+function pxMean(a){ const v = a.filter(function(x){ return typeof x === 'number' && isFinite(x); }); return v.length ? v.reduce(function(t, x){ return t + x; }, 0)/v.length : null; }
+/* When the next deload is likely to be needed, in weeks, not days: the inputs move in whole steps
+   and a day count would be false precision. Built from the fixed deloadCheck(), this week's load
+   ratio and how it moved over the week, and how hard sessions have been feeling (feltVsPlan()).
+   A planned meso deload is the yardstick: on course for it, or wanted before it. */
+function deloadForecast(){
+  if(deloadActive()) return null;
+  const t = todayKey(), d = deloadCheck();
+  const since = lastDeloadEndKey();
+  const weeksSince = since ? Math.floor((Date.parse(t) - Date.parse(since)) / (7*86400000)) : null;
+  let rNow = null, rThen = null;
+  try{ const a = fatigueIndex(), b = fatigueIndex(mesoAddDays(t, -7)); if(a.ok) rNow = a.ratio; if(b.ok) rThen = b.ratio; }catch(e){}
+  const felt = (S.logs||[]).filter(function(l){ return l && !l.deload && !l.home; })
+    .sort(function(a, b){ return b.date.localeCompare(a.date); }).map(feltVsPlan).filter(Boolean);
+  const fNow = pxMean(felt.slice(0, 6).map(function(f){ return f.delta; })), fThen = pxMean(felt.slice(6, 12).map(function(f){ return f.delta; }));
+  let pressure = d.score;
+  if(rNow !== null && rNow > 1.25) pressure += 1;
+  if(rNow !== null && rThen !== null && rNow - rThen > 0.15) pressure += 0.5;
+  if(fNow !== null && fNow >= 0.5) pressure += 1;
+  if(fNow !== null && fThen !== null && fNow - fThen >= 0.4) pressure += 0.5;
+  const weeks = pressure >= 4 ? 0 : pressure >= 3 ? 1 : pressure >= 2 ? 2 : pressure >= 1 ? 3 : null;
+  let planned = null;
+  try{ const nd = mesoNextDeload(); if(nd && nd.startKey > t) planned = {start:nd.startKey, weeksAway:Math.ceil((Date.parse(nd.startKey) - Date.parse(t)) / (7*86400000))}; }catch(e){}
+  let text = weeks === 0 ? 'Due now \u2014 the signals say take it this week.'
+           : weeks === 1 ? 'Likely needed within about a week.'
+           : weeks === 2 ? 'Likely needed in about 1\u20132 weeks.'
+           : weeks === 3 ? 'Building slowly \u2014 probably 2\u20133 weeks out.'
+           : 'No sign of needing one yet.';
+  if(planned){
+    text += (weeks === null || weeks >= planned.weeksAway)
+      ? ' On course for the planned deload on '+fmtDate(planned.start)+'.'
+      : ' That is before the planned deload on '+fmtDate(planned.start)+' ('+planned.weeksAway+' week'+(planned.weeksAway === 1 ? '' : 's')+' away) \u2014 it may be worth taking early.';
+  }
+  return {weeks:weeks, pressure:Math.round(pressure*10)/10, planned:planned, ratioNow:rNow, ratioWeekAgo:rThen,
+          feltNow:fNow === null ? null : Math.round(fNow*10)/10, feltBefore:fThen === null ? null : Math.round(fThen*10)/10,
+          weeksSince:weeksSince, text:text};
+}
+function deloadForecastLineHTML(){
+  const f = deloadForecast();
+  return f ? '<p class="small" style="margin-top:8px;color:var(--muted)"><b style="color:var(--text)">Forecast:</b> '+esc(f.text)+'</p>' : '';
+}
+
+/* Weeks grouped by what he actually ate, against what the scale and the bar did next. Grouped by
+   calories in fixed ranges around TODAY's target and labelled in real numbers, because the target
+   itself has moved (3000 -> 3700) and "on target" would mean different things in different weeks.
+   A week needs 4 logged days; a range needs 3 weeks before it gets a number. */
+const FVR_MIN_DAYS = 4, FVR_MIN_WEEKS = 3;
+function fuelVsResults(){
+  const t = calTarget();
+  const days = {};
+  (S.nutrition||[]).forEach(function(n){ if(n && n.date && +n.cals > 0){ const k = weekKeyOf(n.date); (days[k] = days[k] || []).push(n); } });
+  const bw = {};
+  bodyweightSeriesSmoothed().forEach(function(p){ bw[weekKeyOf(p.date)] = p.v; });
+  const best = {};   // lift -> week -> best e1RM that week
+  (S.logs||[]).forEach(function(l){
+    if(!l || l.deload || l.home) return;
+    const wk = weekKeyOf(l.date);
+    (l.entries||[]).forEach(function(e){
+      const v = Math.max(0, ...(e.sets||[]).map(function(st){ return epley(+st.w||0, +st.r||0); }));
+      if(!(v > 0)) return;
+      const m = best[e.exercise] = best[e.exercise] || {};
+      if(!m[wk] || v > m[wk]) m[wk] = v;
+    });
+  });
+  const groups = {way:[], slight:[], on:[], over:[]};
+  let weeks = 0, est = 0;
+  Object.keys(days).sort().forEach(function(wk){
+    const d = days[wk];
+    if(d.length < FVR_MIN_DAYS) return;
+    const next = mesoAddDays(wk, 7);
+    const cals = d.reduce(function(a, n){ return a + (+n.cals); }, 0) / d.length;
+    const bwCh = (bw[wk] != null && bw[next] != null) ? bw[next] - bw[wk] : null;
+    const pcts = [];
+    Object.keys(best).forEach(function(lift){ const a = best[lift][wk], b = best[lift][next]; if(a && b) pcts.push((b - a)/a*100); });
+    weeks++; est += d.filter(function(n){ return n.est; }).length;
+    groups[nutTierCal(cals, t)].push({wk:wk, cals:cals, bw:bwCh, str:pxMean(pcts)});
+  });
+  const label = {way:'under '+(t-400), slight:(t-400)+'\u2013'+t, on:t+'\u2013'+(t+400), over:(t+400)+'+'};
+  const out = {};
+  Object.keys(groups).forEach(function(k){
+    const g = groups[k];
+    out[k] = {label:label[k], n:g.length, bwPerWeek:pxMean(g.map(function(x){ return x.bw; })), strPctPerWeek:pxMean(g.map(function(x){ return x.str; }))};
+  });
+  const shown = Object.keys(out).filter(function(k){ return out[k].n >= FVR_MIN_WEEKS; });
+  return {ok:shown.length >= 2, weeks:weeks, estDays:est, groups:out, shown:shown, target:t};
+}
+function fuelVsResultsCardHTML(){
+  const r = fuelVsResults();
+  let h = '<div class="card"><div class="k">What you ate, and what followed</div>';
+  if(!r.ok){
+    // Plenty of weeks that all sit in one range is a different message from too few weeks.
+    const used = Object.keys(r.groups).filter(function(k){ return r.groups[k].n > 0; });
+    if(r.weeks >= FVR_MIN_WEEKS*2 && used.length === 1)
+      return h+'<p class="small" style="color:var(--dim)">All '+r.weeks+' of your logged weeks average '+esc(r.groups[used[0]].label)+' cal, so there is nothing to compare them against yet. '+
+        'This fills in once some weeks land in a different range.</p></div>';
+    return h+'<p class="small" style="color:var(--dim)">Not enough yet: '+r.weeks+' week'+(r.weeks===1?'':'s')+' with '+FVR_MIN_DAYS+'+ days logged, '+
+      'and this needs '+FVR_MIN_WEEKS+' weeks in at least two calorie ranges before it compares anything.</p></div>';
+  }
+  const sg = function(v, d){ return v === null ? '\u2014' : (v >= 0 ? '+' : '')+v.toFixed(d); };
+  r.shown.forEach(function(k){
+    const g = r.groups[k];
+    h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line)">'+
+      '<span>'+esc(g.label)+' cal <span class="small">\u00b7 '+g.n+' weeks</span></span>'+
+      '<span class="mono">'+sg(g.bwPerWeek, 2)+' lb \u00b7 '+sg(g.strPctPerWeek, 1)+'% e1RM</span></div>';
+  });
+  return h+'<p class="small" style="margin-top:8px;color:var(--dim)">Average daily calories each week, against the next week\u2019s change in weekly-average bodyweight and best e1RM. '+
+    'Descriptive, not proof: good weeks tend to have other things going right too.'+(r.estDays ? ' '+r.estDays+' of the days were tapped ranges, not exact totals.' : '')+'</p></div>';
+}
+
+/* The recovery card: how HIS sessions go by recovery against his usual (whoopResponse()). */
+function recoveryEffectCardHTML(){
+  const wr = whoopResponse(), b = wr.buckets;
+  let h = '<div class="card"><div class="k">How recovery affects you</div>';
+  if(!wr.n) return h+'<p class="small" style="color:var(--dim)">Needs sessions on days with a WHOOP recovery and a baseline behind them (a week of history first).</p></div>';
+  const row = function(lab, g, col){
+    if(!g.n) return '';
+    return anBarRow(lab, Math.round(g.hard*100), Math.round(g.hard*100)+'% grind/fail \u00b7 PR on '+Math.round(g.prRate*100)+'% \u00b7 '+g.n+' session'+(g.n===1?'':'s'), col);
+  };
+  h += row('15+ under your usual', b.below, 'var(--bad)')+row('About usual', b.normal, 'var(--muted)')+row('15+ over your usual', b.above, 'var(--good)');
+  h += '<p class="small" style="margin-top:10px">'+(wr.calibrated
+    ? 'Calibrated from your own sessions (grinding and PR rate together): a low recovery counts '+(wr.weight > 1 ? 'for more' : wr.weight < 1 ? 'for less' : 'at the normal weight')+' in today\u2019s call (\u00d7'+wr.weight+')'+
+      (Math.min(b.below.n, b.normal.n) < WR_FULL ? ', half-strength until '+WR_FULL+' sessions a side' : '')+'. Days the call itself shaped are left out.'
+    : 'Not calibrated yet \u2014 today\u2019s call uses the standard weighting until there are '+WR_MIN+' below-usual and '+WR_MIN+' usual sessions (now '+b.below.n+' and '+b.normal.n+').')+'</p>'+
+    '<p class="small" style="color:var(--dim);margin-top:4px">Top sets only; recovery is judged against your 30 days before each session.</p></div>';
+  return h;
+}
+/* Readiness, factor by factor: which part of the check-in (and WHOOP) actually moves his grind rate.
+   Energy counts only when it was his own read, not WHOOP's pre-fill. */
+function anReadinessFactors(){
+  const byDate = {};
+  (S.readiness||[]).forEach(function(r){ if(r && r.date && rdComplete(r)) byDate[r.date] = r; });
+  const wd = {};
+  whoopHistRows().forEach(function(r){ if(r && typeof r.recovery === 'number') wd[r.date] = r; });
+  const f = {sleep:{}, sore:{}, energy:{}, stress:{}, motiv:{}, recovery:{}};
+  const put = function(k, v, row){ if(v){ (f[k][v] = f[k][v] || []).push(row); } };
+  anReadinessRows().forEach(function(row){
+    const rd = byDate[row.date]; if(!rd) return;
+    put('sleep', rd.sleep, row); put('sore', rd.sore, row); put('stress', rd.stress, row); put('motiv', rd.motiv, row);
+    const w = wd[row.date];
+    if(!w || (rd.energyPre && rd.energy !== rd.energyPre)) put('energy', rd.energy, row);
+    if(w){ const base = recoveryBaseline(row.date); if(base){ const diff = w.recovery - base.recovery;
+      put('recovery', diff <= -15 ? 'well under usual' : diff >= 15 ? 'well over usual' : 'about usual', row); } }
+  });
+  const out = {};
+  Object.keys(f).forEach(function(k){
+    const vals = Object.keys(f[k]).map(function(v){ const g = anRdGroup(f[k][v]); return {value:v, n:g.n, rate:g.rate}; })
+      .filter(function(x){ return x.n >= AN_RD_MIN_SESSIONS; });
+    if(vals.length >= 2) out[k] = vals;
+  });
+  return out;
+}
+function readinessFactorsCardHTML(){
+  const f = anReadinessFactors();
+  const name = {sleep:'Sleep', sore:'Soreness', energy:'Energy (your own read)', stress:'Stress', motiv:'Motivation', recovery:'WHOOP recovery'};
+  const keys = Object.keys(f);
+  let h = '<div class="card"><div class="k">What moves your sessions</div>';
+  if(!keys.length) return h+'<p class="small" style="color:var(--dim)">Each factor needs '+AN_RD_MIN_SESSIONS+' sessions at two different answers before it is compared.</p></div>';
+  keys.forEach(function(k){
+    h += '<div class="small" style="margin:10px 0 2px;color:var(--text)">'+name[k]+'</div>';
+    f[k].forEach(function(x){ h += anBarRow(x.value, Math.round(x.rate*100), Math.round(x.rate*100)+'% grind/fail \u00b7 '+x.n, 'var(--amber)'); });
+  });
+  return h+'<p class="small" style="margin-top:8px;color:var(--dim)">Share of effort-tagged sets that came back grind or fail, by each answer. Energy is left out on WHOOP days unless you changed its pre-fill.</p></div>';
+}
+
+/* Density: sets per 10 minutes, first logged set to last (set ts), by day type -- a D1 is only
+   compared with other D1s, since rest times differ by day. Shown once a day has 4 timed sessions. */
+const DENSITY_MIN = 4;
+function sessionDensity(l){
+  if(!l || l.deload) return null;
+  const ts = []; let sets = 0;
+  (l.entries||[]).forEach(function(e){ (e.sets||[]).forEach(function(st){ sets++; if(+st.ts > 0) ts.push(+st.ts); }); });
+  if(ts.length < 4) return null;
+  const mins = (Math.max(...ts) - Math.min(...ts)) / 60000;
+  if(mins < 10) return null;
+  return {date:l.date, day:l.day, mins:Math.round(mins), sets:sets, per10:Math.round(sets/mins*10*10)/10};
+}
+function densityByDay(){
+  const out = {};
+  (S.logs||[]).slice().sort(function(a, b){ return a.date.localeCompare(b.date); }).forEach(function(l){
+    const d = sessionDensity(l); if(d) (out[l.day] = out[l.day] || []).push(d);
+  });
+  return out;
+}
+function densityCardHTML(){
+  const by = densityByDay(), days = Object.keys(by).sort();
+  let h = '<div class="card"><div class="k">Density</div>';
+  if(!days.length) return h+'<p class="small" style="color:var(--dim)">Needs sets logged with their time, which started on Sep 24. Each day type shows once it has '+DENSITY_MIN+' timed sessions.</p></div>';
+  days.forEach(function(dk){
+    const a = by[dk], last = a[a.length-1];
+    if(a.length < DENSITY_MIN){ h += '<div class="small" style="padding:4px 0">'+esc(dk)+': '+a.length+'/'+DENSITY_MIN+' timed sessions</div>'; return; }
+    const prev = pxMean(a.slice(0, -1).map(function(x){ return x.per10; }));
+    h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line)"><span>'+esc(dk)+' <span class="small">\u00b7 '+last.sets+' sets in '+last.mins+' min</span></span>'+
+      '<span class="mono">'+last.per10+' /10 min <span class="small">vs '+(Math.round(prev*10)/10)+'</span></span></div>';
+  });
+  return h+'<p class="small" style="margin-top:8px;color:var(--dim)">Working sets per 10 minutes, first set to last. Only compared within the same day.</p></div>';
+}
+
+/* The agents' summary: what the app has already worked out, so the agents interpret the same
+   numbers the screens show instead of re-deriving them from raw rows (expensively, and sometimes
+   wrongly). DELTA, ECHO and ZULU get it. Every line is independently guarded: a summary that fails
+   must never cost an agent its prompt. */
+function intelSummary(){
+  const L = [], t = todayKey();
+  const pc = function(v){ return v === null || v === undefined ? '?' : Math.round(v*100); };
+  const sg = function(v, d){ return (v >= 0 ? '+' : '')+(+v).toFixed(d); };
+  try{ const dk = currentDayKey(); const dc = dayCall(t, dk === 'REST' ? null : dk);
+    L.push('Today\u2019s call: '+dc.call+' (score '+dc.score+', '+dc.conf+' confidence)'+(dc.why.length ? ' \u2014 '+dc.why.join('; ') : '')+'.'); }catch(e){}
+  try{ const base = recoveryBaseline(t);
+    const rows = whoopHistRows().filter(function(r){ return r && r.date < t && r.date >= mesoAddDays(t, -7) && typeof r.recovery === 'number'; });
+    if(base && rows.length) L.push('WHOOP, last 7 days: recovery '+rows.map(function(r){ return r.recovery; }).join(', ')+' against his usual '+Math.round(base.recovery)+'% (HRV usual '+Math.round(base.hrv)+', RHR usual '+Math.round(base.rhr)+').'); }catch(e){}
+  try{ const wr = whoopResponse(), b = wr.buckets;
+    if(wr.n) L.push('How recovery affects him: 15+ under usual '+pc(b.below.hard)+'% grind/fail (n '+b.below.n+'), about usual '+pc(b.normal.hard)+'% (n '+b.normal.n+')'+
+      (b.above.n ? ', 15+ over '+pc(b.above.hard)+'% (n '+b.above.n+')' : '')+'; '+(wr.calibrated ? 'calibrated, low recovery weighted \u00d7'+wr.weight : 'not calibrated yet')+'.'); }catch(e){}
+  try{ const f = deloadForecast();
+    if(f) L.push('Deload forecast: '+f.text+(f.weeksSince !== null ? ' Last deload ended '+f.weeksSince+' weeks ago.' : ''));
+    else if(deloadActive()) L.push('Deload: in one now.'); }catch(e){}
+  try{ const br = bulkRate(4);
+    if(br) L.push('Bodyweight: '+sg(br.rate, 2)+' lb/wk over '+br.weeks+' weeks ('+bulkBand(br.rate)+'; lean-bulk band '+BULK_LO+'\u2013'+BULK_HI+'), now '+br.cur+' lb.'); }catch(e){}
+  try{ const since = mesoAddDays(t, -14);
+    const rows = (S.nutrition||[]).filter(function(n){ return n && n.date >= since && n.date < t; });
+    if(rows.length){ const c = {}, p = {};
+      rows.forEach(function(n){ const a = nutTierCal(n.cals), b2 = nutTierPro(n.protein); c[a] = (c[a]||0) + 1; p[b2] = (p[b2]||0) + 1; });
+      const fm = function(o){ return Object.keys(o).map(function(k){ return o[k]+' '+NUT_TIER[k].label; }).join(', '); };
+      L.push('Intake, last 14 days ('+rows.length+' logged): calories '+fm(c)+' (target '+calTarget()+'); protein '+fm(p)+' (target '+proTarget()+').'); } }catch(e){}
+  try{ const fv = fuelVsResults();
+    if(fv.ok) L.push('Intake vs results: '+fv.shown.map(function(k){ const g = fv.groups[k];
+      return g.label+' cal: '+(g.bwPerWeek === null ? '?' : sg(g.bwPerWeek, 2))+' lb, '+(g.strPctPerWeek === null ? '?' : sg(g.strPctPerWeek, 1))+'% e1RM per week (n '+g.n+')'; }).join('; ')+'.'); }catch(e){}
+  let profiles = [];
+  try{
+    const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+    const names = [...new Set(Object.keys(src||{}).flatMap(function(dk){ return (src[dk].exercises||[]).map(exName); }))];
+    // Bodyweight lifts always read "same weight", which would only mislead.
+    const loaded = function(n){ const h = historyFor(n)[0]; return !h || Math.max(0, ...h.sets.map(function(st){ return +st.w || 0; })) > 1; };
+    profiles = names.filter(function(n){ return !isBodyweight(n) && loaded(n); }).map(liftProfile).filter(Boolean)
+      .sort(function(a, b){ return b.sessions - a.sessions; }).slice(0, 10);
+    if(profiles.length){
+      L.push('Lift patterns (e1RM trend lb/wk; weight jumps and how many held; top-set effort now vs before, 0 = failure, 100 = easy):');
+      profiles.forEach(function(p){
+        L.push('  '+p.name+': '+(p.e1rmPerWeek === null ? '?' : sg(p.e1rmPerWeek, 1))+' lb/wk; '+p.jumps+' jump'+(p.jumps === 1 ? '' : 's')+
+          (p.stickRate !== null ? ' ('+Math.round(p.stickRate*100)+'% held)' : '')+
+          (p.effortNow !== null ? '; effort '+p.effortNow+(p.effortBefore !== null ? ' vs '+p.effortBefore : '') : '')+
+          (p.flat3 ? '; same weight 3 sessions running' : '')+(isMaxed(p.name) ? '; MAXED machine' : ''));
+      });
+    }
+  }catch(e){}
+  try{
+    profiles.filter(function(p){ return p.flat3 && !isMaxed(p.name) && isSwapEligible(p.name); }).slice(0, 4).forEach(function(p){
+      const c = swapCandidates(p.name, {limit:1})[0];
+      if(c) L.push('  Swap option for '+p.name+' (stalled): '+c.name+' (tier '+c.tier+') \u2014 propose with swapEx if a swap is right.');
+    });
+  }catch(e){}
+  try{ const mr = muscleResponse(6);
+    const gs = Object.keys(mr.groups).filter(function(g){ return mr.groups[g].setsPerWeek > 0; });
+    if(gs.length) L.push('Muscle groups, last 6 weeks (hard sets/wk; their lifts\u2019 e1RM %/wk) \u2014 the basis for setCount: '+gs.map(function(g){ const x = mr.groups[g];
+      return g+' '+x.setsPerWeek+(x.pctPerWeek !== null ? ' ('+sg(x.pctPerWeek, 2)+'%)' : ''); }).join('; ')+'.'); }catch(e){}
+  try{
+    const since = mesoAddDays(t, -7), bits = [];
+    (S.logs||[]).filter(function(l){ return l && l.date >= since; }).sort(function(a, b){ return a.date.localeCompare(b.date); }).forEach(function(l){
+      const ds = Object.keys(l.decisions||{}).map(function(nm){ const d = l.decisions[nm];
+        return nm+' '+d.code+(d.moved && d.from != null ? ' '+d.from+'\u2192'+d.to : ''); }).slice(0, 6);
+      bits.push(l.date+' '+l.day+(l.call ? ' ['+l.call.call+(l.call.off ? ', he chose normal' : '')+']' : '')+(ds.length ? ': '+ds.join('; ') : ''));
+    });
+    if(bits.length) L.push('Engine decisions, last 7 days: '+bits.join(' | '));
+  }catch(e){}
+  if(!L.length) return '';
+  return '\n\nINTELLIGENCE SUMMARY (computed by the app from his own data \u2014 these are facts, not estimates to redo; interpret and explain them, and prefer them to re-deriving from raw rows):\n'+L.join('\n')+'\n';
 }
 
 /* ---- today's call on screen ---- */
@@ -12486,9 +12787,14 @@ function renderAnReadiness(){
     '<p class="small">Whether the days you check in under-recovered actually cost you — the share of '+
     'effort-tagged sets that came back <b>grind</b> or <b>fail</b>, split by that morning’s check-in. '+
     'Only sessions with '+AN_RD_MIN_TAGGED+'+ tagged sets count; an untagged set is unknown, not clean.</p></div>';
+  // These two stand on their own data (WHOOP history, per-factor answers), so they show even while
+  // the tier comparison below is still waiting.
+  let _extra = '';
+  try{ _extra += recoveryEffectCardHTML(); }catch(e){}
+  try{ _extra += readinessFactorsCardHTML(); }catch(e){}
   if(!r.ok){
     const g0 = r.groups;
-    el.innerHTML = h + anEmpty('Not enough data yet — '+g0.low.n+' low-readiness and '+g0.rest.n+
+    el.innerHTML = h + _extra + anEmpty('Not enough data yet — '+g0.low.n+' low-readiness and '+g0.rest.n+
       ' ok/high session'+(g0.rest.n===1?'':'s')+' on record, and this needs '+r.need+' of each before it can say anything real. '+
       'Lock in the check-in and tag your sets’ effort — it fills in on its own.');
     return;
@@ -12542,7 +12848,7 @@ function renderAnReadiness(){
          'Sessions logged before this comparison existed never recorded which choice you made, so they sit out rather than get guessed at.</p>';
   }
   h += '</div>';
-  el.innerHTML = h;
+  el.innerHTML = h + _extra;
 }
 
 /* ---------------- BULK QUALITY ----------------
@@ -12683,7 +12989,8 @@ function renderAnBulkQuality(){
   let h = '<div class="card"><div class="k">Bulk quality</div>'+
     '<p class="small">Bodyweight against strength over the same window — whether you’re getting proportionally '+
     'stronger as you gain, or just heavier. Both read as percent change so they share one scale.</p>'+picker+'</div>';
-  if(!r.ok){ el.innerHTML = h + anEmpty(r.why); return; }
+  // The intake card stands on its own data, so it shows even while this comparison waits.
+  if(!r.ok){ let fv = ''; try{ fv = fuelVsResultsCardHTML(); }catch(e){} el.innerHTML = h + anEmpty(r.why) + fv; return; }
   const v = AN_BQ_VERDICTS[r.key];
   const sign = n => (n>=0?'+':'')+(Math.round(n*10)/10);
   h += '<div class="card" style="border-left:4px solid '+v.col+'">'+
@@ -12728,9 +13035,11 @@ function renderAnBulkQuality(){
   // rate of gain against the band the Bulk investigator already uses — context, not a prescription
   h += '<div class="card"><div class="k">Rate of gain</div>'+
     '<p class="small"><span class="mono" style="color:var(--violet);font-size:15px">'+sign(r.bwPerWeek)+' lb/week</span> '+
-    'over this window, against the 0.5–1 lb/week lean-bulk band. '+
-    (r.bwPerWeek > 1.5 ? 'Running hot.' : r.bwPerWeek < 0.25 ? 'Running slow.' : 'Inside the band.')+
+    'over this window, against the '+BULK_LO+'\u2013'+BULK_HI+' lb/week lean-bulk band. '+
+    ({losing:'Losing weight.', flat:'Flat.', under:'Under the band.', pocket:'Inside the band.',
+      hot: r.bwPerWeek > BULK_FAST ? 'Running hot.' : 'A little over the band.'}[bulkBand(r.bwPerWeek)])+
     ' Calorie changes live in Investigate and ECHO — this view only reports what the trend is doing.</p></div>';
+  try{ h += fuelVsResultsCardHTML(); }catch(e){ console.warn('fuel vs results failed', e); }
   el.innerHTML = h;
 }
 
@@ -13193,6 +13502,12 @@ function renderAnFatigue(){
       anSpark(weekly, ckSparkW(320), Math.max(64, Math.round(ckSparkW(320)*0.14)), col, {band:[fi.chronic*0.75, fi.chronic*1.25]})+
       '<p class="small" style="margin-top:8px;color:var(--dim)">Shaded band = your productive zone (\u00b125% of your 4-week norm). Living above it for weeks at a time is how overreach builds.</p></div>';
   }
+  try{ const f = deloadForecast();
+    if(f) h += '<div class="card"><div class="k">Deload forecast</div><p class="small">'+esc(f.text)+'</p>'+
+      '<p class="small" style="margin-top:6px;color:var(--dim)">From the fatigue check, this week\u2019s load against a week ago'+
+      (f.ratioNow !== null && f.ratioWeekAgo !== null ? ' ('+f.ratioWeekAgo+' \u2192 '+f.ratioNow+')' : '')+
+      ', and how hard sessions have felt against plan'+(f.feltNow !== null ? ' (RPE '+(f.feltNow >= 0 ? '+' : '')+f.feltNow+' vs target lately)' : '')+'. In weeks, not days.</p></div>'; }catch(e){}
+  try{ h += densityCardHTML(); }catch(e){}
   const sug = fatigueSuggestsDeload();
   if(sug){
     h += '<div class="card" style="border-left:3px solid var(--red)">'+
@@ -14092,7 +14407,11 @@ function agJsonSpec(id){
 /* Everything an agent is handed before it starts asking questions. Deliberately still a
    summary rather than a dump -- the data tools exist so it can go and get the detail. */
 function agBaseContext(id){
-  return coachMemContext()+trainingContext()+agContext()+agRecentSaid(id)+
+  // The computed summary goes to the agents whose calls it informs. CHARLIE's remit (schedule,
+  // data health) does not need it, and every agent that gets it pays for it on every round.
+  let intel = '';
+  if(id==='delta' || id==='echo' || id==='zulu'){ try{ intel = intelSummary(); }catch(e){ intel = ''; } }
+  return coachMemContext()+trainingContext()+agContext()+intel+agRecentSaid(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext() : '');
 }
 /* agRecentSaid()'s "say so in one short line and stop" is aimed at a repeated TREND
@@ -14912,7 +15231,9 @@ function renderHome(){
        '<div class="dt-s">'+esc(t.name)+(t.logged?' \u00b7 already logged':'')+'</div></div>';
   h += '<div class="dash-tile"><div class="dt-l">Streak</div>'+
        '<div class="dt-v" style="color:'+(streak>=3?'var(--cyan)':'var(--text)')+'">'+(streak>0?streak:'\u2014')+'</div>'+
-       '<div class="dt-s">'+(streak>0?'session'+(streak===1?'':'s')+' without a missed day':'Start one today.')+'</div></div>';
+       '<div class="dt-s">'+(function(){ const L = streakStats().longest;
+         if(streak>0) return 'session'+(streak===1?'':'s')+' without a missed day'+(L > streak ? ' \u00b7 best '+L : '');
+         return L > 0 ? 'Start one today. Best run: '+L+'.' : 'Start one today.'; })()+'</div></div>';
   h += '</div>';
 
   try{ h += dayCallCardHTML(t); }catch(e){ console.warn('day call card failed', e); }

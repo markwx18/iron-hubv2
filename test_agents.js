@@ -8753,8 +8753,9 @@ setTimeout(async () => {
     ev('S.logs = [];');
 
     // --- calibration: how HIS below-usual days go ---
-    // Six sessions on days well under his usual that ground, six on usual days that did not.
-    const calLogs = [], dips = [20, 17, 14, 11, 8, 5], usual = [19, 16, 13, 10, 7, 4];
+    // Ten sessions on days well under his usual that ground, ten on usual days that did not
+    // (ten a side, because under ten the calibration takes only half its step).
+    const calLogs = [], dips = [22, 20, 18, 16, 14, 12, 10, 8, 6, 4], usual = [21, 19, 17, 15, 13, 11, 9, 7, 5, 3];
     dips.forEach(i => { const h = hist.find(r => r.date === dk(-i)); h.recovery = 40;
       calLogs.push({id: 882000 + i, date: dk(-i), day: 'D1', entries: [{exercise: 'Zz Call Press', sets: [{w: 185, r: 8, e: 'grind'}, {w: 185, r: 7, e: 'grind'}, {w: 185, r: 7, e: 'solid'}]}]}); });
     usual.forEach(i => calLogs.push({id: 882100 + i, date: dk(-i), day: 'D2', entries: [{exercise: 'Zz Call Row', sets: [{w: 150, r: 10, e: 'solid'}, {w: 150, r: 10, e: 'solid'}, {w: 150, r: 9, e: 'easy'}]}]}));
@@ -8762,7 +8763,7 @@ setTimeout(async () => {
     ev('S.logs = ' + JSON.stringify(calLogs) + ';');
     const wr = ev('whoopResponse()');
     ok('calibration: his below-usual days ground far more, so a low recovery counts for more',
-       wr.calibrated === true && wr.weight === 1.5 && wr.buckets.below.n === 6 && wr.buckets.normal.n >= 6, JSON.stringify(wr));
+       wr.calibrated === true && wr.weight === 1.5 && wr.buckets.below.n === 10 && wr.buckets.normal.n >= 10, JSON.stringify(wr));
     const recPart = ev('dayCall(todayKey())').parts.find(p => /^recovery/.test(p.txt));
     ok('calibration: and the recovery term in the call is scaled by it', recPart && recPart.pts === -3.75, JSON.stringify(recPart));
     ev('S.logs = [];');
@@ -8903,6 +8904,202 @@ setTimeout(async () => {
   ev('live = null; try{ clearLiveDraft(); closeReadyOverlay(); }catch(e){}');
   ev('S = ' + peSaved + ';');
   ok('cleanup: real state restored after the pattern engine section', ev('JSON.stringify(S)') === peSaved);
+
+  console.log('=== FORECASTS, INSIGHTS AND THE AGENTS\u2019 SUMMARY ===');
+  const p3Saved = ev('JSON.stringify(S)');
+  try {
+    const dk = n => ev("mesoAddDays(todayKey(), " + n + ")");
+    ev('S.deload = null; S.meso = {template:null, active:null}; S.readiness = []; S.nutrition = []; S.pain = []; S.fuel = Object.assign({}, S.fuel||{}, {proTarget:150, calTarget:3700});');
+
+    // --- one bodyweight band everywhere ---
+    const sundays = ['2026-07-26', '2026-08-02', '2026-08-09', '2026-08-16'];
+    const wk4 = r => ev('S.weights = ' + JSON.stringify(sundays.map((d, i) => ({date: d, lbs: Math.round((158 + r * i) * 100) / 100}))) + ';');
+    wk4(0.3);
+    const ib = ev('investigateBulk()');
+    ok('bulk: 0.3 lb/wk is under the pocket in the investigator too, not "on track"',
+       ib.severity === 'yellow' && /slightly slow/.test(ib.title) && ib.fix && ib.fix.payload.delta === 150, ib.severity + ' / ' + ib.title);
+    wk4(-0.1); ok('bulk: any loss is losing (red)', ev('investigateBulk().severity') === 'red');
+    wk4(0.1); ok('bulk: flat is orange', ev('investigateBulk().severity') === 'orange');
+    wk4(1.8); ok('bulk: past BULK_FAST is too fast (orange)', /too fast/.test(ev('investigateBulk().title')));
+    // A bulk flag clears only when the rate is back in the SAME pocket the tabs use.
+    ev("invState().flags = [{key:'bulk', cat:'bulk', severity:'orange', title:'Bulk rate too slow', status:'active', created:'2026-07-01', findings:[]}];");
+    wk4(0.45); ev('invCheckResolutions()');
+    ok('bulk: a flag does not clear at 0.45 lb/wk, which every tab calls under the pocket', ev("invActiveFlags().some(function(f){ return f.key==='bulk'; })") === true);
+    wk4(0.7); ev('invCheckResolutions()');
+    ok('bulk: it clears once the rate is in the pocket', ev("invActiveFlags().some(function(f){ return f.key==='bulk'; })") === false);
+    // The Bulk-quality card judges its window with the same band.
+    ev('S.weights = ' + JSON.stringify([...Array(12).keys()].map(i => ({date: dk(-7 * i), lbs: Math.round((158 + 0.3 * (11 - i)) * 10) / 10}))) + ';');
+    ev('S.logs = ' + JSON.stringify([0, 1, 2, 3, 4, 5, 6].map(i => ({id: 890000 + i, date: dk(-70 + i * 10), day: 'D1', entries: [{exercise: 'Barbell Bench Press', sets: [{w: 150 + i * 2.5, r: 8, e: 'solid'}, {w: 150 + i * 2.5, r: 8, e: 'solid'}]}]}))) + ';');
+    ev('anBqWeeks = 12; renderAnBulkQuality();');
+    const bq = ev("document.getElementById('an_dev').innerHTML");
+    ok('bulk: the Bulk-quality card calls 0.3 lb/wk under the band, not inside it', /Under the band\./.test(bq) && !/Inside the band/.test(bq), (bq.match(/Rate of gain[\s\S]{0,300}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 200));
+
+    // --- the streak: no 60-day cap, and the longest run ---
+    ev("S.scheduleMode = 'dow'; S.schedule = {0:'D1',1:'D1',2:'D1',3:'D1',4:'D1',5:'D1',6:'D1'}; S.overrideDay = null; S.coachDayPlan = null;");
+    const stl = [];
+    for (let i = 0; i <= 69; i++) stl.push({id: 891000 + i, date: dk(-i), day: 'D1', entries: [{exercise: 'Zz S Press', sets: [{w: 1, r: 1}]}]});
+    for (let i = 71; i <= 150; i++) stl.push({id: 891000 + i, date: dk(-i), day: 'D1', entries: [{exercise: 'Zz S Press', sets: [{w: 1, r: 1}]}]});
+    ev('S.logs = ' + JSON.stringify(stl) + ';');
+    const ss = ev('streakStats()');
+    ok('streak: a 70-day run counts all 70 (it stopped at 60)', ss.current === 70 && ev('streakDays()') === 70, JSON.stringify(ss));
+    ok('streak: and the longest run is kept (80, before the missed day)', ss.longest === 80, JSON.stringify(ss));
+    ev('renderHome()');
+    ok('streak: Today shows the best run beside the current one', /best 80/.test(ev("document.getElementById('home').innerHTML")));
+
+    // --- the deload forecast ---
+    const mesoIn = n => ev("S.meso = {template:null, active:{startedAt:" + JSON.stringify(dk(-40)) + ", startKey:" + JSON.stringify(dk(-40)) + ", splits:{}, weeks:[" +
+      "{type:'hyp', name:'Hypertrophy', n:6, startKey:" + JSON.stringify(dk(-40)) + ", endKey:" + JSON.stringify(dk(n - 1)) + ", repLo:8, repHi:12, rpeLo:7, rpeHi:8}," +
+      "{type:'deload', name:'Deload', n:7, startKey:" + JSON.stringify(dk(n)) + ", endKey:" + JSON.stringify(dk(n + 2)) + ", repLo:8, repHi:12, rpeLo:5, rpeHi:6}]}};");
+    // Quiet training three weeks after a deload, a planned deload ten days out.
+    // Evenly spaced every 3 days, so this week's load matches the norm, and 25 days since the
+    // deload, which can touch at most 5 Monday-weeks whatever weekday the suite runs on.
+    const quiet = [{id: 892000, date: dk(-30), day: 'D1', deload: true, entries: [{exercise: 'Zz F Press', sets: [{w: 60, r: 10, e: 'easy'}, {w: 60, r: 10, e: 'easy'}]}]}];
+    for (let i = 0; i <= 8; i++) quiet.push({id: 892001 + i, date: dk(-27 + i * 3), day: 'D1', entries: [{exercise: 'Zz F Press', sets: [{w: 100, r: 10, e: 'solid'}, {w: 100, r: 10, e: 'solid'}, {w: 100, r: 9, e: 'solid'}]}]});
+    ev('S.logs = ' + JSON.stringify(quiet) + ';'); mesoIn(10);
+    const fq = ev('deloadForecast()');
+    ok('forecast: quiet training reads no sign yet, and on course for the planned deload',
+       fq && fq.weeks === null && /No sign of needing one yet\. On course for the planned deload on/.test(fq.text), JSON.stringify(fq));
+    ok('forecast: the Fatigue check card carries it', /Forecast:/.test(ev('deloadCardHTML()')));
+    // Seven weeks of grinding with no deload, a planned deload three weeks out.
+    const hot = [];
+    for (let i = 0; i < 16; i++) hot.push({id: 893000 + i, date: dk(-48 + i * 3), day: 'D1', entries: [{exercise: 'Zz F Press', sets: [{w: 100, r: 8, e: 'grind'}, {w: 100, r: 7, e: 'grind'}, {w: 100, r: 6, e: 'fail'}]}]});
+    ev('S.logs = ' + JSON.stringify(hot) + ';'); mesoIn(21);
+    const fh = ev('deloadForecast()');
+    ok('forecast: seven weeks of grinding says due now, and earlier than the planned deload',
+       fh && fh.weeks === 0 && /Due now/.test(fh.text) && /before the planned deload/.test(fh.text), JSON.stringify(fh));
+    // The load ratio a week ago is read at that date, not today's again: two extra sessions this
+    // week move today's acute load and leave last week's alone.
+    ev('S.logs = S.logs.concat(' + JSON.stringify([1, 2].map(i => ({id: 893900 + i, date: dk(-i), day: 'D1', entries: [{exercise: 'Zz F Press', sets: [{w: 100, r: 8, e: 'grind'}, {w: 100, r: 8, e: 'grind'}]}]}))) + ');');
+    ok('forecast: last week\u2019s load ratio is read at last week', ev('fatigueIndex(mesoAddDays(todayKey(), -7)).acute') < ev('fatigueIndex().acute') &&
+       fh.ratioWeekAgo !== null, JSON.stringify([ev('fatigueIndex(mesoAddDays(todayKey(), -7))'), ev('fatigueIndex()')]));
+    ev('S.meso = {template:null, active:null}; S.deload = {startedAt:' + JSON.stringify(dk(-1)) + ', until:' + JSON.stringify(dk(2)) + '};');
+    ok('forecast: nothing to forecast during a deload', ev('deloadForecast()') === null);
+    ev('S.deload = null;');
+
+    // --- what he ate, and what followed ---
+    const base = ev("weekKeyOf(mesoAddDays(todayKey(), -80))");
+    const wkStart = w => ev("mesoAddDays(" + JSON.stringify(base) + ", " + (7 * w) + ")");
+    const calsBy = [3000, 3000, 3000, 3800, 3800, 3800, 3500, 3500, 3500];
+    const bwBy = [158.0, 158.1, 158.2, 158.3, 159.0, 159.7, 160.4, 160.6, 160.8, 161.0];
+    const nut = [], wts = [], lg = [];
+    for (let w = 0; w < 9; w++) for (let d = 0; d < 5; d++) nut.push({date: ev("mesoAddDays(" + JSON.stringify(wkStart(w)) + ", " + d + ")"), cals: calsBy[w], protein: 160});
+    for (let w = 0; w < 10; w++) {
+      wts.push({date: ev("mesoAddDays(" + JSON.stringify(wkStart(w)) + ", 6)"), lbs: bwBy[w]});
+      lg.push({id: 894000 + w, date: ev("mesoAddDays(" + JSON.stringify(wkStart(w)) + ", 2)"), day: 'D1', entries: [{exercise: 'Zz FV Press', sets: [{w: 100 + (w > 3 && w < 7 ? w * 3 : w), r: 8}]}]});
+    }
+    ev('S.nutrition = ' + JSON.stringify(nut) + '; S.weights = ' + JSON.stringify(wts) + '; S.logs = ' + JSON.stringify(lg) + ';');
+    const fv = ev('fuelVsResults()');
+    ok('fuel: weeks group by the calories actually eaten, three in each range',
+       fv.ok && fv.groups.way.n === 3 && fv.groups.on.n === 3 && fv.groups.slight.n === 3, JSON.stringify(fv.groups));
+    ok('fuel: and each range reports the next week\u2019s bodyweight change',
+       Math.abs(fv.groups.way.bwPerWeek - 0.1) < 1e-6 && Math.abs(fv.groups.on.bwPerWeek - 0.7) < 1e-6 && Math.abs(fv.groups.slight.bwPerWeek - 0.2) < 1e-6, JSON.stringify(fv.groups));
+    ok('fuel: the ranges are labelled in real calories around today\u2019s target', fv.groups.slight.label === '3300\u20133700' && fv.groups.on.label === '3700\u20134100');
+    ok('fuel: the card shows on the Bulk-quality tab', /What you ate, and what followed/.test(ev('fuelVsResultsCardHTML()')) && /3700\u20134100 cal/.test(ev('fuelVsResultsCardHTML()')));
+    // A week with only two days logged says nothing about what he ate that week.
+    const thin = [];
+    for (let w = 0; w < 3; w++) for (let d = 0; d < 2; d++) thin.push({date: ev("mesoAddDays(" + JSON.stringify(ev("mesoAddDays(" + JSON.stringify(base) + ", -" + (7 * (w + 1)) + ")")) + ", " + d + ")"), cals: 4500, protein: 160});
+    ev('S.nutrition = S.nutrition.concat(' + JSON.stringify(thin) + ');');
+    ok('fuel: a week with under 4 days logged is left out', ev('fuelVsResults().groups.over.n') === 0, String(ev('fuelVsResults().groups.over.n')));
+    // Every week in one range: nothing to compare, and the card says why.
+    ev('S.nutrition = ' + JSON.stringify(nut.map(n => Object.assign({}, n, {cals: 3000}))) + ';');
+    ok('fuel: one range on its own is not a comparison', ev('fuelVsResults().ok') === false && /All 9 of your logged weeks average under 3300 cal/.test(ev('fuelVsResultsCardHTML()')),
+       ev('fuelVsResultsCardHTML()').replace(/<[^>]+>/g, ' ').slice(0, 200));
+    ev('S.nutrition = ' + JSON.stringify(nut) + '; S.nutrition = S.nutrition.slice(0, 10);');
+    ok('fuel: two weeks is not enough to compare, and it says so', ev('fuelVsResults().ok') === false && /Not enough yet/.test(ev('fuelVsResultsCardHTML()')));
+
+    // --- how recovery affects him, and what moves his sessions ---
+    const recs = [72,65,78,70,61,74,69,80,66,71];
+    const hist = [];
+    for (let i = 40; i >= 1; i--) hist.push({date: dk(-i), recovery: recs[i % 10], hrv: 140, rhr: 55, sleepHours: 7.3, sleepPerf: 85, strain: 11});
+    const dips = [20, 17, 14, 11, 8, 5], usual = [19, 16, 13, 10, 7, 4];
+    dips.forEach(i => { hist.find(r => r.date === dk(-i)).recovery = 40; });
+    ev('S.whoop = ' + JSON.stringify({history: hist}) + ';');
+    const five = e => [0, 1, 2, 3, 4].map(k => ({w: 100, r: 8, e: e[k]}));
+    const rl = [], rr = [];
+    dips.forEach(i => { rl.push({id: 895000 + i, date: dk(-i), day: 'D1', entries: [{exercise: 'Zz R Press', sets: five(['grind', 'grind', 'fail', 'grind', 'solid'])}]});
+      rr.push({date: dk(-i), sleep: '<6', sore: 'mild', energy: 'low', energyPre: 'low', stress: 'normal', motiv: 'ready', tier: 'low'}); });
+    usual.forEach(i => { rl.push({id: 895100 + i, date: dk(-i), day: 'D1', entries: [{exercise: 'Zz R Press', sets: five(['solid', 'solid', 'easy', 'solid', 'solid'])}]});
+      rr.push({date: dk(-i), sleep: '7-8', sore: 'fresh', energy: 'high', energyPre: 'high', stress: 'normal', motiv: 'ready', tier: 'high'}); });
+    ev('S.logs = ' + JSON.stringify(rl) + '; S.readiness = ' + JSON.stringify(rr) + ';');
+    const rc = ev('recoveryEffectCardHTML()');
+    ok('recovery card: splits his sessions by recovery against his usual, and says it is calibrated',
+       /How recovery affects you/.test(rc) && /15\+ under your usual/.test(rc) && /Calibrated from your own sessions/.test(rc), rc.replace(/<[^>]+>/g, ' ').slice(0, 300));
+    ok('recovery card: six a side is calibrated, but at half strength (\u00d71.25)', ev('whoopResponse().weight') === 1.25 && /half-strength until 10 sessions a side/.test(rc));
+    // Grinding the same on every day, but PRs only on usual days: recovery still matters.
+    ev('S.logs = S.logs.map(function(l){ l.entries[0].sets = l.entries[0].sets.map(function(st){ return {w:st.w, r:st.r, e:\'solid\'}; }); return l; });');
+    ev('S.prHistory = ' + JSON.stringify(usual.map(i => ({date: dk(-i), exercise: 'Zz R Press', weight: 100, reps: 8, e1rm: 120}))) + ';');
+    const wrPR = ev('whoopResponse()');
+    ok('calibration: fewer PRs on low days counts, even with no extra grinding', wrPR.calibrated && wrPR.weight > 1 && wrPR.effect > 0.15, JSON.stringify({w: wrPR.weight, e: wrPR.effect}));
+    // Days the call shaped (an easy day he kept) are left out, or it would feed on its own effect.
+    ev("S.logs.forEach(function(l){ if(l.id >= 895000 && l.id < 895100) l.call = {call:'easy', score:-2.5, conf:'high', off:false}; });");
+    ok('calibration: sessions the call itself shaped are left out', ev('whoopResponse().buckets.below.n') === 0);
+    ev("S.logs.forEach(function(l){ if(l.call) l.call.off = true; });");
+    ok('calibration: unless he chose the normal plan that day', ev('whoopResponse().buckets.below.n') === 6);
+    ev('S.logs = ' + JSON.stringify(rl) + '; S.prHistory = [];');
+    const fx = ev('anReadinessFactors()');
+    ok('factors: sleep is compared answer by answer', fx.sleep && fx.sleep.length === 2 && fx.sleep.find(x => x.value === '<6').rate > fx.sleep.find(x => x.value === '7-8').rate, JSON.stringify(fx.sleep));
+    ok('factors: energy left as WHOOP pre-filled it is not counted as his own read', !fx.energy, JSON.stringify(fx.energy));
+    ok('factors: WHOOP recovery against his usual is one of the factors', fx.recovery && fx.recovery.length === 2, JSON.stringify(fx.recovery));
+    ev('renderAnReadiness()');
+    const ar = ev("document.getElementById('an_recovery').innerHTML");
+    ok('factors: both cards reach the Readiness tab', /How recovery affects you/.test(ar) && /What moves your sessions/.test(ar));
+    // ...and while the tier comparison is still waiting for data, they show anyway.
+    ev('S.logs = ' + JSON.stringify(rl.filter(l => l.id >= 895100)) + ';');
+    ev('renderAnReadiness()');
+    const ar2 = ev("document.getElementById('an_recovery').innerHTML");
+    ok('factors: the recovery card shows even before the tier comparison has enough', /Not enough data yet/.test(ar2) && /How recovery affects you/.test(ar2));
+    ev('S.logs = ' + JSON.stringify(rl) + ';');
+
+    // --- density ---
+    const dens = [];
+    for (let s = 0; s < 5; s++) {
+      const t0 = Date.parse(dk(-30 + s * 6) + 'T17:00:00'), gap = s === 4 ? 150000 : 180000;
+      dens.push({id: 896000 + s, date: dk(-30 + s * 6), day: 'D1', entries: [{exercise: 'Zz D Press', sets: [...Array(12).keys()].map(k => ({w: 100, r: 8, ts: t0 + k * gap}))}]});
+    }
+    ev('S.logs = ' + JSON.stringify(dens) + ';');
+    const dd = ev('densityByDay()');
+    ok('density: sets per 10 minutes, first set to last', dd.D1 && dd.D1.length === 5 && dd.D1[0].per10 === 3.6 && dd.D1[4].per10 === 4.4, JSON.stringify(dd.D1));
+    ok('density: the card compares the latest D1 with earlier D1s', /4\.4 \/10 min/.test(ev('densityCardHTML()')) && /vs 3\.6/.test(ev('densityCardHTML()')));
+    ev('S.logs = S.logs.slice(0, 3);');
+    ok('density: under 4 timed sessions it shows progress, not a number', /D1: 3\/4 timed sessions/.test(ev('densityCardHTML()')));
+    ok('density: a session without set times has no density', ev("sessionDensity({date:'x', day:'D1', entries:[{exercise:'X', sets:[{w:1,r:1},{w:1,r:1},{w:1,r:1},{w:1,r:1}]}]})") === null);
+    ok('density: three timed sets are too few to measure', ev("sessionDensity({date:'x', day:'D1', entries:[{exercise:'X', sets:[{w:1,r:1,ts:1000},{w:1,r:1,ts:601000},{w:1,r:1,ts:1201000},{w:1,r:1}]}]})") === null);
+    ok('density: a span under 10 minutes is too short to mean anything', ev("sessionDensity({date:'x', day:'D1', entries:[{exercise:'X', sets:[{w:1,r:1,ts:1000},{w:1,r:1,ts:61000},{w:1,r:1,ts:121000},{w:1,r:1,ts:301000}]}]})") === null);
+
+    // --- the agents' summary ---
+    ev("S.split.D1.exercises.push({name:'Cable Row', inc:5}, {name:'Zz I Press', inc:5}, {name:'Zz I Dips', inc:5});");
+    const il = [];
+    for (let i = 0; i < 6; i++) il.push({id: 897000 + i, date: dk(-35 + i * 6), day: 'D1', entries: [
+      {exercise: 'Zz I Press', sets: [{w: 150 + i * 5, r: 10, e: 'solid'}, {w: 150 + i * 5, r: 9, e: 'solid'}]},
+      {exercise: 'Cable Row', sets: [{w: 150, r: 10, e: 'solid'}, {w: 150, r: 10, e: 'solid'}]},
+      {exercise: 'Zz I Dips', sets: [{w: 0.5, r: 12, e: 'solid'}, {w: 0.5, r: 12, e: 'solid'}]}]});
+    il[5].decisions = {'Zz I Press': {code: 'increase', moved: true, from: 170, to: 175}};
+    il[5].call = {call: 'easy', score: -2.5, conf: 'high', off: false};
+    ev('S.logs = ' + JSON.stringify(il) + ';');
+    ev('S.whoop.recovery = {date:todayKey(), score:52, hrv:118, rhr:58}; S.whoop.sleep = {date:todayKey(), hours:6.9, performance:80};');
+    ev('S.nutrition = ' + JSON.stringify([1, 2, 3, 4, 5].map(i => ({date: dk(-i), cals: 3650, protein: 155}))) + ';');
+    ev('S.weights = ' + JSON.stringify([...Array(6).keys()].map(i => ({date: dk(-7 * i), lbs: 160 - i * 0.6}))) + ';');
+    const sum = ev('intelSummary()');
+    ok('summary: states today\u2019s call, WHOOP against his usual, and how recovery affects him',
+       /INTELLIGENCE SUMMARY/.test(sum) && /Today\u2019s call: /.test(sum) && /WHOOP, last 7 days: recovery/.test(sum) && /How recovery affects him/.test(sum), sum.slice(0, 400));
+    ok('summary: bodyweight against the band, and intake against target',
+       /Bodyweight: \+0\.6\d lb\/wk .*\(pocket; lean-bulk band 0\.5\u20131\)/.test(sum) && /Intake, last 14 days \(5 logged\)/.test(sum), (sum.match(/Bodyweight[^\n]*/) || [''])[0]);
+    ok('summary: per-lift patterns, and a swap option for the stalled lift',
+       /Lift patterns/.test(sum) && /Zz I Press: \+[\d.]+ lb\/wk; 5 jumps \(100% held\)/.test(sum) && /Swap option for Cable Row \(stalled\)/.test(sum), (sum.match(/Lift patterns[\s\S]{0,500}/) || [''])[0]);
+    ok('summary: muscle groups and the engine\u2019s recent decisions, with the call',
+       /Muscle groups, last 6 weeks/.test(sum) && /Engine decisions, last 7 days: .*\[easy\].*Zz I Press increase 170\u2192175/.test(sum), (sum.match(/Engine decisions[^\n]*/) || [''])[0]);
+    ok('summary: stays small (under 8000 characters, ~2K tokens)', sum.length < 8000, String(sum.length));
+    ok('summary: a lift logged at a 0.5 lb bodyweight marker is left out of the patterns', sum.indexOf('Zz I Dips') < 0);
+    ok('summary: DELTA, ECHO and ZULU get it; CHARLIE does not',
+       ['delta', 'echo', 'zulu'].every(a => ev("agBaseContext('" + a + "')").indexOf('INTELLIGENCE SUMMARY') >= 0) && ev("agBaseContext('charlie')").indexOf('INTELLIGENCE SUMMARY') < 0);
+    ev('S.logs = []; S.nutrition = []; S.weights = []; S.readiness = []; S.whoop = {};');
+    let emptyOk = true; try { ev('intelSummary()'); ev("agBaseContext('delta')"); } catch (e) { emptyOk = false; }
+    ok('summary: an empty history never costs an agent its prompt', emptyOk);
+  } catch (e) {
+    ok('forecasts and insights section', false, e.stack);
+  }
+  ev('S = ' + p3Saved + ';');
+  ok('cleanup: real state restored after the forecasts section', ev('JSON.stringify(S)') === p3Saved);
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

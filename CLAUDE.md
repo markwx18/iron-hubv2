@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2063 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2110 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -252,6 +252,8 @@ so the two orders can no longer disagree.
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()` (`dow` \| `cycle`) |
 | Week windows | `weekStartKey()`, `lastCompletedWeekRange()`, `weeklyVolumeByGroup()` |
 | Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()` |
+| Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
+| Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
@@ -529,23 +531,19 @@ active tab every 30 s and after every sync pull, so DOM-only state is wiped on a
 nothing to blame it on. `subOpen`, `sdOpen`, `sdHomeOpen` and `photoOpen` are module-scoped
 for this reason.
 
-**One bodyweight rate. Not yet true everywhere.** An audit on 2026-09-24 found six surfaces still
-using their own lb/wk thresholds:
-- `bulkScore()`'s 1.6
-- `investigateBulk()`'s 0.25/1.0/1.5 (pinned by a test)
-- the flag auto-resolve's 0.4–1.2
-- the Bulk-quality rate card
-- `projectionCardHTML()`'s cap
-- the projection card's all-history pace
-
-Folding them into `bulkBand()` is step 3 of the V3 intelligence plan, and until then they can
-disagree. `bulkRate()` / `bulkBand()`, over weekly averages. Every surface that
+**One bodyweight rate, and one set of bands.** `bulkRate()` / `bulkBand()`, over weekly averages. Every surface that
 quotes a lb/wk figure goes through it: the Bulk tab, the projection card, `investigateBulk()`,
 and `bulkScore()` (the Progress verdict). That last one was missed the first time and kept its
 own raw first-vs-last-weigh-in math, so Progress read +0.35 lb/wk on the same day the Bulk tab
 read 0.00 off the identical weigh-ins. The *bands* are shared too — a rate the Bulk tab calls
 "under the pocket, add calories" must not read as "right in the lean-bulk range" two tabs over.
 Do not add a fifth.
+Since 2026-09-25 the bands are one set too. `investigateBulk()`, the flag auto-resolve (which
+had its own 3-point regression and a 0.4–1.2 band), the Bulk-quality rate card and the
+next-level advice all judge through `bulkBand()`. The one further line inside 'hot' is
+`BULK_FAST` (1.6); nothing keeps its own copy. `projectionCardHTML()`'s 1.2 is a projection
+clamp, not a verdict. The projection card's "measured pace" is the fan's all-history fit, on
+purpose: a different window, judged by the same band.
 
 **One intake target, and nothing hardcodes it.** `calTarget()` / `proTarget()` read
 `S.fuel.calTarget` / `proTarget`; `nutTierCal()` / `nutTierPro()` are the only classifiers, and
@@ -607,6 +605,40 @@ Replayed over his real Aug 29 – Sep 24 sessions before shipping, against the e
 
 `scratchpad/replay.js` in that session did it: two jsdom copies (`git show HEAD` and the
 working copy), `todayKey` stubbed per session, and only the state before that morning.
+
+**Calibration measures how his low days actually go, and not the call's own effect.**
+`whoopResponse()` counts a below-usual day as worse when he grinds more OR sets PRs less often:
+`effect = grind gap + PR-rate gap / 3`. Grind share alone read his real data backwards on
+2026-09-25. Under his usual he ground 9% of top sets against 8% at it, but set a PR in 29% of those
+sessions against 71%, and grind share alone would have made recovery count for less. Two guards:
+- **Sessions the call shaped are left out** (an easy or recover day he kept). The call holds jumps
+  on those days, so they set fewer PRs because of it, and counting them would let the calibration
+  feed on itself.
+- **Under `WR_FULL` (10) sessions a side, the step is halved.** His data read ×1.25 that day.
+
+**The agents get a computed summary, not raw arithmetic to redo.** `intelSummary()` covers:
+- today's call;
+- WHOOP against his usual, and how recovery affects him;
+- the deload forecast;
+- bodyweight against the band, intake against target, and fuel against results;
+- per-lift patterns (bodyweight lifts left out), with a swap candidate for each stalled lift;
+- per-muscle volume against trend (the basis for `setCount`);
+- the last 7 days of engine decisions and calls.
+
+It is about 600 tokens on his real data, and `agBaseContext()` adds it for DELTA, ECHO and ZULU
+(the brief included). Every line is guarded on its own, so a failing line can never cost an agent
+its prompt. Check the usage card before growing it.
+
+**Forecasts and insights are descriptive, and they say so.**
+- **`deloadForecast()`** answers in weeks, not days. It uses the fixed `deloadCheck()`, this
+  week's load ratio against a week ago (`fatigueIndex(endKey)`), and felt trend, with a planned
+  meso deload as the yardstick.
+- **`fuelVsResults()`** groups weeks by calories actually eaten, in fixed ranges around today's
+  target and labelled in real numbers, because the target moved (3000 → 3700). It shows nothing
+  until 3 weeks sit in each of two ranges.
+- **Density** compares a day only with the same day (set `ts`, first set to last) and needs 4
+  timed sessions.
+- **`streakStats()`** has no 60-day cap, and keeps the longest run.
 
 **A jump earned on grinders repeats once** (`grind-hold`, in both `recommend()` and
 `classifyDecision()`). At the ceiling with grind or fail top sets, the weight repeats. It goes up
