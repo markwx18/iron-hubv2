@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-28-v1">
+<meta name="ironhub-build" content="2026-09-28-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1183,7 +1183,6 @@
   .fp-ct{font-family:var(--disp); font-weight:700; font-size:16px; text-transform:uppercase; letter-spacing:.05em;}
   .fp-tot{margin-left:auto; font-family:var(--disp); font-weight:600; color:var(--amber); font-variant-numeric:tabular-nums; white-space:nowrap;}
   .fp-it{display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid var(--line); min-width:0;}
-  .fp-it .q{flex:none; font-family:var(--disp); font-weight:700; color:var(--amber); min-width:22px;}
   .fp-it .nm{flex:1; min-width:0; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .fp-it .sv{color:var(--dim); font-size:12px;}
   .fp-it .mm{flex:none; font-family:var(--mono); font-size:11px; color:var(--muted); white-space:nowrap;}
@@ -6289,6 +6288,43 @@ const FOOD_DB = [
 ];
 
 function fpNorm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+/* The amount a plate row is counting, in one phrase. A row used to print the ONE-serving size
+   beside the TWO-serving total -- "2x Chicken breast 6 oz cooked ... 106g" -- which read as 106 g
+   of protein in 6 oz of chicken (2026-09-28). So the amount is scaled to match the numbers:
+   "12 oz cooked", "1/2 chicken", "2 sandwiches". A compound or bracketed serving ("1 bagel, 2
+   tbsp", "1 can (5 oz)") cannot be scaled safely by rewriting its first number, and becomes
+   "2 × 1 can (5 oz)" instead -- never a wrong amount. */
+const FP_ADJ = ['large','medium','small','big','whole','full-size'];
+const FP_UNIT = ['oz','tbsp','tsp','lb','g','ml'];   // "1 oz bag" -> "2 oz bag": a unit, never a noun to pluralise
+function fpServingFor(sv, qty){
+  sv = String(sv || '1 serving').trim();
+  qty = Math.round(+qty || 1);
+  if(qty <= 1) return sv;
+  const whole = qty+' × '+sv;
+  if(/[+,(]/.test(sv)) return whole;
+  const m = /^(\d+\/\d+|\d+(?:\.\d+)?)\s+(.+)$/.exec(sv);
+  if(!m) return whole;
+  const fr = m[1].split('/');
+  const n = fr.length === 2 ? (+fr[0])/(+fr[1]) : +m[1];
+  const t = n*qty;
+  const FR = {0.25:'1/4', 0.5:'1/2', 0.75:'3/4'};
+  const w = Math.floor(t + 1e-9), part = Math.round((t - w)*100)/100;
+  let num;
+  if(!part) num = String(w);
+  else if(FR[part]) num = (w ? w+' ' : '')+FR[part];
+  else num = String(Math.round(t*10)/10);
+  // "1 sandwich" -> "2 sandwiches", "1 large cookie" -> "2 large cookies". Only a count of exactly
+  // one needs its noun pluralised; "1.5 cups" and "6 oz" already read right.
+  let words = m[2].split(' ');
+  if(n === 1 && FP_UNIT.indexOf(words[0].toLowerCase()) < 0){
+    const k = FP_ADJ.indexOf(words[0].toLowerCase()) >= 0 ? 1 : 0;
+    const wd = words[k];
+    if(wd && /^[a-z]+$/i.test(wd) && FP_ADJ.indexOf(wd.toLowerCase()) < 0 && FP_UNIT.indexOf(wd.toLowerCase()) < 0){
+      words[k] = /(ch|sh|s|x)$/i.test(wd) ? wd+'es' : /[^aeiou]y$/i.test(wd) ? wd.slice(0,-1)+'ies' : wd+'s';
+    }
+  }
+  return num+' '+words.join(' ');
+}
 function fpRow(r){ return {id:r[0], n:r[1], cat:r[2], sv:r[3], cal:r[4], p:r[5], c:r[6], f:r[7], tags:String(r[8]||'').split(' ').filter(Boolean)}; }
 /* Every food, built-in and his own, with his choices laid over it. The ONE list: the pantry,
    the combiner and ECHO's tools all read this, so a corrected macro changes every one of them.
@@ -6366,7 +6402,8 @@ function fpBuild(pool, gapCal, gapPro, used){
   const out = items.map(function(i){
     const fd = i.fd;
     t.cal += fd.cal*i.qty; t.p += fd.p*i.qty; t.c += fd.c*i.qty; t.f += fd.f*i.qty;
-    return {id:fd.id, n:fd.n, sv:fd.sv, qty:i.qty, cal:Math.round(fd.cal*i.qty), p:Math.round(fd.p*i.qty), buy:!fd.stocked};
+    return {id:fd.id, n:fd.n, sv:fd.sv, amt:fpServingFor(fd.sv, i.qty), qty:i.qty,
+            cal:Math.round(fd.cal*i.qty), p:Math.round(fd.p*i.qty), buy:!fd.stocked};
   });
   const shortC = Math.max(0, Math.round(gapCal - t.cal)), shortP = Math.max(0, Math.round(gapPro - t.p));
   return {items:out, cal:Math.round(t.cal), p:Math.round(t.p), c:Math.round(t.c), f:Math.round(t.f),
@@ -6646,8 +6683,10 @@ function fpComboHTML(c, i){
     '<span class="fp-tot">~'+c.cal.toLocaleString()+' cal · '+c.p+'g P</span></div>'+
     '<div class="small" style="margin-bottom:4px;color:'+(c.closes ? 'var(--good)">Closes the gap' : 'var(--warn)">Short '+short)+'</div>'+
     c.items.map(function(it){
-      return '<div class="fp-it"><span class="q">'+it.qty+'×</span>'+
-        '<span class="nm">'+esc(it.n)+' <span class="sv">'+esc(it.sv)+'</span></span>'+
+      // The amount is scaled to the servings counted (fpServingFor), so the numbers beside it
+      // are always the numbers for that amount.
+      return '<div class="fp-it">'+
+        '<span class="nm">'+esc(it.n)+' <span class="sv">'+esc(it.amt || it.sv)+'</span></span>'+
         (it.buy ? '<span class="fp-buy">buy</span>' : '')+
         '<span class="mm">~'+it.cal+' · '+it.p+'g</span>'+
         '<button class="fp-skip" aria-label="Not '+esc(it.n)+'" onclick="fpSkip(\''+esc(it.id)+'\')">✕</button></div>';
@@ -6813,7 +6852,9 @@ function fpCombosText(r, opts){
   if(r.done) return t+'That is already close enough -- nothing left to plan.';
   if(!r.combos.length) return t+(r.pool ? 'No plate could be built from what fits.' : 'Nothing usable: he has nothing stocked'+(opts.includeLiked ? ' or liked' : '')+' that fits these filters.');
   return t+r.combos.map(function(c, i){
-    return 'Option '+(i+1)+': '+c.items.map(function(it){ return it.qty+'x '+it.n+' ('+it.sv+')'+(it.buy ? ' [not in stock]' : ''); }).join(' + ')+
+    return 'Option '+(i+1)+': '+c.items.map(function(it){
+      return it.n+', '+(it.amt || it.sv)+' (~'+it.cal+' cal, '+it.p+'g P)'+(it.buy ? ' [not in stock]' : '');
+    }).join(' + ')+
       ' = ~'+c.cal+' cal, '+c.p+'g protein, '+(c.closes ? 'closes the gap' : 'short '+c.shortC+' cal / '+c.shortP+'g');
   }).join('\n');
 }

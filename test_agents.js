@@ -9223,6 +9223,31 @@ setTimeout(async () => {
     ok('combiner: nothing stocked gives no plates, and says why',
        ev("(function(){ var k = S.fuel.foods; S.fuel.foods = {}; var r = fpCombos(1500, 90, {}); S.fuel.foods = k; return r.pool === 0 && r.combos.length === 0; })()") === true);
 
+    // 2026-09-28: a row read "2x Chicken breast 6 oz cooked ... 106g" -- the one-serving size
+    // beside the two-serving total, so it looked like 106 g of protein in 6 oz. The amount shown
+    // must be the amount the numbers are for.
+    const sv2 = (sv, q) => ev('fpServingFor(' + JSON.stringify(sv) + ', ' + q + ')');
+    ok('serving: the amount scales with the servings counted',
+       sv2('6 oz cooked', 2) === '12 oz cooked' && sv2('1/4 chicken', 2) === '1/2 chicken' && sv2('1.5 cups cooked', 2) === '3 cups cooked' &&
+       sv2('10 pieces', 2) === '20 pieces' && sv2('1/2 pizza', 2) === '1 pizza',
+       [sv2('6 oz cooked', 2), sv2('1/4 chicken', 2), sv2('1.5 cups cooked', 2)].join(' | '));
+    ok('serving: a count of one takes its plural, past an adjective, never on a unit',
+       sv2('1 sandwich', 2) === '2 sandwiches' && sv2('1 large cookie', 2) === '2 large cookies' && sv2('1 large', 2) === '2 large' &&
+       sv2('1 pouch', 2) === '2 pouches' && sv2('1 oz bag', 2) === '2 oz bag',
+       [sv2('1 sandwich', 2), sv2('1 large cookie', 2), sv2('1 oz bag', 2)].join(' | '));
+    ok('serving: a compound or bracketed serving is multiplied, never rewritten',
+       sv2('1 bagel, 2 tbsp', 2) === '2 × 1 bagel, 2 tbsp' && sv2('1 can (5 oz)', 2) === '2 × 1 can (5 oz)' &&
+       sv2('1 scoop + 16 oz milk', 2) === '2 × 1 scoop + 16 oz milk' && sv2('a plate', 2) === '2 × a plate');
+    ok('serving: one serving is shown as written', sv2('6 oz cooked', 1) === '6 oz cooked');
+    ev("window.__fpKeep2 = S.fuel.foods; S.fuel.foods = {chkbr:{s:1}};");
+    const breast = JSON.parse(ev('JSON.stringify(fpCombos(560, 106, {}))'));
+    const bHtml = ev('fpComboHTML(' + JSON.stringify(breast.combos[0]) + ', 0)');
+    ok('serving: two chicken breasts read "12 oz cooked" beside their 106 g, not "6 oz"',
+       breast.combos[0].items[0].qty === 2 && /12 oz cooked/.test(bHtml) && /~560 · 106g/.test(bHtml) && !/>6 oz cooked</.test(bHtml), bHtml.slice(0, 400));
+    ok('serving: and ECHO is told the same amount with its numbers',
+       ev("fpCombosText(fpCombos(560, 106, {}), {})").indexOf('Chicken breast, 12 oz cooked (~560 cal, 106g P)') >= 0);
+    ev("S.fuel.foods = window.__fpKeep2; delete window.__fpKeep2;");
+
     // "Already eaten" shrinks the gap. Module-scoped and per-day, and the tab reads it.
     ev('S.fuel.calTarget = 3200; S.fuel.proTarget = 160;');
     ev('renderFuel()');

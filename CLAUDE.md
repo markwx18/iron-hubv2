@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2195 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2201 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -596,6 +596,10 @@ from what he has stocked and likes. Cal AI has no sync path, so it never reads l
 - **`fpCombos()` is pure and deterministic.** It is greedy, weights protein 1.2×, and allows two
   servings of any one food and five foods per plate. Pick and skip counts only break near-ties.
   Each later plate avoids the earlier foods and drops their anchor.
+- **A plate row shows the amount its numbers are for** (`fpServingFor()`): "12 oz cooked", not
+  "2× … 6 oz cooked" beside a two-serving total, which read as 106 g protein in 6 oz of chicken.
+  A compound or bracketed serving becomes "2 × 1 can (5 oz)" rather than being rewritten. ECHO's
+  `plan_fuel_combos` text uses the same amount.
 - **The exclusion list wins over a like.** `fpUsable()` runs `fuelFoodAllowed()` with the
   category key added, and a plural in the list also catches the singular ("peanuts" catches
   "Peanut butter").
