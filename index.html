@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-25-v4">
+<meta name="ironhub-build" content="2026-09-28-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1164,6 +1164,57 @@
   }
   .ol-verdict,.ag-tag,.meso-rot-d{border-radius:999px; font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em; padding:3px 10px;}
 
+  /* ---- Fuel Planner. Rows are flex with min-width:0, so a long food name truncates instead of
+     widening its row (text-overflow does nothing on an inline element). ---- */
+  .fp-lede{color:var(--muted); line-height:1.5; margin:-4px 0 12px;}
+  .fp-chips{display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 12px;}
+  .fp-chip{display:inline-flex; align-items:center; max-width:100%; min-width:0; font-size:12.5px; padding:6px 10px; border-radius:999px;
+    border:1px solid var(--line2); background:var(--panel2); color:var(--text);}
+  .fp-chip .t{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .fp-chip .x{color:var(--dim); margin-left:6px; flex:none;}
+  .fp-eaten{display:flex; gap:10px;} .fp-eaten > div{flex:1; min-width:0;}
+  .fp-togs{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;}
+  .fp-tog{font-size:12.5px; padding:7px 11px; border-radius:var(--r-ctl); border:1px solid var(--line2); background:none; color:var(--muted);}
+  .fp-tog.on{border-color:var(--amber); color:var(--amber); background:var(--panel2);}
+  .fp-gap{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin:14px 2px 8px; font-family:var(--disp); color:var(--muted); font-size:13px; letter-spacing:.04em; text-transform:uppercase;}
+  .fp-gap b{font-size:26px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; margin-right:3px;}
+  .fp-gap .fp-of{margin-left:auto; color:var(--dim); font-size:12px;}
+  .fp-ch{display:flex; align-items:baseline; gap:10px; min-width:0;}
+  .fp-ct{font-family:var(--disp); font-weight:700; font-size:16px; text-transform:uppercase; letter-spacing:.05em;}
+  .fp-tot{margin-left:auto; font-family:var(--disp); font-weight:600; color:var(--amber); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .fp-it{display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid var(--line); min-width:0;}
+  .fp-it .q{flex:none; font-family:var(--disp); font-weight:700; color:var(--amber); min-width:22px;}
+  .fp-it .nm{flex:1; min-width:0; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .fp-it .sv{color:var(--dim); font-size:12px;}
+  .fp-it .mm{flex:none; font-family:var(--mono); font-size:11px; color:var(--muted); white-space:nowrap;}
+  .fp-buy{flex:none; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--warn); border:1px solid currentColor; border-radius:999px; padding:1px 6px;}
+  .fp-skip{flex:none; background:none; border:none; color:var(--dim); font-size:14px; min-width:32px; min-height:32px; padding:0;}
+  .fp-row{display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--line); min-width:0;}
+  .fp-list > .fp-row:first-child, .fp-list > .fp-editbox:first-child{border-top:none;}
+  .fp-have{flex:none; width:32px; height:32px; padding:0; border-radius:10px; border:1.5px solid var(--line2); background:none; color:var(--base); font-weight:700; font-size:15px;}
+  .fp-have.on{background:var(--good); border-color:var(--good);}
+  .fp-main{flex:1; min-width:0; display:flex; flex-direction:column; cursor:pointer;}
+  .fp-main .fp-n{font-weight:600; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .fp-main .fp-m{font-size:11.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .fp-row.dis .fp-n{color:var(--dim); text-decoration:line-through;}
+  .fp-seg{flex:none; display:flex; border:1px solid var(--line2); border-radius:10px; overflow:hidden;}
+  .fp-seg button{background:none; border:none; border-radius:0; color:var(--muted); height:32px; padding:0 9px; font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em; text-transform:uppercase;}
+  .fp-seg button + button{border-left:1px solid var(--line2);}
+  .fp-seg button.on.p-l{background:var(--good); color:var(--base);}
+  .fp-seg button.on.p-d{background:var(--bad); color:var(--text);}
+  .fp-seg button.on.p-h{background:var(--panel2); color:var(--text);}
+  .fp-editbox{padding:10px 0; border-top:1px solid var(--line);}
+  .fp-mac{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin-top:8px;}
+  .fp-acts{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;}
+  .fp-tagpick{display:flex; flex-wrap:wrap; gap:6px 14px; margin:10px 0;}
+  .fp-tagpick label{display:inline-flex; align-items:center; gap:5px; margin:0; text-transform:none; letter-spacing:0; font-family:var(--body); font-weight:400; font-size:13px; color:var(--text);}
+  /* At 320px the three buttons leave a food name ~6 characters, so the buttons take a second line. */
+  @media(max-width:360px){
+    .fp-row{flex-wrap:wrap;}
+    .fp-main{flex-basis:calc(100% - 40px);}
+    .fp-seg{margin-left:40px;}
+  }
+
   /* ============================================================
      FORGE x EMBER -- slice 5: LIVE, visual only. Nothing here moves an element: the order,
      the ids and every tap target are exactly where they were, so muscle memory at the rack
@@ -1459,7 +1510,7 @@ const DEFAULT_STATE = {
   prHistory: [],               // {exercise, weight, reps, e1rm, prev, gain, date} — every e1RM PR ever hit.
                                // Written only by checkPRs()/prBackfillOnce(); read by the PR History tab.
   prBackfilled: false,         // one-time flag: existing logs have been replayed into prHistory
-  fuel: {likes:'', dislikes:'eggs, cup yogurt, rice, cottage cheese', limits:'', calTarget:3000, proTarget:150, meals:null},
+  fuel: {likes:'', dislikes:'eggs, cup yogurt, rice, cottage cheese', limits:'', calTarget:3000, proTarget:150},
   audit: {weekStart:'', proposals:null, status:''},  // weak-group reinforcement
   settings: {apiKey:'', repLow:8, repHigh:12, ghToken:'', gistId:'', autoSync:true},
   meta: {changedAt:0, lastSync:0, pushedAt:0}
@@ -5874,15 +5925,18 @@ function dismissProposal(i){
 function dismissAllProposals(){ S.audit.proposals=[]; S.audit.status='done'; save(false); renderToday(); }
 
 /* ================= FUEL TAB ================= */
-const MEAL_SLOTS = ['Breakfast','Midday Snack','Lunch','Afternoon Snack','Dinner'];
 function fuelInit(){
-  if(!S.fuel) S.fuel = {likes:'',dislikes:'',limits:'',calTarget:3000,proTarget:150,meals:null};
+  if(!S.fuel) S.fuel = {likes:'',dislikes:'',limits:'',calTarget:3000,proTarget:150};
   if(S.fuel.workoutTime === undefined) S.fuel.workoutTime = '';
   if(!S.fuel.sessionLen) S.fuel.sessionLen = 60;
-  // migrate old flat format [{slot,name,cal,protein,how}] -> [{slot,options:[...]}]
-  if(Array.isArray(S.fuel.meals) && S.fuel.meals.length && S.fuel.meals[0] && S.fuel.meals[0].name && !S.fuel.meals[0].options){
-    S.fuel.meals = null; // old single-pick data; clear so user regenerates as lists
-  }
+  // The Fuel Planner's state. S.fuel is a top-level key, so load()'s shallow merge hands back a
+  // stored fuel object wholesale and a save from before the planner has none of these fields.
+  if(!S.fuel.foods || typeof S.fuel.foods !== 'object' || Array.isArray(S.fuel.foods)) S.fuel.foods = {};
+  if(!Array.isArray(S.fuel.custom)) S.fuel.custom = [];
+  if(typeof S.fuel.stockWeek !== 'string') S.fuel.stockWeek = '';
+  // The AI meal generator was replaced by the planner (2026-09-28). Its saved suggestions were
+  // re-uploaded on every sync and nothing reads them any more.
+  if('meals' in S.fuel) delete S.fuel.meals;
 }
 /* ============================================================
    WORKOUT FUEL TIMING
@@ -5961,7 +6015,9 @@ function fuelExclusionTokens(){
 }
 function fuelFoodAllowed(food, tokens){
   const hay = (food.n+' '+food.t.join(' ')).toLowerCase();
-  return !tokens.some(tok=>hay.indexOf(tok)>=0);
+  // A plural in the list also takes out the singular: "peanuts" typed as an allergy has to catch
+  // "Peanut butter", and "eggs" has to catch "egg whites". Greedy, per the note above.
+  return !tokens.some(tok=>hay.indexOf(tok)>=0 || (/[^s]s$/.test(tok) && tok.length>=4 && hay.indexOf(tok.slice(0,-1))>=0));
 }
 function fuelClockFrom(hhmm, offsetMin){
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm||'');
@@ -5993,7 +6049,7 @@ function fuelTimingHTML(opts){
   const t = S.fuel.workoutTime || '';
   const len = S.fuel.sessionLen || 60;
   let h = (opts && opts.bare ? '' : '<h2>Workout Fuel Timing</h2>')+'<div class="card">';
-  h += '<p class="small" style="margin-bottom:10px">Set roughly when you\u2019re training and this lays out what to eat and drink around it \u2014 filtered against your exclusions above.</p>';
+  h += '<p class="small" style="margin-bottom:10px">Set roughly when you\u2019re training and this lays out what to eat and drink around it \u2014 filtered against your exclusion list.</p>';
   h += '<div class="row"><div><label>Planned workout start</label>'+
     '<input type="time" id="fWorkTime" value="'+esc(t)+'" onchange="setFuelWorkoutTime(this.value)"></div>'+
     '<div><label>Expected length</label><select onchange="setFuelSessionLen(this.value)">'+
@@ -6038,50 +6094,649 @@ function fuelTimingHTML(opts){
   }
   return h;
 }
+/* ============================================================
+   FUEL PLANNER (2026-09-28)
+   Replaces the AI meal generator. He is picky and often short on time, and what he needed from
+   this tab was not ideas but a way to close the gap with food he actually has and will actually
+   eat. Everything here runs on the device: no API call, works offline, instant.
+
+   Cal AI has no sync path, so nothing here reads live intake. "Already eaten" is an optional
+   number he types, kept only for the day and never synced.
+
+   The food list is a constant in this file, never in S: S re-uploads on every save and every
+   sync, and 160 foods ride along for nothing. S.fuel holds only what he has TOUCHED -- stock,
+   like/dislike/hide, a corrected macro, pick counts -- keyed by food id, and an entry that goes
+   back to its defaults is deleted (fpTidy), so the synced object stays small.
+   ============================================================ */
+const FP_CATS = [['meat','Meat & fish'],['eggs','Eggs'],['dairy','Dairy'],['grain','Carbs & bread'],
+  ['meal','Meals'],['drink','Shakes & drinks'],['spread','Nuts & spreads'],['snack','Snacks & bars'],
+  ['fruit','Fruit'],['sweet','Sweets']];
+const FP_CAT_KEYS = FP_CATS.map(function(c){ return c[0]; });
+const FP_TAGS = ['snack','meal','drink','quick','nocook'];
+const FP_TAG_LABEL = {snack:'Snack', meal:'Meal', drink:'Drink', quick:'Quick', nocook:'No-cook'};
+const FP_CUSTOM_MAX = 60;
+// "Close enough": a gap this small reads as done, and a combo this close reads as closing it.
+const FP_DONE_CAL = 150, FP_DONE_PRO = 10;
+/* [id, name, category, serving, cal, protein g, carbs g, fat g, tags]. Typical values for the
+   stated serving: approximate, and shown with a ~. The suite checks every row's macros add up.
+   An id is what S.fuel.foods keys off and what has already synced to every device, so it is
+   NEVER renamed or reused: retire a row by deleting it (its stored entry then matches nothing)
+   and give any replacement a new id. Names carry their main ingredients ("..., eggs & sausage")
+   because the exclusion list matches on the name. */
+const FOOD_DB = [
+  ['rotchk','Rotisserie chicken','meat','1/4 chicken',400,45,0,24,'meal quick nocook'],
+  ['chkbr','Chicken breast','meat','6 oz cooked',280,53,0,6,'meal'],
+  ['chkthi','Chicken thighs','meat','6 oz cooked',360,42,0,21,'meal'],
+  ['chknug','Chicken nuggets (frozen)','meat','10 pieces',480,24,30,30,'snack meal quick'],
+  ['chkten','Breaded chicken tenders','meat','4 pieces',450,30,28,24,'meal quick'],
+  ['chkcan','Canned chicken','meat','1 can (5 oz)',150,30,0,3,'quick nocook'],
+  ['chksalad','Chicken salad (deli)','meat','1 cup',400,20,8,32,'quick nocook'],
+  ['beef80','Ground beef 80/20','meat','6 oz cooked',460,40,0,32,'meal'],
+  ['beef93','Lean ground beef 93/7','meat','6 oz cooked',290,44,0,12,'meal'],
+  ['steak','Sirloin steak','meat','8 oz cooked',480,62,0,26,'meal'],
+  ['grturk','Ground turkey','meat','6 oz cooked',340,42,0,18,'meal'],
+  ['turkdeli','Deli turkey','meat','4 oz',120,22,4,2,'snack quick nocook'],
+  ['hamdeli','Deli ham','meat','4 oz',140,20,4,5,'quick nocook'],
+  ['rbeef','Deli roast beef','meat','4 oz',150,24,2,5,'quick nocook'],
+  ['bacon','Bacon','meat','4 slices',200,14,0,16,'quick'],
+  ['sausage','Breakfast sausage links','meat','4 links',340,14,2,30,'quick'],
+  ['pepperoni','Pepperoni','meat','1 oz (15 slices)',140,6,0,13,'snack quick nocook'],
+  ['salami','Salami','meat','2 oz',220,12,1,19,'snack quick nocook'],
+  ['jerky','Beef jerky','meat','2 oz',160,26,6,2,'snack quick nocook'],
+  ['meatstk','Meat snack sticks','meat','2 sticks',200,12,2,16,'snack quick nocook'],
+  ['hotdog','Hot dogs','meat','2 franks',300,12,4,26,'quick'],
+  ['meatball','Frozen meatballs','meat','6 meatballs',330,18,10,24,'meal quick'],
+  ['porkchop','Pork chop','meat','6 oz cooked',340,44,0,18,'meal'],
+  ['pulpork','Pulled pork (pre-cooked)','meat','6 oz',390,34,18,20,'meal quick'],
+  ['salmon','Salmon fillet','meat','6 oz cooked',360,38,0,22,'meal'],
+  ['tuna','Canned tuna','meat','1 can (5 oz)',130,29,0,1,'quick nocook'],
+  ['tunapch','Tuna pouch (flavored)','meat','1 pouch',90,17,2,2,'snack quick nocook'],
+  ['shrimp','Shrimp','meat','6 oz cooked',170,36,1,2,'meal quick'],
+  ['fishstk','Fish sticks','meat','6 sticks',350,14,30,19,'meal quick'],
+  ['eggscr','Scrambled eggs','eggs','3 large eggs',270,19,2,20,'meal quick'],
+  ['eggwht','Liquid egg whites','eggs','1 cup',120,26,2,0,'quick'],
+  ['egghb','Hard-boiled eggs','eggs','2 large',150,12,1,10,'snack quick nocook'],
+  ['wmilk','Whole milk','dairy','16 oz',300,16,24,16,'drink quick nocook'],
+  ['milk2','2% milk','dairy','16 oz',250,16,24,10,'drink quick nocook'],
+  ['ffmilk','Ultra-filtered milk (2%)','dairy','16 oz',240,26,12,9,'drink quick nocook'],
+  ['chocmlk','Chocolate milk','dairy','16 oz',400,16,52,16,'drink quick nocook'],
+  ['ffchoc','Ultra-filtered chocolate milk','dairy','16 oz',280,26,26,9,'drink quick nocook'],
+  ['gkyog','Greek yogurt, plain 2%','dairy','1 cup',200,22,9,8,'snack quick nocook'],
+  ['gkcup','Cup yogurt, Greek (flavored)','dairy','1 cup (5.3 oz)',130,12,15,2,'snack quick nocook'],
+  ['cupyog','Cup yogurt, regular','dairy','6 oz',150,6,25,3,'snack quick nocook'],
+  ['cottage','Cottage cheese 4%','dairy','1 cup',220,25,8,10,'snack quick nocook'],
+  ['cheddar','Cheddar cheese','dairy','2 oz',230,14,1,19,'snack quick nocook'],
+  ['strchz','String cheese','dairy','2 sticks',160,14,2,12,'snack quick nocook'],
+  ['mozz','Shredded mozzarella','dairy','1/2 cup',170,12,2,13,'quick nocook'],
+  ['amchz','American cheese slices','dairy','2 slices',140,7,3,11,'quick nocook'],
+  ['crmchz','Cream cheese','dairy','2 tbsp',100,2,2,10,'quick nocook'],
+  ['bagel','Plain bagel','grain','1 large',300,11,58,2,'quick nocook'],
+  ['bagelcc','Bagel + cream cheese','grain','1 bagel, 2 tbsp',400,13,60,12,'meal quick nocook'],
+  ['wbread','White bread','grain','2 slices',160,5,30,2,'quick nocook'],
+  ['wwbread','Whole wheat bread','grain','2 slices',180,8,32,2,'quick nocook'],
+  ['pasta','Pasta','grain','2 cups cooked',420,15,84,2,'meal'],
+  ['rice','White rice','grain','1.5 cups cooked',310,6,68,1,'meal'],
+  ['rtrice','Microwave rice pouch','grain','1 pouch',390,8,80,4,'meal quick'],
+  ['oatsmilk','Oatmeal made with milk','grain','1 cup oats + 1 cup milk',450,20,64,13,'meal quick'],
+  ['instoat','Instant oatmeal packets','grain','2 packets',320,8,64,4,'snack quick'],
+  ['cereal','Cereal + whole milk','grain','2 cups + 1 cup milk',430,13,70,11,'meal quick nocook'],
+  ['granola','Granola','grain','1 cup',480,10,64,20,'snack quick nocook'],
+  ['tortilla','Large flour tortillas','grain','2 tortillas',380,10,62,10,'quick nocook'],
+  ['engmuf','English muffins','grain','2 muffins',260,9,50,2,'quick'],
+  ['pancake','Frozen pancakes','grain','4 pancakes',360,8,60,10,'quick'],
+  ['waffle','Frozen waffles','grain','2 waffles',190,4,30,6,'quick'],
+  ['potato','Baked potato','grain','1 large',280,8,64,0,'meal'],
+  ['swpot','Sweet potato','grain','1 large',250,5,58,0,'meal'],
+  ['fries','Oven fries (frozen)','grain','6 oz',330,5,50,13,'quick'],
+  ['hashbr','Hash brown patties','grain','2 patties',300,3,30,18,'quick'],
+  ['macchz','Boxed mac and cheese','grain','1.5 cups prepared',520,15,70,20,'meal quick'],
+  ['ramen','Instant ramen','grain','1 pack',380,8,52,14,'quick'],
+  ['pita','Pita bread','grain','1 large',170,6,34,1,'quick nocook'],
+  ['pbj','PB&J sandwich','meal','1 sandwich',440,14,52,20,'meal snack quick nocook'],
+  ['pbhoney','Peanut butter + honey sandwich','meal','1 sandwich',450,14,56,19,'meal snack quick nocook'],
+  ['turksand','Turkey & cheese sandwich','meal','1 sandwich',440,32,36,18,'meal quick nocook'],
+  ['hamsand','Ham & cheese sandwich','meal','1 sandwich',420,26,36,19,'meal quick nocook'],
+  ['grchz','Grilled cheese','meal','1 sandwich',440,17,34,26,'meal quick'],
+  ['tunasand','Tuna salad sandwich','meal','1 sandwich',480,24,36,26,'meal quick nocook'],
+  ['quesa','Chicken quesadilla','meal','1 large',640,42,48,30,'meal quick'],
+  ['chkwrap','Chicken wrap','meal','1 wrap',490,35,45,18,'meal quick nocook'],
+  ['beanburr','Bean & cheese burrito (frozen)','meal','1 burrito',350,11,50,11,'meal quick'],
+  ['chkburr','Chicken burrito (restaurant)','meal','1 burrito',990,55,105,38,'meal'],
+  ['chkbowl','Chicken burrito bowl (restaurant)','meal','1 bowl',690,50,70,22,'meal'],
+  ['pizza','Pepperoni pizza','meal','2 large slices',620,26,70,26,'meal quick'],
+  ['frzpizza','Frozen pizza','meal','1/2 pizza',700,28,80,30,'meal quick'],
+  ['dblchz','Double cheeseburger (fast food)','meal','1 burger',450,25,34,24,'meal quick'],
+  ['qpchz','Quarter-pound cheeseburger','meal','1 burger',520,30,42,26,'meal quick'],
+  ['chksw','Fried chicken sandwich','meal','1 sandwich',600,30,58,28,'meal quick'],
+  ['subft','Turkey sub (footlong)','meal','1 footlong',580,36,92,8,'meal quick nocook'],
+  ['chkrice','Chicken + rice bowl (homemade)','meal','1 bowl',630,50,75,14,'meal'],
+  ['pastams','Pasta with meat sauce','meal','1 large plate',680,38,82,22,'meal'],
+  ['chili','Canned chili with beans','meal','1 can (15 oz)',450,28,42,19,'meal quick'],
+  ['frzhp','Frozen meal (high-protein)','meal','1 tray',390,30,40,12,'meal quick'],
+  ['frzreg','Frozen meal (regular)','meal','1 tray',350,15,45,12,'meal quick'],
+  ['pocket','Microwave stuffed sandwiches','meal','2 pieces',580,20,72,24,'meal snack quick'],
+  ['tacos','Beef tacos (hard shell)','meal','3 tacos',520,27,36,30,'meal'],
+  ['frrice','Chicken fried rice (takeout)','meal','1 container',680,30,90,22,'meal'],
+  ['orchk','Orange chicken + rice (takeout)','meal','1 plate',890,35,120,30,'meal'],
+  ['lasagna','Frozen lasagna','meal','1.5 cups',400,22,40,16,'meal quick'],
+  ['eggsand','Breakfast sandwich (eggs, cheese, sausage)','meal','1 sandwich',500,22,30,32,'meal quick'],
+  ['bkburr','Breakfast burrito, eggs & sausage (frozen)','meal','1 burrito',330,12,38,14,'meal quick'],
+  ['whey','Whey shake (water)','drink','1 scoop',120,24,3,2,'drink quick nocook'],
+  ['wheymlk','Whey shake with whole milk','drink','1 scoop + 16 oz milk',420,40,27,17,'drink quick nocook'],
+  ['gainer','Mass gainer shake','drink','1 serving',650,32,115,7,'drink quick nocook'],
+  ['rtd','Ready-to-drink protein shake','drink','1 bottle',160,30,5,3,'drink quick nocook'],
+  ['blend','Blender shake (milk, peanut butter, banana, oats, whey)','drink','1 big shake',890,55,95,32,'drink quick nocook'],
+  ['smoothie','Fruit smoothie (shop)','drink','24 oz',450,10,100,3,'drink quick nocook'],
+  ['oj','Orange juice','drink','16 oz',220,3,52,0,'drink quick nocook'],
+  ['sports','Sports drink','drink','20 oz',140,0,36,0,'drink quick nocook'],
+  ['soda','Regular soda','drink','20 oz',240,0,65,0,'drink quick nocook'],
+  ['calshk','High-calorie nutrition shake','drink','1 bottle',350,16,50,11,'drink quick nocook'],
+  ['mshake','Milkshake (fast food, medium)','drink','1 medium',520,12,85,15,'drink quick'],
+  ['latte','Whole-milk latte','drink','16 oz',220,12,18,11,'drink quick'],
+  ['pb','Peanut butter','spread','2 tbsp',190,7,7,16,'snack quick nocook'],
+  ['almbtr','Almond butter','spread','2 tbsp',200,7,6,18,'snack quick nocook'],
+  ['nutella','Chocolate hazelnut spread','spread','2 tbsp',200,2,22,11,'quick nocook'],
+  ['almond','Almonds','spread','1/4 cup',210,8,7,18,'snack quick nocook'],
+  ['peanut','Roasted peanuts','spread','1/4 cup',210,9,6,18,'snack quick nocook'],
+  ['cashew','Cashews','spread','1/4 cup',200,5,11,16,'snack quick nocook'],
+  ['trail','Trail mix (peanuts, raisins, chocolate)','spread','1/2 cup',350,10,32,22,'snack quick nocook'],
+  ['sunseed','Sunflower seeds (shelled)','spread','1/4 cup',200,7,7,17,'snack quick nocook'],
+  ['walnut','Walnuts','spread','1/4 cup',190,4,4,19,'snack quick nocook'],
+  ['honey','Honey','spread','2 tbsp',130,0,34,0,'quick nocook'],
+  ['hummus','Hummus','spread','1/2 cup',200,6,18,12,'snack quick nocook'],
+  ['guac','Guacamole','spread','1/2 cup',180,2,10,16,'snack quick nocook'],
+  ['olvoil','Olive oil (drizzle)','spread','1 tbsp',120,0,0,14,'quick nocook'],
+  ['butter','Butter','spread','1 tbsp',100,0,0,11,'quick nocook'],
+  ['ranch','Ranch dressing','spread','2 tbsp',130,0,2,14,'quick nocook'],
+  ['protbar','Protein bar','snack','1 bar',220,20,24,8,'snack quick nocook'],
+  ['granbar','Granola bars','snack','2 bars',190,4,29,7,'snack quick nocook'],
+  ['oatbar','Oat energy bar','snack','1 bar',250,10,44,5,'snack quick nocook'],
+  ['chips','Potato chips','snack','1 oz bag',160,2,15,10,'snack quick nocook'],
+  ['tchips','Tortilla chips + salsa','snack','2 oz chips',280,4,38,13,'snack quick nocook'],
+  ['pretzel','Pretzels','snack','2 oz',220,6,46,2,'snack quick nocook'],
+  ['chzcrk','Cheese crackers','snack','1 oz',150,4,17,8,'snack quick nocook'],
+  ['pbcrk','Peanut butter sandwich crackers','snack','1 pack (6)',200,5,22,10,'snack quick nocook'],
+  ['popcorn','Microwave popcorn (butter)','snack','1 bag',500,7,58,28,'snack quick'],
+  ['ricecake','Rice cakes','snack','2 cakes',70,1,15,0,'snack quick nocook'],
+  ['chzpack','Cheese + crackers snack pack','snack','1 pack',250,9,20,15,'snack quick nocook'],
+  ['toastpas','Toaster pastries','snack','2 pastries',400,4,74,10,'snack quick'],
+  ['pbpretz','Peanut butter filled pretzels','snack','2 oz',280,10,30,14,'snack quick nocook'],
+  ['protchp','Protein chips','snack','1 bag',140,18,5,5,'snack quick nocook'],
+  ['protcook','Protein cookie','snack','1 large cookie',420,16,56,16,'snack quick nocook'],
+  ['banana','Banana','fruit','1 large',120,1,31,0,'snack quick nocook'],
+  ['apple','Apple','fruit','1 medium',95,0,25,0,'snack quick nocook'],
+  ['grapes','Grapes','fruit','1 cup',100,1,27,0,'snack quick nocook'],
+  ['orange','Orange','fruit','1 large',90,2,22,0,'snack quick nocook'],
+  ['dates','Medjool dates','fruit','4 dates',270,2,72,0,'snack quick nocook'],
+  ['raisin','Raisins','fruit','1/4 cup',130,1,34,0,'snack quick nocook'],
+  ['dmango','Dried mango','fruit','1/2 cup',180,1,44,0,'snack quick nocook'],
+  ['avocado','Avocado','fruit','1 whole',240,3,13,22,'snack quick nocook'],
+  ['berries','Berries','fruit','1 cup',70,1,17,0,'snack quick nocook'],
+  ['frtcup','Fruit cup in juice','fruit','1 cup',100,1,25,0,'snack quick nocook'],
+  ['icecrm','Ice cream','sweet','1 cup',280,5,32,15,'snack quick nocook'],
+  ['cookie','Chocolate chip cookies','sweet','3 cookies',240,3,32,12,'snack quick nocook'],
+  ['sandcook','Sandwich cookies','sweet','4 cookies',210,2,33,9,'snack quick nocook'],
+  ['chocbar','Chocolate bar','sweet','1 full-size bar',230,3,26,13,'snack quick nocook'],
+  ['candybar','Chocolate peanut candy bar','sweet','1 bar',250,4,33,12,'snack quick nocook'],
+  ['pbcup','Peanut butter cups','sweet','2 cups',210,5,24,13,'snack quick nocook'],
+  ['gummy','Gummy candy','sweet','2 oz',190,3,45,0,'snack quick nocook'],
+  ['muffin','Bakery muffin','sweet','1 muffin',450,6,60,20,'snack quick nocook'],
+  ['donut','Glazed donuts','sweet','2 donuts',380,4,44,22,'snack quick nocook'],
+  ['brownie','Brownie','sweet','1 large',330,4,44,16,'snack quick nocook'],
+  ['rktreat','Rice crispy treats','sweet','2 bars',180,2,34,4,'snack quick nocook'],
+  ['pudding','Pudding cups','sweet','2 cups',220,4,40,5,'snack quick nocook'],
+  ['frtsnk','Fruit snacks','sweet','2 pouches',160,0,38,0,'snack quick nocook']
+];
+
+function fpNorm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+function fpRow(r){ return {id:r[0], n:r[1], cat:r[2], sv:r[3], cal:r[4], p:r[5], c:r[6], f:r[7], tags:String(r[8]||'').split(' ').filter(Boolean)}; }
+/* Every food, built-in and his own, with his choices laid over it. The ONE list: the pantry,
+   the combiner and ECHO's tools all read this, so a corrected macro changes every one of them.
+   A pure read -- it never initialises S.fuel, so ECHO's read-only tools can call it. */
+function fpFoods(){
+  const F = S.fuel || {};
+  const st = (F.foods && typeof F.foods === 'object') ? F.foods : {};
+  const base = FOOD_DB.map(fpRow);
+  const mine = (Array.isArray(F.custom) ? F.custom : []).map(function(u){
+    return {id:u.id, n:u.n, cat:u.cat, sv:u.sv||'1 serving', cal:+u.cal||0, p:+u.p||0, c:+u.c||0, f:+u.f||0,
+            tags:(u.tags||[]).slice(), custom:true, src:u.src||''};
+  });
+  return base.concat(mine).map(function(fd){
+    const e = st[fd.id] || {};
+    if(Array.isArray(e.m) && e.m.length === 4){
+      fd.def = [fd.cal, fd.p, fd.c, fd.f];
+      fd.cal = +e.m[0]||0; fd.p = +e.m[1]||0; fd.c = +e.m[2]||0; fd.f = +e.m[3]||0; fd.edited = true;
+    }
+    fd.stocked = !!e.s; fd.pref = e.p || ''; fd.a = +e.a||0; fd.x = +e.x||0; fd.at = e.at || '';
+    return fd;
+  });
+}
+function fpFood(id){ return fpFoods().find(function(f){ return f.id === id; }) || null; }
+/* Would he eat it at all? A like never outranks the exclusion list: an allergy typed there wins
+   over a stale "like" on a food that turns out to contain it. The category rides along with the
+   tags, so "eggs" or "dairy" in the list takes out the whole shelf. */
+function fpUsable(fd, tokens){
+  return fd.pref !== 'd' && fd.pref !== 'h' && fd.cal > 0 &&
+    fuelFoodAllowed({n:fd.n, t:fd.tags.concat([fd.cat])}, tokens || fuelExclusionTokens());
+}
+function fpIsQuick(fd){ return fd.tags.indexOf('quick') >= 0 || fd.tags.indexOf('nocook') >= 0; }
+function fpPool(opts){
+  opts = opts || {};
+  const tokens = fuelExclusionTokens(), skip = opts.skip || [];
+  return fpFoods().filter(function(fd){
+    if(!(fd.stocked || (opts.includeLiked && fd.pref === 'l'))) return false;
+    if(opts.quickOnly && !fpIsQuick(fd)) return false;
+    if(skip.indexOf(fd.id) >= 0) return false;
+    return fpUsable(fd, tokens);
+  });
+}
+/* One plate, greedily: each step adds the serving that covers the most of what is still missing.
+   Protein counts 1.2x, because it is the half of the target he misses. Going more than 250 cal
+   past the gap costs, and so does every extra item: five things on a plate is a chore, not a
+   meal. The bonuses are deliberately small next to the coverage terms, so what he likes can
+   decide between two foods that both fit but can never push in one that does not. */
+function fpBuild(pool, gapCal, gapPro, used){
+  const nC = Math.max(gapCal, 300), nP = Math.max(gapPro, 20);
+  const items = [];
+  let rc = gapCal, rp = gapPro;
+  for(let step = 0; step < 12; step++){
+    if(rc <= 100 && rp <= 8) break;
+    let best = null, bestV = 0.01;
+    pool.forEach(function(fd){
+      const have = items.find(function(i){ return i.fd.id === fd.id; });
+      // Two servings of anything, drinks included: with a whole day to fill, a cap of three
+      // made "3x blender shake" the first option, which is not a plan anyone follows.
+      if(have && have.qty >= 2) return;
+      if(!have && items.length >= 5) return;
+      let v = (rc > 0 ? Math.min(fd.cal, rc)/nC : 0) + 1.2*(rp > 0 ? Math.min(fd.p, rp)/nP : 0);
+      const over = fd.cal - Math.max(rc, 0) - 250;
+      if(over > 0) v -= 1.5*over/nC;
+      v -= have ? 0.02 : 0.04;
+      if(fd.stocked) v += 0.04;                                   // what is already in the house first
+      v += 0.03*Math.min(fd.a, 5) - 0.04*Math.min(fd.x, 5);      // what he actually picks, and skips
+      if(used[fd.id]) v -= 0.25;                                  // the next option is a different plate
+      if(v > bestV){ bestV = v; best = fd; }
+    });
+    if(!best) break;
+    const have = items.find(function(i){ return i.fd.id === best.id; });
+    if(have) have.qty++; else items.push({fd:best, qty:1});
+    rc -= best.cal; rp -= best.p;
+  }
+  const t = {cal:0, p:0, c:0, f:0};
+  const out = items.map(function(i){
+    const fd = i.fd;
+    t.cal += fd.cal*i.qty; t.p += fd.p*i.qty; t.c += fd.c*i.qty; t.f += fd.f*i.qty;
+    return {id:fd.id, n:fd.n, sv:fd.sv, qty:i.qty, cal:Math.round(fd.cal*i.qty), p:Math.round(fd.p*i.qty), buy:!fd.stocked};
+  });
+  const shortC = Math.max(0, Math.round(gapCal - t.cal)), shortP = Math.max(0, Math.round(gapPro - t.p));
+  return {items:out, cal:Math.round(t.cal), p:Math.round(t.p), c:Math.round(t.c), f:Math.round(t.f),
+          shortC:shortC, shortP:shortP, closes: shortC <= FP_DONE_CAL && shortP <= FP_DONE_PRO,
+          sig: out.map(function(i){ return i.id; }).sort().join(',')};
+}
+/* Up to three plates that close what is left of today. Pure: no DOM, no clock, no randomness,
+   so the tab, ECHO's plan_fuel_combos and the suite all get the identical answer. Each later
+   plate avoids the foods of the earlier ones and loses their anchor (biggest item) outright, so
+   the options are genuinely different rather than the same plate with a banana swapped in. */
+function fpCombos(gapCal, gapPro, opts){
+  gapCal = Math.max(0, Math.round(+gapCal||0)); gapPro = Math.max(0, Math.round(+gapPro||0));
+  const res = {gapCal:gapCal, gapPro:gapPro, done:false, pool:0, combos:[]};
+  if(gapCal <= FP_DONE_CAL && gapPro <= FP_DONE_PRO){ res.done = true; return res; }
+  let pool = fpPool(opts);
+  res.pool = pool.length;
+  const used = {}, seen = {};
+  for(let k = 0; k < 3 && pool.length; k++){
+    const c = fpBuild(pool, gapCal, gapPro, used);
+    if(!c.items.length) break;
+    if(!seen[c.sig]){ seen[c.sig] = 1; res.combos.push(c); }
+    c.items.forEach(function(i){ used[i.id] = 1; });
+    const anchor = c.items.slice().sort(function(a, b){ return b.cal - a.cal || (a.id < b.id ? -1 : 1); })[0].id;
+    pool = pool.filter(function(fd){ return fd.id !== anchor; });
+  }
+  return res;
+}
+/* Monday-anchored, like the Plan tab. Nothing is ever reset: last week's stock carries over and
+   the prompt only asks him to confirm it. Nothing stocked means there is nothing to confirm --
+   the setup card covers that case instead. */
+function fpStockDue(key){
+  const F = S.fuel || {};
+  if(!fpFoods().some(function(f){ return f.stocked; })) return false;
+  return (F.stockWeek || '') !== mesoMondayOf(key || todayKey());
+}
+
+/* ---- writes: each helper leaves S.fuel.foods sparse ---- */
+function fpEntry(id){ fuelInit(); return S.fuel.foods[id] || (S.fuel.foods[id] = {}); }
+function fpTidy(id){
+  const e = S.fuel.foods[id];
+  if(!e) return;
+  ['s','p','a','x','m'].forEach(function(k){ if(!e[k]) delete e[k]; });
+  if(!e.a) delete e.at;
+  if(!Object.keys(e).length) delete S.fuel.foods[id];
+}
+function fpSetStock(id, on, keepWeek){
+  const e = fpEntry(id);
+  if(on){ e.s = 1; if(e.p === 'd' || e.p === 'h') delete e.p; } else delete e.s;
+  fpTidy(id);
+  // Changing stock in the Pantry IS this week's update, so it closes the Monday prompt. The
+  // prompt's own chips pass keepWeek: unticking three things there must not dismiss it after one.
+  if(!keepWeek) S.fuel.stockWeek = mesoMondayOf(todayKey());
+}
+function fpSetPref(id, p){
+  const e = fpEntry(id);
+  if(e.p === p) delete e.p; else e.p = p;         // tapping the lit button clears it
+  if(e.p === 'd' || e.p === 'h') delete e.s;      // nothing he won't eat counts as stock
+  fpTidy(id);
+}
+function fpNewId(){
+  const have = {};
+  fpFoods().forEach(function(f){ have[f.id] = 1; });
+  let n = Date.now(), id;
+  do { id = 'u'+(n++).toString(36); } while(have[id]);
+  return id;
+}
+/* Check a food before it joins his list. strict is for a MODEL's suggestion (agValidateFix): a
+   plain name with no notes in it, tight ranges, macros that add up, nothing he has excluded,
+   disliked or hidden. Not strict is his own entry, which only has to be sane: a label with fibre
+   or sugar alcohols honestly does not add up. Returns {ok, food} or {ok:false, why}. */
+function fpCheckFood(raw, strict){
+  raw = raw || {};
+  const n = String(raw.name != null ? raw.name : (raw.n || '')).trim().replace(/\s+/g, ' ');
+  if(strict){
+    if(!/^[A-Za-z0-9][A-Za-z0-9 ,.'&\/+-]{1,47}$/.test(n))
+      return {ok:false, why:'“'+n.slice(0,40)+'” does not read as a plain food name'};
+    if(/\b\d+\s*(g|cal|kcal|calories|grams|oz|lb)\b/i.test(n))
+      return {ok:false, why:'“'+n.slice(0,40)+'” carries numbers that belong in the macros, not the name'};
+  } else if(n.length < 2 || n.length > 48) return {ok:false, why:'Name must be 2–48 characters.'};
+  const key = fpNorm(n);
+  if(!key) return {ok:false, why:'Name must be 2–48 characters.'};
+  const foods = fpFoods();
+  const dupe = foods.find(function(f){ return fpNorm(f.n) === key; });
+  if(dupe) return {ok:false, why:dupe.n+' is already in the Pantry'};
+  const cat = String(raw.cat || '');
+  if(FP_CAT_KEYS.indexOf(cat) < 0) return {ok:false, why:'unknown category “'+cat.slice(0,20)+'”'};
+  const sv = String(raw.serving != null ? raw.serving : (raw.sv || '1 serving')).trim() || '1 serving';
+  if(sv.length > 30) return {ok:false, why:'serving description is over 30 characters'};
+  const num = function(v){ return (v === '' || v == null) ? NaN : Math.round(+v); };
+  const cal = num(raw.cal), p = raw.p === '' && !strict ? 0 : num(raw.p),
+        c = raw.c === '' && !strict ? 0 : num(raw.c), f = raw.f === '' && !strict ? 0 : num(raw.f);
+  const lim = strict ? [[20,1500],[0,120],[0,250],[0,100]] : [[1,3000],[0,300],[0,500],[0,300]];
+  const bad = [cal, p, c, f].findIndex(function(v, i){ return !isFinite(v) || v < lim[i][0] || v > lim[i][1]; });
+  if(bad >= 0) return {ok:false, why:['calories','protein','carbs','fat'][bad]+' must be '+lim[bad][0]+'–'+lim[bad][1]};
+  let tags = Array.isArray(raw.tags) ? raw.tags.map(String) : [];
+  if(strict){
+    const odd = tags.find(function(t){ return FP_TAGS.indexOf(t) < 0; });
+    if(odd) return {ok:false, why:'unknown tag “'+odd.slice(0,20)+'”'};
+  } else tags = tags.filter(function(t){ return FP_TAGS.indexOf(t) >= 0; });
+  if(strict){
+    const est = 4*p + 4*c + 9*f;
+    if(Math.abs(est - cal) > 0.35*cal) return {ok:false, why:'the macros add up to ~'+Math.round(est)+' cal, not the '+cal+' stated'};
+    if(!fuelFoodAllowed({n:n, t:tags.concat([cat])}, fuelExclusionTokens())) return {ok:false, why:n+' matches his exclusion list'};
+    const no = foods.find(function(fd){
+      if(fd.pref !== 'd' && fd.pref !== 'h') return false;
+      const k2 = fpNorm(fd.n);
+      return key.indexOf(k2) >= 0 || k2.indexOf(key) >= 0;
+    });
+    if(no) return {ok:false, why:'it is too close to '+no.n+', which he has marked '+(no.pref === 'd' ? 'as a no' : 'hidden')};
+  }
+  if(((S.fuel && S.fuel.custom) || []).length >= FP_CUSTOM_MAX) return {ok:false, why:'his list already holds '+FP_CUSTOM_MAX+' of his own foods'};
+  return {ok:true, food:{n:n, cat:cat, sv:sv, cal:cal, p:p, c:c, f:f, tags:tags}};
+}
+
+/* ---- screen state. Module-scoped, never on the DOM: rerenderActive() repaints every 30 s. ---- */
+let fpEaten = {date:'', cal:0, pro:0};    // today only, this device only, never synced
+let fpSkips = {date:'', ids:[]};          // "not this" drops a food from today's plates
+let fpPlanned = {date:'', sig:''};        // the plate he tapped "I'll eat this" on
+let fpShown = [];                         // the plates on screen, so a tap names the right one
+let fpOpts = null;                        // the two toggles, remembered per device (uiPref)
+let fpSearch = '', fpEditId = null;
+function fpEatenToday(){ if(fpEaten.date !== todayKey()) fpEaten = {date:todayKey(), cal:0, pro:0}; return fpEaten; }
+function fpSkipsToday(){ if(fpSkips.date !== todayKey()) fpSkips = {date:todayKey(), ids:[]}; return fpSkips.ids; }
+function fpOptsNow(){
+  if(!fpOpts){ const u = uiPref(); fpOpts = {quickOnly:!!u['fuel.quick'], includeLiked:!!u['fuel.liked']}; }
+  return fpOpts;
+}
+function fpRepaint(){
+  try{ if(activeMainTab === 'home' && MODE !== 'live'){ renderHome(); return; } }catch(e){}
+  try{ renderFuel(); }catch(e){ console.warn('renderFuel failed', e); }
+}
+function fpRefreshComb(){ const el = document.getElementById('fpCombOut'); if(el) el.innerHTML = fpCombOutHTML(); }
+
+/* ---- taps ---- */
+function fpToggleStock(id, fromPrompt){ const fd = fpFood(id); if(!fd) return; fpSetStock(id, !fd.stocked, !!fromPrompt); save(); fpRepaint(); }
+function fpPref(id, p){ if(!fpFood(id) || ['l','d','h'].indexOf(p) < 0) return; fpSetPref(id, p); save(); fpRepaint(); }
+function fpConfirmStock(){ fuelInit(); S.fuel.stockWeek = mesoMondayOf(todayKey()); save(); fpRepaint(); }
+function fpOpenPantry(){
+  showReviewTab('fuel');
+  setTimeout(function(){ const el = document.getElementById('fpPantry'); if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 60);
+}
+function fpSetEaten(kind, v){
+  const e = fpEatenToday();
+  e[kind] = Math.max(0, Math.min(kind === 'cal' ? 8000 : 500, Math.round(+v||0)));
+  fpRefreshComb();
+}
+function fpToggleOpt(k){
+  const o = fpOptsNow();
+  o[k] = !o[k];
+  uiPrefSet(k === 'quickOnly' ? 'fuel.quick' : 'fuel.liked', o[k]);
+  fpRepaint();
+}
+function fpAccept(i){
+  const c = fpShown[i]; if(!c) return;
+  c.items.forEach(function(it){
+    if(!fpFood(it.id)) return;
+    const e = fpEntry(it.id);
+    e.a = Math.min(99, (e.a||0)+1); e.at = todayKey();
+    fpTidy(it.id);
+  });
+  fpPlanned = {date:todayKey(), sig:c.sig};
+  save(); fpRepaint();
+}
+function fpSkip(id){
+  if(!fpFood(id)) return;
+  const e = fpEntry(id);
+  e.x = Math.min(99, (e.x||0)+1);
+  fpTidy(id);
+  fpSkipsToday().push(id);
+  save(); fpRepaint();
+}
+function fpFilter(v){
+  fpSearch = String(v || '');
+  const out = document.getElementById('fpSearchOut'), grp = document.getElementById('fpGroups');
+  if(!out || !grp) return;
+  const q = fpNorm(fpSearch);
+  out.innerHTML = q.length >= 2 ? fpSearchHTML(q) : '';
+  grp.style.display = q.length >= 2 ? 'none' : '';
+}
+function fpEdit(id){ fpEditId = (fpEditId === id) ? null : id; fpRepaint(); }
+function fpEditSave(id){
+  const fd = fpFood(id); if(!fd) return;
+  const v = ['cal','p','c','f'].map(function(k){ const el = document.getElementById('fpE_'+k); return el ? Math.round(+el.value) : NaN; });
+  const lim = [3000,300,500,300];
+  if(v.some(function(x, i){ return !isFinite(x) || x < 0 || x > lim[i]; }) || v[0] < 1){
+    alert('Calories 1–3000, and protein, carbs and fat as whole grams.'); return;
+  }
+  if(fd.custom){
+    const u = (S.fuel.custom || []).find(function(x){ return x.id === id; });
+    if(u){ u.cal = v[0]; u.p = v[1]; u.c = v[2]; u.f = v[3]; }
+  } else {
+    const r = FOOD_DB.find(function(x){ return x[0] === id; });
+    const e = fpEntry(id);
+    if(r && v[0] === r[4] && v[1] === r[5] && v[2] === r[6] && v[3] === r[7]) delete e.m; else e.m = v;
+    fpTidy(id);
+  }
+  fpEditId = null; save(); fpRepaint();
+}
+function fpEditReset(id){
+  if(S.fuel && S.fuel.foods && S.fuel.foods[id]){ delete S.fuel.foods[id].m; fpTidy(id); save(); }
+  fpEditId = null; fpRepaint();
+}
+function fpDelCustom(id){
+  const u = ((S.fuel && S.fuel.custom) || []).find(function(x){ return x.id === id; });
+  if(!u || !confirm('Remove '+u.n+' from your foods?')) return;
+  S.fuel.custom = S.fuel.custom.filter(function(x){ return x.id !== id; });
+  delete S.fuel.foods[id];
+  fpEditId = null; save(); fpRepaint();
+}
+function fpAddCustom(){
+  const g = function(id){ const el = document.getElementById(id); return el ? el.value : ''; };
+  const tags = FP_TAGS.filter(function(t){ const el = document.getElementById('fpNewT_'+t); return !!(el && el.checked); });
+  const r = fpCheckFood({name:g('fpNewN'), cat:g('fpNewCat'), serving:g('fpNewSv'), cal:g('fpNewCal'),
+                         p:g('fpNewP'), c:g('fpNewC'), f:g('fpNewF'), tags:tags}, false);
+  if(!r.ok){ const m = document.getElementById('fpNewMsg'); if(m) m.textContent = r.why; return; }
+  fuelInit();
+  const fd = r.food, id = fpNewId();
+  S.fuel.custom.push({id:id, n:fd.n, cat:fd.cat, sv:fd.sv, cal:fd.cal, p:fd.p, c:fd.c, f:fd.f, tags:fd.tags});
+  // He typed it in, so he eats it: it starts as a like. Whether it is in the house is his call.
+  fpEntry(id).p = 'l';
+  save(); fpRepaint();
+}
+
+/* ---- rendering ---- */
+/* where: 'fuel' or 'home'. Home only ever shows the Monday prompt, never the setup card. */
+function fpStockCardHTML(where){
+  const stocked = fpFoods().filter(function(f){ return f.stocked; });
+  if(!stocked.length){
+    if(where === 'home') return '';
+    return '<div class="card fp-setup"><p class="small" style="line-height:1.55"><b>Start here.</b> In the Pantry below, tick '+
+      '<b style="color:var(--good)">✓</b> next to what you have at home right now, and tap Like on what you’d eat. '+
+      'Today’s plates are built from your stock.</p></div>';
+  }
+  if(!fpStockDue()) return '';
+  return '<div class="card fp-stock"><div class="k" style="color:var(--amber)">New week · still have these?</div>'+
+    '<p class="small" style="margin-top:4px;color:var(--muted)">Tap anything you’ve run out of. The rest carries over.</p>'+
+    '<div class="fp-chips">'+stocked.map(function(f){
+      return '<button class="fp-chip" aria-label="Out of '+esc(f.n)+'" onclick="fpToggleStock(\''+esc(f.id)+'\',true)">'+
+        '<span class="t">'+esc(f.n)+'</span><span class="x">✕</span></button>';
+    }).join('')+'</div>'+
+    '<button class="btn sm" onclick="fpConfirmStock()">That’s my stock</button> '+
+    '<button class="btn sm ghost" onclick="fpOpenPantry()">Update stock</button></div>';
+}
+function fpCombinerHTML(){
+  const e = fpEatenToday(), o = fpOptsNow();
+  return '<div class="card"><div class="fp-eaten">'+
+      '<div><label>Already eaten (cal)</label><input inputmode="numeric" id="fpEatCal" placeholder="optional" value="'+(e.cal||'')+'" onchange="fpSetEaten(\'cal\',this.value)"></div>'+
+      '<div><label>Protein (g)</label><input inputmode="numeric" id="fpEatPro" placeholder="optional" value="'+(e.pro||'')+'" onchange="fpSetEaten(\'pro\',this.value)"></div></div>'+
+    '<div class="fp-togs">'+
+      '<button class="fp-tog'+(o.quickOnly?' on':'')+'" aria-pressed="'+o.quickOnly+'" onclick="fpToggleOpt(\'quickOnly\')">Quick / no-cook only</button>'+
+      '<button class="fp-tog'+(o.includeLiked?' on':'')+'" aria-pressed="'+o.includeLiked+'" onclick="fpToggleOpt(\'includeLiked\')">Include liked (to buy)</button>'+
+    '</div></div><div id="fpCombOut">'+fpCombOutHTML()+'</div>';
+}
+function fpCombOutHTML(){
+  const e = fpEatenToday(), o = fpOptsNow(), ct = calTarget(), pt = proTarget();
+  const r = fpCombos(ct - e.cal, pt - e.pro, {quickOnly:o.quickOnly, includeLiked:o.includeLiked, skip:fpSkipsToday()});
+  fpShown = r.combos;
+  let h = '<div class="fp-gap"><span><b>'+r.gapCal.toLocaleString()+'</b> cal</span><span><b>'+r.gapPro+'</b>g protein</span>'+
+    '<span class="fp-of">left of '+ct.toLocaleString()+' · '+pt+'g</span></div>';
+  if(r.done) return h+'<div class="card"><p class="dash-quiet">You’re there for today. Nothing left to close.</p></div>';
+  if(!r.combos.length){
+    const anyLiked = fpFoods().some(function(f){ return f.pref === 'l' && !f.stocked; });
+    const why = !r.pool
+      ? (o.includeLiked ? 'Nothing stocked or liked fits'+(o.quickOnly ? ' the quick filter' : '')+'. Mark foods in the Pantry below.'
+         : anyLiked ? 'Nothing in stock fits'+(o.quickOnly ? ' the quick filter' : '')+'. Turn on “Include liked” to plan with foods you’d buy, or tick what you have in the Pantry.'
+         : 'Nothing stocked yet. Tick what you have at home in the Pantry below.')
+      : 'Nothing that fits could be put together from what’s left.';
+    return h+'<div class="card"><p class="small" style="line-height:1.55">'+why+'</p></div>';
+  }
+  h += r.combos.map(fpComboHTML).join('');
+  return h+'<p class="small" style="color:var(--dim);line-height:1.5">~ Macros are approximate. ✕ means “not this”: it drops out for today and ranks lower from then on.</p>';
+}
+function fpComboHTML(c, i){
+  const planned = fpPlanned.date === todayKey() && fpPlanned.sig === c.sig;
+  const short = [c.shortC ? c.shortC+' cal' : '', c.shortP ? c.shortP+'g protein' : ''].filter(Boolean).join(' · ');
+  return '<div class="card fp-combo"><div class="fp-ch"><span class="fp-ct">Option '+(i+1)+'</span>'+
+    '<span class="fp-tot">~'+c.cal.toLocaleString()+' cal · '+c.p+'g P</span></div>'+
+    '<div class="small" style="margin-bottom:4px;color:'+(c.closes ? 'var(--good)">Closes the gap' : 'var(--warn)">Short '+short)+'</div>'+
+    c.items.map(function(it){
+      return '<div class="fp-it"><span class="q">'+it.qty+'×</span>'+
+        '<span class="nm">'+esc(it.n)+' <span class="sv">'+esc(it.sv)+'</span></span>'+
+        (it.buy ? '<span class="fp-buy">buy</span>' : '')+
+        '<span class="mm">~'+it.cal+' · '+it.p+'g</span>'+
+        '<button class="fp-skip" aria-label="Not '+esc(it.n)+'" onclick="fpSkip(\''+esc(it.id)+'\')">✕</button></div>';
+    }).join('')+
+    '<div style="margin-top:10px">'+(planned
+      ? '<span class="small" style="color:var(--good)">✓ Noted — these rank higher next time</span>'
+      : '<button class="btn sm" onclick="fpAccept('+i+')">I’ll eat this</button>')+'</div></div>';
+}
+function fpRowHTML(fd){
+  if(fpEditId === fd.id) return fpEditHTML(fd);
+  const id = esc(fd.id);
+  const meta = esc(fd.sv)+' · ~'+fd.cal+' cal · '+fd.p+'g P'+(fd.edited ? ' · edited' : '')+
+    (fd.custom ? (fd.src === 'echo' ? ' · from ECHO' : ' · yours') : '');
+  return '<div class="fp-row'+(fd.pref === 'd' ? ' dis' : '')+'">'+
+    '<button class="fp-have'+(fd.stocked ? ' on' : '')+'" aria-pressed="'+fd.stocked+'" aria-label="In stock: '+esc(fd.n)+'" onclick="fpToggleStock(\''+id+'\')">'+(fd.stocked ? '✓' : '')+'</button>'+
+    '<div class="fp-main" role="button" onclick="fpEdit(\''+id+'\')"><span class="fp-n">'+esc(fd.n)+'</span><span class="fp-m">'+meta+'</span></div>'+
+    '<div class="fp-seg">'+[['l','Like'],['d','No'],['h','Hide']].map(function(b){
+      return '<button class="p-'+b[0]+(fd.pref === b[0] ? ' on' : '')+'" aria-pressed="'+(fd.pref === b[0])+'" onclick="fpPref(\''+id+'\',\''+b[0]+'\')">'+b[1]+'</button>';
+    }).join('')+'</div></div>';
+}
+function fpEditHTML(fd){
+  const id = esc(fd.id);
+  const inp = function(k, lab, v){ return '<div><label>'+lab+'</label><input inputmode="numeric" id="fpE_'+k+'" value="'+v+'"></div>'; };
+  return '<div class="fp-editbox"><div style="font-weight:600">'+esc(fd.n)+' <span class="small" style="color:var(--muted);font-weight:400">per '+esc(fd.sv)+'</span></div>'+
+    '<div class="fp-mac">'+inp('cal','Cal',fd.cal)+inp('p','Protein',fd.p)+inp('c','Carbs',fd.c)+inp('f','Fat',fd.f)+'</div>'+
+    '<div class="fp-acts"><button class="btn sm" onclick="fpEditSave(\''+id+'\')">Save</button>'+
+    (fd.edited && !fd.custom ? '<button class="btn sm ghost" onclick="fpEditReset(\''+id+'\')">Reset to default</button>' : '')+
+    (fd.custom ? '<button class="btn sm ghost" onclick="fpDelCustom(\''+id+'\')">Remove</button>' : '')+
+    '<button class="btn sm ghost" onclick="fpEdit(\''+id+'\')">Cancel</button></div></div>';
+}
+function fpSearchHTML(q){
+  const hits = fpFoods().filter(function(f){ return fpNorm(f.n).indexOf(q) >= 0; });
+  if(!hits.length) return '<div class="card"><p class="small">Nothing matches “'+esc(fpSearch)+'”. Add it below as your own food.</p></div>';
+  return '<div class="card fp-list">'+hits.map(fpRowHTML).join('')+'</div>';
+}
+function fpAddFormHTML(){
+  return '<div class="fp-addform"><label>Name</label><input type="text" id="fpNewN" maxlength="48" placeholder="e.g. Chicken alfredo">'+
+    '<div class="row"><div><label>Category</label><select id="fpNewCat">'+FP_CATS.map(function(c){ return '<option value="'+c[0]+'">'+esc(c[1])+'</option>'; }).join('')+'</select></div>'+
+    '<div><label>Serving</label><input type="text" id="fpNewSv" maxlength="30" placeholder="1 plate"></div></div>'+
+    '<div class="fp-mac">'+[['Cal','Cal'],['P','Protein'],['C','Carbs'],['F','Fat']].map(function(m){
+      return '<div><label>'+m[1]+'</label><input inputmode="numeric" id="fpNew'+m[0]+'"></div>'; }).join('')+'</div>'+
+    '<div class="fp-tagpick">'+FP_TAGS.map(function(t){ return '<label><input type="checkbox" id="fpNewT_'+t+'"> '+FP_TAG_LABEL[t]+'</label>'; }).join('')+'</div>'+
+    '<button class="btn sm" onclick="fpAddCustom()">Add food</button> <span class="small" id="fpNewMsg" style="color:var(--warn)"></span></div>';
+}
+function fpPantryHTML(){
+  const foods = fpFoods(), q = fpNorm(fpSearch);
+  const ns = foods.filter(function(f){ return f.stocked; }).length, nl = foods.filter(function(f){ return f.pref === 'l'; }).length;
+  let h = '<div id="fpPantry" class="card"><p class="small" style="color:var(--muted);line-height:1.5">'+
+    '<b style="color:var(--good)">✓</b> = at home now. Like, No and Hide decide what the planner will suggest. Tap a food to fix its numbers. '+
+    '<b>'+ns+'</b> stocked · <b>'+nl+'</b> liked.</p>'+
+    '<input type="search" id="fpSearch" placeholder="Search foods…" value="'+esc(fpSearch)+'" oninput="fpFilter(this.value)" style="margin-top:8px"></div>'+
+    '<div id="fpSearchOut">'+(q.length >= 2 ? fpSearchHTML(q) : '')+'</div>'+
+    '<div id="fpGroups"'+(q.length >= 2 ? ' style="display:none"' : '')+'>';
+  FP_CATS.forEach(function(c){
+    const list = foods.filter(function(f){ return f.cat === c[0] && f.pref !== 'h'; });
+    if(!list.length) return;
+    const s = list.filter(function(f){ return f.stocked; }).length, l = list.filter(function(f){ return f.pref === 'l'; }).length;
+    h += subSection(c[1], '<div class="fp-list">'+list.map(fpRowHTML).join('')+'</div>', false,
+      {pref:'fuel.cat.'+c[0], summary:list.length+' foods'+(s ? ' · '+s+' stocked' : '')+(l ? ' · '+l+' liked' : ''), cls:'grp'});
+  });
+  const hid = foods.filter(function(f){ return f.pref === 'h'; });
+  if(hid.length) h += subSection('Hidden foods', '<div class="fp-list">'+hid.map(fpRowHTML).join('')+'</div>', false,
+      {pref:'fuel.hidden', summary:hid.length+' hidden', cls:'grp'});
+  h += subSection('Add your own food', fpAddFormHTML(), false, {pref:'fuel.add', summary:'For anything the list is missing', cls:'grp'});
+  return h+'</div>';
+}
 function renderFuel(){
   fuelInit();
   const el = $('#fuel');
   const f = S.fuel;
-  let html = '<h2>Targets &amp; Preferences</h2><div class="card">'+
+  let html = '<h2>Fuel Planner</h2><p class="small fp-lede">What to keep in the house, and what to eat to close today’s calories and protein. '+
+    'It runs on your phone with no API calls. Every macro is approximate (~); tap a food to fix it.</p>';
+  html += fpStockCardHTML('fuel');
+  html += '<h2>Close Today’s Gap</h2>'+fpCombinerHTML();
+  html += '<h2>Pantry</h2>'+fpPantryHTML();
+  const targets = '<div class="card">'+
     '<div class="row"><div><label>Daily Calories</label><input inputmode="numeric" id="fCal" value="'+(f.calTarget||3000)+'"></div>'+
     '<div><label>Daily Protein (g)</label><input inputmode="numeric" id="fPro" value="'+(f.proTarget||150)+'"></div></div>'+
-    '<label>Foods I won\u2019t eat</label>'+
+    '<label>Foods I won’t eat</label>'+
     '<textarea id="fDislikes" rows="2" placeholder="eggs, cottage cheese…">'+esc(f.dislikes||'')+'</textarea>'+
     '<label>Allergies / hard limits (optional)</label>'+
     '<input type="text" id="fLimits" value="'+esc(f.limits||'')+'" placeholder="e.g. lactose, no shellfish">'+
+    '<p class="small" style="margin-top:6px;color:var(--dim)">These match food names, so use the word that appears in them (peanut, not nuts).</p>'+
     '<div style="margin-top:10px"><button class="btn sm" onclick="saveFuelPrefs()">Save Preferences</button> <span class="small ok" id="fMsg"></span></div></div>';
-
-  html += fuelTimingHTML();
-
-  html += '<h2>Today\u2019s Fuel Options</h2>';
-  if(!S.settings.apiKey && !window._inClaude){
-    html += '<div class="card"><p class="small">Add your Anthropic API key in Settings to generate meal suggestions. Once it\u2019s in, come back and hit Generate.</p></div>';
-  }
-  if(!f.meals || !f.meals.length){
-    html += '<div class="card" style="text-align:center"><p class="small" style="margin-bottom:12px">No options yet \u2014 generate a ranked list of high-calorie, high-protein ideas for every meal of the day.</p>'+
-      '<button class="btn" onclick="genAllMeals()">Generate Options</button></div>';
-  } else {
-    html += '<div style="margin-bottom:12px"><button class="btn sm ghost" onclick="genAllMeals()">\u21bb Regenerate All</button></div>';
-    f.meals.forEach((slot,i)=>{
-      const opts = (slot.options||[]).slice().sort((a,b)=>(+b.cal||0)-(+a.cal||0));
-      html += '<div class="fuel-slot"><div class="fuel-shead">'+
-        '<span class="sn">'+esc(slot.slot)+'</span>'+
-        '<span class="small mono" style="color:var(--muted)">'+opts.length+' options \u00b7 high \u2192 low cal</span>'+
-        '<button class="btn sm ghost" style="margin-left:auto" onclick="refreshMeal('+i+')">\u21bb refresh</button></div>';
-      if(!opts.length){
-        html += '<div class="fopt"><span class="small">No options \u2014 tap refresh.</span></div>';
-      } else {
-        opts.forEach((o,j)=>{
-          html += '<div class="fopt"><span class="rank">'+(j+1)+'</span>'+
-            '<span class="fn">'+esc(o.name)+'</span>'+
-            '<span class="fm">'+(+o.cal||0)+' cal \u00b7 '+(+o.protein||0)+'g P</span>'+
-            (o.how?'<span class="fh">'+esc(o.how)+'</span>':'')+'</div>';
-        });
-      }
-      html += '</div>';
-    });
-    html += '<p class="small" style="margin-top:4px">Browse and pick whatever sounds good \u2014 calorie and protein figures are rough estimates, not exact values. Track actuals in Cal AI.</p>';
-  }
+  html += '<h2>More</h2>'+
+    subSection('Workout Fuel Timing', fuelTimingHTML({bare:true}), false,
+      {pref:'fuel.timing', summary:fuelNextLine() || 'Set a workout time to plan around it', cls:'grp'})+
+    subSection('Targets & Exclusions', targets, false,
+      {pref:'fuel.targets', summary:calTarget().toLocaleString()+' cal · '+proTarget()+'g protein', cls:'grp'});
   el.innerHTML = html;
 }
 function saveFuelPrefs(){
@@ -6090,66 +6745,77 @@ function saveFuelPrefs(){
   S.fuel.proTarget = parseInt($('#fPro').value)||150;
   S.fuel.dislikes = $('#fDislikes').value.trim();
   S.fuel.limits = $('#fLimits').value.trim();
-  save(); $('#fMsg').textContent='\u2713 saved';
+  save(); $('#fMsg').textContent='✓ saved';
+  fpRefreshComb();
   setTimeout(()=>{const m=$('#fMsg'); if(m) m.textContent='';},1500);
 }
-function fuelSystem(){
-  const f = S.fuel;
-  return 'You are a sports-nutrition assistant for an 18-year-old male lifter on a lean bulk who finds it hard to eat enough. '+
-    'Suggest NORMAL, appealing, easy food a typical young guy actually eats \u2014 not health-food or "clean eating" every meal. '+
-    'Calorie-dense everyday foods are GOOD here because they make hitting a surplus easier: think sandwiches, pasta, burritos, burgers, peanut butter, whole milk, bagels, cereal, rotisserie chicken, ground beef, trail mix. '+
-    'Snacks especially should be casual and tasty \u2014 it is totally fine to include things like chips, crackers, granola bars, chocolate milk, or a handful of candy alongside a protein source. Do not make every item lean and virtuous. '+
-    'Still keep overall protein high enough to hit the daily target, and keep prep simple. '+
-    'Daily targets across all meals: ~'+(f.calTarget||3000)+' calories and ~'+(f.proTarget||150)+'g protein. '+
-    'Calorie/protein numbers are rough estimates, not exact. '+
-    'AVOID ABSOLUTELY (never include these): '+(f.dislikes||'(none)')+'. '+
-    'HARD LIMITS: '+(f.limits||'(none)')+'.';
+
+/* ---- ECHO's view of the planner ----
+   Two READ-ONLY tools, offered only to ECHO (callClaudeWithData's opts.fuelTools), and run in
+   agRunDataTool() like every other lookup. plan_fuel_combos runs the same fpCombos() the tab
+   does, so ECHO and the screen can never disagree about a plate. */
+function fpToolDefs(){
+  return [
+    {name:'get_fuel_planner', description:'His Fuel Planner: daily targets, his exclusion list, what he has in stock, what he likes, has said no to or hidden (by food name), foods he added himself, and which foods he actually picks or skips. Call this before suggesting any food -- he is picky.',
+      input_schema:{type:'object', properties:{}}},
+    {name:'plan_fuel_combos', description:'Runs the app’s own on-device meal combiner: up to 3 plates from his stocked foods that close what is left of today’s calorie and protein targets. Quote its numbers rather than doing your own arithmetic.',
+      input_schema:{type:'object', properties:{
+        eatenCal:{type:'number', description:'Calories he says he has already eaten today. Default 0.'},
+        eatenPro:{type:'number', description:'Protein (g) he says he has already eaten today. Default 0.'},
+        quickOnly:{type:'boolean', description:'Only quick or no-cook foods, for when he is short on time.'},
+        includeLiked:{type:'boolean', description:'Also use foods he likes but has not stocked (he would have to buy them).'}
+      }}}
+  ];
 }
-async function genAllMeals(){
-  fuelInit();
-  const el = $('#fuel');
-  const btn = el && el.querySelector ? el.querySelector('button.btn') : null;
-  if(btn){ btn.textContent='Generating\u2026'; btn.disabled=true; }
-  try{
-    const prompt = 'For each of these meal slots: '+MEAL_SLOTS.join(', ')+', give 9 distinct food options. '+
-      'Within each slot, vary the calorie level so there is a genuine spread from a hearty high-calorie choice down to a lighter one \u2014 e.g. a snack slot might range from a big peanut-butter-and-honey sandwich down to a small handful of chips. '+
-      'Respond with ONLY valid JSON, no markdown, no commentary:\n'+
-      '{"slots":[{"slot":"Breakfast","options":[{"name":"short food name","cal":650,"protein":40,"how":"one-line prep, under 16 words"}]}]}';
-    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 10000, {route:'meals'});
-    const parsed = parseLooseJSON(reply);
-    const slots = parsed.slots || parsed.meals || [];
-    if(!slots.length) throw new Error('No slots returned');
-    S.fuel.meals = slots.map(sl=>({
-      slot: sl.slot,
-      options: (sl.options||[]).map(o=>({name:o.name, cal:+o.cal||0, protein:+o.protein||0, how:o.how||''}))
-                .filter(o=>o.name)
-                .sort((a,b)=>b.cal-a.cal)
-    }));
-    save(); renderFuel();
-  }catch(e){
-    if(btn){ btn.textContent='Generate Options'; btn.disabled=false; }
-    const why = !S.settings.apiKey && !window._inClaude ? ' Add your API key in Settings first.' : ' The list came back garbled \u2014 just tap Generate again.';
-    alert('Could not generate options.'+why);
-  }
+/* The ONE tool an agent has that is not a read -- and it still writes nothing that takes effect.
+   It only puts a fuelFood proposal into the normal approval queue through agIngest(), where
+   agValidateFix() judges it and agApprove() re-judges it before agApplyFix() adds anything.
+   Offered to ECHO's chat only (opts.propose in agSendChat), by Mark's decision 2026-09-28. */
+const FP_PROPOSE_TOOL = 'propose_fuel_food';
+function fpProposeToolDef(){
+  return {name:FP_PROPOSE_TOOL,
+    description:'Suggest ONE new food for his Fuel Planner pantry. It goes into his approval queue; nothing is added until he approves it, and even then it is only added to his list, not marked as liked or stocked. He is picky: only suggest something close to what he already likes (call get_fuel_planner first), never anything on his exclusion list or like a food he said no to. Macros are for the stated serving and must add up (4*p + 4*c + 9*f close to cal).',
+    input_schema:{type:'object', properties:{
+      title:{type:'string', description:'Short, e.g. "Add chicken Caesar wrap"'},
+      reasoning:{type:'string', description:'One or two sentences on why it fits him, citing what he likes'},
+      name:{type:'string', description:'Plain food name, no notes, no numbers'},
+      cat:{type:'string', enum:FP_CAT_KEYS},
+      serving:{type:'string', description:'Up to 30 characters, e.g. "1 wrap"'},
+      cal:{type:'number'}, p:{type:'number'}, c:{type:'number'}, f:{type:'number'},
+      tags:{type:'array', items:{type:'string', enum:FP_TAGS}}
+    }, required:['title','name','cat','serving','cal','p','c','f']}};
 }
-async function refreshMeal(i){
-  fuelInit();
-  const f = S.fuel; if(!f.meals || !f.meals[i]) return;
-  const slot = f.meals[i].slot;
-  try{
-    const prompt = 'Give 9 distinct '+slot+' food options with a genuine spread from high-calorie down to lighter. '+
-      'Make them different from these previous ones where possible: '+((f.meals[i].options||[]).map(o=>o.name).join(', ')||'(none)')+'. '+
-      'Respond with ONLY valid JSON, no markdown: {"slot":"'+slot+'","options":[{"name":"...","cal":0,"protein":0,"how":"one-line prep under 16 words"}]}';
-    const reply = await callClaude([{role:'user', content:prompt}], fuelSystem(), 6000, {route:'meals'});
-    const m = parseLooseJSON(reply);
-    const opts = (m.options||[]).map(o=>({name:o.name, cal:+o.cal||0, protein:+o.protein||0, how:o.how||''}))
-                  .filter(o=>o.name).sort((a,b)=>b.cal-a.cal);
-    if(!opts.length) throw new Error('No options returned');
-    f.meals[i] = {slot:m.slot||slot, options:opts};
-    save(); renderFuel();
-  }catch(e){
-    alert('That refresh failed: '+e.message+'\n\nTap refresh again \u2014 if it keeps failing, check your API key in Settings.');
-  }
+function fpFoodLine(f){ return f.n+' ('+f.sv+', ~'+f.cal+' cal, '+f.p+'g P)'; }
+function fpPlannerText(){
+  const F = S.fuel || {}, foods = fpFoods();
+  const pick = function(fn){ return foods.filter(fn); };
+  const names = function(list){ return list.length ? list.map(function(f){ return f.n; }).join('; ') : '(none)'; };
+  const stocked = pick(function(f){ return f.stocked; });
+  const liked = pick(function(f){ return f.pref === 'l' && !f.stocked; });
+  const mine = pick(function(f){ return f.custom; });
+  const top = pick(function(f){ return f.a > 0; }).sort(function(a, b){ return b.a - a.a; }).slice(0, 10);
+  const skipped = pick(function(f){ return f.x > 0; }).sort(function(a, b){ return b.x - a.x; }).slice(0, 10);
+  return 'FUEL PLANNER (macros approximate, per serving)\n'+
+    'Targets: '+calTarget()+' cal / '+proTarget()+'g protein per day.\n'+
+    'Exclusion list (will not eat): '+([F.dislikes, F.limits].filter(Boolean).join('; ') || '(none)')+'\n'+
+    'Stock last confirmed: '+(F.stockWeek ? 'week of '+F.stockWeek : 'never')+(fpStockDue() ? ' (due for this week)' : '')+'\n'+
+    'In stock ('+stocked.length+'): '+(stocked.length ? stocked.map(fpFoodLine).join('; ') : '(nothing yet)')+'\n'+
+    'Liked, not in stock: '+names(liked)+'\n'+
+    'Said no to: '+names(pick(function(f){ return f.pref === 'd'; }))+'\n'+
+    'Hidden: '+names(pick(function(f){ return f.pref === 'h'; }))+'\n'+
+    'His own foods: '+(mine.length ? mine.map(function(f){ return fpFoodLine(f)+(f.src === 'echo' ? ' [your suggestion]' : ''); }).join('; ') : '(none)')+'\n'+
+    'Picked most ("I’ll eat this"): '+(top.length ? top.map(function(f){ return f.n+' x'+f.a; }).join('; ') : '(no picks yet)')+'\n'+
+    'Skipped most: '+(skipped.length ? skipped.map(function(f){ return f.n+' x'+f.x; }).join('; ') : '(none)');
+}
+function fpCombosText(r, opts){
+  let t = 'Left to close today: '+r.gapCal+' cal, '+r.gapPro+'g protein'+
+    (opts.quickOnly ? ' (quick/no-cook only)' : '')+(opts.includeLiked ? ' (liked foods allowed)' : ' (stocked foods only)')+'.\n';
+  if(r.done) return t+'That is already close enough -- nothing left to plan.';
+  if(!r.combos.length) return t+(r.pool ? 'No plate could be built from what fits.' : 'Nothing usable: he has nothing stocked'+(opts.includeLiked ? ' or liked' : '')+' that fits these filters.');
+  return t+r.combos.map(function(c, i){
+    return 'Option '+(i+1)+': '+c.items.map(function(it){ return it.qty+'x '+it.n+' ('+it.sv+')'+(it.buy ? ' [not in stock]' : ''); }).join(' + ')+
+      ' = ~'+c.cal+' cal, '+c.p+'g protein, '+(c.closes ? 'closes the gap' : 'short '+c.shortC+' cal / '+c.shortP+'g');
+  }).join('\n');
 }
 
 /* ================= SETTINGS TAB ================= */
@@ -10934,6 +11600,14 @@ function agRunDataTool(name, inp){
       return 'Hard sets per muscle group, '+start+' to '+end+':'+'\n'+
         keys.map(function(g){ return '  '+g+': '+vol[g]; }).join('\n');
     }
+    // ECHO only (see callClaudeWithData). Both read; plan_fuel_combos runs the tab's own combiner.
+    if(name==='get_fuel_planner') return fpPlannerText();
+    if(name==='plan_fuel_combos'){
+      const ec = Math.max(0, Math.min(8000, Math.round(+p.eatenCal||0)));
+      const ep = Math.max(0, Math.min(500, Math.round(+p.eatenPro||0)));
+      const o = {quickOnly:!!p.quickOnly, includeLiked:!!p.includeLiked};
+      return fpCombosText(fpCombos(calTarget()-ec, proTarget()-ep, o), o);
+    }
     return 'Unknown tool: '+name;
   }catch(e){
     // A tool that throws must not take the whole cycle down with it -- hand the model the
@@ -10965,7 +11639,13 @@ function aiTruncated(r){ return !!(r && r.stop === 'max_tokens'); }
    onTool, if given, is called with each tool name so callers can log what was consulted. */
 async function callClaudeWithData(messages, system, maxTokens, opts, onTool){
   const msgs = messages.slice();
-  const tools = agDataToolDefs();
+  // The Fuel Planner's two read tools go to ECHO only (opts.fuelTools): every other agent would
+  // pay for their definitions on every round and has no use for them. opts.propose is the one
+  // non-read tool, ECHO's chat only -- see FP_PROPOSE_TOOL. It is handed to the caller's function,
+  // never to agRunDataTool(), which stays unable to write.
+  const propose = (opts && typeof opts.propose === 'function') ? opts.propose : null;
+  const tools = agDataToolDefs().concat(opts && opts.fuelTools ? fpToolDefs() : [])
+                                .concat(propose ? [fpProposeToolDef()] : []);
   // Mid-workout DELTA passes a smaller cap: every round is another few seconds standing
   // at the rack, and one lookup then an answer is the right shape there.
   const rounds = Math.max(1, Math.min(AI_TOOL_ROUNDS, (opts && opts.maxRounds) || AI_TOOL_ROUNDS));
@@ -10985,7 +11665,11 @@ async function callClaudeWithData(messages, system, maxTokens, opts, onTool){
     msgs.push({role:'user', content: calls.map(function(c){
       used++;
       if(onTool){ try{ onTool(c.name, c.input||{}); }catch(e){} }
-      let out = agRunDataTool(c.name, c.input||{});
+      let out;
+      if(c.name === FP_PROPOSE_TOOL){
+        try{ out = propose ? String(propose(c.input||{})) : 'That tool is not available here.'; }
+        catch(e){ out = 'Not queued: '+(e && e.message ? e.message : 'error'); }
+      } else out = agRunDataTool(c.name, c.input||{});
       if(out.length > AI_TOOL_MAXCHARS) out = out.slice(0, AI_TOOL_MAXCHARS)+'\n'+'... (truncated)';
       return {type:'tool_result', tool_use_id:c.id, content:out};
     })});
@@ -13861,7 +14545,7 @@ function agSweepDuplicates(){
 }
 
 /* ---- fix validation: never trust model output straight into state ---- */
-const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','setCount','schedule','cycleSchedule'];
+const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','setCount','schedule','cycleSchedule','fuelFood'];
 /* Every exercise Mark actually trains — split slots plus anything he has logged. NOT
    allKnownExerciseNames(), which folds in the whole EX_LIBRARY: an override on a lift he
    has never performed is inert by construction, so accepting one would just be a different
@@ -13927,7 +14611,7 @@ function exAcceptName(raw){
 /* The fix types each agent may raise. AG_FIX_MENU only shows each agent its own; this enforces it,
    because a prompt is a hint and ECHO could otherwise queue a liftReset. ZULU, the lead, may use
    any of the specialists' shapes. */
-const AG_FIX_ALLOWED = {charlie:['schedule','cycleSchedule'], delta:['liftReset','deload','addEx','swapEx','setCount'], echo:['cal','pro']};
+const AG_FIX_ALLOWED = {charlie:['schedule','cycleSchedule'], delta:['liftReset','deload','addEx','swapEx','setCount'], echo:['cal','pro','fuelFood']};
 function agFixAllowedFor(who, type){
   const list = AG_FIX_ALLOWED[who];
   return !list || list.indexOf(type) >= 0;
@@ -13979,6 +14663,15 @@ function agValidateFix(fx, who){
     const to = Math.round(+p.to||0);
     if(to < 80 || to > 300) return null;
     return {type:'pro', payload:{to}};
+  }
+  if(fx.type==='fuelFood'){
+    // A new food for his Fuel Planner list. fpCheckFood(strict) is the whole judgement: a plain
+    // name, tight ranges, macros that add up, nothing on his exclusion list or near a food he said
+    // no to. Anything it refuses is discarded, never repaired.
+    const r = fpCheckFood(p, true);
+    if(!r.ok) return null;
+    const fd = r.food;
+    return {type:'fuelFood', payload:{name:fd.n, cat:fd.cat, serving:fd.sv, cal:fd.cal, p:fd.p, c:fd.c, f:fd.f, tags:fd.tags}};
   }
   if(fx.type==='liftReset'){
     const w = Math.round(+p.w||0), days = Math.round(+p.days||0);
@@ -14136,6 +14829,7 @@ function agRejectReason(fx, who){
     return 'it is already on '+p.day;
   }
   if(fx.type==='setCount') return 'needs a real day, an exercise on it, and 2\u20135 sets that differ from now';
+  if(fx.type==='fuelFood') return fpCheckFood(p, true).why || 'not a usable food';
   if(fx.type==='swapEx'){
     if(!p.from || !p.to) return 'missing from/to exercise';
     if(!exAcceptName(p.to)) return '\u201c'+String(p.to).slice(0,40)+'\u201d does not read as an exercise name';
@@ -14155,6 +14849,7 @@ function agFixSummary(fx){
   if(fx.type==='setCount') return p.exercise+' on '+p.day+' \u2192 '+p.sets+' sets';
   if(fx.type==='schedule') return 'reschedule the training week';
   if(fx.type==='cycleSchedule') return 'rotating cycle \u2192 '+p.pattern.join(' \u2192 ');
+  if(fx.type==='fuelFood') return 'add '+p.name+' ('+p.serving+', ~'+p.cal+' cal, '+p.p+'g P) to your Fuel Planner list';
   return fx.type;
 }
 /* What a fix CHANGES, as a string. Two pending proposals sharing a target are two buttons
@@ -14170,6 +14865,7 @@ function agFixTarget(fx){
   if(fx.type==='liftReset') return 'liftReset:'+String(p.name||'').toLowerCase();
   if(fx.type==='addEx')     return 'addEx:'+String(p.name||'').toLowerCase()+'|'+p.day;
   if(fx.type==='swapEx')    return 'swapEx:'+String(p.from||'').toLowerCase();
+  if(fx.type==='fuelFood')  return 'fuelFood:'+fpNorm(p.name);   // one food, whatever its numbers
   return fx.type;   // cal, pro, deload, schedule, cycleSchedule -- one setting apiece
 }
 /* Identity including the numbers: same target AND same payload is the very same proposal.
@@ -14217,6 +14913,15 @@ function agApplyFix(fx){
   }
   if(fx.type==='schedule'){ S.schedule = Object.assign({}, p.map); return true; }
   if(fx.type==='cycleSchedule'){ scheduleInit(); S.cycleSchedule.pattern = p.pattern.slice(); return true; }
+  if(fx.type==='fuelFood'){
+    // Added to his list and nothing more: not liked, not stocked. The combiner never builds a
+    // plate from it until he marks it himself.
+    fuelInit();
+    if(S.fuel.custom.length >= FP_CUSTOM_MAX) return false;
+    S.fuel.custom.push({id:fpNewId(), n:p.name, cat:p.cat, sv:p.serving, cal:p.cal, p:p.p, c:p.c, f:p.f,
+                        tags:(p.tags||[]).slice(), src:'echo'});
+    return true;
+  }
   return false;
 }
 function agApprove(pid){
@@ -14348,6 +15053,9 @@ const AG_ROLE_BRIEF = {
     'or intake is ECHO\u2019s; do not comment on those.',
   echo:
     'You are ECHO. Your remit is bodyweight trend, rate of gain, and calorie and protein targets. '+
+    'You also look after his Fuel Planner: what he keeps in stock and what he eats to close the daily gap. '+
+    'He is a picky eater with limited time, so work from what he has stocked and likes (get_fuel_planner, '+
+    'plan_fuel_combos) and never suggest anything he has said no to, hidden or excluded. '+
     'Training content and scheduling belong to DELTA and CHARLIE; do not comment on them.'
 };
 /* The fix shapes each agent is allowed to propose. A shape absent from an agent's list is
@@ -14369,7 +15077,12 @@ const AG_FIX_MENU = {
     '  {"type":"cal","payload":{"delta":-500..500}}  -- delta is a CHANGE to the daily target, '+
       'not the new target itself. You may send {"to":<new daily calorie target>} instead and it '+
       'will be converted, but either way a single change may move calories by at most 500/day.'+'\n'+
-    '  {"type":"pro","payload":{"to":80..300}}  -- unlike cal, this one IS the new target, not a change.'
+    '  {"type":"pro","payload":{"to":80..300}}  -- unlike cal, this one IS the new target, not a change.'+'\n'+
+    '  {"type":"fuelFood","payload":{"name":"<plain food name, no notes or numbers>","cat":"'+FP_CAT_KEYS.join('|')+'","serving":"<=30 chars",'+
+      '"cal":20..1500,"p":0..120,"c":0..250,"f":0..100,"tags":["'+FP_TAGS.join('","')+'" -- any that apply]}}  -- ONE new food for his '+
+      'Fuel Planner list, close to what he already likes (call get_fuel_planner first). He is picky: never anything on his exclusion '+
+      'list or like a food he said no to. Macros must add up (4p+4c+9f close to cal). Approving only adds it to his list; he decides '+
+      'whether to like or stock it. Only when his stock is thin or he keeps missing the gap -- most nights, none.'
 };
 
 /* Shared tail: the JSON contract, identical for all three specialists. */
@@ -14456,6 +15169,13 @@ function agToolNote(){
     'LOOK IT UP rather than inferring. Never cite a number you have not seen. Exercise names must '+
     'come from list_lifts; a name that does not match one of those cannot be applied.'+'\n';
 }
+/* ECHO's extra line: the Fuel Planner tools, which only ECHO is given. */
+function agFuelToolNote(){
+  return 'You also have get_fuel_planner (his stock, likes, no-gos and what he actually picks) and '+
+    'plan_fuel_combos (the app’s own meal combiner for what is left of today). Use them for any '+
+    'question about what he should eat; quote plan_fuel_combos’ numbers rather than doing your own '+
+    'arithmetic, and never suggest a food he has said no to, hidden or excluded.'+'\n';
+}
 
 /* Nightly effort per specialist. DELTA runs at medium, by Mark's choice on 2026-09-24. Its long
    effort-high thinks were the one thing its failures had in common: it died on 4 of 17 nights
@@ -14468,11 +15188,11 @@ function agToolNote(){
 const AG_NIGHT_EFFORT = {charlie:'high', delta:'medium', echo:'high'};
 /* Run ONE specialist. Returns {summary, proposals} or null if it failed. */
 async function agRunSpecialist(id, manual){
-  const sys = agSharedBrief()+'\n'+AG_ROLE_BRIEF[id]+'\n'+agToolNote()+agJsonSpec(id)+agBaseContext(id);
+  const sys = agSharedBrief()+'\n'+AG_ROLE_BRIEF[id]+'\n'+agToolNote()+(id==='echo' ? agFuelToolNote() : '')+agJsonSpec(id)+agBaseContext(id);
   const consulted = [];
   const res = await callClaudeWithData(
     [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
-    sys, AG_MAXTOK, {effort: AG_NIGHT_EFFORT[id] || 'high', route:'night:'+id},
+    sys, AG_MAXTOK, {effort: AG_NIGHT_EFFORT[id] || 'high', route:'night:'+id, fuelTools: id==='echo'},
     function(n){ if(consulted.indexOf(n)<0) consulted.push(n); });
   // Throw rather than salvage: agRunAll already has a failure path that says plainly this agent
   // did not report, which is the truth. Half a sentence stored as a summary is not.
@@ -14936,16 +15656,41 @@ async function agSendChat(id){
   a.chats[id].push({role:'user', content:q});
   save(); agThinkingFor = id; renderOps();
   try{
+    const isEcho = id === 'echo';
     const sys = agSharedBrief()+
       '\nYou are '+AGENTS[id].name+'. Answer only within your own domain ('+AGENTS[id].role+'). '+
       'If the question belongs to another agent, say which one and give a short answer anyway if you can. '+
-      'You cannot change app state from this chat \u2014 structural changes come from the daily cycle or from ZULU. '+
+      (isEcho
+        ? 'Your domain includes his Fuel Planner. The one thing you can do from this chat is suggest a new food for his '+
+          'Fuel Planner list with propose_fuel_food: it waits in his approval queue, and nothing is added until he approves '+
+          'it. Only use it when he asks for ideas or his stock clearly cannot close the gap, at most one or two per reply, '+
+          'and tell him it is waiting for his approval. You cannot change anything else from this chat \u2014 '
+        : 'You cannot change app state from this chat \u2014 ')+
+      'structural changes come from the daily cycle or from ZULU. '+
       'If you think something should change, say so and tell him to run a cycle.'+
-      agToolNote()+'\n'+
+      agToolNote()+(isEcho ? agFuelToolNote() : '')+'\n'+
       coachMemContext()+trainingContext()+agContext();
     const msgs = a.chats[id].slice(-14).map(m=>({role:m.role, content:m.content}));
-    // Read-only tools only: this chat still cannot change anything, it can look things up.
-    const {text} = await callClaudeWithData(msgs, sys, 4000, {route:'chat:'+id});
+    // Read-only tools, plus -- for ECHO only -- a tool that can queue a Fuel Planner food for his
+    // approval and nothing else. See FP_PROPOSE_TOOL.
+    const opts = {route:'chat:'+id};
+    if(isEcho){
+      let queued = 0;
+      opts.fuelTools = true;
+      opts.propose = function(inp){
+        if(queued >= 2) return 'Not queued: at most two suggestions per reply.';
+        const pr = {title:String(inp.title || ('Add '+(inp.name || 'a food'))).slice(0,120),
+                    reasoning:String(inp.reasoning || '').slice(0,400), fix:{type:'fuelFood', payload:inp}};
+        if(!agValidateFix(pr.fix, 'echo')) return 'Not queued: '+agRejectReason(pr.fix, 'echo')+'. Tell him why; do not say it was added.';
+        // Re-resolved HERE, after the await that produced this call: a sync pull during it replaces
+        // S wholesale, and a proposal written into the old agents object would be silently lost.
+        if(!agIngest(agState(), 'echo', {proposals:[pr]})) return 'Not queued: that food is already waiting in his approval queue.';
+        queued++;
+        save();
+        return 'Queued for his approval as \u201c'+pr.title+'\u201d. Nothing is added until he approves it in Coach.';
+      };
+    }
+    const {text} = await callClaudeWithData(msgs, sys, 4000, opts);
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
     agState().chats[id].push({role:'assistant', content:text||'\u2014'});
     save(); agThinkingFor = null; renderOps();
@@ -15271,6 +16016,13 @@ function renderHome(){
           :'Write it now')+'</button></div>';
     }
   }
+
+  // The Fuel Planner's Monday stock check, until he confirms it. Guarded on its own: a food
+  // list is never worth the dashboard.
+  try{
+    const stockCard = fpStockCardHTML('home');
+    if(stockCard) h += '<div class="dash-sec">Fuel stock</div>'+stockCard;
+  }catch(e){ console.warn('stock card failed', e); }
 
   // Fuel timing, but only when there is a workout time to hang it off -- the brief asks for
   // it "if a workout time has been set", and an empty clock is worse than no clock.

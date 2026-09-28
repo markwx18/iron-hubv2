@@ -4458,9 +4458,11 @@ setTimeout(async () => {
     // chat was the tight one (500), where a long think could have returned a blank reply
     // while he was standing at the rack.
     const caps = (htmlSrc.match(/await callClaude(?:WithTools|WithData)?\([\s\S]{0,220}?\)\s*;/g) || [])
-      .map(function(c){ var m = c.match(/(\d{3,6})\s*(?:,\s*\{[^}]*\})?\s*\)\s*;\s*$/); return m ? +m[1] : null; })
+      // The options argument may be an object literal or a variable (ECHO's chat builds its opts first).
+      .map(function(c){ var m = c.match(/(\d{3,6})\s*(?:,\s*(?:\{[^}]*\}|[A-Za-z_$][\w$]*))?\s*\)\s*;\s*$/); return m ? +m[1] : null; })
       .filter(function(v){ return v !== null; });
-    ok('found every API call site to check', caps.length >= 7, 'found=' + caps.length + ' -> ' + caps.join(','));
+    // 5, not 7: the AI meal generator's two calls went with it when the Fuel Planner replaced it.
+    ok('found every API call site to check', caps.length >= 5, 'found=' + caps.length + ' -> ' + caps.join(','));
     ok('no max_tokens cap is small enough for thinking to swallow the answer',
        caps.every(function(v){ return v >= 4000; }), caps.join(','));
 
@@ -9100,6 +9102,314 @@ setTimeout(async () => {
   }
   ev('S = ' + p3Saved + ';');
   ok('cleanup: real state restored after the forecasts section', ev('JSON.stringify(S)') === p3Saved);
+
+  console.log('=== FUEL PLANNER ===');
+  // The FUEL tab became an on-device planner on 2026-09-28: a built-in food list, a weekly stock
+  // check, a combiner that closes the rest of today's gap, and ECHO able to read it and suggest
+  // foods through the approval queue. Everything below restores S at the end.
+  const fpSaved = ev('JSON.stringify(S)'), fpTab = ev('activeMainTab');
+  ev('window.__fpRealAiReq = aiRequest;');
+  try {
+    // --- the dataset: a constant, sane, and never in S ---
+    const db = ev('FOOD_DB'), fpCats = ev('FP_CAT_KEYS'), fpTags = ev('FP_TAGS');
+    ok('dataset: 150-300 foods', db.length >= 150 && db.length <= 300, String(db.length));
+    ok('dataset: ids are unique', new Set(db.map(r => r[0])).size === db.length);
+    const badRow = db.find(r => r.length !== 9 || fpCats.indexOf(r[2]) < 0 || !(r[4] > 0) ||
+      r[8].split(' ').some(t => fpTags.indexOf(t) < 0) || !String(r[3]).trim());
+    ok('dataset: every row has a known category, known tags and a serving', !badRow, JSON.stringify(badRow));
+    const offRow = db.find(r => Math.abs(4 * r[5] + 4 * r[6] + 9 * r[7] - r[4]) > 0.15 * r[4]);
+    ok('dataset: every row’s macros add up to within 15% of its calories', !offRow, JSON.stringify(offRow));
+
+    // --- fuelInit(): a save from before the planner ---
+    ev("S.fuel = {calTarget:3200, proTarget:160, dislikes:'eggs, rice', limits:'', meals:[{slot:'Breakfast', options:[]}]};");
+    ev('fuelInit()');
+    ok('migration: an old save gains empty planner state',
+       ev('JSON.stringify([S.fuel.foods, S.fuel.custom, S.fuel.stockWeek])') === '[{},[],""]');
+    ok('migration: the AI generator’s saved suggestions are dropped', ev("'meals' in S.fuel") === false);
+    ok('migration: the targets are untouched', ev('calTarget()') === 3200 && ev('proTarget()') === 160);
+    ok('the AI meal generator is gone', ev("typeof genAllMeals === 'undefined' && typeof refreshMeal === 'undefined'"));
+
+    // --- sparse state ---
+    ev("fpSetStock('pbj', true); fpSetStock('pbj', false);");
+    ok('sparse: stocking then unstocking leaves no entry', ev("'pbj' in S.fuel.foods") === false);
+    ev("fpSetPref('pbj','l'); fpSetPref('pbj','l');");
+    ok('sparse: tapping Like twice clears it, and the entry with it', ev("'pbj' in S.fuel.foods") === false);
+    ev("fpSetStock('pbj', true); fpSetPref('pbj','d');");
+    ok('saying no to a food takes it out of stock', ev("JSON.stringify(S.fuel.foods.pbj)") === '{"p":"d"}', ev("JSON.stringify(S.fuel.foods.pbj)"));
+    ev("delete S.fuel.foods.pbj;");
+    ev("['rotchk','wmilk','pbj','bagel','whey','banana','trail','chkwrap','granola','chocmlk'].forEach(function(id){ fpSetStock(id, true); fpSetPref(id, 'l'); });");
+    const fuelLen = ev('JSON.stringify(S.fuel)').length;
+    ok('sparse: ten touched foods keep S.fuel small', fuelLen < 700, String(fuelLen));
+    const payload = ev('syncPayload()');
+    ok('sync: his choices ride in the payload, the food list itself does not',
+       payload.indexOf('"rotchk":{"s":1,"p":"l"}') >= 0 && payload.indexOf('Rotisserie chicken') < 0);
+
+    // --- fpFoods(): a corrected macro, and his own foods ---
+    ev("S.fuel.foods.bagel.m = [350,12,60,6];");
+    ok('edit: a corrected macro replaces the default for every reader',
+       ev("fpFood('bagel').cal") === 350 && ev("fpFood('bagel').edited") === true && ev("fpFoods().find(function(f){return f.id==='bagel';}).p") === 12);
+    ev("fpEditReset('bagel')");
+    ok('edit: Reset restores the default and keeps his other choices',
+       ev("fpFood('bagel').cal") === 300 && ev("JSON.stringify(S.fuel.foods.bagel)") === '{"s":1,"p":"l"}', ev("JSON.stringify(S.fuel.foods.bagel)"));
+    ev('renderFuel()');
+    const setVal = (id, v) => ev("document.getElementById('" + id + "').value = " + JSON.stringify(v) + ";");
+    setVal('fpNewN', 'Chicken alfredo'); setVal('fpNewCat', 'meal'); setVal('fpNewSv', '1 plate');
+    setVal('fpNewCal', '820'); setVal('fpNewP', '45'); setVal('fpNewC', '70'); setVal('fpNewF', '38');
+    ev("document.getElementById('fpNewT_meal').checked = true;");
+    ev('fpAddCustom()');
+    const mine = ev("JSON.stringify(S.fuel.custom)");
+    ok('own food: added with its macros and tags', /"n":"Chicken alfredo","cat":"meal","sv":"1 plate","cal":820,"p":45,"c":70,"f":38,"tags":\["meal"\]/.test(mine), mine);
+    const myId = ev("S.fuel.custom[0].id");
+    ok('own food: starts as a like, and is not assumed to be in the house',
+       ev("fpFood(" + JSON.stringify(myId) + ").pref") === 'l' && ev("fpFood(" + JSON.stringify(myId) + ").stocked") === false);
+    ev('renderFuel()');
+    setVal('fpNewN', 'chicken ALFREDO'); setVal('fpNewCal', '800');
+    ev('fpAddCustom()');
+    ok('own food: a duplicate name is refused, and says so',
+       ev('S.fuel.custom.length') === 1 && /already in the Pantry/.test(ev("document.getElementById('fpNewMsg').textContent")));
+
+    // --- the combiner, on a deliberately messy pool ---
+    // Stocked: a mix of dense and trivial foods, one that is not quick (steak), one excluded by
+    // the list (eggs, rice), and two whose raw state says stocked AND no/hidden -- the pool must
+    // treat a no as a no whatever else the entry says.
+    ev("S.fuel.foods = {}; S.fuel.custom = []; S.fuel.dislikes = 'eggs, rice'; S.fuel.limits = '';");
+    ev("['rotchk','wmilk','bagel','pbj','banana','trail','chips','whey','steak','eggscr','rice','pasta'].forEach(function(id){ S.fuel.foods[id] = {s:1}; });");
+    ev("S.fuel.foods.gkyog = {s:1, p:'d'}; S.fuel.foods.soda = {s:1, p:'h'};");
+    ev("S.fuel.foods.chkwrap = {p:'l'}; S.fuel.foods.granola = {p:'l'};");
+    const combos = ev('JSON.stringify(fpCombos(1500, 90, {}))');
+    const r1 = JSON.parse(combos);
+    const allIds = c => c.combos.reduce((a, x) => a.concat(x.items.map(i => i.id)), []);
+    ok('combiner: two or three plates', r1.combos.length >= 2 && r1.combos.length <= 3, String(r1.combos.length));
+    ok('combiner: the first plate closes the gap without blowing past it',
+       r1.combos[0].closes && r1.combos[0].cal <= 1500 + 250, JSON.stringify(r1.combos[0]));
+    ok('combiner: no plate runs more than 250 cal past the gap plus one serving',
+       r1.combos.every(c => c.cal <= 1500 + 250 + 500), r1.combos.map(c => c.cal).join(','));
+    ok('combiner: no-go, hidden and excluded foods never appear',
+       allIds(r1).every(id => ['gkyog', 'soda', 'eggscr', 'rice'].indexOf(id) < 0), allIds(r1).join(','));
+    ok('combiner: the pool itself leaves them out', ev("fpPool({}).map(function(f){ return f.id; }).filter(function(id){ return ['gkyog','soda','eggscr','rice'].indexOf(id) >= 0; }).length") === 0);
+    // The foods above are weak candidates, so a missing filter could hide behind the greedy
+    // choice. Here the no-go is by far the best fit for the gap, and still must not be used.
+    ev("window.__fpKeep = S.fuel.foods; S.fuel.foods = {orchk:{s:1, p:'d'}, chkburr:{s:1, p:'h'}, banana:{s:1}, apple:{s:1}};");
+    const rNo = JSON.parse(ev('JSON.stringify(fpCombos(1000, 50, {}))'));
+    ok('combiner: a no-go that fits best is still never used', allIds(rNo).every(id => id !== 'orchk' && id !== 'chkburr'), allIds(rNo).join(','));
+    ev("S.fuel.foods = window.__fpKeep; delete window.__fpKeep;");
+    ok('combiner: stocked foods only by default, so no liked-but-unstocked food and nothing marked buy',
+       allIds(r1).every(id => ['chkwrap', 'granola'].indexOf(id) < 0) && r1.combos.every(c => c.items.every(i => !i.buy)));
+    ok('combiner: the plates are different plates',
+       new Set(r1.combos.map(c => c.sig)).size === r1.combos.length &&
+       r1.combos.slice(1).every(c => c.items.every(i => i.id !== r1.combos[0].items.slice().sort((a, b) => b.cal - a.cal)[0].id)));
+    const firstIds = r1.combos[0].items.map(i => i.id);
+    ok('combiner: later plates are built from other foods, not the first plate reshuffled',
+       r1.combos.slice(1).every(c => c.items.every(i => firstIds.indexOf(i.id) < 0)),
+       r1.combos.map(c => c.items.map(i => i.qty + 'x' + i.id).join('+')).join(' | '));
+    ok('combiner: identical run to run', ev('JSON.stringify(fpCombos(1500, 90, {}))') === combos);
+    ok('combiner: steak is used when time is no object', allIds(r1).indexOf('steak') >= 0, allIds(r1).join(','));
+    const rq = JSON.parse(ev('JSON.stringify(fpCombos(1500, 90, {quickOnly:true}))'));
+    ok('combiner: quick/no-cook only drops the steak and keeps to quick foods',
+       rq.combos.length > 0 && allIds(rq).indexOf('steak') < 0 && ev('JSON.stringify(fpCombos(1500, 90, {quickOnly:true}).combos.every(function(c){ return c.items.every(function(i){ return fpIsQuick(fpFood(i.id)); }); }))') === 'true');
+    ev("['steak','rotchk','pasta','trail'].forEach(function(id){ delete S.fuel.foods[id]; });");
+    const rl = JSON.parse(ev('JSON.stringify(fpCombos(1500, 90, {includeLiked:true}))'));
+    const buys = rl.combos.reduce((a, c) => a.concat(c.items.filter(i => i.buy).map(i => i.id)), []);
+    ok('combiner: with Include liked, liked foods join -- and every one of them is marked buy',
+       buys.length > 0 && buys.every(id => ['chkwrap', 'granola'].indexOf(id) >= 0), JSON.stringify(buys));
+    // A whole day to fill with one huge drink in stock: it once came back as "3x blender shake".
+    ev("S.fuel.foods.blend = {s:1};");
+    const rd = JSON.parse(ev('JSON.stringify(fpCombos(3200, 160, {}))'));
+    ok('combiner: never more than two servings of one food, drinks included',
+       rd.combos.length > 0 && rd.combos.every(c => c.items.every(i => i.qty <= 2)) && allIds(rd).indexOf('blend') >= 0,
+       rd.combos.map(c => c.items.map(i => i.qty + 'x' + i.id).join('+')).join(' | '));
+    ev("delete S.fuel.foods.blend;");
+    ok('combiner: a closed gap asks for nothing', ev('fpCombos(120, 6, {}).done') === true && ev('fpCombos(120, 6, {}).combos.length') === 0);
+    ok('combiner: nothing stocked gives no plates, and says why',
+       ev("(function(){ var k = S.fuel.foods; S.fuel.foods = {}; var r = fpCombos(1500, 90, {}); S.fuel.foods = k; return r.pool === 0 && r.combos.length === 0; })()") === true);
+
+    // "Already eaten" shrinks the gap. Module-scoped and per-day, and the tab reads it.
+    ev('S.fuel.calTarget = 3200; S.fuel.proTarget = 160;');
+    ev('renderFuel()');
+    ev("fpSetEaten('cal', 2000); fpSetEaten('pro', 100);");
+    const out = ev("document.getElementById('fpCombOut').innerHTML");
+    ok('already eaten: the gap on screen is what is left (3200-2000, 160-100)', /<b>1,?200<\/b> cal/.test(out) && /<b>60<\/b>g protein/.test(out), out.slice(0, 200));
+    ev("fpSetEaten('cal', 0); fpSetEaten('pro', 0);");
+
+    // --- learning: two foods that tie exactly, so only his picks can decide between them ---
+    ev("S.fuel.foods = {}; S.fuel.custom = [" +
+       "{id:'uzzA', n:'Zz Plate A', cat:'meal', sv:'1', cal:500, p:30, c:50, f:18, tags:['meal']}," +
+       "{id:'uzzB', n:'Zz Plate B', cat:'meal', sv:'1', cal:500, p:30, c:50, f:18, tags:['meal']}];");
+    ev("S.fuel.foods.uzzA = {s:1}; S.fuel.foods.uzzB = {s:1};");
+    const first = () => ev("fpCombos(500, 30, {}).combos[0].items[0].id");
+    ok('learning: a tie goes to list order before any picks', first() === 'uzzA');
+    ev("fpSetEaten('cal', calTarget()-500); fpSetEaten('pro', proTarget()-30);");
+    ev('renderFuel()');
+    ok('learning: the second plate on screen is B', ev('fpShown[1] && fpShown[1].items[0].id') === 'uzzB');
+    ev('fpAccept(1)');
+    ok('learning: "I’ll eat this" counts the pick and dates it',
+       ev('S.fuel.foods.uzzB.a') === 1 && ev('S.fuel.foods.uzzB.at') === ev('todayKey()'));
+    ok('learning: one pick breaks the tie in its favour', first() === 'uzzB', first());
+    ev("fpSkip('uzzB')");
+    ok('learning: a skip counts, and outweighs one pick', ev('S.fuel.foods.uzzB.x') === 1 && first() === 'uzzA', first());
+    ok('learning: a skipped food drops out of today’s plates on screen',
+       ev("fpShown.every(function(c){ return c.items.every(function(i){ return i.id !== 'uzzB'; }); })") === true);
+    ev("fpSkips = {date:'', ids:[]}; fpSetEaten('cal', 0); fpSetEaten('pro', 0);");
+
+    // --- the Monday stock check. Named dates, never today's, so this is green every day. ---
+    ev("S.fuel.foods = {}; S.fuel.custom = [];");
+    ok('stock: nothing stocked means nothing to confirm', ev("fpStockDue('2026-09-28')") === false);
+    ev("S.fuel.foods.wmilk = {s:1}; S.fuel.foods.bagel = {s:1}; S.fuel.stockWeek = '2026-09-21';");
+    ok('stock: due on the Monday after the last confirmation', ev("fpStockDue('2026-09-28')") === true);
+    ok('stock: a Sunday still belongs to the confirmed week', ev("fpStockDue('2026-09-27')") === false);
+    ok('stock: and the rest of the new week stays due until confirmed', ev("fpStockDue('2026-10-01')") === true);
+    ev("S.fuel.stockWeek = '2000-01-03';");
+    ev("fpToggleStock('wmilk', true)");
+    ok('stock: unticking a chip in the prompt does not dismiss it',
+       ev('fpStockDue()') === true && ev("S.fuel.stockWeek") === '2000-01-03' && ev("'wmilk' in S.fuel.foods") === false);
+    ev("activeMainTab = 'home'; renderHome();");
+    ok('stock: Today shows the prompt while it is due', /still have these\?/.test(ev("document.getElementById('home').innerHTML")));
+    ev('fpConfirmStock()');
+    ok('stock: Confirm closes it for this week and keeps the stock',
+       ev('fpStockDue()') === false && ev("S.fuel.stockWeek") === ev('mesoMondayOf(todayKey())') && ev("S.fuel.foods.bagel.s") === 1);
+    ev('renderHome()');
+    ok('stock: and Today stops showing it', !/still have these\?/.test(ev("document.getElementById('home').innerHTML")));
+    ev("S.fuel.stockWeek = '2000-01-03'; fpToggleStock('wmilk');");
+    ok('stock: changing stock in the Pantry counts as this week’s update', ev('fpStockDue()') === false);
+
+    // --- the tab ---
+    ev('renderFuel()');
+    const fh = ev("document.getElementById('fuel').innerHTML");
+    ok('tab: planner, combiner, pantry, timing and targets are all there',
+       /Fuel Planner/.test(fh) && /Close Today/.test(fh) && /id="fpPantry"/.test(fh) && /Workout Fuel Timing/.test(fh) && /id="fCal"/.test(fh));
+    ok('tab: says its macros are approximate', /approximate/.test(fh));
+    ok('tab: no API-backed generator is left on it', !/genAllMeals|Generate Options/.test(fh));
+    ev("S.fuel.foods = {}; renderFuel();");
+    ok('tab: with nothing stocked it says where to start', /Start here/.test(ev("document.getElementById('fuel').innerHTML")));
+
+    // --- fuelFood: the validator is the guarantee ---
+    ev("S.fuel.foods = {gkyog:{p:'d'}}; S.fuel.custom = []; S.fuel.dislikes = 'eggs, rice'; S.fuel.limits = '';");
+    const wrap = {type: 'fuelFood', payload: {name: 'Chicken Caesar wrap', cat: 'meal', serving: '1 wrap', cal: 520, p: 34, c: 40, f: 24, tags: ['meal', 'quick']}};
+    const vf = (fx, who) => ev('JSON.stringify(agValidateFix(' + JSON.stringify(fx) + ', ' + JSON.stringify(who) + '))');
+    const why = (fx) => ev('agRejectReason(' + JSON.stringify(fx) + ", 'echo')");
+    const withP = (o) => ({type: 'fuelFood', payload: Object.assign({}, wrap.payload, o)});
+    ok('fuelFood: a sound suggestion from ECHO passes', vf(wrap, 'echo') !== 'null', vf(wrap, 'echo'));
+    ok('fuelFood: ZULU may raise it too', vf(wrap, 'zulu') !== 'null');
+    ok('fuelFood: DELTA and CHARLIE may not', vf(wrap, 'delta') === 'null' && vf(wrap, 'charlie') === 'null');
+    ok('fuelFood: a food on his exclusion list is refused, and the reason says so',
+       vf(withP({name: 'Egg salad sandwich'}), 'echo') === 'null' && /exclusion/.test(why(withP({name: 'Egg salad sandwich'}))));
+    ok('fuelFood: a food close to one he said no to is refused',
+       vf(withP({name: 'Greek yogurt', cat: 'dairy', cal: 200, p: 20, c: 9, f: 8}), 'echo') === 'null' &&
+       /said|as a no/.test(why(withP({name: 'Greek yogurt', cat: 'dairy', cal: 200, p: 20, c: 9, f: 8}))));
+    ok('fuelFood: a name already on the list is refused', vf(withP({name: 'PB&J sandwich'}), 'echo') === 'null');
+    ok('fuelFood: a coaching note in the name is refused, with or without brackets',
+       vf(withP({name: 'Chicken wrap (add 40g protein)'}), 'echo') === 'null' && vf(withP({name: 'Chicken wrap 40g protein'}), 'echo') === 'null');
+    ok('fuelFood: macros that do not add up are refused', vf(withP({cal: 900}), 'echo') === 'null' && /add up/.test(why(withP({cal: 900}))));
+    ok('fuelFood: out-of-range numbers are refused', vf(withP({cal: 2000, c: 350, f: 60}), 'echo') === 'null' && vf(withP({p: -5}), 'echo') === 'null');
+    ok('fuelFood: an unknown category or tag is refused', vf(withP({cat: 'pizza'}), 'echo') === 'null' && vf(withP({tags: ['dinner']}), 'echo') === 'null');
+    ok('fuelFood: missing macros are refused, not zero-filled', vf({type: 'fuelFood', payload: {name: 'Chicken Caesar wrap', cat: 'meal', serving: '1 wrap', cal: 520}}, 'echo') === 'null');
+    ev("for(var i=0;i<60;i++) S.fuel.custom.push({id:'uzq'+i, n:'Zz filler '+i, cat:'snack', sv:'1', cal:100, p:5, c:10, f:4, tags:[]});");
+    ok('fuelFood: refused once his list holds 60 of his own foods', vf(wrap, 'echo') === 'null' && /60/.test(why(wrap)));
+    ev("S.fuel.custom = [];");
+    ok('fuelFood: a validated payload keeps only the known fields',
+       JSON.stringify(Object.keys(JSON.parse(vf(Object.assign({}, wrap, {payload: Object.assign({extra: 'x'}, wrap.payload)}), 'echo')).payload).sort()) ===
+       JSON.stringify(['c', 'cal', 'cat', 'f', 'name', 'p', 'serving', 'tags']));
+
+    // --- approving it adds the food, and nothing else ---
+    ev("agState().proposals = [];");
+    ev("agIngest(agState(), 'echo', {proposals:[{title:'Add a Caesar wrap', reasoning:'close to the chicken wrap he likes', fix:" + JSON.stringify(wrap) + "}]});");
+    const pid = ev("agPending()[0] && agPending()[0].id");
+    ok('approval: the suggestion waits in the queue and adds nothing yet', !!pid && ev('S.fuel.custom.length') === 0);
+    ev('agApprove(' + JSON.stringify(pid) + ')');
+    const added = ev("JSON.stringify(S.fuel.custom[0] || null)");
+    ok('approval: Approve adds it to his list, marked as ECHO’s', /"n":"Chicken Caesar wrap"/.test(added) && /"src":"echo"/.test(added), added);
+    const addedId = ev('S.fuel.custom[0].id');
+    ok('approval: it is neither liked nor stocked, so no plate uses it until he says so',
+       ev("fpFood(" + JSON.stringify(addedId) + ").pref") === '' && ev("fpFood(" + JSON.stringify(addedId) + ").stocked") === false &&
+       ev("fpPool({includeLiked:true}).every(function(f){ return f.id !== " + JSON.stringify(addedId) + "; })") === true);
+    ev('agApprove(' + JSON.stringify(pid) + ')');
+    ok('approval: approving twice adds it once', ev('S.fuel.custom.length') === 1);
+    const club = {type: 'fuelFood', payload: {name: 'Turkey club wrap', cat: 'meal', serving: '1 wrap', cal: 540, p: 36, c: 42, f: 24, tags: ['meal']}};
+    ev("agIngest(agState(), 'echo', {proposals:[{title:'Add a turkey club wrap', reasoning:'r', fix:" + JSON.stringify(club) + "}]});");
+    const pid2 = ev("agPending()[0] && agPending()[0].id");
+    ev("S.fuel.custom.push({id:'uzhand', n:'Turkey club wrap', cat:'meal', sv:'1', cal:500, p:30, c:40, f:20, tags:[]});");
+    ev('agApprove(' + JSON.stringify(pid2) + ')');
+    ok('approval: a food he added by hand meanwhile makes the approval fail cleanly',
+       ev("agState().proposals.find(function(p){ return p.id === " + JSON.stringify(pid2) + "; }).status") === 'failed' &&
+       ev("S.fuel.custom.filter(function(f){ return fpNorm(f.n) === 'turkey club wrap'; }).length") === 1);
+
+    // --- ECHO's tools: read-only, ECHO-only, and the same numbers as the tab ---
+    ev("S.fuel.foods = {rotchk:{s:1, p:'l', a:3}, wmilk:{s:1}, bagel:{s:1}, pbj:{s:1}, gkyog:{p:'d'}, soda:{p:'h'}, whey:{x:2}}; S.fuel.custom = [];");
+    ev("S.fuel.stockWeek = mesoMondayOf(todayKey());");
+    const before = ev('JSON.stringify(S)');
+    const plannerTxt = ev("agRunDataTool('get_fuel_planner', {})");
+    const combTxt = ev("agRunDataTool('plan_fuel_combos', {eatenCal:1200, eatenPro:40, quickOnly:true})");
+    ok('tools: reading the planner and running the combiner write nothing', ev('JSON.stringify(S)') === before);
+    ok('tools: get_fuel_planner names stock, no-gos, hidden and his picks',
+       /In stock \(4\): .*Rotisserie chicken/.test(plannerTxt) && /Said no to: Greek yogurt/.test(plannerTxt) &&
+       /Hidden: Regular soda/.test(plannerTxt) && /Rotisserie chicken x3/.test(plannerTxt) && /Whey shake \(water\) x2/.test(plannerTxt), plannerTxt);
+    ok('tools: plan_fuel_combos is the tab’s own combiner, number for number',
+       combTxt === ev("fpCombosText(fpCombos(calTarget()-1200, proTarget()-40, {quickOnly:true, includeLiked:false}), {quickOnly:true, includeLiked:false})") &&
+       /Option 1: /.test(combTxt), combTxt);
+
+    // Which calls carry which tools. aiRequest is the one place a tool list reaches the API.
+    ev(`window.__fpTools = {};
+        aiRequest = async function(m, sys, tools, mt, opts){
+          window.__fpTools[(opts && opts.route) || '?'] = (tools || []).map(function(t){ return t.name; });
+          return {content:[{type:'text', text:'{"summary":"ok","proposals":[]}'}], stop_reason:'end_turn'};
+        };`);
+    for (const id of ['charlie', 'delta', 'echo']) await ev("agRunSpecialist('" + id + "', true)");
+    ev("var __t = document.getElementById('agChatIn'); if(!__t){ __t = document.createElement('textarea'); __t.id = 'agChatIn'; document.body.appendChild(__t); }");
+    for (const id of ['charlie', 'delta', 'echo']) {
+      ev("document.getElementById('agChatIn').value = 'what should I eat tonight?';");
+      await ev("agSendChat('" + id + "')");
+    }
+    const tb = ev('window.__fpTools');
+    const has = (route, name) => (tb[route] || []).indexOf(name) >= 0;
+    ok('tools: ECHO gets the planner tools at night and in chat',
+       ['night:echo', 'chat:echo'].every(r => has(r, 'get_fuel_planner') && has(r, 'plan_fuel_combos')), JSON.stringify(tb));
+    ok('tools: DELTA and CHARLIE never do', ['night:delta', 'night:charlie', 'chat:delta', 'chat:charlie'].every(r => tb[r] && !has(r, 'get_fuel_planner') && !has(r, 'plan_fuel_combos')));
+    ok('tools: the propose tool is on ECHO’s chat and nowhere else',
+       has('chat:echo', 'propose_fuel_food') && ['night:echo', 'night:delta', 'night:charlie', 'chat:delta', 'chat:charlie'].every(r => !has(r, 'propose_fuel_food')));
+    ok('tools: ECHO still gets every read tool the others get', (tb['night:delta'] || []).every(n => has('night:echo', n)));
+
+    // --- ECHO's chat can queue a food, and only queue it ---
+    const caesarIn = {title: 'Add chicken Caesar wrap', reasoning: 'close to the chicken wrap he likes', name: 'Chicken Caesar wrap', cat: 'meal', serving: '1 wrap', cal: 520, p: 34, c: 40, f: 24, tags: ['meal', 'quick', 'nocook']};
+    const scripted = (input, swapS) => `window.__fpN = 0; window.__fpResult = null;
+        aiRequest = async function(m, sys, tools, mt, opts){
+          window.__fpN++;
+          if(window.__fpN === 1){
+            ${swapS ? 'S = JSON.parse(JSON.stringify(S));' : ''}
+            return {content:[{type:'tool_use', id:'tu1', name:'propose_fuel_food', input:${JSON.stringify(input)}}], stop_reason:'tool_use'};
+          }
+          var last = m[m.length-1];
+          window.__fpResult = last && last.content && last.content[0] && last.content[0].content;
+          return {content:[{type:'text', text:'Done.'}], stop_reason:'end_turn'};
+        };`;
+    ev("S.fuel.custom = []; agState().proposals = [];");
+    ev(scripted(caesarIn, false));
+    ev("document.getElementById('agChatIn').value = 'any ideas? I am bored of my stock';");
+    await ev("agSendChat('echo')");
+    ok('chat: a sound suggestion lands in the queue as ECHO’s fuelFood proposal',
+       ev("agPending().filter(function(p){ return p.agent === 'echo' && p.fix && p.fix.type === 'fuelFood' && p.fix.payload.name === 'Chicken Caesar wrap'; }).length") === 1);
+    ok('chat: and ECHO is told it is waiting, not added', /^Queued for his approval/.test(String(ev('window.__fpResult'))), String(ev('window.__fpResult')));
+    ok('chat: nothing is added to his list until he approves', ev('S.fuel.custom.length') === 0);
+    ev(scripted(Object.assign({}, caesarIn, {title: 'Add egg wrap', name: 'Egg and cheese wrap'}), false));
+    ev("document.getElementById('agChatIn').value = 'another?';");
+    await ev("agSendChat('echo')");
+    ok('chat: a food on his exclusion list is not queued, and ECHO is told why',
+       ev("agPending().length") === 1 && /^Not queued: .*exclusion/.test(String(ev('window.__fpResult'))), String(ev('window.__fpResult')));
+    // A sync pull can replace S wholesale while the model is thinking. The proposal must land in
+    // the S that exists when the tool call arrives, or it is written to an orphan and lost.
+    ev("agState().proposals = [];");
+    ev(scripted(Object.assign({}, caesarIn, {title: 'Add a steak burrito', name: 'Steak burrito', cal: 900, p: 50, c: 90, f: 36}), true));
+    ev("document.getElementById('agChatIn').value = 'something bigger?';");
+    await ev("agSendChat('echo')");
+    ok('chat: a sync landing mid-reply does not lose the proposal (re-resolved after the await)',
+       ev("(S.agents.proposals || []).filter(function(p){ return p.status === 'pending' && p.fix && p.fix.payload.name === 'Steak burrito'; }).length") === 1);
+  } catch (e) {
+    ok('fuel planner section', false, e.stack);
+  }
+  ev('aiRequest = window.__fpRealAiReq;');
+  ev("var __t2 = document.getElementById('agChatIn'); if(__t2 && !__t2.closest('#ops')) __t2.remove();");
+  ev("fpSkips = {date:'', ids:[]}; fpPlanned = {date:'', sig:''}; fpEaten = {date:'', cal:0, pro:0}; fpEditId = null; fpSearch = '';");
+  ev('S = ' + fpSaved + '; activeMainTab = ' + JSON.stringify(fpTab) + ';');
+  ok('cleanup: real state restored after the fuel planner section', ev('JSON.stringify(S)') === fpSaved);
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

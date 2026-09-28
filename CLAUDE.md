@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2110 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2195 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -275,7 +275,8 @@ so the two orders can no longer disagree.
 | PR history | `checkPRs()`, `prAppend()`, `prBackfill()`, `renderAnPRs()` |
 | Readiness | `todayReadiness()`, `rdComplete()`, `readinessNow()`, `anReadinessOutcome()`, `anReadinessTrim()`, `renderAnReadiness()` |
 | Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
-| Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()` |
+| Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()`, `fuelFoodAllowed()` |
+| Fuel planner | `FOOD_DB`, `fpFoods()`, `fpPool()`, `fpCombos()` / `fpBuild()`, `fpStockDue()`, `fpCheckFood()`, `fpSetStock()` / `fpSetPref()` / `fpTidy()`; ECHO: `fpToolDefs()`, `fpProposeToolDef()`, `fpPlannerText()` |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
 | Muscle map data | `bmViewerData()`, `bmStatusFor()`, `bmWeeklyVol()`, `bmTrainedDays()` |
 | 3D viewer | `bm3dInit()`, `bm3dBuild()`, `bm3dApply()`, `bm3dPick()`, `bm3dDispose()`, `bm3dFallback()` |
@@ -296,11 +297,24 @@ for a cache nothing reads.
 
 Agents have **read-only data tools** (`agDataToolDefs()`, executed by `agRunDataTool()`,
 looped by `callClaudeWithData()`): `list_lifts`, `get_lift_history`, `get_e1rm_series`,
-`get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`. There is no write
-tool and there must never be one — state still changes only through the proposal queue and
-`agApplyFix()`. The loop is bounded by `AI_TOOL_ROUNDS` (6, or 2 for mid-workout DELTA) with
-results capped at `AI_TOOL_MAXCHARS`, because it runs unattended and an unbounded loop is an
-unbounded bill.
+`get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`. ECHO alone also gets
+`get_fuel_planner` and `plan_fuel_combos` (`fpToolDefs()`, through `opts.fuelTools`), in its
+nightly check and its chat. Both are reads, and the second runs the tab's own `fpCombos()`.
+There is no write tool and there must never be one — state still changes only through the
+proposal queue and `agApplyFix()`. **The one exception is queue-only, and Mark chose it on
+2026-09-28:**
+- ECHO's chat has `propose_fuel_food`, passed as `opts.propose` from `agSendChat('echo')`.
+- `callClaudeWithData()` hands it to that function, never to `agRunDataTool()`, which stays
+  unable to write.
+- It can only put a `fuelFood` proposal into the normal queue through `agIngest()`, so it gets
+  `agValidateFix()`, dedupe and the 2-per-reply cap. Nothing applies until `agApprove()`
+  re-validates it.
+- It re-resolves `agState()` inside the handler, after the await (the suite swaps `S` mid-reply
+  to prove it).
+
+Do not widen it to another agent or another fix type without asking. The loop is bounded by
+`AI_TOOL_ROUNDS` (6, or 2 for mid-workout DELTA) with results capped at `AI_TOOL_MAXCHARS`,
+because it runs unattended and an unbounded loop is an unbounded bill.
 
 **Sonnet 5 thinks adaptively, and thinking tokens bill as output and count against
 `max_tokens`.** Two consequences to keep in mind when touching any API call: never set a
@@ -335,10 +349,16 @@ numeric ranges, and rejects anything malformed. Never loosen it to make a model'
 output "work." If a model produces something invalid, the correct behavior is to
 discard it, not to coerce it.
 
-Four rules it enforces:
+Five rules it enforces:
 - **Each agent may only raise its own fix types** (`AG_FIX_ALLOWED`: CHARLIE schedule, DELTA
-  lifts, ECHO intake; ZULU any). The menu in the prompt was the only thing stopping ECHO
-  queueing a `liftReset`.
+  lifts, ECHO intake and `fuelFood`; ZULU any). The menu in the prompt was the only thing
+  stopping ECHO queueing a `liftReset`.
+- **A `fuelFood` is judged by `fpCheckFood(p, true)`.** It must be a plain name with no notes or
+  numbers in it, and nothing already on his list. Category and tags come from the fixed sets,
+  ranges are tight, and 4P+4C+9F must be within 35% of the stated calories. Nothing on his
+  exclusion list or near a food he said no to or hid, and no more than 60 of his own foods.
+  Approving only adds it to his list. It is not liked or stocked, so no plate uses it until he
+  says so.
 - **A `liftReset` has a ceiling** (`agResetCeiling()`). It can be at most two increments over
   the last top set. A MAXED machine, or a lift flagged "sharp" in the last 14 days, gets
   nothing over its last weight. Those two rules used to exist only as prompt text.
@@ -559,6 +579,29 @@ floor, not a ceiling, so at-or-above target is one bucket and there is deliberat
 `est:true` on a `S.nutrition` row means the number is a bucket midpoint, not a measured total;
 it is absent on everything logged before the ladder, and `trainingContext()` marks it `~` so the
 model does not read an estimate as precise.
+
+**The Fuel Planner is on-device, and its food list is not state.** It replaced the AI meal
+generator on 2026-09-28, and it makes no API call. He is picky and short on time, so it plans
+from what he has stocked and likes. Cal AI has no sync path, so it never reads live intake:
+"already eaten" is an optional number, kept per day in the module-scoped `fpEaten`, never synced.
+- **`FOOD_DB` is a constant in the file**, about 160 foods with approximate macros shown as ~.
+  Its ids are what synced state keys off, so an id is never renamed or reused.
+- **`S.fuel.foods` is sparse:** only foods he has touched (stock, Like/No/Hide, a corrected
+  macro, pick and skip counts). `fpTidy()` deletes an entry that is back to its defaults. The suite
+  checks the food list never reaches `syncPayload()`.
+- **`S.fuel` holds preferences, not history.** A pull replaces it whole, and it is not in
+  `SYNC_HISTORY`.
+- **`fpFoods()` is the one list.** The pantry, the combiner and ECHO's tools all read it, and it
+  is a pure read (it does not call `fuelInit()`), so ECHO's tools write nothing.
+- **`fpCombos()` is pure and deterministic.** It is greedy, weights protein 1.2×, and allows two
+  servings of any one food and five foods per plate. Pick and skip counts only break near-ties.
+  Each later plate avoids the earlier foods and drops their anchor.
+- **The exclusion list wins over a like.** `fpUsable()` runs `fuelFoodAllowed()` with the
+  category key added, and a plural in the list also catches the singular ("peanuts" catches
+  "Peanut butter").
+- **The Monday stock check** (`fpStockDue()`, Monday-anchored like Plan) shows on Fuel and on
+  Today. Stock never resets. Confirming, or changing stock in the Pantry, closes it for the week;
+  unticking a chip inside the prompt does not.
 
 **Today's call sets the plan automatically, inside hard bounds.** `dayCall(date, dayKey)` returns
 push / normal / easy / recover. WHOOP carries about half of it when today's data is in:
