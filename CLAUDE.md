@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2251 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2284 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -264,6 +264,7 @@ so the two orders can no longer disagree.
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`) |
+| After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`; resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()`, `coachValidateAction()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
@@ -756,6 +757,28 @@ it also carries `ts` (ms, when the set was logged). The log record gets `started
 `mergeUnseenHistory()` reads. Measure training time from the first to the last set's `ts`,
 not `endedAt`, which is only when End was tapped. Sessions from before 2026-09-24 have none of
 these fields.
+
+**After a session: an instant summary, one optional tap, and a debrief the next morning.** None of
+it is a new API call.
+- `sessionSummary(log)` is pure: sets against `logRec.plan` (a lift he skipped counts), RPE against
+  target from `feltVsPlan()`, and **at most one flag** in a fixed order: pain flagged that session,
+  two sets under the floor at the prescribed weight (a heavier single on a strength lift is not a
+  miss), felt a full RPE over target, two or more planned sets skipped.
+- The feel capture is 1-5 (`FEEL_LABELS`) plus a note of up to 140 characters. **Optional, and never
+  blocking**: the session is saved before the overlay opens, Done with no answer writes nothing, a
+  second tap clears a mis-tap. It is stored in **`S.sessionMeta`, its own `SYNC_HISTORY`
+  collection** (`'m|'+logId`), never on the log: the log may already be pushed, and
+  `mergeUnseenHistory()` only adds rows a snapshot lacks, so a field written onto it would lose to
+  the snapshot. `feel` is his subjective read; `feltVsPlan()` is RPE from his effort taps. They are
+  shown to DELTA separately and never averaged.
+- DELTA's debrief is a `debrief:{well, change, next}` key in its **existing** nightly JSON (like
+  `overload`), asked for only when `agDebriefTarget()` finds an undebriefed session from today or
+  yesterday, so a rest night costs nothing and a session logged after the 9 PM cycle is caught the
+  next night. The session id is taken before the await; `agValidateDebrief()` keeps strings only,
+  clipped to 160, tied to a real session. It lives in `S.agents.debrief`, merged newer-wins in
+  `applyPulled()` like the brief. The morning brief is told about it and told not to repeat it,
+  because Today shows it right under the brief. Anything to apply still goes through DELTA's
+  `proposals`. Cost: about $0.004 a night on nights he trained.
 
 **The status strip never renders during LIVE**, and is painted *before* the
 `refreshBlocked()` gate. That gate stops a repaint eating half-typed input; a read-only bar

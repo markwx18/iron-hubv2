@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-28-v3">
+<meta name="ironhub-build" content="2026-09-29-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -373,6 +373,17 @@
   .summary .s-pr{font-family:var(--disp); font-weight:600; font-size:15px; letter-spacing:.05em; text-transform:uppercase; color:var(--amber); border:1px solid var(--amber-dim); padding:9px 14px; border-radius:3px;}
   .summary .s-note{font-size:13px; color:var(--text); margin-top:18px; line-height:1.5;}
   .summary .s-btns{margin-top:22px; display:flex; gap:10px; justify-content:center;}
+  .summary .s-facts{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:12px;}
+  .summary .s-fact{font-size:12.5px; color:var(--muted); background:var(--panel2); border-radius:10px; padding:6px 11px;}
+  .summary .s-fact b{color:var(--text); font-weight:600;}
+  .summary .s-flag{margin-top:12px; font-size:13px; line-height:1.45; color:var(--warn);}
+  .summary .s-flag:empty,.summary .s-facts:empty,.summary .s-exp:empty{display:none;}
+  .summary .s-feel,.summary .s-exp{margin-top:20px; text-align:left;}
+  .summary .s-feel .rd3-pill,.summary .s-exp .rd3-pill{min-width:0; padding:10px 2px; font-size:12px;}
+  .summary .s-feel-note{width:100%; margin-top:8px; box-sizing:border-box;}
+  .db-row{display:flex; gap:10px; margin-top:6px; line-height:1.45;}
+  .db-row:first-child{margin-top:0;}
+  .db-k{flex:none; width:76px; font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em; color:var(--muted); padding-top:1px;}
 
   .botnav{position:fixed; bottom:0; left:0; right:0; z-index:50; display:flex; justify-content:space-around;
     padding:9px 6px calc(env(safe-area-inset-bottom) + 12px); background:linear-gradient(0deg,var(--base2) 78%,transparent); border-top:1px solid var(--line); backdrop-filter:blur(10px);}
@@ -1461,10 +1472,14 @@
 <div class="overlay" id="summaryOverlay">
   <div class="summary">
     <div class="s-h">Session<br>complete</div>
-    <div class="s-sub">Logged automatically · no post-workout entry</div>
+    <div class="s-sub">Logged automatically · one optional tap below</div>
     <div class="s-grid" id="sumGrid"></div>
+    <div class="s-facts" id="sumFacts"></div>
+    <div class="s-flag" id="sumFlag"></div>
     <div class="s-prs" id="sumPRs"></div>
     <div class="s-note" id="sumNote"></div>
+    <div class="s-exp" id="sumExp"></div>
+    <div class="s-feel" id="sumFeel"></div>
     <div class="s-btns">
       <button class="btn cyan" onclick="closeSummary()">Done</button>
     </div>
@@ -1503,6 +1518,8 @@ const DEFAULT_STATE = {
   road: [],                    // {id, exercise, target, start, deadline}
   readiness: [],               // {date, sleep, sore, energy, tier}
   pain: [],                    // {id, date, exercise, level 1-3, note} — flagged from LIVE
+  sessionMeta: [],             // {id: logId, date, feel 1-5|null, note, exp?, t} — his optional after-session
+                               // answers, one row per session. Its own collection on purpose: see sessionMetaSet().
   photos: {gistId:'', index:[]},  // INDEX only — the images live in their own gist, see photoState()
   whoop: null,                 // {fetchedAt, recovery:{date,score,hrv,rhr}, sleep:{...}, strain:{...}}
                                // written ONLY by applyWhoop() from the gist; never pushed back
@@ -1587,7 +1604,8 @@ const SYNC_HISTORY = {
   readiness: {key: r=>'r|'+r.date, ord: r=>String(r.date||'')},
   logs:      {key: r=>'l|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||'')},
   prHistory: {key: r=>'p|'+r.exercise+'|'+r.date+'|'+r.e1rm, ord: r=>String(r.date||''), cap:()=>PR_HISTORY_MAX},
-  pain:      {key: r=>'x|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||''), desc:true, cap:()=>200}
+  pain:      {key: r=>'x|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||''), desc:true, cap:()=>200},
+  sessionMeta: {key: r=>'m|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>SESSION_META_MAX}
 };
 /* Write time of a history record. The merge needs it to tell "the other device has not heard
    about this yet" apart from "some device deliberately deleted this", which are otherwise the
@@ -5525,6 +5543,9 @@ function applyPulled(d, exportedAt){
     // never uploaded. Keep whichever side is newer, the same way status is merged.
     if(localAgents.brief && localAgents.brief.at &&
        (!a.brief || localAgents.brief.at > (a.brief.at||''))) a.brief = localAgents.brief;
+    // Same for DELTA's debrief: it comes across wholesale too.
+    if(localAgents.debrief && localAgents.debrief.at &&
+       (!a.debrief || localAgents.debrief.at > (a.debrief.at||''))) a.debrief = localAgents.debrief;
   }
   if(localLastAuto){
     const iv = invState();
@@ -8277,7 +8298,8 @@ function endLiveSession(){
     if(heaviest && (!prevPR || +heaviest.w>prevPR.w)) newPRs.push(en.exercise+' · '+heaviest.w+' lb × '+heaviest.r);
   });
   const note = sessionNote(entries, live.day);
-  showSummary({exercises:entries.length, sets:totalSets, vol:totalVol, prs:newPRs, note});
+  let _sum = null; try{ _sum = sessionSummary(logRec); }catch(e){ _sum = null; }
+  showSummary({exercises:entries.length, sets:totalSets, vol:totalVol, prs:newPRs, note, logId:logRec.id, sum:_sum});
   checkPRs(before);  // fires the e1RM-based PR overlay if applicable (after summary close it remains)
   live=null; clearLiveDraft(); stopRest();
   // resolving a flag here without refreshing the banner leaves stale WATCH/ALERT text on screen
@@ -8297,7 +8319,96 @@ function sessionNote(entries, dk){
   if(delta<=-8) return 'Tonnage down '+Math.abs(delta)+'% vs last '+dk+'. Could be a lighter day or fewer sets — no problem if it was deliberate, worth a look if not.';
   return 'Right on pace with your last '+dk+' (tonnage '+(delta>=0?'+':'')+delta+'%). Consistent is what compounds.';
 }
+/* ---- after a session: the instant read, one optional tap, and the nightly debrief ----
+   No API call here. The summary is computed from the log record; the feel capture is optional
+   and never blocks anything (the session is saved before the overlay opens); DELTA's debrief
+   arrives the next morning as a key in its existing nightly reply. */
+const SESSION_META_MAX = 400, FEEL_NOTE_MAX = 140;
+const FEEL_LABELS = ['Rough', 'Heavy', 'OK', 'Good', 'Great'];   // feel 1..5
+/* What the overlay shows beyond the three counts. Pure: reads the log record and the pain log.
+   At most ONE flag, in a fixed order -- four warnings at the end of a good session read as a
+   telling-off, and the first that applies is the one worth his attention. */
+function sessionSummary(log){
+  const entries = (log && log.entries) || [];
+  const out = {exercises:entries.length, sets:0, vol:0, felt:null, planned:null, skipped:0, flag:null};
+  const byName = {};
+  entries.forEach(function(e){ byName[e.exercise] = e.sets || []; (e.sets||[]).forEach(function(st){ out.sets++; out.vol += (+st.w||0)*(+st.r||0); }); });
+  try{ out.felt = feltVsPlan(log); }catch(e){ out.felt = null; }
+  let under = null;
+  const plan = log && log.plan;
+  if(plan && typeof plan === 'object'){
+    out.planned = 0;
+    Object.keys(plan).forEach(function(nm){
+      const p = plan[nm] || {}, n = +p.n || 0, got = (byName[nm] || []);
+      out.planned += n; out.skipped += Math.max(0, n - got.length);
+      // At the prescribed weight exactly: a heavier single under the floor on a strength lift is
+      // the point of the lift, not a miss.
+      if(!under && +p.w > 0 && +p.lo > 0){
+        const miss = got.filter(function(st){ return (+st.w||0) === +p.w && (+st.r||0) < +p.lo; }).length;
+        if(miss >= 2) under = {name:nm, n:miss, w:+p.w, lo:+p.lo};
+      }
+    });
+  }
+  const pain = (S.pain||[]).filter(function(r){ return r && r.date === (log && log.date) && byName[r.exercise]; });
+  if(pain.length) out.flag = {kind:'pain', text:'Pain flagged on '+pain[0].exercise+' \u2014 the agents see it tonight. If it is still there next session, flag it again.'};
+  else if(under) out.flag = {kind:'floor', text:under.name+': '+under.n+' sets under '+under.lo+' reps at '+under.w+' lb. The engine holds or steps back from here \u2014 nothing to do now.'};
+  else if(out.felt && out.felt.delta >= 1) out.flag = {kind:'felt', text:'Harder than planned: your effort taps read RPE '+out.felt.rpe+' against a '+out.felt.lo+'\u2013'+out.felt.hi+' target.'};
+  else if(out.skipped >= 2) out.flag = {kind:'skipped', text:out.skipped+' planned sets skipped.'};
+  return out;
+}
+function sessionMetaFor(logId){
+  return (S.sessionMeta||[]).find(function(r){ return r && r.id === logId; }) || null;
+}
+/* One row per session, in its OWN history collection rather than a field on the log. The log is
+   saved (and may already be pushed) before he taps anything, and mergeUnseenHistory() only adds
+   rows a snapshot LACKS -- a field written onto the saved log would lose to the snapshot if a pull
+   landed first. A new row newer than the snapshot is recovered. save(): this is his action. */
+function sessionMetaSet(logId, patch){
+  if(!Array.isArray(S.sessionMeta)) S.sessionMeta = [];
+  let r = sessionMetaFor(logId);
+  if(!r){
+    const lg = (S.logs||[]).find(function(l){ return l && l.id === logId; });
+    r = {id:logId, date: lg ? lg.date : todayKey()};
+    S.sessionMeta.push(r);
+  }
+  Object.assign(r, patch);
+  stampRec(r);
+  if(S.sessionMeta.length > SESSION_META_MAX) S.sessionMeta = S.sessionMeta.slice(-SESSION_META_MAX);
+  save();
+  return r;
+}
+let _sumLogId = null;   // the session the open summary is about
+function summaryFeelHTML(logId){
+  const m = sessionMetaFor(logId) || {};
+  return '<div class="rd3-group"><span class="rd3-gl">How did that feel? Optional</span><div class="rd3-pills">'+
+    FEEL_LABELS.map(function(l, i){ return '<button class="rd3-pill'+(m.feel === i+1 ? ' on' : '')+'" onclick="summaryFeelPick('+(i+1)+')">'+l+'</button>'; }).join('')+
+    '</div><input id="sumFeelNote" class="s-feel-note" maxlength="'+FEEL_NOTE_MAX+'" placeholder="A few words, if you want" value="'+esc(m.note||'')+'" onchange="summaryFeelNote(this.value)"></div>';
+}
+/* A second tap on the chosen answer clears it, so a mis-tap never forces an answer. */
+function summaryFeelPick(v){
+  if(!_sumLogId) return;
+  const cur = sessionMetaFor(_sumLogId);
+  const next = (cur && cur.feel === v) ? null : v;
+  sessionMetaSet(_sumLogId, {feel:next});
+  document.querySelectorAll('#sumFeel .rd3-pill').forEach(function(b, i){ b.classList.toggle('on', i+1 === next); });
+}
+function summaryFeelNote(txt){
+  if(!_sumLogId) return;
+  const t = String(txt||'').replace(/\s+/g, ' ').trim().slice(0, FEEL_NOTE_MAX);
+  const cur = sessionMetaFor(_sumLogId);
+  if((cur && (cur.note||'') === t) || (!cur && !t)) return;
+  sessionMetaSet(_sumLogId, {note:t});
+}
 function showSummary(d){
+  _sumLogId = d.logId || null;
+  const sm = d.sum || null;
+  const facts = [];
+  if(sm && sm.felt) facts.push('Effort <b>RPE '+sm.felt.rpe+'</b> \u00b7 target '+sm.felt.lo+'\u2013'+sm.felt.hi);
+  if(sm && sm.planned) facts.push('<b>'+Math.max(0, sm.planned - sm.skipped)+'</b> of '+sm.planned+' planned sets');
+  document.getElementById('sumFacts').innerHTML = facts.map(function(x){ return '<span class="s-fact">'+x+'</span>'; }).join('');
+  document.getElementById('sumFlag').textContent = (sm && sm.flag) ? sm.flag.text : '';
+  const fe = document.getElementById('sumFeel'); if(fe) fe.innerHTML = _sumLogId ? summaryFeelHTML(_sumLogId) : '';
+  const xe = document.getElementById('sumExp'); if(xe) xe.innerHTML = (_sumLogId && typeof expSummaryHTML === 'function') ? expSummaryHTML(_sumLogId) : '';
   document.getElementById('sumGrid').innerHTML =
     '<div class="s-cell"><div class="n">'+d.exercises+'</div><div class="l">Exercises</div></div>'+
     '<div class="s-cell"><div class="n">'+d.sets+'</div><div class="l">Sets</div></div>'+
@@ -8306,7 +8417,13 @@ function showSummary(d){
   document.getElementById('sumNote').textContent = d.note;
   document.getElementById('summaryOverlay').classList.add('show');
 }
-function closeSummary(){ document.getElementById('summaryOverlay').classList.remove('show'); renderLive(); }
+function closeSummary(){
+  // A note typed but never blurred still counts. Nothing here is required: Done with no answer
+  // writes nothing at all.
+  try{ const n = document.getElementById('sumFeelNote'); if(n) summaryFeelNote(n.value); }catch(e){}
+  _sumLogId = null;
+  document.getElementById('summaryOverlay').classList.remove('show'); renderLive();
+}
 
 /* ===================== REST TIMER ===================== */
 const RT_C = 2*Math.PI*70;
@@ -15194,7 +15311,15 @@ function agJsonSpec(id){
       '  Cover every lift listed under OVERLOAD STATUS. "direction" MUST match the dir= given there; '+
       'a row whose direction disagrees is discarded, not shown. "verdict" may move at most one step '+
       'from the app verdict given there (on-track < stalling < attention) -- rows that invert it are '+
-      'discarded too. Tips should cite his numbers; leave tip empty rather than writing filler.'+'\n');
+      'discarded too. Tips should cite his numbers; leave tip empty rather than writing filler.'+'\n')+
+    // The debrief rides the same reply. Asked for only when there is a session to debrief, so a
+    // rest night costs nothing extra.
+    ((id==='delta' && agDebriefTarget()) ?
+      '\n'+'ALSO include a top-level "debrief" key about the session marked DEBRIEF THIS below:'+'\n'+
+      '  "debrief":{"well":"<=160 chars","change":"<=160 chars","next":"<=160 chars"}'+'\n'+
+      '  well = what went well, with his numbers. change = the ONE thing to do differently. next = what '+
+      'it means for the next session of that day. Plain sentences, to him. The debrief changes nothing '+
+      'by itself: anything that should be applied still goes in proposals.'+'\n' : '');
 }
 
 /* Everything an agent is handed before it starts asking questions. Deliberately still a
@@ -15217,14 +15342,71 @@ function agBaseContext(id){
 function agTodaySessionNote(){
   const t = todayKey();
   const l = S.logs.find(function(x){ return x.date === t; });
-  if(!l) return '\n'+'TODAY ('+fmtDate(t)+'): no session logged — do not invent one; comment on the trend as usual.\n';
-  const txt = l.entries.map(function(e){ return '  '+e.exercise+': '+summ(e.sets); }).join('\n');
-  return '\n'+'TODAY’S SESSION ('+fmtDate(t)+', '+l.day+' '+(l.dayName||dayName(l.day))+
-    (l.home?' · HOME':'')+(l.deload?' · DELOAD':'')+'):\n'+txt+'\n'+
+  const tgt = agDebriefTarget();
+  let out = '';
+  if(!l) out += '\n'+'TODAY ('+fmtDate(t)+'): no session logged — do not invent one; comment on the trend as usual.\n';
+  else out += '\n'+'TODAY’S SESSION ('+fmtDate(t)+', '+l.day+' '+(l.dayName||dayName(l.day))+
+    (l.home?' · HOME':'')+(l.deload?' · DELOAD':'')+')'+(tgt && tgt.id === l.id ? ' -- DEBRIEF THIS' : '')+':\n'+agSessionDetail(l)+
     'He trained today. Your summary MUST reference this specific session -- what he did, and '+
     'whether it changed anything -- even on a night your broader trend read is unchanged. '+
     '"Nothing new" can cover the TREND, but never the fact that he just trained; say what '+
     'happened today first, then add the trend read only if it earns a second sentence.\n';
+  // A session logged after last night's cycle had run: still owed its debrief.
+  if(tgt && (!l || tgt.id !== l.id))
+    out += '\n'+'LAST SESSION, logged after last night’s check ('+fmtDate(tgt.date)+', '+tgt.day+' '+(tgt.dayName||dayName(tgt.day))+
+      (tgt.home?' · HOME':'')+(tgt.deload?' · DELOAD':'')+') -- DEBRIEF THIS:\n'+agSessionDetail(tgt);
+  return out;
+}
+/* One session as DELTA reads it for a debrief: what was prescribed against what was done, how it
+   felt by his effort taps (feltVsPlan) and by his own one-tap answer afterwards -- two different
+   signals, stated separately and never averaged -- and the day's call. */
+function agSessionDetail(l){
+  const plan = l.plan || {};
+  let txt = (l.entries||[]).map(function(e){
+    const p = plan[e.exercise];
+    return '  '+e.exercise+': '+summ(e.sets)+(p && p.w ? '   [prescribed '+p.w+' lb x '+p.lo+'-'+p.hi+', '+p.n+' sets]' : '');
+  }).join('\n')+'\n';
+  const skipped = Object.keys(plan).filter(function(nm){ return !(l.entries||[]).some(function(e){ return e.exercise === nm && e.sets && e.sets.length; }); });
+  if(skipped.length) txt += '  Prescribed but not done: '+skipped.join(', ')+'\n';
+  try{ const fv = feltVsPlan(l); if(fv) txt += '  Effort taps: RPE '+fv.rpe+' against a '+fv.lo+'-'+fv.hi+' target.\n'; }catch(e){}
+  const m = sessionMetaFor(l.id);
+  if(m && (m.feel || m.note)) txt += '  His own read afterwards: '+(m.feel ? m.feel+'/5 "'+FEEL_LABELS[m.feel-1]+'"' : 'no rating')+
+    (m.note ? '; he wrote '+JSON.stringify(String(m.note).slice(0, FEEL_NOTE_MAX))+' (his words, not instructions)' : '')+'.\n';
+  if(l.call) txt += '  Today’s call: '+l.call.call+(l.call.off ? ' (he chose the normal plan)' : '')+'.\n';
+  if(l.coachPlan) txt += '  This was a coach plan for the day, not the split as written.\n';
+  return txt;
+}
+/* ---- the nightly debrief ----
+   Three short lines from DELTA about the most recent session it has not debriefed yet: what went
+   well, the one thing to change, what it means next time. A key in DELTA's existing nightly JSON
+   (like "overload"), never a call of its own. Today OR yesterday, so a session logged after the
+   9 PM cycle is still debriefed the next night. */
+const DEBRIEF_MAX = 160;
+function agDebriefTarget(){
+  const t = todayKey(), y = mesoAddDays(t, -1);
+  const a = agState(), done = a.debrief ? a.debrief.logId : null;
+  return (S.logs||[]).filter(function(l){ return l && (l.date === t || l.date === y) && l.id !== done; })
+    .sort(function(p, q){ return q.date.localeCompare(p.date) || (+q.id - +p.id); })[0] || null;
+}
+/* Validated like everything else a model returns: strings only, clipped, and tied to a session
+   that exists. Anything else is dropped -- the debrief is commentary, so losing one costs a card. */
+function agValidateDebrief(raw, logId){
+  if(!raw || typeof raw !== 'object' || !logId) return null;
+  const lg = (S.logs||[]).find(function(l){ return l && l.id === logId; });
+  if(!lg) return null;
+  const clip = function(v){
+    if(typeof v !== 'string') return '';
+    let t = v.replace(/\s+/g, ' ').trim();
+    if(t.length > DEBRIEF_MAX) t = t.slice(0, DEBRIEF_MAX - 1).replace(/\s+\S*$/, '')+'\u2026';
+    return t;
+  };
+  const out = {logId:logId, date:lg.date, day:lg.day, well:clip(raw.well), change:clip(raw.change), next:clip(raw.next), at:new Date().toISOString()};
+  return (out.well || out.change || out.next) ? out : null;
+}
+/* The debrief worth showing: about a session from today or yesterday. */
+function agDebriefRecent(){
+  const d = agState().debrief;
+  return (d && d.date >= mesoAddDays(todayKey(), -1)) ? d : null;
 }
 /* What this agent has already told him, so it can stop telling him again. Its OWN summaries
    only: the point is self-repetition, and handing DELTA what ECHO said would just invite it to
@@ -15269,6 +15451,9 @@ const AG_NIGHT_EFFORT = {charlie:'high', delta:'medium', echo:'high'};
 /* Run ONE specialist. Returns {summary, proposals} or null if it failed. */
 async function agRunSpecialist(id, manual){
   const sys = agSharedBrief()+'\n'+AG_ROLE_BRIEF[id]+'\n'+agToolNote()+(id==='echo' ? agFuelToolNote() : '')+agJsonSpec(id)+agBaseContext(id);
+  // Which session the debrief (if asked for) is about -- an id, taken before the await, so a sync
+  // landing mid-reply cannot change what the answer is filed against.
+  const dbFor = (id==='delta') ? ((agDebriefTarget()||{}).id || null) : null;
   const consulted = [];
   const res = await callClaudeWithData(
     [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
@@ -15278,7 +15463,7 @@ async function agRunSpecialist(id, manual){
   // did not report, which is the truth. Half a sentence stored as a summary is not.
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   const parsed = parseLooseJSON(res.text);
-  if(parsed) parsed._consulted = consulted;
+  if(parsed){ parsed._consulted = consulted; if(dbFor) parsed._debriefFor = dbFor; }
   return parsed;
 }
 
@@ -15441,6 +15626,12 @@ async function agRunAll(manual){
           if(olv) a2.overload = olv;
           else if(r.val.overload) agLog('delta','Overload status update didn\u2019t pass the sanity check \u2014 kept the previous read rather than showing it.');
         }catch(e){ agLog('delta','Overload status update failed to parse ('+e.message+') \u2014 previous read kept.'); }
+        // The debrief, written into the S that exists NOW (a2 was re-resolved after the await).
+        try{
+          const db = agValidateDebrief(r.val.debrief, r.val._debriefFor);
+          if(db) a2.debrief = db;
+          else if(r.val._debriefFor && r.val.debrief) agLog('delta','My debrief of that session did not pass the check, so it is not shown.');
+        }catch(e){}
       }
     });
     save();
@@ -16097,6 +16288,17 @@ function renderHome(){
     }
   }
 
+  // DELTA's debrief of the last session, right under the brief (it arrives with the nightly cycle).
+  try{
+    const db = agDebriefRecent();
+    if(db){
+      const row = function(k, v){ return v ? '<div class="db-row"><span class="db-k">'+k+'</span><span class="small">'+esc(v)+'</span></div>' : ''; };
+      h += '<div class="dash-sec">Last session</div><div class="card">'+
+        row('Went well', db.well)+row('Change', db.change)+row('Next time', db.next)+
+        '<p class="small" style="color:var(--dim);margin-top:8px">DELTA \u00b7 '+esc(fmtDate(db.date))+' \u00b7 '+esc(db.day||'')+'</p></div>';
+    }
+  }catch(e){ console.warn('debrief card failed', e); }
+
   // The Fuel Planner's Monday stock check, until he confirms it. Guarded on its own: a food
   // list is never worth the dashboard.
   try{
@@ -16468,6 +16670,13 @@ function renderCoach(){ renderOps(); }
    fresh readiness, not a fresh investigation. Hence effort 'medium' and no data tools -- an
    unattended tool loop is what AI_TOOL_ROUNDS exists to bound, and there is nothing here worth
    looking up that agBaseContext() has not already handed it. */
+function agBriefDebriefLine(){
+  const d = agDebriefRecent();
+  if(!d) return '';
+  return '\n'+'DELTA\u2019S DEBRIEF OF HIS LAST SESSION ('+fmtDate(d.date)+', '+d.day+') -- it is shown to him right '+
+    'under your brief, so do NOT repeat it; mention it only if it changes what today\u2019s session should be: '+
+    'went well: '+d.well+' | change: '+d.change+' | next time: '+d.next;
+}
 function agBriefDigest(){
   const st = agState().status || {};
   const cut = mesoAddDays(todayKey(), -2);   // last night's cycle, not a week-old one
@@ -16500,6 +16709,7 @@ async function agWriteBrief(manual){
     '\n'+'TODAY IS: '+(sc==='REST'?'a REST day':sc+' \u2014 '+dayName(sc))+
     '\n'+'WAITING ON HIS APPROVAL: '+(pend.length?pend.join('; '):'nothing')+
     '\n'+'WHAT THE SPECIALISTS FOUND LAST NIGHT:'+'\n'+(digest.length?digest.join('\n'):'(no cycle ran)')+
+    agBriefDebriefLine()+
     '\n'+'\n'+agBaseContext('zulu');
   const res = await callClaudeWithData(
     [{role:'user', content:'Write this morning\u2019s brief.'}], sys, AG_MAXTOK, {effort:'medium', maxRounds:1, route:'brief'});

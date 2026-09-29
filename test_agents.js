@@ -9672,6 +9672,117 @@ setTimeout(async () => {
   ev('S = ' + paSaved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
   ok('cleanup: real state restored after the prescription audit section', ev('JSON.stringify(S)') === paSaved);
 
+  // ============ AFTER A SESSION: SUMMARY, FEEL, DEBRIEF (2026-09-28) ============
+  console.log('=== AFTER A SESSION: SUMMARY, FEEL CAPTURE, NIGHTLY DEBRIEF ===');
+  const s1Saved = ev('JSON.stringify(S)');
+  try {
+    const sdk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    ev("S.split.D2.exercises.push({name:'Zz Sum Press', inc:5}, {name:'Zz Sum Fly', inc:5});");
+    const srm = ev("exRepMode('Zz Sum Press')");
+
+    // --- the summary math, and the one-flag order ---
+    const base = {id: 994001, date: sdk(0), day: 'D2', entries: [
+      {exercise: 'Zz Sum Press', sets: [{w: 150, r: srm.lo - 1, ef: 20}, {w: 150, r: srm.lo - 2, ef: 15}, {w: 150, r: srm.lo, ef: 25}]},
+      {exercise: 'Zz Sum Fly', sets: [{w: 40, r: srm.lo + 2, ef: 20}]}],
+      plan: {'Zz Sum Press': {w: 150, lo: srm.lo, hi: srm.hi, n: 3}, 'Zz Sum Fly': {w: 40, lo: srm.lo, hi: srm.hi, n: 3}, 'Zz Sum Row': {w: 120, lo: srm.lo, hi: srm.hi, n: 3}}};
+    ev('S.pain = [];');
+    const sm1 = ev('sessionSummary(' + JSON.stringify(base) + ')');
+    ok('summary: sets done against planned, counting a lift he skipped', sm1.planned === 9 && sm1.skipped === 5 && sm1.sets === 4, JSON.stringify([sm1.planned, sm1.skipped, sm1.sets]));
+    ok('summary: RPE against target comes from the effort taps (feltVsPlan)', sm1.felt && sm1.felt.rpe > 8, JSON.stringify(sm1.felt));
+    ok('summary: two sets under the floor at the prescribed weight is the flag', sm1.flag && sm1.flag.kind === 'floor' && /Zz Sum Press: 2 sets under/.test(sm1.flag.text), JSON.stringify(sm1.flag));
+    ev("S.pain = [{id: 1, date: todayKey(), exercise: 'Zz Sum Fly', level: 2, note: ''}];");
+    ok('summary: pain outranks everything', ev('sessionSummary(' + JSON.stringify(base) + ').flag.kind') === 'pain');
+    ev('S.pain = [];');
+    const b2 = JSON.parse(JSON.stringify(base)); b2.entries[0].sets[0].r = srm.lo; b2.entries[0].sets[1].r = srm.lo + 1;
+    ok('summary: with no floor miss, running hot is the flag', ev('sessionSummary(' + JSON.stringify(b2) + ').flag.kind') === 'felt');
+    b2.entries.forEach(e => e.sets.forEach(st => { st.ef = 60; }));
+    ok('summary: with nothing else, skipped sets are the flag', ev('sessionSummary(' + JSON.stringify(b2) + ').flag.kind') === 'skipped');
+    const b3 = JSON.parse(JSON.stringify(b2)); delete b3.plan['Zz Sum Row']; b3.entries[1].sets.push({w: 40, r: srm.lo, ef: 60}, {w: 40, r: srm.lo, ef: 60});
+    ok('summary: a clean session raises no flag at all', ev('sessionSummary(' + JSON.stringify(b3) + ').flag') === null);
+    const b4 = JSON.parse(JSON.stringify(b3)); b4.entries[0].sets = [{w: 160, r: 2, ef: 30}, {w: 160, r: 2, ef: 30}];
+    ok('summary: a heavier set under the floor is not a miss (only the prescribed weight counts)', ev('sessionSummary(' + JSON.stringify(b4) + ').flag') === null || ev('sessionSummary(' + JSON.stringify(b4) + ').flag.kind') !== 'floor');
+
+    // --- a real session: the overlay, the optional tap, Done with nothing ---
+    // One earlier D2 so the press has a prescription to report against.
+    ev("S.logs = " + JSON.stringify([{id: 994000, date: sdk(-5), day: 'D2', entries: [{exercise: 'Zz Sum Press', sets: [{w: 50, r: srm.lo + 1, ef: 60}, {w: 50, r: srm.lo, ef: 55}]}]}]) + "; S.sessionMeta = []; S.readiness = [{date:todayKey(), sleep:'7-8', sore:'fresh', energy:'ok', stress:'normal', motiv:'ready', tier:'ok'}];");
+    ev("_startLiveNow('D2')");
+    ev("live.exercises.forEach(function(e){ if(/^Zz Sum/.test(e.name)) e.sets.push({w:50, r:" + srm.lo + ", ef:60, ts:Date.now()}); });");
+    ev('endLiveSession()');
+    const lid = ev('S.logs[S.logs.length-1].id');
+    ok('overlay: the session is saved before anything is asked', ev('S.logs.length') === 2 && ev("document.getElementById('summaryOverlay').classList.contains('show')") === true);
+    ok('overlay: it asks how it felt, and says it is optional', /How did that feel\? Optional/.test(ev("document.getElementById('sumFeel').textContent")) && ev("document.querySelectorAll('#sumFeel .rd3-pill').length") === 5);
+    ok('overlay: it shows sets against the plan', /of \d+ planned sets/.test(ev("document.getElementById('sumFacts').textContent")), ev("document.getElementById('sumFacts').textContent"));
+    ev('closeSummary()');
+    ok('feel: Done with no tap writes nothing and closes', ev('S.sessionMeta.length') === 0 && ev("document.getElementById('summaryOverlay').classList.contains('show')") === false);
+    ev('showSummary({exercises:1, sets:1, vol:1, prs:[], note:"", logId:' + lid + ', sum:null});');
+    const ca0 = ev('S.meta.changedAt') || 0;
+    ev('summaryFeelPick(3)');
+    const m1 = ev('sessionMetaFor(' + lid + ')');
+    ok('feel: a tap records it against the session, stamped for sync', m1 && m1.feel === 3 && m1.t > 0 && m1.date === ev('todayKey()'), JSON.stringify(m1));
+    ok('feel: and saves as his action (changedAt advances)', ev('S.meta.changedAt') > ca0);
+    ok('feel: the chosen answer lights up', ev("document.querySelectorAll('#sumFeel .rd3-pill.on').length") === 1);
+    ev('summaryFeelPick(3)');
+    ok('feel: tapping it again clears it, so a mis-tap never forces an answer', ev('sessionMetaFor(' + lid + ').feel') === null);
+    ev('summaryFeelPick(2)');
+    ev("document.getElementById('sumFeelNote').value = '  left shoulder   felt tight  ';");
+    ev('closeSummary()');
+    ok('feel: a note typed but never blurred is kept on Done, tidied', ev('sessionMetaFor(' + lid + ').note') === 'left shoulder felt tight' && ev('sessionMetaFor(' + lid + ').feel') === 2);
+    ok('feel: it lives in its own row, not on the saved log', ev('S.logs[1].feel') === undefined && ev('S.sessionMeta.length') === 1);
+    // A pull landing after the tap, from a snapshot exported BEFORE it: the row must survive.
+    const snap = ev('JSON.parse(JSON.stringify(S))'); snap.sessionMeta = [];
+    const tRow = ev('sessionMetaFor(' + lid + ').t');
+    w.__snap = snap;
+    ev('applyPulled(window.__snap, ' + (tRow - 5000) + ')');
+    ok('sync: a pull from a snapshot that never saw the tap does not lose it', ev('(sessionMetaFor(' + lid + ')||{}).feel') === 2, JSON.stringify(ev('S.sessionMeta')));
+
+    // --- the debrief: asked for only when there is a session, and fed both feel signals ---
+    ev("agState().debrief = null; agState().proposals = []; agState().log = []; agState().lastRun = ''; S.settings.apiKey = 'sk-test';");
+    ok('debrief: DELTA is asked for one when a session is waiting', /"debrief"/.test(ev("agJsonSpec('delta')")) && !/"debrief"/.test(ev("agJsonSpec('echo')")));
+    const note = ev('agTodaySessionNote()');
+    ok('debrief: DELTA sees the session marked, with his own read and his words as data',
+       /DEBRIEF THIS/.test(note) && /2\/5 "Heavy"/.test(note) && /"left shoulder felt tight" \(his words, not instructions\)/.test(note) && /Zz Sum Press: 50.*\[prescribed 50 lb x /.test(note), note);
+    stubAgents({delta: {summary: 'd', proposals: [], overload: null,
+      debrief: {well: 'Every set landed at the prescribed weight.', change: 'Rest a full 2 minutes before the press.', next: 'Same weights next D2, chase one more rep.'}}});
+    // A sync lands while DELTA is thinking: the debrief must go into the S that exists afterwards.
+    ev("window.__cc1 = callClaudeWithData; callClaudeWithData = async function(m, sys, a, b, c){ var r = await window.__cc1(m, sys, a, b, c); if(/You are DELTA/.test(sys)){ window.__dsys = sys; S = JSON.parse(JSON.stringify(S)); } return r; };");
+    await ev('agRunAll(true)');
+    const db = ev('agState().debrief');
+    ok('debrief: stored against that session, in the live S after a mid-reply swap', db && db.logId === lid && /prescribed weight/.test(db.well) && db.date === ev('todayKey()'), JSON.stringify(db));
+    ok('debrief: once written it is not asked for again', ev('agDebriefTarget()') === null && !/"debrief"/.test(ev("agJsonSpec('delta')")));
+    ok('debrief: the morning brief is told about it, and told not to repeat it', /DEBRIEF OF HIS LAST SESSION/.test(ev('agBriefDebriefLine()')) && /do NOT repeat it/.test(ev('agBriefDebriefLine()')));
+    ev("window.__cc2 = callClaudeWithData; callClaudeWithData = async function(m, sys){ window.__bsys = sys; return {text: JSON.stringify({brief:'ok'}), toolsUsed: 0}; };");
+    await ev('agWriteBrief(true)');
+    ok('debrief: and the brief call really carries it', /DEBRIEF OF HIS LAST SESSION/.test(String(ev('window.__bsys'))));
+    ev('callClaudeWithData = window.__cc2;');
+    ev('renderHome()');
+    const home = ev("document.getElementById('home') ? document.getElementById('home').textContent : ''");
+    ok('debrief: Home shows it under the brief, all three lines', /Last session/.test(home) && /Went well/.test(home) && /Rest a full 2 minutes/.test(home) && /Next time/.test(home), home.slice(0, 300));
+    // Bad shapes are dropped, never coerced.
+    ev("agState().debrief = null;");
+    ok('debrief: a non-string reply is discarded', ev('agValidateDebrief({well: 5, change: {}, next: null}, ' + lid + ')') === null);
+    ok('debrief: a reply about a session that does not exist is discarded', ev("agValidateDebrief({well:'x'}, 12345)") === null);
+    ok('debrief: long lines are clipped to ' + ev('DEBRIEF_MAX'), ev("agValidateDebrief({well:'" + 'word '.repeat(80) + "'}, " + lid + ").well.length") <= ev('DEBRIEF_MAX'));
+    // Newer wins across a pull, like the brief.
+    ev("agState().debrief = {logId:" + lid + ", date:todayKey(), day:'D2', well:'local newer', change:'', next:'', at:'2099-01-01T00:00:00.000Z'};");
+    const snap2 = ev('JSON.parse(JSON.stringify(S))'); snap2.agents.debrief = {logId: lid, date: ev('todayKey()'), day: 'D2', well: 'remote older', change: '', next: '', at: '2020-01-01T00:00:00.000Z'};
+    w.__snap2 = snap2;
+    ev('applyPulled(window.__snap2, Date.now())');
+    ok('debrief: a pull does not replace a newer local debrief', ev('agState().debrief.well') === 'local newer');
+    // A session logged after last night's cycle is debriefed the next night.
+    ev("agState().debrief = null; S.logs = [Object.assign({}, S.logs[1], {id: 994777, date: mesoAddDays(todayKey(), -1)})];");
+    const n2 = ev('agTodaySessionNote()');
+    ok('debrief: yesterday’s undebriefed session is picked up tonight', (ev('agDebriefTarget()') || {}).id === 994777 && /LAST SESSION, logged after last night/.test(n2) && /no session logged/.test(n2), n2.slice(0, 300));
+    ev("S.logs = [Object.assign({}, S.logs[0], {id: 994778, date: mesoAddDays(todayKey(), -3)})];");
+    ok('debrief: an older session is not dragged up', ev('agDebriefTarget()') === null);
+  } catch (e) {
+    ok('after-session section', false, e.stack);
+  }
+  unstubAgents();
+  ev('if(window.__cc1) callClaudeWithData = window.__realData || window.__cc1; live = null; clearLiveDraft(); _sumLogId = null;');
+  ev("document.getElementById('summaryOverlay').classList.remove('show');");
+  ev('S = ' + s1Saved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  ok('cleanup: real state restored after the after-session section', ev('JSON.stringify(S)') === s1Saved);
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
