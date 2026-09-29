@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2358 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2382 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -272,6 +272,7 @@ so the two orders can no longer disagree.
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
 | Projections | `anFanProject()` (shared core), `anFanChartSVG()`, `anFanMilestones()`, `bwProjectFor()` |
+| Sunday check-in | `wpWeekFor()`, `wpStage()`, `wpCardHTML()`, `wpSubmit()`, `wpRun()` (route `weekplan`), `wpFilterProposals()`, `wpContextLine()`, `S.weekPlan` |
 | Experiments | `EXP_TEMPLATES`, `expState()` (`S.experiments`), `expValidate()`, `expStart()`, `expSessions()`, `expScore()` / `expTrend()`, `expEvaluate()`, `expTick()`, `expStop()`, `expAnswer()`, `expMenuLine()`, `expCardHTML()` |
 | Prediction record | `predTick()` (`S.predictions`), `predLifts()`, `predTopsets()`, `predResolve()`, `predRecord()`, `predRecordCardHTML()`, `predIntelLine()` |
 | Overload status | `olSignals()`, `olBaselineVerdict()`, `olValidateReport()`, `renderAnOverload()` |
@@ -689,6 +690,22 @@ sessions against 71%, and grind share alone would have made recovery count for l
 It is about 600 tokens on his real data, and `agBaseContext()` adds it for DELTA, ECHO and ZULU
 (the brief included). Every line is guarded on its own, so a failing line can never cost an agent
 its prompt. Check the usage card before growing it.
+
+**The Sunday check-in is notes only** (Mark's choice, 2026-09-28). Nothing in it can change a future
+date; V4's removal of date overrides stands.
+- Sunday (for the week from Monday) and Monday (catch-up for the current week), a Today card:
+  chips per day (Busy / Travel / No gym / Low energy) and a line of text. The taps live in the
+  module-scoped `wpDraft`, so the 30-second repaint cannot wipe them. "Not this week" makes no call.
+- His input is saved BEFORE the call. **One call a week** (`wpRun()`, route `weekplan`, no tools,
+  effort medium, about $0.03). A retry is allowed only when no reply ever arrived
+  (`agIsNetworkErr`); a reply that came back unusable was billed and closes the week. `S` is
+  re-resolved after the await, and `_wpRunning` is released in `finally`.
+- The reply is a short plan and a note per flagged day. Today shows the day's note and, on a No gym
+  day, the existing HOME toggle. `wpContextLine()` puts what he said into `agContext()` for that
+  week only.
+- A change is an ordinary proposal: at most one, only `deload` or `setCount`
+  (`wpFilterProposals()`), not a deload inside a deload or a planned one, not a set count on a lift
+  under a reset or an Investigation flag. It then goes through `agIngest()` and `agValidateFix()`.
 
 **Experiments are proposed by the agents and measured by the app.** Daily intelligence item 2.
 - **Fixed templates only** (`EXP_TEMPLATES`), because the app, not a model, has to measure every one:

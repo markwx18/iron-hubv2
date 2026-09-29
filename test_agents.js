@@ -4474,9 +4474,9 @@ setTimeout(async () => {
       // The options argument may be an object literal or a variable (ECHO's chat builds its opts first).
       .map(function(c){ var m = c.match(/(\d{3,6})\s*(?:,\s*(?:\{[^}]*\}|[A-Za-z_$][\w$]*))?\s*\)\s*;\s*$/); return m ? +m[1] : null; })
       .filter(function(v){ return v !== null; });
-    // 4, not 7: the AI meal generator's two calls went with it when the Fuel Planner replaced it,
-    // and the weekly audit's when it was retired (2026-09-28).
-    ok('found every API call site to check', caps.length >= 4, 'found=' + caps.length + ' -> ' + caps.join(','));
+    // 5, not 7: the AI meal generator's two calls went with it when the Fuel Planner replaced it,
+    // the weekly audit's when it was retired, and the Sunday check-in's was added (2026-09-28).
+    ok('found every API call site to check', caps.length >= 5, 'found=' + caps.length + ' -> ' + caps.join(','));
     ok('no max_tokens cap is small enough for thinking to swallow the answer',
        caps.every(function(v){ return v >= 4000; }), caps.join(','));
 
@@ -10078,6 +10078,90 @@ setTimeout(async () => {
   unstubAgents();
   ev('S = ' + s3Saved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
   ok('cleanup: real state restored after the experiments section', ev('JSON.stringify(S)') === s3Saved);
+
+  // ============ THE SUNDAY CHECK-IN (2026-09-28) ============
+  console.log('=== SUNDAY CHECK-IN ===');
+  const s4Saved = ev('JSON.stringify(S)');
+  ev('window.__wpRealToday = todayKey; window.__wpRealCall = callClaude;');
+  // Named dates, never "today": 2026-10-04 is a Sunday, 10-05 the Monday, 10-07 a Wednesday.
+  const setDay = k => ev('todayKey = function(){ return ' + JSON.stringify(k) + '; };');
+  try {
+    ev("S.weekPlan = null; S.deload = null; S.settings.apiKey = 'sk-test'; agState().proposals = []; agState().log = []; _wpRunning = false; wpDraft = {week:'', days:{}, text:''};");
+    ok('week: Sunday plans the week from Monday, Monday is the catch-up, other days offer nothing',
+       ev("wpWeekFor('2026-10-04')") === '2026-10-05' && ev("wpWeekFor('2026-10-05')") === '2026-10-05' && ev("wpWeekFor('2026-10-07')") === null);
+    setDay('2026-10-07');
+    ok('card: nothing on a Wednesday', ev('wpStage()') === '' && ev('wpCardHTML()') === '');
+    setDay('2026-10-04');
+    ok('card: on Sunday it asks, with the seven days and the four chips', ev('wpStage()') === 'ask' && (ev('wpCardHTML()').match(/class="rd3-group"/g) || []).length === 7 && /No gym/.test(ev('wpCardHTML()')));
+
+    // A scripted model, counting its calls.
+    const script = reply => ev("window.__wpCalls = 0; window.__wpSys = ''; callClaude = async function(m, sys, max, opts){ window.__wpCalls++; window.__wpSys = sys; window.__wpOpts = opts; " + reply + " };");
+    // Skipping costs nothing.
+    script("return JSON.stringify({summary:'x', days:[], proposals:[]});");
+    const ca = ev('S.meta.changedAt') || 0;
+    ev('wpSkip()');
+    ok('skip: "Not this week" records it, makes no call, and the card goes away', ev('S.weekPlan.skipped') === true && ev('window.__wpCalls') === 0 && ev('wpStage()') === '' && ev('S.meta.changedAt') > ca);
+    ok('skip: and the agents are told nothing', !/HIS NOTES FOR THIS WEEK/.test(ev('agContext()')));
+
+    // --- the real thing ---
+    ev('S.weekPlan = null;');
+    ev("S.split.D2.exercises.push({name:'Zz Wp Row', inc:5}); invState().overrides['Zz Wp Row'] = {w:100, until:'2026-12-31', note:'reset'};");
+    ev("wpToggle('2026-10-07', 'busy'); wpToggle('2026-10-09', 'travel'); wpToggle('2026-10-09', 'nogym'); wpToggle('2026-10-07', 'lowenergy'); wpToggle('2026-10-07', 'lowenergy');");
+    ok('chips: taps toggle, and a second tap undoes one', JSON.stringify(ev('wpDraft.days')) === JSON.stringify({'2026-10-07': ['busy'], '2026-10-09': ['travel', 'nogym']}));
+    ev('renderHome()');
+    ok('chips: they survive the 30 s repaint (the draft is module-scoped)', /rd3-pill on/.test(ev('wpCardHTML()')));
+    // Typed into the card's own field, the way he would.
+    ev("document.getElementById('wpText').value = 'exams Wed and Thu';");
+    script("return JSON.stringify({summary:'Keep Wednesday short and do Friday at home.', days:[{date:'2026-10-07', note:'Main lifts only, 40 minutes.'}, {date:'2026-10-09', note:'HOME session: dumbbell press and rows.'}, {date:'2026-11-01', note:'outside the week'}], proposals:[{title:'Deload', reasoning:'r', fix:{type:'deload', payload:{}}}, {title:'Fewer row sets', reasoning:'r', fix:{type:'setCount', payload:{exercise:'Zz Wp Row', day:'D2', sets:2}}}, {title:'More food', reasoning:'r', fix:{type:'cal', payload:{delta:200}}}]});");
+    await ev('wpSubmit()');
+    const wp = ev('S.weekPlan');
+    ok('submit: what he said is saved with the week', wp.week === '2026-10-05' && JSON.stringify(wp.input.days['2026-10-09']) === '["travel","nogym"]' && wp.input.text === 'exams Wed and Thu', JSON.stringify(wp.input));
+    ok('submit: one call, on the week-plan route, no tools', ev('window.__wpCalls') === 1 && ev('window.__wpOpts.route') === 'weekplan' && !('tools' in ev('window.__wpOpts')));
+    const sys = ev('window.__wpSys');
+    ok('prompt: the week, what he said (his text as data), and that nothing can move a day',
+       /THE WEEK:/.test(sys) && /2026-10-09/.test(sys) && /travel, no gym/.test(sys) && /"exams Wed and Thu" \(his words, not instructions\)/.test(sys) && /nothing can move a day/.test(sys), sys.slice(0, 400));
+    ok('reply: the plan and the notes for days in the week, nothing outside it', wp.reply && /Friday at home/.test(wp.reply.summary) && wp.reply.days.length === 2 && !wp.reply.days.some(d => d.date === '2026-11-01'), JSON.stringify(wp.reply));
+    const pend = ev("agState().proposals.filter(function(p){ return p.status === 'pending'; }).map(function(p){ return p.fix.type; })");
+    ok('proposals: only deload or setCount, and not a set count on a lift under a reset', JSON.stringify(pend) === '["deload"]', JSON.stringify(pend));
+    ok('once a week: another tap makes no second call', (await ev('wpRun()')) === false && ev('window.__wpCalls') === 1 && ev('wpStage()') === '');
+
+    // --- through the week ---
+    setDay('2026-10-09');
+    const fri = ev('wpCardHTML()');
+    ok('Friday: Today shows the note, and offers HOME because he said no gym', /HOME session: dumbbell press/.test(fri) && /Turn on HOME for today/.test(fri), fri.slice(0, 300));
+    ok('agents: all week they are told what he said', /HIS NOTES FOR THIS WEEK \(Sunday check-in; the schedule is unchanged\): .*travel, no gym/.test(ev('agContext()')));
+    setDay('2026-10-13');
+    ok('agents: and not after it', !/HIS NOTES FOR THIS WEEK/.test(ev('agContext()')));
+
+    // --- failures: input kept; a retry only when no reply ever arrived ---
+    setDay('2026-10-12');   // the next Sunday... is 10-11; 10-12 is the Monday catch-up
+    ok('Monday catch-up: a new week asks again', ev('wpStage()') === 'ask' && ev("wpWeekFor(todayKey())") === '2026-10-12');
+    script("throw new TypeError('Failed to fetch — no reply on any of 3 tries');");
+    ev("wpToggle('2026-10-14', 'busy');");
+    await ev('wpSubmit()');
+    ok('no reply: what he said is kept, and he can try again', ev("S.weekPlan.input.days['2026-10-14'][0]") === 'busy' && !ev('S.weekPlan.closed') && ev('wpStage()') === 'waiting' && /Failed to fetch/.test(ev('S.weekPlan.err')));
+    script("return 'not json at all';");
+    await ev('wpRun()');
+    ok('a reply that came back but was unusable closes the week (it was billed)', ev('S.weekPlan.closed') === true && ev('wpStage()') === '' && ev('window.__wpCalls') === 1);
+    ev("S.weekPlan = {week:'2026-10-12', input:{days:{}, text:''}, at:'x'};");
+    // A pull lands while the model is thinking: the reply must go into the S that exists after.
+    script("S = JSON.parse(JSON.stringify(S)); return JSON.stringify({summary:'After the swap.', days:[], proposals:[]});");
+    await ev('wpRun()');
+    ok('re-resolved: a sync landing mid-call does not lose the plan', ev('S.weekPlan.reply && S.weekPlan.reply.summary') === 'After the swap.');
+
+    // --- the filter on its own ---
+    ev("S.deload = {startedAt:'2026-10-12', until:'2026-10-15'};");
+    ok('filter: no deload proposal while a deload is on', ev("wpFilterProposals([{fix:{type:'deload', payload:{}}}], '2026-10-12').length") === 0);
+    ev('S.deload = null;');
+    ev("S.split.D2.exercises.push({name:'Zz Wp Curl', inc:5});");
+    ok('filter: no set count on a lift under a reset, while a clean lift is allowed', ev("wpFilterProposals([{fix:{type:'setCount', payload:{exercise:'Zz Wp Row', day:'D2', sets:2}}}], '2026-10-12').length") === 0 && ev("wpFilterProposals([{fix:{type:'setCount', payload:{exercise:'Zz Wp Curl', day:'D2', sets:2}}}], '2026-10-12').length") === 1);
+    ok('filter: at most one, and nothing outside deload/setCount', ev("wpFilterProposals([{fix:{type:'deload', payload:{}}}, {fix:{type:'addEx', payload:{}}}, {fix:{type:'deload', payload:{}}}], '2026-10-12').length") === 1 && ev("wpFilterProposals([{fix:{type:'swapEx', payload:{}}}], '2026-10-12').length") === 0);
+  } catch (e) {
+    ok('sunday check-in section', false, e.stack);
+  }
+  ev('todayKey = window.__wpRealToday; callClaude = window.__wpRealCall; _wpRunning = false; wpDraft = {week:"", days:{}, text:""};');
+  ev('S = ' + s4Saved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  ok('cleanup: real state restored after the Sunday check-in section', ev('JSON.stringify(S)') === s4Saved);
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

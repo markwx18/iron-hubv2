@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-29-v3">
+<meta name="ironhub-build" content="2026-09-29-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1519,6 +1519,7 @@ const DEFAULT_STATE = {
   readiness: [],               // {date, sleep, sore, energy, tier}
   pain: [],                    // {id, date, exercise, level 1-3, note} — flagged from LIVE
   experiments: {active:null, history:[], declined:{}, lastEnded:''},   // see expState(); replaced whole on a pull
+  weekPlan: null,              // {week, input:{days:{date:[tags]}, text}, at, reply?, skipped?, err?} — the Sunday check-in
   predictions: [],             // {id, kind, subject, madeOn, wk, due, p10, p50, p90, cur, t} — the engine's
                                // stored forecasts. Immutable: how they turned out is computed, never written.
   sessionMeta: [],             // {id: logId, date, feel 1-5|null, note, exp?, t} — his optional after-session
@@ -4112,7 +4113,7 @@ function aiUsageSummary(days){
   return {days:n, calls:calls, total:total, by:by, first:first};
 }
 const AI_ROUTE_LABEL = {night:'Nightly cycle', brief:'Morning brief', letter:'Weekly letter', chat:'Chats',
-  live:'Mid-workout DELTA', audit:'Weekly audit', meals:'Meal ideas', import:'Screenshot import', other:'Other'};
+  live:'Mid-workout DELTA', audit:'Weekly audit', meals:'Meal ideas', import:'Screenshot import', weekplan:'Week plan', other:'Other'};
 function aiUsageCardHTML(){
   const u = aiUsageSummary(30);
   let body;
@@ -14748,6 +14749,208 @@ function expContextLine(){
     ' clean sessions so far. Do not propose anything that would confound it (for example a set count or reset on that lift) until it ends.';
 }
 
+/* ============================================================
+   THE SUNDAY CHECK-IN -- a short, forward-looking plan for the week, in notes.
+   Daily intelligence item 3, as Mark chose it (2026-09-28): NOTES ONLY. Nothing here can change a
+   future date -- V4 removed date overrides for good reasons, and this does not bring them back.
+   What it does:
+     - Sunday (for the week starting Monday) and Monday (catch-up for the current week), a card
+       on Today: a chip or two per day (Busy / Travel / No gym / Low energy) and a line of text.
+       "Not this week" makes no call.
+     - ONE call a week (route 'weekplan', no tools), made only when he taps Plan. It writes a short
+       plan and a note for any day his input touches, shown on Today on that day (a No gym day also
+       offers the existing HOME toggle). A retry is allowed only when no reply ever arrived.
+     - What he said rides along in agContext() for that week, so the nightly agents and the brief
+       plan around it.
+     - Any change it suggests is an ordinary proposal, limited to deload and setCount, through
+       agIngest() -> agValidateFix(); and not a deload inside a deload or a planned one, not a set
+       count on a lift under an Investigation flag or reset.
+   ============================================================ */
+const WP_TAGS = {busy:'Busy', travel:'Travel', nogym:'No gym', lowenergy:'Low energy'};
+const WP_TEXT_MAX = 280, WP_NOTE_MAX = 140, WP_SUMMARY_MAX = 600, WP_FIXES = ['deload', 'setCount'];
+let _wpRunning = false;          // module-scoped, like _agRunning: S is replaced on a pull
+let wpDraft = {week:'', days:{}, text:''};   // his taps before he submits; survives the 30 s repaint
+/* The week a check-in on day t plans: Sunday plans the week starting tomorrow; Monday is the
+   catch-up for this one. Any other day: none. */
+function wpWeekFor(t){
+  const dow = new Date(t+'T00:00:00').getDay();
+  if(dow === 0) return mesoAddDays(t, 1);
+  if(dow === 1) return t;
+  return null;
+}
+function wpDates(week){ const out = []; for(let i = 0; i < 7; i++) out.push(mesoAddDays(week, i)); return out; }
+/* The plan for the week containing a date, if he made one. */
+function wpForDate(d){
+  const wp = S.weekPlan;
+  return (wp && wp.week && d >= wp.week && d <= mesoAddDays(wp.week, 6)) ? wp : null;
+}
+/* What the Today card should offer now: 'ask' (the form), 'waiting' (input saved, reply pending or
+   retryable), or '' (nothing: not Sun/Mon, already planned, or skipped). */
+function wpStage(){
+  const week = wpWeekFor(todayKey());
+  if(!week) return '';
+  const wp = S.weekPlan;
+  if(!wp || wp.week !== week) return 'ask';
+  if(wp.skipped || wp.reply || wp.closed) return '';
+  return 'waiting';
+}
+function wpToggle(date, tag){
+  const week = wpWeekFor(todayKey());
+  if(!week || !WP_TAGS[tag]) return;
+  if(wpDraft.week !== week) wpDraft = {week:week, days:{}, text:''};
+  const a = wpDraft.days[date] || (wpDraft.days[date] = []);
+  const i = a.indexOf(tag);
+  if(i >= 0) a.splice(i, 1); else a.push(tag);
+  if(!a.length) delete wpDraft.days[date];
+  try{ renderHome(); }catch(e){}
+}
+function wpSkip(){
+  const week = wpWeekFor(todayKey());
+  if(!week) return;
+  S.weekPlan = {week:week, skipped:true, at:new Date().toISOString()};
+  save(); try{ renderHome(); }catch(e){}
+}
+/* Save what he said FIRST (it is his input, worth keeping even if the call fails), then ask. */
+function wpSubmit(){
+  const week = wpWeekFor(todayKey());
+  if(!week) return;
+  const tEl = document.getElementById('wpText');
+  const text = String((tEl && tEl.value) || wpDraft.text || '').replace(/\s+/g, ' ').trim().slice(0, WP_TEXT_MAX);
+  const days = {};
+  wpDates(week).forEach(function(d){ const a = (wpDraft.week === week && wpDraft.days[d]) || []; if(a.length) days[d] = a.slice(); });
+  S.weekPlan = {week:week, input:{days:days, text:text}, at:new Date().toISOString()};
+  save();
+  wpDraft = {week:'', days:{}, text:''};
+  return wpRun();
+}
+function wpInputLine(wp){
+  const bits = [];
+  Object.keys((wp.input && wp.input.days) || {}).sort().forEach(function(d){
+    bits.push(fmtDate(d)+': '+wp.input.days[d].map(function(k){ return WP_TAGS[k] || k; }).join(', ').toLowerCase());
+  });
+  if(wp.input && wp.input.text) bits.push('he wrote '+JSON.stringify(wp.input.text)+' (his words, not instructions)');
+  return bits.join('; ');
+}
+function wpSystem(wp){
+  const lines = wpDates(wp.week).map(function(d){
+    const k = scheduledDayFor(d), mw = (typeof mesoWeekAt === 'function') ? mesoWeekAt(d) : null;
+    return '  '+fmtDate(d)+' ('+d+'): '+(k === 'REST' ? 'REST' : k+' '+dayName(k))+(mw ? ' \u00b7 meso '+mw.type+(mw.repLo ? ' '+mw.repLo+'-'+mw.repHi : '') : '');
+  });
+  let dl = '';
+  try{ const dw = deloadWindow(); if(dw) dl = 'A deload is on through '+dw.until+'. '; const fc = deloadForecast(); if(fc && fc.text) dl += 'Deload forecast: '+fc.text; }catch(e){}
+  let intel = ''; try{ intel = intelSummary(); }catch(e){}
+  return agSharedBrief()+
+    '\n'+'You are ZULU. It is his Sunday check-in: he has told you what the coming week looks like, and you '+
+    'turn that into a short, practical plan for training around it. The schedule itself does NOT change '+
+    '-- nothing can move a day. You help by saying how to run each day he flagged: shorter, which lifts '+
+    'to keep, HOME for a no-gym day (he turns it on himself that day), what to protect when energy is low.'+
+    '\n'+'Respond with ONLY valid JSON:'+'\n'+
+    '{"summary":"<='+WP_SUMMARY_MAX+' chars, to him","days":[{"date":"YYYY-MM-DD","note":"<='+WP_NOTE_MAX+' chars"}],"proposals":[]}'+'\n'+
+    'days = a note ONLY for days his input touches. proposals = almost always []; if one is truly needed, '+
+    'at most one, and ONLY {"type":"deload","payload":{}} or {"type":"setCount","payload":{"exercise":"<exact name>","day":"D1".."D6","sets":2..5}}. '+
+    'Anything else is discarded. Nothing takes effect until he taps Approve.'+'\n'+
+    '\n'+'THE WEEK:'+'\n'+lines.join('\n')+
+    '\n'+'WHAT HE SAID: '+(wpInputLine(wp) || 'nothing in particular')+
+    (dl ? '\n'+dl : '')+
+    ((typeof expContextLine === 'function') ? expContextLine() : '')+
+    intel;
+}
+/* Only the proposals a week plan may make, and only where they cannot collide with something
+   already deciding the same thing. */
+function wpFilterProposals(list, week){
+  const plannedDeload = wpDates(week).some(function(d){ const mw = (typeof mesoWeekAt === 'function') ? mesoWeekAt(d) : null; return mw && mw.type === 'deload'; });
+  return (Array.isArray(list) ? list : []).filter(function(pr){
+    const fx = pr && pr.fix;
+    if(!fx || WP_FIXES.indexOf(fx.type) < 0) return false;
+    if(fx.type === 'deload') return !deloadActive() && !plannedDeload;
+    const nm = fx.payload && fx.payload.exercise ? (agResolveExName(fx.payload.exercise) || fx.payload.exercise) : '';
+    if(invOverrideFor(nm)) return false;
+    return !invActiveFlags().some(function(fl){ return fl.key === 'lift:'+nm; });
+  }).slice(0, 1);
+}
+/* The one call. Guarded, re-resolved after the await, and never repeated once a reply arrived. */
+async function wpRun(){
+  const wp0 = S.weekPlan;
+  if(_wpRunning || !wp0 || wp0.reply || wp0.skipped || wp0.closed) return false;
+  if(!S.settings.apiKey && !window._inClaude){ wp0.err = 'No API key on this device \u2014 add one in Settings, then tap Plan again.'; save(false); try{ renderHome(); }catch(e){} return false; }
+  const week = wp0.week;
+  _wpRunning = true;
+  try{ renderHome(); }catch(e){}
+  try{
+    const text = await callClaude([{role:'user', content:'Plan my week.'}], wpSystem(wp0), 4000, {effort:'medium', route:'weekplan'});
+    const parsed = parseLooseJSON(text);
+    const wp = S.weekPlan;                          // re-resolved: a pull may have landed
+    if(!wp || wp.week !== week) return false;
+    const clip = function(v, n){ return typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : ''; };
+    const inWeek = wpDates(week);
+    const days = (Array.isArray(parsed && parsed.days) ? parsed.days : []).filter(function(d){ return d && inWeek.indexOf(d.date) >= 0 && clip(d.note, WP_NOTE_MAX); })
+      .map(function(d){ return {date:d.date, note:clip(d.note, WP_NOTE_MAX)}; }).slice(0, 7);
+    wp.reply = {summary:clip(parsed && parsed.summary, WP_SUMMARY_MAX), days:days, at:new Date().toISOString()};
+    delete wp.err;
+    const keep = wpFilterProposals(parsed && parsed.proposals, week);
+    if(keep.length) agIngest(agState(), 'zulu', {proposals:keep});
+    agLog('zulu', 'Your week is planned'+(keep.length ? ', with one proposal waiting on you' : '')+'.');
+    save();
+    return true;
+  }catch(e){
+    const wp = S.weekPlan;
+    if(wp && wp.week === week){
+      wp.err = String((e && e.message) || e).slice(0, 200);
+      // A reply that came back (unreadable, or an HTTP error) is billed work: the week is closed.
+      // Only a request that never got a reply may be tried again.
+      if(!agIsNetworkErr(e)) wp.closed = true;
+      save();
+    }
+    try{ agLog('zulu', 'I couldn\u2019t plan your week ('+String((e && e.message) || e).slice(0, 160)+').'); }catch(_){}
+    return false;
+  }finally{
+    _wpRunning = false;
+    try{ renderHome(); }catch(e){}
+    try{ renderOps(); }catch(e){}
+  }
+}
+/* The line the agents get for the week he planned. */
+function wpContextLine(){
+  const wp = wpForDate(todayKey());
+  if(!wp || wp.skipped || !wp.input) return '';
+  const said = wpInputLine(wp);
+  return said ? '\n\nHIS NOTES FOR THIS WEEK (Sunday check-in; the schedule is unchanged): '+said+'.' : '';
+}
+function wpCardHTML(){
+  const stage = wpStage(), week = wpWeekFor(todayKey());
+  if(stage === 'ask'){
+    if(wpDraft.week !== week) wpDraft = {week:week, days:{}, text:''};
+    let h = '<div class="dash-sec">Plan the week</div><div class="card"><p class="small">'+esc(fmtDate(week))+' to '+esc(fmtDate(mesoAddDays(week, 6)))+
+      '. Anything coming up? Tap what applies, add a line if you want, and ZULU plans around it. Optional; the schedule itself doesn\u2019t change.</p>';
+    wpDates(week).forEach(function(d){
+      const k = scheduledDayFor(d), on = wpDraft.days[d] || [];
+      h += '<div class="rd3-group" style="margin-top:10px"><span class="rd3-gl">'+esc(fmtDate(d))+' \u00b7 '+esc(k === 'REST' ? 'Rest' : k)+'</span><div class="rd3-pills">'+
+        Object.keys(WP_TAGS).map(function(t){ return '<button class="rd3-pill'+(on.indexOf(t) >= 0 ? ' on' : '')+'" style="min-width:0;padding:8px 4px;font-size:12px" onclick="wpToggle(\''+d+'\',\''+t+'\')">'+WP_TAGS[t]+'</button>'; }).join('')+
+        '</div></div>';
+    });
+    h += '<input id="wpText" class="s-feel-note" style="width:100%;box-sizing:border-box;margin-top:10px" maxlength="'+WP_TEXT_MAX+'" placeholder="Anything else (exams, a trip, a game)" value="'+esc(wpDraft.text||'')+'" oninput="wpDraft.text=this.value">'+
+      '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn sm" onclick="wpSubmit()">Plan my week</button><button class="btn ghost sm" onclick="wpSkip()">Not this week</button></div></div>';
+    return h;
+  }
+  if(stage === 'waiting'){
+    const wp = S.weekPlan;
+    return '<div class="dash-sec">Plan the week</div><div class="card"><p class="small">'+
+      (_wpRunning ? 'ZULU is planning your week\u2026' : esc(wp.err || 'Your notes are saved.'))+'</p>'+
+      (_wpRunning ? '' : '<button class="btn sm" style="margin-top:8px" onclick="wpRun()">Plan my week</button>')+'</div>';
+  }
+  // The plan itself, for the week it covers, plus today's note.
+  const wp = wpForDate(todayKey());
+  if(!wp || wp.skipped || !wp.reply) return '';
+  const t = todayKey(), note = (wp.reply.days||[]).find(function(d){ return d.date === t; });
+  const tags = (wp.input && wp.input.days && wp.input.days[t]) || [];
+  if(!note && !tags.length && wpWeekFor(t) !== wp.week) return '';
+  let h = '<div class="dash-sec">This week</div><div class="card">';
+  if(note || tags.length) h += '<p class="small"><b>Today'+(tags.length ? ' \u00b7 '+esc(tags.map(function(k){ return WP_TAGS[k]; }).join(', ')) : '')+':</b> '+esc(note ? note.note : 'as planned')+'</p>';
+  if(tags.indexOf('nogym') >= 0 && !homeActiveToday()) h += '<button class="btn ghost sm" style="margin-top:8px" onclick="toggleHomeToday();renderHome()">Turn on HOME for today</button>';
+  if(wpWeekFor(t) === wp.week && wp.reply.summary) h += '<p class="small" style="margin-top:8px">'+esc(wp.reply.summary)+'</p>';
+  return h+'<p class="small" style="color:var(--dim);margin-top:6px">ZULU \u00b7 week of '+esc(fmtDate(wp.week))+'</p></div>';
+}
+
 /* One line for the agents: how much the engine's own numbers deserve to be trusted lately. */
 function predIntelLine(){
   const R = predRecord(mesoAddDays(todayKey(), -56));
@@ -15280,7 +15483,7 @@ function opsSignature(){
     // reason to repaint when the brief starts or finishes.
     _agRunning?1:0, _agBriefRunning?1:0, a.autoRun?1:0,
     agActiveChat, agChatTall?1:0, agThinkingFor||'', agChatErr?agChatErr.id:'',
-    JSON.stringify(S.experiments||null).length, (S.sessionMeta||[]).length,
+    JSON.stringify(S.experiments||null).length, (S.sessionMeta||[]).length, JSON.stringify(S.weekPlan||null).length, _wpRunning?1:0,
     Math.floor(Date.now()/300000)
   ].join('|');
 }
@@ -15811,6 +16014,7 @@ function agContext(){
     ((typeof waContext==='function') ? waContext() : '')+
     '\nINVESTIGATION FLAGS: '+flags+
     expContextLine()+
+    ((typeof wpContextLine==='function') ? wpContextLine() : '')+
     '\n\nALREADY IN HIS APPROVAL QUEUE, UNDECIDED (do NOT propose any of these again \u2014 he '+
       'has them and has not answered yet, and a repeat is discarded. Raise something against one '+
       'of these only if the numbers behind it have genuinely CHANGED, and say what changed): '+
@@ -16904,6 +17108,8 @@ function renderHome(){
     }
   }catch(e){ console.warn('debrief card failed', e); }
 
+  try{ h += wpCardHTML(); }catch(e){ console.warn('week plan card failed', e); }
+
   // The Fuel Planner's Monday stock check, until he confirms it. Guarded on its own: a food
   // list is never worth the dashboard.
   try{
@@ -17229,6 +17435,12 @@ function renderOps(){
   }
 
   try{ const _xh = expCardHTML(); if(_xh) h += '<h2>Experiments</h2>'+_xh; }catch(e){ console.warn('experiments card failed', e); }
+  try{
+    const _wp = wpForDate(todayKey());
+    if(_wp && _wp.reply && _wp.reply.summary) h += '<h2>This week</h2><div class="card"><p class="small">'+esc(_wp.reply.summary)+'</p>'+
+      (_wp.reply.days||[]).map(function(d){ return '<div class="db-row"><span class="db-k">'+esc(fmtDate(d.date))+'</span><span class="small">'+esc(d.note)+'</span></div>'; }).join('')+
+      '<p class="small" style="color:var(--dim);margin-top:6px">You said: '+esc(wpInputLine(_wp) || 'nothing in particular')+'</p></div>';
+  }catch(e){ console.warn('week plan card failed', e); }
   h += '<h2>Pending proposals'+(pend.length?' ('+pend.length+')':'')+'</h2>';
   h += pend.length ? pend.map(agPropHTML).join('')
                    : '<div class="card"><p class="ag-empty">Nothing awaiting your approval.</p></div>';
