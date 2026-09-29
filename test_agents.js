@@ -9893,6 +9893,192 @@ setTimeout(async () => {
   ev('S = ' + s2Saved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
   ok('cleanup: real state restored after the prediction record section', ev('JSON.stringify(S)') === s2Saved);
 
+  // ============ EXPERIMENTS (2026-09-28) ============
+  console.log('=== EXPERIMENTS ===');
+  const s3Saved = ev('JSON.stringify(S)');
+  try {
+    const xd = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    ev("S.split.D1.exercises.push({name:'Zz Exp Bench', inc:5}, {name:'Zz Exp Curl', inc:2.5});");
+    ev("S.experiments = {active:null, history:[], declined:{}, lastEnded:''}; S.deload = null; agState().proposals = []; agState().log = [];");
+    const xrm = ev("exRepMode('Zz Exp Curl')");
+    // A set list with timestamps `gap` seconds apart ("Log set" is tapped at the end of each set).
+    const sets = (w, reps, gap, t0) => reps.map((r, i) => ({w: w, r: r, ef: 60, ts: t0 + i * gap * 1000}));
+    // Seven weeks of a steadily climbing bench with small, fixed wobble, plus a curl alongside.
+    const wob = [0, 1, -1, 0.5, -0.5, 1, 0];
+    const pre = [];
+    for (let k = 7; k >= 1; k--) {
+      const w0 = 180 + (7 - k) * 2.5 + wob[k - 1];
+      pre.push({id: 996000 + k, date: xd(-7 * k - 4), day: 'D1', entries: [
+        {exercise: 'Zz Exp Bench', sets: sets(w0, [8, 7, 7], 150, 1e12 + k * 1e7)},
+        {exercise: 'Zz Exp Curl', sets: sets(40, [xrm.lo + 1, xrm.lo, xrm.lo], 90, 1e12 + k * 1e7 + 1e6)}]});
+    }
+    // Two that must never be in a baseline: a deload and a HOME session.
+    pre.push({id: 996050, date: xd(-20), day: 'D1', deload: true, entries: [{exercise: 'Zz Exp Bench', sets: sets(110, [8, 8], 90, 1e12)}]});
+    pre.push({id: 996051, date: xd(-19), day: 'D1', home: true, entries: [{exercise: 'Zz Exp Bench', sets: sets(60, [12, 12], 90, 1e12)}]});
+    ev('S.logs = ' + JSON.stringify(pre) + ';');
+    const hyp = 'Longer rest should lift his top sets, his bench has ground at 150 s rest.';
+    const vfix = p => ev('JSON.stringify(agValidateFix(' + JSON.stringify({type: 'experiment', payload: p}) + ', ' + JSON.stringify(p._who || 'delta') + ') || null)');
+    const why = p => ev('agRejectReason(' + JSON.stringify({type: 'experiment', payload: p}) + ', ' + JSON.stringify(p._who || 'delta') + ')');
+
+    // --- validation: fixed templates, each agent its own, and a baseline to measure against ---
+    const okFix = JSON.parse(vfix({template: 'restMain', lift: 'zz exp bench', sessions: 9, hypothesis: hyp}));
+    ok('validate: a sound proposal passes, with the name resolved and sessions clamped to 3-4', okFix && okFix.payload.lift === 'Zz Exp Bench' && okFix.payload.sessions === 4, JSON.stringify(okFix));
+    ok('validate: DELTA cannot raise ECHO’s templates', vfix({template: 'mealTiming', hypothesis: hyp}) === 'null' && /not DELTA’s experiment/.test(why({template: 'mealTiming', hypothesis: hyp})));
+    ok('validate: ECHO cannot raise DELTA’s', vfix({template: 'restMain', lift: 'Zz Exp Bench', hypothesis: hyp, _who: 'echo'}) === 'null');
+    ok('validate: an unknown template is refused', vfix({template: 'fasted', hypothesis: hyp}) === 'null');
+    ok('validate: restMain needs a main compound, and says so', vfix({template: 'restMain', lift: 'Zz Exp Curl', hypothesis: hyp}) === 'null' && /not a main compound/.test(why({template: 'restMain', lift: 'Zz Exp Curl', hypothesis: hyp})));
+    ok('validate: repRange needs an accessory and a range', vfix({template: 'repRange', lift: 'Zz Exp Bench', range: 'high', hypothesis: hyp}) === 'null' && vfix({template: 'repRange', lift: 'Zz Exp Curl', hypothesis: hyp}) === 'null' && vfix({template: 'repRange', lift: 'Zz Exp Curl', range: 'high', hypothesis: hyp}) !== 'null');
+    ok('validate: no hypothesis, no experiment', vfix({template: 'restMain', lift: 'Zz Exp Bench', hypothesis: 'go'}) === 'null');
+    ok('validate: a lift outside the split is refused', vfix({template: 'restMain', lift: 'Zz Nowhere Press', hypothesis: hyp}) === 'null');
+    ev("S.split.D1.exercises.push({name:'Zz Exp Row', inc:5}); S.logs.push({id: 996060, date: mesoAddDays(todayKey(), -9), day:'D1', entries:[{exercise:'Zz Exp Row', sets:[{w:100,r:8}]}]});");
+    ok('validate: too little history to measure against is refused, and says so', vfix({template: 'restMain', lift: 'Zz Exp Row', hypothesis: hyp}) === 'null' && /fewer than 3 clean recent sessions/.test(why({template: 'restMain', lift: 'Zz Exp Row', hypothesis: hyp})));
+    ev("S.deload = {startedAt: todayKey(), until: mesoAddDays(todayKey(), 3)};");
+    ok('validate: not during a deload', vfix({template: 'restMain', lift: 'Zz Exp Bench', hypothesis: hyp}) === 'null');
+    ev('S.deload = null;');
+
+    // --- the prompt line: only when one can start, only the agent's own templates ---
+    ok('prompt: DELTA is offered its templates, ECHO its own', /"type":"experiment".*restMain\|repRange\|sleep/.test(ev("agJsonSpec('delta')")) && !/mealTiming/.test(ev("agJsonSpec('delta')")) && /mealTiming\|preCarbs/.test(ev("agJsonSpec('echo')")) && !/"type":"experiment"/.test(ev("agJsonSpec('charlie')")));
+
+    // --- the whole path: proposed at night, approved by him, started ---
+    ev("S.settings.apiKey = 'sk-test'; agState().lastRun = '';");
+    stubAgents({delta: {summary: 'd', proposals: [{title: 'Test longer rest on bench', reasoning: hyp, fix: {type: 'experiment', payload: {template: 'restMain', lift: 'Zz Exp Bench', sessions: 4, hypothesis: hyp}}}]}});
+    await ev('agRunAll(true)');
+    const xp = ev("agState().proposals.find(function(p){ return p.fix && p.fix.type === 'experiment'; })");
+    ok('flow: the nightly proposal lands in the normal queue, validated', xp && xp.status === 'pending' && xp.fix.payload.lift === 'Zz Exp Bench' && /start an experiment/.test(ev('agFixSummary(' + JSON.stringify(xp.fix) + ')')), JSON.stringify(xp));
+    ev('agApprove(' + JSON.stringify(xp.id) + ')');
+    const act = ev('S.experiments.active');
+    ok('flow: approving starts it, one at a time', act && act.template === 'restMain' && act.requiredSessions === 4 && ev("agState().proposals.find(function(p){ return p.id === " + JSON.stringify(xp.id) + "; }).status") === 'approved', JSON.stringify(act));
+    ok('baseline: the last six comparable sessions, never the deload or HOME one', act.baselineIds.length === 6 && act.baselineIds.indexOf(996050) < 0 && act.baselineIds.indexOf(996051) < 0 && act.baselineIds.indexOf(996007) < 0, JSON.stringify(act.baselineIds));
+    ok('one at a time: a second is refused while one runs, and the prompt stops offering them', vfix({template: 'sleep', hypothesis: hyp}) === 'null' && /already running/.test(why({template: 'sleep', hypothesis: hyp})) && !/"type":"experiment"/.test(ev("agJsonSpec('delta')")));
+    ok('agents: they are told what is running, so nothing confounds it', /EXPERIMENT RUNNING: Longer rest on a main lift on Zz Exp Bench/.test(ev('agContext()')));
+
+    // --- LIVE: only the advice line and the rest timer's default change ---
+    ok('LIVE: the advice line says what the test asks', /^Experiment: rest at least 3 minutes/.test(ev("buildOneLiveExercise('Zz Exp Bench', null, {call:'normal'}).recDetail")));
+    ok('LIVE: the rest timer defaults to 3 minutes on that lift only', ev("smartRestSecs({name:'Zz Exp Bench', repMode:'hyp', sets:[]}).secs") >= 180 && ev("smartRestSecs({name:'Zz Exp Curl', repMode:'hyp', sets:[]}).secs") < 180);
+
+    // --- running: what counts ---
+    const t0 = act.startedAtMs;
+    const pred = d => ev('(function(){ var x = S.experiments.active; var f = expTrend(x, "Zz Exp Bench"); return f(' + JSON.stringify(d) + '); })()');
+    // Four sessions ~8% over his trend with 3.5-4 min between sets (adherent); plus three that must not count.
+    const up = (k, date, gap) => { const e = pred(date) * 1.08; const w = Math.round(e / (1 + 7 / 30) / 2.5) * 2.5; return {id: t0 + k, date: date, day: 'D1', entries: [{exercise: 'Zz Exp Bench', sets: sets(w, [7, 7, 6], gap, t0 + k * 1e6)}]}; };
+    const run = [up(10, xd(-3), 225), up(20, xd(-2), 120), Object.assign(up(30, xd(-2), 230), {deload: true}), Object.assign(up(40, xd(-1), 230), {call: {call: 'recover', off: false}}), up(50, xd(-1), 240), up(60, xd(0), 215)];
+    ev('S.logs = S.logs.concat(' + JSON.stringify(run) + ');');
+    const ses = ev('expSessions(S.experiments.active)');
+    const st = id => (ses.find(z => z.id === t0 + id) || {}).state;
+    ok('running: 3.5+ minutes between sets counts, measured from the set times', st(10) === 'clean' && st(50) === 'clean' && st(60) === 'clean', JSON.stringify(ses.map(z => z.state)));
+    ok('running: a session with 2-minute rests is left out as not followed', st(20) === 'skipped');
+    ok('running: a deload and a kept recover call are left out as reshaped', st(30) === 'excluded' && st(40) === 'excluded');
+    ok('running: not finished at 3 of 4', ev('expTick()') === null && ev('S.experiments.active') !== null);
+    ev('S.logs.push(' + JSON.stringify(up(70, xd(0), 235)) + ');');
+    const ca = ev('S.meta.changedAt') || 0;
+    const done = ev('expTick()');
+    ok('evaluate: the fourth clean session finishes it, archived with a result, and saved', done && done.status === 'done' && ev('S.experiments.active') === null && ev('S.experiments.history.length') === 1 && ev('S.meta.changedAt') > ca, JSON.stringify(done && done.result));
+    const r = done.result;
+    // The numbers, recomputed here from the same scores.
+    const sc = ev('(function(){ var x = S.experiments.history[0], c = {}; return {b: x.baselineIds.map(function(id){ return expScore(x, S.logs.find(function(l){ return l.id === id; }), c); }), e: expSessions(x, c).filter(function(z){ return z.state === "clean"; }).map(function(z){ return z.score; })}; })()');
+    const mean = a => a.reduce((m, n) => m + n, 0) / a.length, sd = a => Math.sqrt(a.reduce((q, v) => q + (v - mean(a)) ** 2, 0) / (a.length - 1));
+    const pooled = Math.sqrt(((sc.b.length - 1) * sd(sc.b) ** 2 + (sc.e.length - 1) * sd(sc.e) ** 2) / (sc.b.length + sc.e.length - 2));
+    ok('evaluate: test sessions against the baseline, both scored on his own pre-test trend', Math.abs(r.baseMean - mean(sc.b)) < 1e-9 && Math.abs(r.expMean - mean(sc.e)) < 1e-9 && Math.abs(r.pooledSd - pooled) < 1e-9 && r.nBase === 6 && r.nExp === 4, JSON.stringify(r));
+    ok('evaluate: a clear ~8% lift over a tight baseline reads moderate and better, never "proven"', r.confidence === 'moderate' && r.direction === 'better' && r.deltaPct > 5 && /small sample, not proof/.test(ev('expResultLine(S.experiments.history[0])')), JSON.stringify(r) + ' ' + ev('expResultLine(S.experiments.history[0])'));
+    ok('evaluate: his normal progress is not the effect (baseline sits on his trend)', Math.abs(r.baseMean - 1) < 0.02, String(r.baseMean));
+
+    // --- cool-down, decline memory ---
+    ok('cool-down: nothing new for ' + ev('EXP_COOLDOWN_DAYS') + ' days after one ends', vfix({template: 'sleep', hypothesis: hyp}) === 'null' && /cool-down/.test(why({template: 'sleep', hypothesis: hyp})));
+    ev("S.experiments.lastEnded = mesoAddDays(todayKey(), -8);");
+    ev("agState().proposals.push({id:'xp-decl', agent:'delta', title:'Try sleep', status:'pending', created:todayKey(), fix:{type:'experiment', payload:{template:'sleep', lift:null, range:null, sessions:4, hypothesis:" + JSON.stringify(hyp) + "}}});");
+    ev("agReject('xp-decl')");
+    ok('decline: turning one down remembers the template', ev("S.experiments.declined.sleep") === ev('todayKey()'));
+    ok('decline: it stays out for ' + ev('EXP_DECLINE_DAYS') + ' days, and the prompt stops offering it', vfix({template: 'sleep', hypothesis: hyp}) === 'null' && /turned this one down/.test(why({template: 'sleep', hypothesis: hyp})) && !/sleep = /.test(ev("agJsonSpec('delta')")) && /restMain = /.test(ev("agJsonSpec('delta')")));
+    ev("S.experiments.declined.sleep = mesoAddDays(todayKey(), -8);");
+    ok('decline: and comes back after it', vfix({template: 'sleep', hypothesis: hyp}) !== 'null');
+
+    // --- a smaller effect reads low / no clear difference ---
+    ev("S.experiments.lastEnded = mesoAddDays(todayKey(), -30); S.experiments.history = [];");
+    ev("S.logs = S.logs.filter(function(l){ return l.id < 997000000000; });");
+    ok('fixture: the earlier test sessions are gone', ev("S.logs.every(function(l){ return l.id < 997000000000; })"));
+    ev("expStart({template:'restMain', lift:'Zz Exp Bench', sessions:3, hypothesis:" + JSON.stringify(hyp) + "})");
+    const t1 = ev('S.experiments.active.startedAtMs');
+    // His line: weight = 180 + (7 - k) * 2.5 for the session k weeks back at day -7k-4, i.e. at day d
+    // it is 180 + (7 + (d + 4) / 7) * 2.5. Test sessions exactly on it are his normal progress.
+    const onLine = d => 180 + (7 + (d + 4) / 7) * 2.5;
+    const flat = (k, d, gap) => ({id: t1 + k, date: xd(d), day: 'D1', entries: [{exercise: 'Zz Exp Bench', sets: sets(onLine(d), [8, 7, 7], gap, t1 + k * 1e6)}]});
+    ev('S.logs = S.logs.concat(' + JSON.stringify([flat(10, -2, 230), flat(20, -1, 230), flat(30, 0, 230)]) + ');');
+    const lowR = ev('expTick()');
+    ok('evaluate: sessions exactly on his trend (normal progress, no effect) read low confidence, no clear difference', lowR && lowR.result.confidence === 'low' && lowR.result.direction === 'unclear' && /no clear difference/.test(ev('expResultLine(S.experiments.history[0])')), JSON.stringify(lowR && lowR.result));
+
+    // --- a real difference smaller than his normal spread is still "low" ---
+    ev("S.experiments.lastEnded = ''; S.experiments.history = []; S.split.D1.exercises.push({name:'Zz Exp Row2', inc:5});");
+    ev("S.logs = S.logs.filter(function(l){ return l.id < " + t1 + "; });");
+    const noisy = [200, 184, 211, 189, 206, 193].map((w0, i) => ({id: 996200 + i, date: xd(-7 * (6 - i) - 3), day: 'D1', entries: [{exercise: 'Zz Exp Row2', sets: sets(w0, [8, 7], 150, 1e12 + i * 1e7)}]}));
+    ev('S.logs = S.logs.concat(' + JSON.stringify(noisy) + ');');
+    ok('noisy: fixture starts', ev("expStart({template:'restMain', lift:'Zz Exp Row2', sessions:3, hypothesis:" + JSON.stringify(hyp) + "})") === true);
+    const t3 = ev('S.experiments.active.startedAtMs');
+    ev('S.logs = S.logs.concat(' + JSON.stringify([0, 1, 2].map(i => ({id: t3 + 10 + i, date: xd(-2 + i), day: 'D1', entries: [{exercise: 'Zz Exp Row2', sets: sets(203 + (i === 1 ? 2.5 : 0), [8, 7], 230, t3 + i * 1e6)}]}))) + ');');
+    const nz = ev('expTick()');
+    ok('evaluate: a small real difference inside a noisy baseline’s spread reads low, not moderate', nz && nz.result && nz.result.deltaPct > 0.5 && Math.abs(nz.result.expMean - nz.result.baseMean) < nz.result.pooledSd && nz.result.confidence === 'low', JSON.stringify(nz && nz.result));
+    ev("S.logs = S.logs.filter(function(l){ return l.id < " + t1 + "; });");
+
+    // --- a behaviour template: asked, one tap, and unanswered sessions do not count ---
+    ev("S.experiments.lastEnded = ''; S.experiments.history = [];");
+    // Synthetic ids (start + a few ms) would read as sessions of the NEXT experiment too; real log
+    // ids are end-of-session times and cannot. Clear them.
+    ev("S.logs = S.logs.filter(function(l){ return l.id < " + t1 + "; });");
+    ev("expStart({template:'mealTiming', lift:null, range:null, sessions:3, hypothesis:" + JSON.stringify(hyp) + "})");
+    const t2 = ev('S.experiments.active.startedAtMs');
+    const mealLog = {id: t2 + 10, date: xd(0), day: 'D1', entries: [{exercise: 'Zz Exp Bench', sets: sets(195, [7, 7], 230, t2)}, {exercise: 'Zz Exp Curl', sets: sets(40, [xrm.lo, xrm.lo], 90, t2 + 5e5)}]};
+    ev('S.logs.push(' + JSON.stringify(mealLog) + ');');
+    const mst = () => (ev('expSessions(S.experiments.active)').find(z => z.id === t2 + 10) || {}).state;
+    ok('tap: an unanswered session waits for him and does not count', mst() === 'unanswered');
+    ok('tap: the session summary asks the question', /Did you eat a real meal 2–3 hours before\?/.test(ev('expSummaryHTML(' + (t2 + 10) + ')')));
+    ev('expAnswer(' + (t2 + 10) + ', true)');
+    ok('tap: one tap answers it, stored with the session', ev('sessionMetaFor(' + (t2 + 10) + ').exp.followed') === true && mst() === 'clean');
+    ev('expAnswer(' + (t2 + 10) + ', false)');
+    ok('tap: a "no" leaves it out', mst() === 'skipped');
+
+    // --- repRange changes that one lift's range, through exRepMode, in both trees ---
+    ev("S.experiments.active = null; S.experiments.lastEnded = '';");
+    ok('repRange: fixture', ev("expStart({template:'repRange', lift:'Zz Exp Curl', range:'high', sessions:3, hypothesis:" + JSON.stringify(hyp) + "})") === true);
+    const rr = ev("exRepMode('Zz Exp Curl')");
+    ok('repRange: the lift trains 12-15 while it runs, and nothing else changes', rr.lo === 12 && rr.hi === 15 && ev("exRepMode('Zz Exp Bench').hi") === xrm.hi);
+    const rrx = ev("buildOneLiveExercise('Zz Exp Curl', null, {call:'normal'})");
+    ok('repRange: both engine trees agree, and LIVE shows the new range', ev("classifyDecision('Zz Exp Curl','ok').to") === ev("recommend('Zz Exp Curl','ok').sets[0].w") && rrx.lo === 12 && rrx.hi === 15 && /^Experiment: 12\u201315 reps/.test(rrx.recDetail), JSON.stringify([rrx.lo, rrx.hi, rrx.recDetail]));
+    ev('expStop()');
+    ok('stop: his stop archives it (the cool-down applies) and the range goes back', ev('S.experiments.active') === null && ev('S.experiments.history[0].status') === 'stopped' && ev('S.experiments.lastEnded') === ev('todayKey()') && ev("exRepMode('Zz Exp Curl').hi") === xrm.hi);
+
+    // --- an experiment that cannot finish closes as inconclusive ---
+    ev("S.experiments.lastEnded = ''; expStart({template:'sleep', lift:null, range:null, sessions:4, hypothesis:" + JSON.stringify(hyp) + "}); S.experiments.active.startedAt = mesoAddDays(todayKey(), -30);");
+    const inc = ev('expTick()');
+    ok('deadline: after ' + ev('EXP_MAX_DAYS') + ' days without enough clean sessions it closes as inconclusive', inc && inc.status === 'inconclusive');
+
+    // --- on screen ---
+    ev("S.experiments.lastEnded = ''; expStart({template:'restMain', lift:'Zz Exp Bench', sessions:4, hypothesis:" + JSON.stringify(hyp) + "});");
+    ev('renderHome()');
+    ok('Today: a chip says what is running and how far along', /Experiment.*Longer rest on a main lift.*0 of 4 sessions/.test(ev("document.getElementById('home').textContent")));
+    ev('renderOps()');
+    const ops = ev("(document.getElementById('ops')||{}).textContent || ''");
+    ok('Coach: the running card, the hypothesis, the last result, a stop button', /Experiment running/.test(ops) && /DELTA’s hypothesis/.test(ops) && /Last experiment/.test(ops) && /Stop experiment/.test(ops), ops.slice(0, 200));
+
+    // --- a rejected fix is not re-queued for a while (a gap the experiments' decline memory exposed) ---
+    ev("agState().proposals = []; agState().log = []; agState().lastRun = '';");
+    stubAgents({echo: {summary: 'e', proposals: [{title: 'Add 100 calories', reasoning: 'r', fix: {type: 'cal', payload: {delta: 100}}}]}});
+    await ev('agRunAll(true)');
+    const cp = ev("agState().proposals.find(function(p){ return p.fix && p.fix.type === 'cal'; })");
+    ev('agReject(' + JSON.stringify(cp.id) + ')');
+    ev("agState().lastRun = '';");
+    await ev('agRunAll(true)');
+    ok('rejections: the same call is not queued again within ' + ev('AG_REJECT_QUIET_DAYS') + ' days, and the log says so',
+       ev("agState().proposals.filter(function(p){ return p.status === 'pending'; }).length") === 0 && ev("agState().log.some(function(l){ return /Not re-raising/.test(l.text); })"));
+    stubAgents({echo: {summary: 'e', proposals: [{title: 'Add 150 calories', reasoning: 'r', fix: {type: 'cal', payload: {delta: 150}}}]}});
+    ev("agState().lastRun = '';");
+    await ev('agRunAll(true)');
+    ok('rejections: different numbers are a new call and still come through', ev("agState().proposals.filter(function(p){ return p.status === 'pending'; }).length") === 1);
+  } catch (e) {
+    ok('experiments section', false, e.stack);
+  }
+  unstubAgents();
+  ev('S = ' + s3Saved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  ok('cleanup: real state restored after the experiments section', ev('JSON.stringify(S)') === s3Saved);
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

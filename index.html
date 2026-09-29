@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-29-v2">
+<meta name="ironhub-build" content="2026-09-29-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1518,6 +1518,7 @@ const DEFAULT_STATE = {
   road: [],                    // {id, exercise, target, start, deadline}
   readiness: [],               // {date, sleep, sore, energy, tier}
   pain: [],                    // {id, date, exercise, level 1-3, note} — flagged from LIVE
+  experiments: {active:null, history:[], declined:{}, lastEnded:''},   // see expState(); replaced whole on a pull
   predictions: [],             // {id, kind, subject, madeOn, wk, due, p10, p50, p90, cur, t} — the engine's
                                // stored forecasts. Immutable: how they turned out is computed, never written.
   sessionMeta: [],             // {id: logId, date, feel 1-5|null, note, exp?, t} — his optional after-session
@@ -1675,6 +1676,10 @@ function dayName(dk){ const d = dayMeta(dk); return (d && d.name) || ''; }
    with itself across surfaces is the exact failure this file keeps writing comments about. */
 const STR_LO = 3, STR_HI = 6;
 function exRepMode(ex){
+  // A running repRange experiment changes this ONE lift's range for its duration. Here, not in
+  // the engine, so recommend() and classifyDecision() both see it and stay in step.
+  const _xr = (typeof expRepRangeFor==='function') ? expRepRangeFor(ex) : null;
+  if(_xr) return {lo:_xr.lo, hi:_xr.hi};
   if(isStrMode(ex)) return {lo:STR_LO, hi:STR_HI};   // explicit per-exercise strength mode always wins
   const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
   if(mw && mw.repLo>0 && mw.repHi>0) return {lo:mw.repLo, hi:mw.repHi};  // then the active phase
@@ -7687,6 +7692,8 @@ function buildOneLiveExercise(nm, homeEquipList, opts){
     }
   }
   if(_callNote) rec.detail = _callNote+' '+(rec.detail||'');
+  const _xn = (typeof expLiveNote==='function') ? expLiveNote(nm) : '';
+  if(_xn) rec.detail = _xn+' '+(rec.detail||'');
   let backoffW = backoffWeightFor(nm, +firstW||0);
   // HOME mode: the normal progression engine above still computes a suggested weight
   // (and backoff) \u2014 it just gets snapped to what's actually on hand (dumbbells/
@@ -8038,6 +8045,8 @@ function smartRestSecs(ex){
     const best = bestE1RM(ex.name);
     if(comp && best>0 && (+last.w||0) >= best*0.9){ secs += 30; why += ' \u00b7 near-max load'; }
   }
+  const _xf = (typeof expRestFloor==='function') ? expRestFloor(ex.name) : 0;
+  if(_xf && secs < _xf){ secs = _xf; why += ' \u00b7 experiment'; }
   return {secs:Math.max(45, secs), why};
 }
 
@@ -8304,6 +8313,7 @@ function endLiveSession(){
   let _sum = null; try{ _sum = sessionSummary(logRec); }catch(e){ _sum = null; }
   showSummary({exercises:entries.length, sets:totalSets, vol:totalVol, prs:newPRs, note, logId:logRec.id, sum:_sum});
   checkPRs(before);  // fires the e1RM-based PR overlay if applicable (after summary close it remains)
+  try{ expTick(); }catch(e){}   // an auto-measured experiment can complete on this very session
   live=null; clearLiveDraft(); stopRest();
   // resolving a flag here without refreshing the banner leaves stale WATCH/ALERT text on screen
   // until the next unrelated tab click quietly swaps it out \u2014 refresh both together, always.
@@ -14375,6 +14385,369 @@ function predRecordCardHTML(){
   if(T.legacy) h += '<p class="small" style="color:var(--dim);margin-top:10px">'+T.legacy+' older sessions were scored against today\u2019s rep range, because their range was not recorded.</p>';
   return h+'</div>';
 }
+/* ============================================================
+   EXPERIMENTS -- small tests the agents propose and the app evaluates, on-device.
+   Daily intelligence item 2. The lifecycle is proposed -> running -> evaluated -> archived:
+     proposed  an 'experiment' fix in the normal queue (agValidateFix, per-agent template
+               whitelist); approving it starts it. Declining records the template in
+               expState().declined, which keeps it out for EXP_DECLINE_DAYS.
+     running   ONE at a time. Only fixed templates exist, because the app -- not a model -- has
+               to be able to measure every one of them. LIVE changes only its advice text and
+               the rest timer's default; repRange goes through exRepMode(), so both engine trees
+               stay in step.
+     evaluated when enough CLEAN sessions are in: the mean of a per-session score against the
+               mean of the baseline frozen at the start, with a low/moderate confidence label.
+               Nothing here claims proof: 3-4 sessions is a small sample, and the copy says so.
+   Excluded from both sides: deload, HOME, a coach plan, a kept easy/recover call, a reset or a
+   swap on the lift, and any session he did not follow the change in (or has not answered for).
+   ============================================================ */
+const EXP_COOLDOWN_DAYS = 7, EXP_DECLINE_DAYS = 7, EXP_MAX_DAYS = 28, EXP_BASE_MIN = 3, EXP_BASE_N = 6;
+const EXP_HIST_MAX = 20, EXP_REST_SECS = 180, EXP_REST_GAP = 200, EXP_SLEEP_H = 7.5;
+const EXP_REP_ALTS = {high:{lo:12, hi:15}, low:{lo:6, hi:8}};
+const EXP_TEMPLATES = {
+  restMain: {owner:'delta', scope:'lift', adherence:'auto', label:'Longer rest on a main lift',
+    desc:'rest 3+ minutes between working sets of one main compound (lift = a main compound)',
+    change:function(x){ return 'Rest at least 3 minutes between working sets of '+x.lift+'.'; },
+    measure:function(x){ return x.lift+' top-set e1RM, against its own trend from before the test'; }},
+  repRange: {owner:'delta', scope:'lift', adherence:'auto', label:'A different rep range',
+    desc:'train one accessory in another rep range, high = 12-15 or low = 6-8 (lift = an accessory; give "range")',
+    change:function(x){ const r = EXP_REP_ALTS[x.range] || EXP_REP_ALTS.high; return 'Train '+x.lift+' for '+r.lo+'\u2013'+r.hi+' reps.'; },
+    measure:function(x){ return x.lift+' volume (weight \u00d7 reps), against its own trend from before the test'; }},
+  sleep: {owner:'delta', scope:'session', adherence:'auto', label:'Sleep before training',
+    desc:'7.5+ hours of sleep (by WHOOP) before training days',
+    change:function(){ return 'Get '+EXP_SLEEP_H+'+ hours of sleep (by WHOOP) the night before training.'; },
+    measure:function(){ return 'top-set e1RM across the session, each lift against its own trend from before the test'; }},
+  mealTiming: {owner:'echo', scope:'session', adherence:'tap', label:'Meal timing before training',
+    desc:'a real meal 2-3 hours before training', question:'Did you eat a real meal 2\u20133 hours before?',
+    change:function(){ return 'Eat a real meal 2\u20133 hours before training.'; },
+    measure:function(){ return 'top-set e1RM across the session, each lift against its own trend from before the test'; }},
+  preCarbs: {owner:'echo', scope:'session', adherence:'tap', label:'Carbs before training',
+    desc:'60-80 g of carbohydrate in the 90 minutes before training', question:'Did you get 60\u201380 g of carbs in the 90 minutes before?',
+    change:function(){ return 'Eat 60\u201380 g of carbohydrate in the 90 minutes before training.'; },
+    measure:function(){ return 'top-set e1RM across the session, each lift against its own trend from before the test'; }}
+};
+function expState(){
+  if(!S.experiments || typeof S.experiments !== 'object') S.experiments = {};
+  const x = S.experiments;
+  if(x.active === undefined) x.active = null;
+  if(!Array.isArray(x.history)) x.history = [];
+  if(!x.declined || typeof x.declined !== 'object') x.declined = {};
+  if(typeof x.lastEnded !== 'string') x.lastEnded = '';
+  return x;
+}
+function expActive(){ return (S.experiments && S.experiments.active) || null; }
+function expT(x){ return EXP_TEMPLATES[x && x.template] || null; }
+/* ---- per-session measures ----
+   Every session -- baseline and test alike -- is scored as value / where that lift's OWN trend
+   BEFORE the experiment says he would be that day (1.00 = on his trend). Against the trend, not
+   against his last few sessions: those would soon be the test sessions themselves, and the effect
+   would cancel itself out. And against a trend, not a flat average, so four weeks of his normal
+   progress cannot pass for an effect. The line is clamped to +/-10% of his median, so a steep few
+   points cannot project something silly. ---- */
+function expBestE1(l, nm){
+  const e = (l.entries||[]).find(function(z){ return z.exercise === nm; });
+  return (e && e.sets && e.sets.length) ? Math.max.apply(null, e.sets.map(function(st){ return epley(+st.w||0, +st.r||0); })) : 0;
+}
+function expVol(l, nm){
+  const e = (l.entries||[]).find(function(z){ return z.exercise === nm; });
+  return e ? (e.sets||[]).reduce(function(a, st){ return a + (+st.w||0)*(+st.r||0); }, 0) : 0;
+}
+function expValueFor(x, l, nm){ return x.template === 'repRange' ? expVol(l, nm) : expBestE1(l, nm); }
+/* One lift's own line before the experiment began, through its last EXP_BASE_N clean gym sessions.
+   Returns a function of a date key, or null with fewer than 2 points. */
+function expTrend(x, nm){
+  const lx = Object.assign({}, x, {lift: x.lift || nm});
+  const pts = (S.logs||[]).filter(function(l){ return l && +l.id < +x.startedAtMs && !expExcluded(lx, l); })
+    .map(function(l){ return {date:l.date, v:expValueFor(x, l, nm)}; }).filter(function(p){ return p.v > 0; })
+    .sort(function(a, b){ return b.date.localeCompare(a.date); }).slice(0, EXP_BASE_N).reverse();
+  if(pts.length < 2) return null;
+  const med = pxMedian(pts.map(function(p){ return p.v; })), reg = linreg(pts);
+  return function(dateKey){
+    let v = med;
+    if(reg){ const d = (new Date(dateKey).getTime() - reg.x0) / 86400000; v = reg.intercept + reg.slope * d; }
+    return Math.max(med * 0.9, Math.min(med * 1.1, v));
+  };
+}
+function expLoadedLifts(l){
+  return (l.entries||[]).filter(function(e){ return e.sets && e.sets.length && !isBodyweight(e.exercise) && Math.max.apply(null, e.sets.map(function(st){ return +st.w||0; })) > 1; })
+    .map(function(e){ return e.exercise; });
+}
+/* cache: lift -> trend, shared across one evaluation so each line is fitted once. */
+function expScore(x, l, cache){
+  cache = cache || {};
+  const one = function(nm){
+    if(!(nm in cache)) cache[nm] = expTrend(x, nm);
+    const fn = cache[nm]; if(!fn) return null;
+    const v = expValueFor(x, l, nm), p = fn(l.date);
+    return (v > 0 && p > 0) ? v / p : null;
+  };
+  const T = expT(x);
+  if(T && T.scope === 'lift') return one(x.lift);
+  const v = expLoadedLifts(l).map(one).filter(function(z){ return z !== null; });
+  return v.length ? v.reduce(function(a, b){ return a + b; }, 0) / v.length : null;
+}
+function expApplies(x, l){
+  const T = expT(x);
+  if(!T || !l) return false;
+  if(T.scope === 'lift') return (l.entries||[]).some(function(e){ return e.exercise === x.lift && e.sets && e.sets.length; });
+  return (l.entries||[]).some(function(e){ return e.sets && e.sets.length; });
+}
+function expExcluded(x, l){
+  if(!l || l.deload || l.home || l.coachPlan) return true;
+  if(l.call && !l.call.off && (l.call.call === 'easy' || l.call.call === 'recover')) return true;
+  if(x.lift){
+    if(Array.isArray(l.swapped) && l.swapped.indexOf(x.lift) >= 0) return true;
+    const d = l.decisions && l.decisions[x.lift];
+    if(d && (d.code === 'inv-override' || d.code === 'call-recover')) return true;
+  }
+  return false;
+}
+/* Did he follow the change in this session? true / false / null (the app cannot tell, or he has not
+   said). Measured wherever the data allows; asked only for the two that live outside the app. */
+function expAdherence(x, l){
+  if(x.template === 'restMain'){
+    const e = (l.entries||[]).find(function(z){ return z.exercise === x.lift; });
+    const ts = e ? e.sets.map(function(st){ return +st.ts; }).filter(function(v){ return v > 0; }).sort(function(a, b){ return a - b; }) : [];
+    if(ts.length < 2) return null;
+    const gaps = []; for(let i = 1; i < ts.length; i++) gaps.push((ts[i] - ts[i-1]) / 1000);
+    return pxMedian(gaps) >= EXP_REST_GAP;   // "Log set" is tapped after each set: the gap is rest + the set
+  }
+  if(x.template === 'repRange'){
+    const r = EXP_REP_ALTS[x.range] || EXP_REP_ALTS.high, e = (l.entries||[]).find(function(z){ return z.exercise === x.lift; });
+    return !!e && e.sets.filter(function(st){ return (+st.r||0) >= r.lo && (+st.r||0) <= r.hi + 2; }).length >= 2;
+  }
+  if(x.template === 'sleep'){
+    const w = whoopOn(l.date);
+    return (w && typeof w.sleepHours === 'number') ? w.sleepHours >= EXP_SLEEP_H : null;
+  }
+  const m = sessionMetaFor(l.id);
+  return (m && m.exp && m.exp.id === x.id && typeof m.exp.followed === 'boolean') ? m.exp.followed : null;
+}
+/* The baseline: the last EXP_BASE_N comparable, clean, scoreable sessions before a moment (ms). */
+function expBaselineFor(x, beforeMs){
+  const x2 = Object.assign({}, x, {startedAtMs: beforeMs}), cache = {};
+  return (S.logs||[]).filter(function(l){ return l && +l.id < beforeMs && expApplies(x2, l) && !expExcluded(x2, l) && expScore(x2, l, cache) !== null; })
+    .sort(function(a, b){ return b.date.localeCompare(a.date) || (+b.id - +a.id); }).slice(0, EXP_BASE_N).map(function(l){ return l.id; });
+}
+/* Every session since the start that the test applies to, and what it counts as. */
+function expSessions(x, cache){
+  const T = expT(x);
+  cache = cache || {};
+  return (S.logs||[]).filter(function(l){ return l && +l.id > +x.startedAtMs && expApplies(x, l); })
+    .sort(function(a, b){ return a.date.localeCompare(b.date) || (+a.id - +b.id); }).map(function(l){
+      let state, score = null;
+      if(expExcluded(x, l)) state = 'excluded';
+      else {
+        const a = expAdherence(x, l);
+        if(a === false) state = 'skipped';
+        else if(a === null) state = (T && T.adherence === 'tap') ? 'unanswered' : 'unknown';
+        else { score = expScore(x, l, cache); state = score === null ? 'unknown' : 'clean'; }
+      }
+      return {id:l.id, date:l.date, day:l.day, state:state, score:score};
+    });
+}
+function expMean(a){ return a.reduce(function(m, n){ return m + n; }, 0) / a.length; }
+function expSd(a){ if(a.length < 2) return 0; const m = expMean(a); return Math.sqrt(a.reduce(function(s, v){ return s + (v-m)*(v-m); }, 0) / (a.length - 1)); }
+/* The result, on-device: test sessions against the baseline, both scored against the same
+   pre-experiment trend. Moderate only when there are 3+ test sessions, 4+ baseline ones, AND the
+   difference is at least the normal session-to-session spread; otherwise low. No p-values. */
+function expEvaluate(x){
+  const cache = {};
+  const base = (x.baselineIds||[]).map(function(id){ return (S.logs||[]).find(function(l){ return l && l.id === id; }); })
+    .filter(Boolean).map(function(l){ return expScore(x, l, cache); }).filter(function(v){ return v !== null; });
+  const exp = expSessions(x, cache).filter(function(z){ return z.state === 'clean'; }).slice(0, x.requiredSessions).map(function(z){ return z.score; });
+  if(!base.length || !exp.length) return null;
+  const bm = expMean(base), em = expMean(exp), diff = em - bm;
+  const df = base.length + exp.length - 2;
+  const pooled = df > 0 ? Math.sqrt(((base.length-1)*Math.pow(expSd(base), 2) + (exp.length-1)*Math.pow(expSd(exp), 2)) / df) : 0;
+  const confidence = (exp.length >= 3 && base.length >= 4 && Math.abs(diff) >= pooled && Math.abs(diff) > 0.005) ? 'moderate' : 'low';
+  return {baseMean:bm, expMean:em, deltaPct:Math.round(diff / bm * 1000) / 10, nBase:base.length, nExp:exp.length,
+          pooledSd:pooled, confidence:confidence, direction: confidence === 'low' ? 'unclear' : (diff > 0 ? 'better' : 'worse')};
+}
+/* Why a new experiment cannot start now ('' = it can). t = a template, for the decline memory. */
+function expBlockReason(t){
+  const xs = expState(), today = todayKey();
+  if(xs.active) return 'an experiment is already running';
+  if(xs.lastEnded && mesoAddDays(xs.lastEnded, EXP_COOLDOWN_DAYS) > today) return 'the last one ended '+fmtDate(xs.lastEnded)+' \u2014 a '+EXP_COOLDOWN_DAYS+'-day cool-down runs until '+fmtDate(mesoAddDays(xs.lastEnded, EXP_COOLDOWN_DAYS));
+  if(t && xs.declined[t] && mesoAddDays(xs.declined[t], EXP_DECLINE_DAYS) > today) return 'he turned this one down on '+fmtDate(xs.declined[t]);
+  try{ if(deloadActive()) return 'a deload is on'; }catch(e){}
+  return '';
+}
+function expValidate(p, who){
+  const t = String((p && p.template) || ''), T = EXP_TEMPLATES[t];
+  if(!T) return {why:'unknown experiment template'};
+  if(who && who !== 'zulu' && T.owner !== who) return {why:'\u201c'+t+'\u201d is not '+((AGENTS[who]||{}).name||who)+'\u2019s experiment to run'};
+  const hyp = typeof p.hypothesis === 'string' ? p.hypothesis.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+  if(hyp.length < 10) return {why:'needs a hypothesis in a sentence'};
+  const n = Math.max(3, Math.min(4, Math.round(+p.sessions || 4)));
+  let lift = null, range = null;
+  if(T.scope === 'lift'){
+    lift = p.lift ? agResolveExName(p.lift) : null;
+    const inSplit = !!lift && Object.keys(activeSplitObj()).some(function(dk){ return dayExNames(dk).indexOf(lift) >= 0; });
+    if(!inSplit || isBodyweight(lift)) return {why:'\u201c'+String(p.lift||'').slice(0, 40)+'\u201d is not a loaded lift in the split'};
+    if(t === 'restMain' && !mesoIsCompound(lift)) return {why:lift+' is not a main compound'};
+    if(t === 'repRange'){
+      if(mesoIsCompound(lift) || isStrMode(lift) || isFormFocus(lift)) return {why:lift+' is not a plain accessory (compound, strength mode or Form Focus)'};
+      range = (p.range === 'low' || p.range === 'high') ? p.range : null;
+      if(!range) return {why:'repRange needs "range": "high" or "low"'};
+      const cur = exRepMode(lift), alt = EXP_REP_ALTS[range];
+      if(cur.lo === alt.lo && cur.hi === alt.hi) return {why:lift+' already trains '+alt.lo+'\u2013'+alt.hi};
+    }
+  }
+  const block = expBlockReason(t);
+  if(block) return {why:block};
+  if(expBaselineFor({template:t, lift:lift, range:range}, Date.now()).length < EXP_BASE_MIN)
+    return {why:'fewer than '+EXP_BASE_MIN+' clean recent sessions to measure against'};
+  return {fix:{type:'experiment', payload:{template:t, lift:lift, range:range, sessions:n, hypothesis:hyp}}};
+}
+/* Approve -> start. Called only from agApplyFix(), after agApprove() re-validated the proposal. */
+function expStart(p){
+  const xs = expState();
+  if(xs.active) return false;
+  const now = Date.now();
+  const x = {id:'x'+now.toString(36), template:p.template, lift:p.lift||null, range:p.range||null, hypothesis:p.hypothesis,
+             requiredSessions:p.sessions, startedAt:todayKey(), startedAtMs:now, status:'running'};
+  x.baselineIds = expBaselineFor(x, now);
+  if(x.baselineIds.length < EXP_BASE_MIN) return false;
+  xs.active = x;
+  return true;
+}
+function expResultLine(rec){
+  const r = rec && rec.result;
+  if(!r) return 'not enough clean sessions to measure';
+  const sz = r.nExp+' session'+(r.nExp === 1 ? '' : 's')+' against '+r.nBase;
+  if(r.direction === 'unclear') return 'no clear difference ('+(r.deltaPct >= 0 ? '+' : '')+r.deltaPct+'%, '+sz+', low confidence)';
+  return (r.deltaPct >= 0 ? '+' : '')+r.deltaPct+'% ('+r.direction+', '+sz+', '+r.confidence+' confidence \u2014 a small sample, not proof)';
+}
+/* Advance the running experiment: evaluate once enough clean sessions are in, or close it as
+   inconclusive after EXP_MAX_DAYS. save() only when it actually ends. */
+function expTick(){
+  const xs = expState(), x = xs.active;
+  if(!x) return null;
+  const clean = expSessions(x).filter(function(z){ return z.state === 'clean'; }).length;
+  let end = null;
+  if(clean >= x.requiredSessions) end = 'done';
+  else if(todayKey() > mesoAddDays(x.startedAt, EXP_MAX_DAYS)) end = 'inconclusive';
+  if(!end) return null;
+  const rec = Object.assign({}, x, {status:end, endedAt:todayKey(), result:expEvaluate(x)});
+  xs.history.unshift(rec);
+  xs.history = xs.history.slice(0, EXP_HIST_MAX);
+  xs.active = null; xs.lastEnded = todayKey();
+  try{ agLog(expT(x).owner, 'Experiment finished \u2014 '+expT(x).label+(x.lift ? ' ('+x.lift+')' : '')+': '+expResultLine(rec)+'.'); }catch(e){}
+  save();
+  return rec;
+}
+/* His call: stop it now. Counts as ended (the cool-down applies), keeps whatever it had measured. */
+function expStop(){
+  const xs = expState(), x = xs.active;
+  if(!x || !confirm('Stop this experiment? What it has measured so far is kept.')) return;
+  xs.history.unshift(Object.assign({}, x, {status:'stopped', endedAt:todayKey(), result:expEvaluate(x)}));
+  xs.history = xs.history.slice(0, EXP_HIST_MAX);
+  xs.active = null; xs.lastEnded = todayKey();
+  save(); try{ renderOps(); }catch(e){} try{ renderHome(); }catch(e){}
+}
+/* His one-tap answer for a behaviour template, for any session of the running experiment. */
+function expAnswer(logId, followed){
+  const x = expActive();
+  if(!x) return;
+  sessionMetaSet(logId, {exp:{id:x.id, followed:!!followed}});
+  document.querySelectorAll('[data-exp-log="'+logId+'"] .rd3-pill').forEach(function(b){ b.classList.toggle('on', (b.getAttribute('data-v') === 'y') === !!followed); });
+  try{ expTick(); }catch(e){}
+  try{ renderOps(); }catch(e){}
+}
+/* ---- where the running test shows ---- */
+function expLiveNote(nm){
+  const x = expActive();
+  if(!x || x.lift !== nm) return '';
+  if(x.template === 'restMain') return 'Experiment: rest at least 3 minutes between sets.';
+  if(x.template === 'repRange'){ const r = EXP_REP_ALTS[x.range] || EXP_REP_ALTS.high; return 'Experiment: '+r.lo+'\u2013'+r.hi+' reps for this test.'; }
+  return '';
+}
+function expRestFloor(nm){ const x = expActive(); return (x && x.template === 'restMain' && x.lift === nm) ? EXP_REST_SECS : 0; }
+function expRepRangeFor(nm){
+  const x = (S && S.experiments && S.experiments.active) || null;
+  return (x && x.template === 'repRange' && x.lift === nm) ? (EXP_REP_ALTS[x.range] || null) : null;
+}
+function expSummaryHTML(logId){
+  const x = expActive(), T = expT(x);
+  if(!x || !T) return '';
+  const l = (S.logs||[]).find(function(z){ return z && z.id === logId; });
+  if(!l || !expApplies(x, l)) return '';
+  let h = '<div class="rd3-group" data-exp-log="'+logId+'"><span class="rd3-gl">Experiment \u00b7 '+esc(T.label)+'</span>';
+  if(expExcluded(x, l)) return h+'<p class="small" style="color:var(--dim)">This session doesn\u2019t count toward it (deload, HOME, a coach plan, the day\u2019s call or a reset changed it).</p></div>';
+  if(T.adherence === 'tap'){
+    const a = expAdherence(x, l);
+    return h+'<p class="small" style="margin-bottom:6px">'+esc(T.question)+'</p><div class="rd3-pills">'+
+      '<button class="rd3-pill'+(a === true ? ' on' : '')+'" data-v="y" onclick="expAnswer('+logId+', true)">Yes</button>'+
+      '<button class="rd3-pill'+(a === false ? ' on' : '')+'" data-v="n" onclick="expAnswer('+logId+', false)">No</button></div></div>';
+  }
+  const a = expAdherence(x, l);
+  return h+'<p class="small" style="color:var(--dim)">'+(a === true ? 'Counted automatically \u2014 you followed it.' : a === false ? 'Counted automatically \u2014 this one didn\u2019t follow it, so it is left out.' : 'The app couldn\u2019t measure this one, so it is left out.')+'</p></div>';
+}
+function expChipHTML(){
+  const x = expActive(), T = expT(x);
+  if(!x || !T) return '';
+  const ses = expSessions(x), clean = ses.filter(function(z){ return z.state === 'clean'; }).length;
+  const ask = ses.filter(function(z){ return z.state === 'unanswered'; }).length;
+  return '<div class="card" style="cursor:pointer" onclick="showReviewTab(\'ops\')"><p class="small"><span class="pill" style="color:var(--violet);margin:0 6px 0 0">Experiment</span>'+
+    esc(T.label)+(x.lift ? ' \u00b7 '+esc(x.lift) : '')+' \u00b7 '+clean+' of '+x.requiredSessions+' sessions'+
+    (ask ? ' \u00b7 <span style="color:var(--warn)">'+ask+' to answer</span>' : '')+'</p>'+
+    '<p class="small" style="color:var(--muted);margin-top:4px">'+esc(T.change(x))+'</p></div>';
+}
+const EXP_STATE_TXT = {clean:'counted', excluded:'left out (reshaped)', skipped:'left out (not followed)', unanswered:'needs your answer', unknown:'left out (couldn\u2019t measure)'};
+function expCardHTML(){
+  const xs = expState(), x = xs.active, T = expT(x);
+  let h = '';
+  if(x && T){
+    const ses = expSessions(x), clean = ses.filter(function(z){ return z.state === 'clean'; }).length;
+    h += '<div class="card"><div class="k" style="color:var(--violet)">Experiment running</div>'+
+      '<p style="margin-top:6px"><b>'+esc(T.label)+(x.lift ? ' \u2014 '+esc(x.lift) : '')+'</b></p>'+
+      '<p class="small" style="margin-top:6px">'+esc(T.change(x))+'</p>'+
+      '<p class="small" style="margin-top:6px;color:var(--muted)">Measuring: '+esc(T.measure(x))+', against '+(x.baselineIds||[]).length+' earlier sessions.</p>'+
+      '<p class="small" style="margin-top:6px;color:var(--muted)">'+esc(AGENTS[T.owner].name)+'\u2019s hypothesis: '+esc(x.hypothesis||'')+'</p>'+
+      '<p class="small" style="margin-top:10px"><b>'+clean+' of '+x.requiredSessions+'</b> clean sessions \u00b7 started '+esc(fmtDate(x.startedAt))+'</p>';
+    ses.slice(-8).forEach(function(z){
+      h += '<div class="db-row" data-exp-log="'+z.id+'" style="flex-wrap:wrap;align-items:center"><span class="db-k">'+esc(fmtDate(z.date))+'</span><span class="small" style="flex:1;min-width:130px">'+esc(z.day||'')+' \u00b7 '+EXP_STATE_TXT[z.state]+'</span>'+
+        (z.state === 'unanswered' || (T.adherence === 'tap' && (z.state === 'clean' || z.state === 'skipped'))
+          ? '<span class="rd3-pills" style="flex:none;margin-left:auto"><button class="rd3-pill'+(z.state === 'clean' ? ' on' : '')+'" data-v="y" style="min-width:0;padding:6px 10px" onclick="expAnswer('+z.id+', true)">Yes</button><button class="rd3-pill'+(z.state === 'skipped' ? ' on' : '')+'" data-v="n" style="min-width:0;padding:6px 10px" onclick="expAnswer('+z.id+', false)">No</button></span>' : '')+
+        '</div>';
+    });
+    h += '<p class="small" style="color:var(--dim);margin-top:10px">3\u20134 sessions is a small sample: the result will say how big the difference was and how sure it is, never that it is proven.</p>'+
+      '<button class="btn ghost sm" style="margin-top:8px" onclick="expStop()">Stop experiment</button></div>';
+  }
+  const last = xs.history[0];
+  if(last && expT(last)){
+    h += '<div class="card"><div class="k">Last experiment</div><p style="margin-top:6px"><b>'+esc(expT(last).label)+(last.lift ? ' \u2014 '+esc(last.lift) : '')+'</b> \u00b7 '+esc(last.status)+' '+esc(fmtDate(last.endedAt||''))+'</p>'+
+      '<p class="small" style="margin-top:6px">'+esc(expResultLine(last))+'</p></div>';
+  }
+  if(xs.history.length > 1){
+    h += subSection('Earlier experiments ('+(xs.history.length - 1)+')', xs.history.slice(1).map(function(r){
+      return '<p class="small" style="margin-top:6px">'+esc(fmtDate(r.endedAt||''))+' \u00b7 '+esc((expT(r)||{}).label||r.template)+(r.lift ? ' ('+esc(r.lift)+')' : '')+': '+esc(expResultLine(r))+'</p>';
+    }).join(''), false, {pref:'coach.expArchive', cls:'grp'});
+  }
+  return h;
+}
+/* The prompt line, ONLY when an experiment can start and this agent has a template left to offer:
+   on every other night it costs nothing. */
+function expMenuLine(id){
+  if(expBlockReason('')) return '';
+  const xs = expState(), today = todayKey();
+  const ts = Object.keys(EXP_TEMPLATES).filter(function(t){ return EXP_TEMPLATES[t].owner === id && !(xs.declined[t] && mesoAddDays(xs.declined[t], EXP_DECLINE_DAYS) > today); });
+  if(!ts.length) return '';
+  return '\n'+'  {"type":"experiment","payload":{"template":"'+ts.join('|')+'","lift":"<exact name; only for a lift template>","range":"high|low (repRange only)",'+
+    '"sessions":3..4,"hypothesis":"<=200 chars: what you expect and why, with his numbers"}}  -- ONE small test he runs for 3-4 sessions; '+
+    'the app measures it on-device and reports back. Only when his data raises a real question this would answer; most nights, none. '+
+    'Templates: '+ts.map(function(t){ return t+' = '+EXP_TEMPLATES[t].desc; }).join('; ')+'.';
+}
+/* The running test, for the agents: so nothing they propose confounds it. */
+function expContextLine(){
+  const x = expActive(), T = expT(x);
+  if(!x || !T) return '';
+  const clean = expSessions(x).filter(function(z){ return z.state === 'clean'; }).length;
+  return '\n\nEXPERIMENT RUNNING: '+T.label+(x.lift ? ' on '+x.lift : '')+' \u2014 '+T.change(x)+' '+clean+' of '+x.requiredSessions+
+    ' clean sessions so far. Do not propose anything that would confound it (for example a set count or reset on that lift) until it ends.';
+}
+
 /* One line for the agents: how much the engine's own numbers deserve to be trusted lately. */
 function predIntelLine(){
   const R = predRecord(mesoAddDays(todayKey(), -56));
@@ -14907,6 +15280,7 @@ function opsSignature(){
     // reason to repaint when the brief starts or finishes.
     _agRunning?1:0, _agBriefRunning?1:0, a.autoRun?1:0,
     agActiveChat, agChatTall?1:0, agThinkingFor||'', agChatErr?agChatErr.id:'',
+    JSON.stringify(S.experiments||null).length, (S.sessionMeta||[]).length,
     Math.floor(Date.now()/300000)
   ].join('|');
 }
@@ -14951,7 +15325,7 @@ function agSweepDuplicates(){
 }
 
 /* ---- fix validation: never trust model output straight into state ---- */
-const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','setCount','schedule','cycleSchedule','fuelFood'];
+const AG_FIX_TYPES = ['cal','pro','liftReset','deload','addEx','swapEx','setCount','schedule','cycleSchedule','fuelFood','experiment'];
 /* Every exercise Mark actually trains — split slots plus anything he has logged. NOT
    allKnownExerciseNames(), which folds in the whole EX_LIBRARY: an override on a lift he
    has never performed is inert by construction, so accepting one would just be a different
@@ -15017,7 +15391,8 @@ function exAcceptName(raw){
 /* The fix types each agent may raise. AG_FIX_MENU only shows each agent its own; this enforces it,
    because a prompt is a hint and ECHO could otherwise queue a liftReset. ZULU, the lead, may use
    any of the specialists' shapes. */
-const AG_FIX_ALLOWED = {charlie:['schedule','cycleSchedule'], delta:['liftReset','deload','addEx','swapEx','setCount'], echo:['cal','pro','fuelFood']};
+// experiment: DELTA and ECHO, each only its OWN templates (EXP_TEMPLATES[t].owner, checked in expValidate).
+const AG_FIX_ALLOWED = {charlie:['schedule','cycleSchedule'], delta:['liftReset','deload','addEx','swapEx','setCount','experiment'], echo:['cal','pro','fuelFood','experiment']};
 function agFixAllowedFor(who, type){
   const list = AG_FIX_ALLOWED[who];
   return !list || list.indexOf(type) >= 0;
@@ -15142,6 +15517,12 @@ function agValidateFix(fx, who){
     }
     return {type:'schedule', payload:{map:out}};
   }
+  if(fx.type==='experiment'){
+    // Fixed templates only, each agent its own, one at a time, never inside the cool-down or a
+    // recent decline, and never without a baseline to measure against. See expValidate().
+    const v = expValidate(p, who);
+    return v.fix || null;
+  }
   if(fx.type==='cycleSchedule'){
     // Mirror image of the check above: this fix is only meaningful while cycle mode is
     // active, since dow mode never reads S.cycleSchedule at all.
@@ -15235,6 +15616,7 @@ function agRejectReason(fx, who){
     return 'it is already on '+p.day;
   }
   if(fx.type==='setCount') return 'needs a real day, an exercise on it, and 2\u20135 sets that differ from now';
+  if(fx.type==='experiment') return expValidate(p, who).why || 'not a usable experiment';
   if(fx.type==='fuelFood') return fpCheckFood(p, true).why || 'not a usable food';
   if(fx.type==='swapEx'){
     if(!p.from || !p.to) return 'missing from/to exercise';
@@ -15256,6 +15638,7 @@ function agFixSummary(fx){
   if(fx.type==='schedule') return 'reschedule the training week';
   if(fx.type==='cycleSchedule') return 'rotating cycle \u2192 '+p.pattern.join(' \u2192 ');
   if(fx.type==='fuelFood') return 'add '+p.name+' ('+p.serving+', ~'+p.cal+' cal, '+p.p+'g P) to your Fuel Planner list';
+  if(fx.type==='experiment'){ const T = EXP_TEMPLATES[p.template] || {}; return 'start an experiment: '+(T.label||p.template)+(p.lift ? ' on '+p.lift : '')+' for '+p.sessions+' sessions'; }
   return fx.type;
 }
 /* What a fix CHANGES, as a string. Two pending proposals sharing a target are two buttons
@@ -15318,6 +15701,7 @@ function agApplyFix(fx){
   }
   if(fx.type==='schedule'){ S.schedule = Object.assign({}, p.map); return true; }
   if(fx.type==='cycleSchedule'){ scheduleInit(); S.cycleSchedule.pattern = p.pattern.slice(); return true; }
+  if(fx.type==='experiment') return expStart(p);
   if(fx.type==='fuelFood'){
     // Added to his list and nothing more: not liked, not stocked. The combiner never builds a
     // plate from it until he marks it himself.
@@ -15348,6 +15732,8 @@ function agReject(pid){
   const p = agState().proposals.find(x=>x.id===pid);
   if(!p || p.status!=='pending') return;
   p.status='rejected'; p.closed = todayKey();
+  // A declined experiment template stays out for EXP_DECLINE_DAYS (expBlockReason).
+  if(p.fix && p.fix.type==='experiment' && p.fix.payload && p.fix.payload.template) expState().declined[p.fix.payload.template] = todayKey();
   agLog(p.agent, 'You turned down \u201c'+p.title+'\u201d. I won\u2019t raise it again unless the picture changes.');
   save(); renderOps();
 }
@@ -15424,6 +15810,7 @@ function agContext(){
     '\nSTRENGTH MODE (low reps are the goal): '+strTxt+
     ((typeof waContext==='function') ? waContext() : '')+
     '\nINVESTIGATION FLAGS: '+flags+
+    expContextLine()+
     '\n\nALREADY IN HIS APPROVAL QUEUE, UNDECIDED (do NOT propose any of these again \u2014 he '+
       'has them and has not answered yet, and a repeat is discarded. Raise something against one '+
       'of these only if the numbers behind it have genuinely CHANGED, and say what changed): '+
@@ -15505,7 +15892,7 @@ function agJsonSpec(id){
     'empty array. Do not add a proposal just to have said something -- say it in summary instead. A '+
     'proposal with fix:null is a contradiction: if there is nothing to apply, it is not a proposal.'+'\n'+
     'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<one of>}'+'\n'+
-    (AG_FIX_MENU[id]||'')+'\n'+
+    (AG_FIX_MENU[id]||'')+(id==='delta' || id==='echo' ? expMenuLine(id) : '')+'\n'+
     'Anything not on that list, including null, is discarded -- do not submit it.'+'\n'+
     'Cap: at most 2 proposals. Fewer is better; most nights the right answer is zero.'+'\n'+
     'IMPORTANT: do not describe a change in your summary as though it were already made. Nothing you '+
@@ -15682,6 +16069,7 @@ let _agRunning = false;   // module-scoped ON PURPOSE: see note in agRunAll
 
 /* Ingest one specialist's parsed reply into state. Split out of agRunAll so all four agents
    go through exactly the same validation path -- there is no shortcut for the lead. */
+const AG_REJECT_QUIET_DAYS = 14;
 function agIngest(a2, id, blk){
   if(!blk) return 0;
   let raised = 0;
@@ -15732,6 +16120,12 @@ function agIngest(a2, id, blk){
     // Byte-for-byte the same call: drop it silently. The entry he has not decided on yet IS
     // this proposal, and a log line every night saying so would be its own kind of nagging.
     if(sameTarget.some(function(q){ return agFixKey(q.fix) === key; })) return;
+    // Byte-for-byte a call he TURNED DOWN recently: not re-queued. Rejections used to be memory in
+    // the prompt only, and a model does not reliably follow "don't". Different numbers are a new
+    // call and still come through.
+    const _quiet = mesoAddDays(todayKey(), -AG_REJECT_QUIET_DAYS);
+    const _rej = a2.proposals.find(function(q){ return q.status === 'rejected' && (q.closed||'') >= _quiet && agFixKey(q.fix) === key; });
+    if(_rej){ agLog(id, 'Not re-raising \u201c'+String(pr.title)+'\u201d \u2014 you turned it down on '+fmtDate(_rej.closed)+'.'); return; }
     // Same setting, different numbers: a revision, not a second option. Retire the older one so
     // he is never shown two contradictory buttons whose outcome depends on which he taps last.
     sameTarget.forEach(function(q){
@@ -16463,6 +16857,7 @@ function renderHome(){
   h += '</div>';
 
   try{ h += dayCallCardHTML(t); }catch(e){ console.warn('day call card failed', e); }
+  try{ h += expChipHTML(); }catch(e){ console.warn('experiment chip failed', e); }
   // Under the hero and above the brief: a background frame for the day, not a call to action.
   try{ h += waCardHTML(); }catch(e){ console.warn('winter arc card failed', e); }
 
@@ -16833,6 +17228,7 @@ function renderOps(){
       esc(_letter.text)+'</p></div>', false);
   }
 
+  try{ const _xh = expCardHTML(); if(_xh) h += '<h2>Experiments</h2>'+_xh; }catch(e){ console.warn('experiments card failed', e); }
   h += '<h2>Pending proposals'+(pend.length?' ('+pend.length+')':'')+'</h2>';
   h += pend.length ? pend.map(agPropHTML).join('')
                    : '<div class="card"><p class="ag-empty">Nothing awaiting your approval.</p></div>';
@@ -17214,6 +17610,7 @@ function agForegroundCheck(){
   try{ gdocPush(); }catch(e){}
   // This week's forecasts for the prediction record. Idempotent, on-device, no API.
   try{ predTick(); }catch(e){}
+  try{ expTick(); }catch(e){}
 }
 
 /* ============================================================

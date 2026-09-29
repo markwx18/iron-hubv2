@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2310 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2358 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -272,6 +272,7 @@ so the two orders can no longer disagree.
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
 | Projections | `anFanProject()` (shared core), `anFanChartSVG()`, `anFanMilestones()`, `bwProjectFor()` |
+| Experiments | `EXP_TEMPLATES`, `expState()` (`S.experiments`), `expValidate()`, `expStart()`, `expSessions()`, `expScore()` / `expTrend()`, `expEvaluate()`, `expTick()`, `expStop()`, `expAnswer()`, `expMenuLine()`, `expCardHTML()` |
 | Prediction record | `predTick()` (`S.predictions`), `predLifts()`, `predTopsets()`, `predResolve()`, `predRecord()`, `predRecordCardHTML()`, `predIntelLine()` |
 | Overload status | `olSignals()`, `olBaselineVerdict()`, `olValidateReport()`, `renderAnOverload()` |
 | Exercise swaps | `swapScore()`, `swapPattern()`, `swapEquip()`, `swapCandidates()`, `swapListHTML()` |
@@ -357,7 +358,8 @@ discard it, not to coerce it.
 
 Five rules it enforces:
 - **Each agent may only raise its own fix types** (`AG_FIX_ALLOWED`: CHARLIE schedule, DELTA
-  lifts, ECHO intake and `fuelFood`; ZULU any). The menu in the prompt was the only thing
+  lifts, ECHO intake and `fuelFood`; DELTA and ECHO `experiment`, each only its OWN templates; ZULU
+  any). The menu in the prompt was the only thing
   stopping ECHO queueing a `liftReset`.
 - **A `fuelFood` is judged by `fpCheckFood(p, true)`.** It must be a plain name with no notes or
   numbers in it, and nothing already on his list. Category and tags come from the fixed sets,
@@ -371,6 +373,9 @@ Five rules it enforces:
 - **`addEx`/`swapEx` names are resolved** (`exAcceptName()`). `swapEx.from` must be in the
   permanent split.
 - **The refusal names its reason** in the activity log (`agRejectReason(fx, who)`).
+- **A rejection is enforced, not just remembered.** `agIngest()` does not re-queue a byte-identical
+  fix (`agFixKey`) he turned down within `AG_REJECT_QUIET_DAYS` (14), and logs that it did not.
+  Different numbers are a different call and still come through.
 
 **Advisory-only proposals are not allowed in the queue.** A proposal with no
 concrete `fix` has nothing to apply, so approving it is a no-op. These are folded
@@ -684,6 +689,36 @@ sessions against 71%, and grind share alone would have made recovery count for l
 It is about 600 tokens on his real data, and `agBaseContext()` adds it for DELTA, ECHO and ZULU
 (the brief included). Every line is guarded on its own, so a failing line can never cost an agent
 its prompt. Check the usage card before growing it.
+
+**Experiments are proposed by the agents and measured by the app.** Daily intelligence item 2.
+- **Fixed templates only** (`EXP_TEMPLATES`), because the app, not a model, has to measure every one:
+  DELTA `restMain` (3+ min rest on one compound, adherence from set `ts`), `repRange` (an accessory at
+  12-15 or 6-8, applied through `exRepMode()` so both engine trees see it), `sleep` (7.5 h+ by WHOOP);
+  ECHO `mealTiming` and `preCarbs` (adherence is one tap, in the session summary or on the Coach
+  card). An `accRest` template was considered and dropped: 90 s is already `smartRestSecs()`'s
+  accessory default.
+- **Proposal** is an `experiment` fix in the normal queue, checked by `expValidate()`: the agent's
+  own template, a resolved lift of the right kind, a hypothesis, 3-4 sessions (clamped), and it is
+  refused while one runs, inside the `EXP_COOLDOWN_DAYS` (7) cool-down, within `EXP_DECLINE_DAYS` (7)
+  of him declining that template (`agReject()` records it), during a deload, or with fewer than
+  `EXP_BASE_MIN` (3) clean sessions to measure against. The prompt line (`expMenuLine()`) is sent
+  only when one could start. `agFixTarget` is `experiment`, so a newer proposal supersedes an older
+  pending one: one at a time.
+- **Running**, LIVE changes only its advice text and the rest timer's default. The agents are told
+  what is running (`expContextLine()`) so nothing they propose confounds it.
+- **Scoring**: every session, baseline and test, is value divided by where that lift's OWN trend
+  before the test says he would be that day (`expTrend()`, clamped to +/-10% of his median). Not
+  against his last few sessions, which would soon be the test sessions themselves and cancel the
+  effect; not against a flat average, which would count four weeks of normal progress as an
+  effect. Both of those were built as mutants and are caught.
+- **Excluded** from both sides: deload, HOME, coach plan, a kept easy/recover call, a reset or swap
+  on the lift, not followed, not answered. Sessions before 2026-09-28 cannot show a coach plan or a
+  swap.
+- **Result** (`expEvaluate()`): mean against baseline mean, n per side, pooled SD. `moderate` only
+  with 3+ test and 4+ baseline sessions AND a difference at least the normal spread; else `low`,
+  worded "no clear difference". Never "proven". After `EXP_MAX_DAYS` (28) without enough clean
+  sessions it closes `inconclusive`. `S.experiments` is one object, replaced whole on a pull, so every
+  write is `save()`.
 
 **The prediction record scores the engine, and never stores a verdict.** Zero API cost; it extends
 `anEnsembleFor()` and `bulkRate()` rather than adding a model (`projectMetric()` in
