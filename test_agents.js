@@ -1713,8 +1713,14 @@ setTimeout(async () => {
     /* Mid-session: the dock used to say "that set fell short - drop to 265 lb" on a top double. */
     const liveStr = { name: 'Trap Bar Deadlift', repMode: 'str', lo: 3, hi: 6, targetW: 275, backoffW: 245, recDetail: '', sets: [{ w: 275, r: 2, e: 'grind' }] };
     const aStr = ev('intraAdvice(' + JSON.stringify(liveStr) + ')');
-    ok('mid-set: a top double does not trigger a back-off', aStr.w === 245 && aStr.tag === 'Backoff',
+    // Two-set rule (2026-09-28): one top set holds the weight for a second, rather than dropping to
+    // the back-off load -- but it must still never step the bar DOWN by an increment (265).
+    ok('mid-set: a top double does not trigger a back-off', aStr.w === 275,
       JSON.stringify(aStr));
+    const liveStr2 = Object.assign({}, liveStr, { sets: [{ w: 275, r: 2, e: 'grind' }, { w: 275, r: 2, e: 'grind' }] });
+    const aStrB = ev('intraAdvice(' + JSON.stringify(liveStr2) + ')');
+    ok('mid-set: after two top sets the advice moves to the back-off load', aStrB.w === 245 && aStrB.tag === 'Backoff',
+      JSON.stringify(aStrB));
     const liveStrNoBk = Object.assign({}, liveStr, { backoffW: null });
     const aStr2 = ev('intraAdvice(' + JSON.stringify(liveStrNoBk) + ')');
     ok('mid-set: with no backoff weight it holds rather than drops', aStr2.w === 275, JSON.stringify(aStr2));
@@ -2179,10 +2185,14 @@ setTimeout(async () => {
   ok('opt-out toggles back off', ev("isNoBackoff('Backoff Bar')") === false);
   ok('backoff returns after re-enabling', ev("backoffWeightFor('Backoff Bar', 225)") === 205);
 
-  // intraAdvice: after a clean top set, suggest the backoff weight
-  const advClean = ev(`intraAdvice({name:'Backoff Bar', targetW:225, backoffW:205, lo:3, hi:6,
+  // intraAdvice: after the top sets, suggest the backoff weight. The two-set rule means two sets
+  // at the top first (that is what earns the jump now), so ONE top set holds the weight.
+  const advOne = ev(`intraAdvice({name:'Backoff Bar', targetW:225, backoffW:205, lo:3, hi:6,
     sets:[{w:225, r:5, e:'easy'}]})`);
-  ok('after top set, advice drops to backoff weight', advClean.w === 205, 'w=' + advClean.w);
+  ok('two-set rule: after ONE top set the advice stays at the top weight', advOne.w === 225, 'w=' + advOne.w);
+  const advClean = ev(`intraAdvice({name:'Backoff Bar', targetW:225, backoffW:205, lo:3, hi:6,
+    sets:[{w:225, r:5, e:'easy'}, {w:225, r:5, e:'easy'}]})`);
+  ok('after the top sets, advice drops to backoff weight', advClean.w === 205, 'w=' + advClean.w);
   ok('backoff advice is tagged', advClean.tag === 'Backoff');
 
   // a FAILED top set must take precedence \u2014 never suggest heavier than the safety response
@@ -2624,7 +2634,8 @@ setTimeout(async () => {
     const OV_EX = 'Override Sync Test Lift';
     // seed history that would earn a STR-mode weight jump on its own (top set hit the ceiling)
     ev("S.logs = (S.logs||[]).filter(l => !l.entries.some(e=>e.exercise==='" + OV_EX + "'));");
-    ev("S.logs.push({date:'2026-08-01', entries:[{exercise:'" + OV_EX + "', sets:[{w:145,r:6},{w:145,r:5},{w:145,r:5}]}]});");
+    // Two sets at the ceiling: the two-set rule (2026-09-28) needs two, not one great set.
+    ev("S.logs.push({date:'2026-08-01', entries:[{exercise:'" + OV_EX + "', sets:[{w:145,r:6},{w:145,r:6},{w:145,r:5}]}]});");
     // force STR mode so recommend() takes the ceiling-jump branch (mirrors Barbell Bench Press config)
     ev("S.split[Object.keys(S.split)[0]].exercises.push({name:'" + OV_EX + "', inc:5, repMode:'str'});");
     const withoutOverride = call('recommend', OV_EX, 'ok');
@@ -4461,8 +4472,9 @@ setTimeout(async () => {
       // The options argument may be an object literal or a variable (ECHO's chat builds its opts first).
       .map(function(c){ var m = c.match(/(\d{3,6})\s*(?:,\s*(?:\{[^}]*\}|[A-Za-z_$][\w$]*))?\s*\)\s*;\s*$/); return m ? +m[1] : null; })
       .filter(function(v){ return v !== null; });
-    // 5, not 7: the AI meal generator's two calls went with it when the Fuel Planner replaced it.
-    ok('found every API call site to check', caps.length >= 5, 'found=' + caps.length + ' -> ' + caps.join(','));
+    // 4, not 7: the AI meal generator's two calls went with it when the Fuel Planner replaced it,
+    // and the weekly audit's when it was retired (2026-09-28).
+    ok('found every API call site to check', caps.length >= 4, 'found=' + caps.length + ' -> ' + caps.join(','));
     ok('no max_tokens cap is small enough for thinking to swallow the answer',
        caps.every(function(v){ return v >= 4000; }), caps.join(','));
 
@@ -9435,6 +9447,230 @@ setTimeout(async () => {
   ev("fpSkips = {date:'', ids:[]}; fpPlanned = {date:'', sig:''}; fpEaten = {date:'', cal:0, pro:0}; fpEditId = null; fpSearch = '';");
   ev('S = ' + fpSaved + '; activeMainTab = ' + JSON.stringify(fpTab) + ';');
   ok('cleanup: real state restored after the fuel planner section', ev('JSON.stringify(S)') === fpSaved);
+
+  // ============ PRESCRIPTION AUDIT (2026-09-28) ============
+  /* Mark asked for the background weight recommendations to be checked and made to hold, and for
+     more caution on squat after the engine prescribed 335 off one 325x10. Every assertion here was
+     confirmed red against a mutant undoing its fix. Fixtures are messy on purpose (uneven reps,
+     mixed effort tags) and use fixed offsets, never randomness. */
+  console.log('=== PRESCRIPTION AUDIT: SPIKE GUARD, TWO-SET RULE, RESETS, FLAGS ===');
+  const paSaved = ev('JSON.stringify(S)');
+  ev('window.__paMAS = mesoActiveSplit;');
+  try {
+    const pdk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const rw = (nm, tier) => { const r = ev("recommend(" + JSON.stringify(nm) + ", " + JSON.stringify(tier || 'ok') + ")"); return (r.sets && r.sets[0]) ? r.sets[0].w : null; };
+    const cd = (nm, tier) => ev("classifyDecision(" + JSON.stringify(nm) + ", " + JSON.stringify(tier || 'ok') + ")");
+    ev("S.split.D6.exercises.push({name:'Zz Squat', inc:10, repMode:'str'});");
+    ev("S.split.D2.exercises.push({name:'Zz Spike Press', inc:5});");
+    const rm = ev("exRepMode('Zz Spike Press')");
+
+    // --- his squat, as logged (strength mode, 3-6, +10) ---
+    const sq = [
+      {id: 990101, date: pdk(-45), day: 'D6', entries: [{exercise: 'Zz Squat', sets: [{w: 315, r: 5, e: 'solid'}, {w: 315, r: 5, e: 'grind'}, {w: 295, r: 9, e: 'solid'}]}]},
+      {id: 990102, date: pdk(-38), day: 'D6', entries: [{exercise: 'Zz Squat', sets: [{w: 295, r: 9, e: 'solid'}, {w: 315, r: 6, e: 'solid'}, {w: 325, r: 5, e: 'solid'}, {w: 330, r: 2, e: 'solid'}]}]},
+      {id: 990103, date: pdk(-24), day: 'D6', entries: [{exercise: 'Zz Squat', sets: [{w: 315, r: 6, e: 'solid'}, {w: 295, r: 6, e: 'solid'}, {w: 225, r: 12, e: 'solid'}]}]},
+      {id: 990104, date: pdk(-8), day: 'D6', entries: [{exercise: 'Zz Squat', sets: [{w: 315, r: 6, e: 'solid'}, {w: 315, r: 8, e: 'solid'}, {w: 325, r: 10, e: 'solid'}]}]}
+    ];
+    ev('S.logs = ' + JSON.stringify(sq) + ';');
+    ok('two-set rule: one 325x10 no longer earns +10 (Sep 28 would have read 325, not 335)', rw('Zz Squat') === 325, String(rw('Zz Squat')));
+    const sqd = cd('Zz Squat');
+    ok('two-set rule: the engine log says what earns the jump', sqd.code === 'hold' && sqd.to === 325 && /second set/.test(sqd.reason), JSON.stringify(sqd));
+    ok('two-set rule: and the advice line says it too', /a second set at 325 lb/.test(ev("recommend('Zz Squat','ok').detail")), ev("recommend('Zz Squat','ok').detail"));
+    // Today's session: 315 x5 (grind), x6, x6 -- two sets at the ceiling, but reached on a grinder.
+    ev("S.logs.push({id: 990105, date: " + JSON.stringify(pdk(-1)) + ", day: 'D6', entries: [{exercise: 'Zz Squat', sets: [{w: 315, r: 5, ef: 40}, {w: 315, r: 6, ef: 60}, {w: 315, r: 6, ef: 60}]}]});");
+    ok('two-set rule: two sets at 6 do reach the ceiling (the grinder then holds it once)', cd('Zz Squat').code === 'grind-hold' && rw('Zz Squat') === 315, JSON.stringify(cd('Zz Squat')));
+    ev("S.logs[S.logs.length-1].entries[0].sets = [{w: 315, r: 6, ef: 60}, {w: 315, r: 6, ef: 65}, {w: 315, r: 5, ef: 55}];");
+    ok('two-set rule: two clean sets at the ceiling earn the jump', rw('Zz Squat') === 325 && cd('Zz Squat').code === 'increase', JSON.stringify(cd('Zz Squat')));
+    ev("S.logs[S.logs.length-1].entries[0].sets = [{w: 315, r: 6, ef: 60}, {w: 315, r: 5, ef: 65}, {w: 315, r: 5, ef: 55}];");
+    ok('two-set rule: one set at the ceiling holds', rw('Zz Squat') === 315 && cd('Zz Squat').code === 'hold', JSON.stringify(cd('Zz Squat')));
+
+    // --- the spike guard, on its own (a hypertrophy lift, every top set at the ceiling) ---
+    const hi = rm.hi, sp = [
+      {id: 990201, date: pdk(-30), day: 'D2', entries: [{exercise: 'Zz Spike Press', sets: [{w: 100, r: hi - 2, e: 'solid'}, {w: 100, r: hi - 1, e: 'solid'}, {w: 100, r: hi - 2, e: 'grind'}]}]},
+      {id: 990202, date: pdk(-23), day: 'D2', entries: [{exercise: 'Zz Spike Press', sets: [{w: 100, r: hi - 1, e: 'solid'}, {w: 100, r: hi - 1, e: 'solid'}, {w: 95, r: hi, e: 'solid'}]}]},
+      {id: 990203, date: pdk(-16), day: 'D2', entries: [{exercise: 'Zz Spike Press', sets: [{w: 100, r: hi - 2, e: 'solid'}, {w: 100, r: hi - 1, e: 'solid'}]}]},
+      {id: 990204, date: pdk(-9), day: 'D2', entries: [{exercise: 'Zz Spike Press', sets: [{w: 115, r: hi + 1, e: 'solid'}, {w: 115, r: hi, e: 'solid'}, {w: 115, r: hi, e: 'solid'}]}]}
+    ];
+    ev('S.logs = ' + JSON.stringify(sp) + ';');
+    ok('spike guard: a session far above the trend cannot earn a jump', rw('Zz Spike Press') === 115 && cd('Zz Spike Press').code === 'spike-hold', JSON.stringify(cd('Zz Spike Press')));
+    ok('spike guard: and the advice says why', /well above your recent/.test(ev("recommend('Zz Spike Press','ok').detail")));
+    ok('spike guard: e1Spike names both numbers', (function(){ const x = ev('e1Spike(historyFor("Zz Spike Press"))'); return x && x.cur > x.base * 1.08; })());
+    // Backed up: the next session reaches the same level, so the jump goes ahead.
+    ev("S.logs.push({id: 990205, date: " + JSON.stringify(pdk(-2)) + ", day: 'D2', entries: [{exercise: 'Zz Spike Press', sets: [{w: 115, r: " + hi + ", e: 'solid'}, {w: 115, r: " + hi + ", e: 'solid'}, {w: 115, r: " + (hi + 1) + ", e: 'solid'}]}]});");
+    ok('spike guard: a second session at that level backs it up, and the jump goes ahead', rw('Zz Spike Press') === 120 && cd('Zz Spike Press').code === 'increase', JSON.stringify(cd('Zz Spike Press')));
+    // Needs history to judge: two sessions are not enough.
+    ev('S.logs = ' + JSON.stringify(sp.slice(2)) + ';');
+    ok('spike guard: says nothing without enough earlier sessions', rw('Zz Spike Press') === 120, String(rw('Zz Spike Press')));
+
+    // --- the two trees agree, across a grid ---
+    ev("S.split.D2.exercises.push({name:'Zz Grid Str', inc:10, repMode:'str'}, {name:'Zz Grid FF', inc:5, formFocus:true}, {name:'Zz Grid Max', inc:5, maxed:true}, {name:'Zz Grid FFMax', inc:5, formFocus:true, maxed:true}, {name:'Zz Grid Hyp', inc:2.5});");
+    const grid = ev(`(function(){
+      var lifts = ['Zz Grid Str','Zz Grid FF','Zz Grid Max','Zz Grid FFMax','Zz Grid Hyp'];
+      var bad = [], n = 0, codes = {};
+      var efs = [[90,92,95],[60,62,58],[35,60,62],[10,55,60],[80,70,null]];
+      lifts.forEach(function(nm){
+        var ff = isFormFocus(nm), r = ff ? {lo:FORM_LO, hi:FORM_HI} : exRepMode(nm), lo = r.lo, hi = r.hi;
+        var repsSets = [[hi,hi,hi],[hi,hi-1,hi-1],[hi+2,lo,lo],[lo-1,lo-1,lo-2],[lo,lo+1,lo],[hi,lo-2,hi]];
+        var tops = [100, 110];
+        repsSets.forEach(function(rs, i){ efs.forEach(function(ef, j){ [1,2,3,4].forEach(function(depth){ [0,1].forEach(function(spike){
+          var logs = [];
+          for(var k = depth; k >= 1; k--){
+            var w = tops[(k + i) % 2] + (spike && k === 1 ? 30 : 0);
+            var reps = (k === 1) ? rs : [lo + (k % 3), lo + ((k+1) % 3), lo];
+            logs.push({id: 991000 + k, date: mesoAddDays(todayKey(), -7*k), day:'D2', entries:[{exercise:nm, sets: reps.map(function(rr, q){ var s = {w:w, r:rr}; if(ef[q] != null) s.ef = ef[q]; return s; })}]});
+          }
+          S.logs = logs;
+          ['low','ok','high', undefined].forEach(function(t){
+            n++;
+            var c = classifyDecision(nm, t), rc = recommend(nm, t), w = rc.sets && rc.sets[0] ? rc.sets[0].w : '';
+            codes[c.code] = 1;
+            var agree = (c.to == null) ? (w === '' || c.code === 'bw') : (+w === c.to);
+            if(!agree && bad.length < 5) bad.push([nm, i, j, depth, spike, t, c.code, c.to, w].join('|'));
+          });
+        }); }); }); });
+      });
+      S.logs = [];
+      return {n:n, bad:bad, codes:Object.keys(codes).sort()};
+    })()`);
+    ok('agreement: classifyDecision() and recommend() give the same weight across the whole grid', grid.bad.length === 0 && grid.n > 500, JSON.stringify(grid.bad) + ' n=' + grid.n);
+    ok('agreement: and the grid reaches the new branches', ['spike-hold', 'form-maxed', 'form-defer', 'grind-hold', 'double', 'increase', 'hold', 'str-top', 'maxed-ceiling'].every(c => grid.codes.indexOf(c) >= 0), grid.codes.join(','));
+
+    // --- Form Focus obeys MAXED and a low day ---
+    const ffEasy = nm => [1, 2, 3].map(k => ({id: 992000 + k, date: pdk(-7 * k), day: 'D2', entries: [{exercise: nm, sets: [{w: 60, r: 15, ef: 92}, {w: 60, r: 16, ef: 95}, {w: 60, r: 15, ef: 90}]}]}));
+    ev('S.logs = ' + JSON.stringify(ffEasy('Zz Grid FFMax')) + ';');
+    ok('form focus: a MAXED machine never gets the bump', rw('Zz Grid FFMax') === 60 && cd('Zz Grid FFMax').code === 'form-maxed', JSON.stringify(cd('Zz Grid FFMax')));
+    ev('S.logs = ' + JSON.stringify(ffEasy('Zz Grid FF')) + ';');
+    ok('form focus: a low day holds the bump', rw('Zz Grid FF', 'low') === 60 && cd('Zz Grid FF', 'low').code === 'form-defer');
+    ok('form focus: a normal day still takes it', rw('Zz Grid FF', 'ok') === 65 && cd('Zz Grid FF', 'ok').code === 'form-increase');
+    ev("S.split.D2.exercises.push({name:'Zz FF Str', inc:5, formFocus:true, repMode:'str'});");
+    ev('S.logs = ' + JSON.stringify(ffEasy('Zz FF Str').map(l => JSON.parse(JSON.stringify(l).split('Zz Grid FF').join('Zz FF Str')))) + ';');
+    const ffs = ev("buildOneLiveExercise('Zz FF Str', null, {call:'normal'})");
+    ok('form focus + strength mode: LIVE runs it as Form Focus (no STR chip, no back-off)', ffs.repMode === 'hyp' && ffs.backoffW === null && ffs.lo === 12, JSON.stringify([ffs.repMode, ffs.backoffW, ffs.lo]));
+
+    // --- the call bounds, stated truthfully and checked wider ---
+    // Never heavier than the normal plan; never lighter than the last top weight minus one
+    // increment; never more than one set fewer. A double jump held on an easy day is two increments
+    // under the plan and still inside the bound, because the bound is measured from his last weight.
+    ev("S.split.D2.exercises.push({name:'Zz Bound Row', inc:7.5}, {name:'Zz Bound Curl', inc:2.5}, {name:'Zz Bound Press', inc:5});");
+    const bLogs = [
+      {id: 993001, date: pdk(-9), day: 'D2', entries: [{exercise: 'Zz Bound Row', sets: [{w: 150, r: hi, ef: 95}, {w: 150, r: hi, ef: 92}, {w: 150, r: hi, ef: 90}]}, {exercise: 'Zz Bound Curl', sets: [{w: 30, r: hi, ef: 92}, {w: 30, r: hi + 1, ef: 95}]}, {exercise: 'Zz Squat', sets: [{w: 305, r: 6, ef: 60}, {w: 305, r: 6, ef: 62}]}, {exercise: 'Zz Grid Max', sets: [{w: 90, r: hi, ef: 60}, {w: 90, r: hi, ef: 60}]}, {exercise: 'Zz Grid FF', sets: [{w: 50, r: 13, ef: 60}, {w: 50, r: 12, ef: 55}]}]},
+      {id: 993002, date: pdk(-2), day: 'D2', entries: [{exercise: 'Zz Bound Row', sets: [{w: 150, r: hi, ef: 95}, {w: 150, r: hi, ef: 92}, {w: 150, r: hi, ef: 96}]}, {exercise: 'Zz Bound Curl', sets: [{w: 30, r: hi, ef: 92}, {w: 30, r: hi, ef: 95}]}, {exercise: 'Zz Squat', sets: [{w: 315, r: 6, ef: 60}, {w: 315, r: 6, ef: 62}, {w: 315, r: 4, ef: 50}]}, {exercise: 'Zz Grid Max', sets: [{w: 90, r: hi, ef: 60}, {w: 90, r: hi, ef: 60}]}, {exercise: 'Zz Grid FF', sets: [{w: 50, r: 14, ef: 60}, {w: 50, r: 12, ef: 55}]}]}];
+    // A compound that has NOT earned a jump: the one case where a recover day steps the weight down.
+    bLogs[1].entries.push({exercise: 'Zz Bound Press', sets: [{w: 100, r: rm.lo + 1, e: 'solid'}, {w: 100, r: rm.lo, e: 'grind'}, {w: 100, r: rm.lo, e: 'solid'}]});
+    ev('S.logs = ' + JSON.stringify(bLogs) + ';');
+    const bnd = ev(`(function(){
+      var out = [];
+      ['Zz Bound Row','Zz Bound Curl','Zz Bound Press','Zz Squat','Zz Grid Max','Zz Grid FF'].forEach(function(nm){
+        var n = buildOneLiveExercise(nm, null, {call:'normal'}), inc = incForExercise(nm);
+        var last = Math.max.apply(null, historyFor(nm)[0].sets.map(function(s){ return +s.w||0; }));
+        ['push','normal','easy','recover'].forEach(function(c){
+          var x = buildOneLiveExercise(nm, null, {call:c});
+          var okk = x.targetW <= n.targetW && x.targetW >= last - inc && x.planned <= n.planned && x.planned >= n.planned - 1;
+          if(!okk) out.push([nm, c, x.targetW, n.targetW, last, inc, x.planned, n.planned].join('|'));
+        });
+      });
+      return out;
+    })()`);
+    ok('bounds: every call on every lift type (double jump, 7.5 and 2.5 increments, strength, MAXED, Form Focus) stays inside', bnd.length === 0, JSON.stringify(bnd));
+    ok('bounds: the held compound really does step down one increment on a recover day', ev("buildOneLiveExercise('Zz Bound Press', null, {call:'recover'}).targetW") === 95);
+    ok('bounds: the double-jump fixture really is a double jump', ev("buildOneLiveExercise('Zz Bound Row', null, {call:'normal'}).targetW") === 165 && ev("buildOneLiveExercise('Zz Bound Row', null, {call:'easy'}).targetW") === 150);
+
+    // --- recorded decisions match what LIVE prescribed ---
+    ev("S.logs = " + JSON.stringify([{id: 993101, date: pdk(-3), day: 'D2', entries: [{exercise: 'Zz Bound Row', sets: [{w: 150, r: rm.lo + 1, e: 'solid'}, {w: 150, r: rm.lo, e: 'solid'}]}]}]) + ";");
+    const rcv = ev("buildOneLiveExercise('Zz Bound Row', null, {call:'recover'})");
+    ok('decisions: a recover day records the weight it prescribed', rcv.targetW === 142.5 && rcv._decision.to === 142.5 && rcv._decision.code === 'call-recover', JSON.stringify([rcv.targetW, rcv._decision]));
+    ev("invState().overrides['Zz Bound Row'] = {w:135, until:" + JSON.stringify(pdk(5)) + ", note:'reset'};");
+    const ovd = ev("buildOneLiveExercise('Zz Bound Row', null, {call:'normal'})._decision");
+    ok('decisions: an override records its weight', ovd.code === 'inv-override' && ovd.to === 135, JSON.stringify(ovd));
+    ev("delete invState().overrides['Zz Bound Row'];");
+    const hmd = ev("buildOneLiveExercise('Zz Bound Row', null, {call:'normal', sets:3})");
+    const hme = ev("buildOneLiveExercise('Zz Bound Row', [100, 145, 170], {call:'normal'})");
+    ok('decisions: home rounding records the rounded weight', hmd.targetW === 150 && hme.targetW === 145 && hme._decision.to === 145, JSON.stringify([hme.targetW, hme._decision]));
+
+    // --- resets hold 2 sessions, then release ---
+    ev("S.logs = " + JSON.stringify([{id: 993201, date: pdk(-6), day: 'D2', entries: [{exercise: 'Zz Bound Row', sets: [{w: 160, r: hi - 4, e: 'grind'}, {w: 160, r: hi - 5, e: 'fail'}]}]}]) + ";");
+    ev("agApplyFix({type:'liftReset', payload:{name:'Zz Bound Row', w:142.5, days:14}})");
+    const rst = ev("invState().overrides['Zz Bound Row']");
+    ok('resets: a new reset records when it began and how many sessions it holds', rst.at > 0 && rst.sessions === 2, JSON.stringify(rst));
+    ok('resets: it is in force before any session', ev("invOverrideFor('Zz Bound Row')") !== null && ev("buildOneLiveExercise('Zz Bound Row', null, {call:'normal'}).targetW") === 142.5);
+    const s1 = {id: rst.at + 1000, date: pdk(-1), day: 'D2', entries: [{exercise: 'Zz Bound Row', sets: [{w: 142.5, r: hi, e: 'solid'}, {w: 142.5, r: hi, e: 'solid'}]}]};
+    ev('S.logs.push(' + JSON.stringify(s1) + ');');
+    ok('resets: one session in, it still holds, and says how many are left', ev("invOverrideFor('Zz Bound Row')") !== null && /for 1 more session/.test(ev('invOverrideLines()')[0].txt), JSON.stringify(ev('invOverrideLines()')));
+    ev('S.logs.push(' + JSON.stringify(Object.assign({}, s1, {id: rst.at + 2000, date: pdk(-1), deload: true})) + ');');
+    ok('resets: a deload session does not count toward it', ev("invOverrideFor('Zz Bound Row')") !== null);
+    ev('S.logs.push(' + JSON.stringify(Object.assign({}, s1, {id: rst.at + 3000, date: pdk(0)})) + ');');
+    ok('resets: after two sessions the engine takes over', ev("invOverrideFor('Zz Bound Row')") === null && ev('invOverrideLines().length') === 0);
+    ok('resets: and it climbs from the reset weight when earned', rw('Zz Bound Row') > 142.5, String(rw('Zz Bound Row')));
+    ok('resets: the agents are no longer told it is in force', !/Zz Bound Row set to/.test(ev('agContext()')));
+    ev("invState().overrides['Zz Bound Row'] = {w:142.5, until:" + JSON.stringify(pdk(5)) + ", note:'legacy reset'};");
+    ok('resets: a reset written before the release existed keeps its pin until its date', ev("invOverrideFor('Zz Bound Row')") !== null && /until/.test(ev('invOverrideLines()')[0].txt));
+    ev("delete invState().overrides['Zz Bound Row'];");
+
+    // --- per-lift flags survive a meso block; increments are inherited ---
+    ev("S.split.D3.exercises.push({name:'Zz Blk Curl', inc:7.5, maxed:true, formFocus:true, noBackoff:true});");
+    ev("S.split.D1.exercises.push({name:'Zz Blk Bench', inc:5, repMode:'str'});");
+    ev("mesoActiveSplit = function(){ return {S1:{name:'S1', exercises:[{name:'Zz Blk Bench', inc:5}]}}; };");
+    ok('meso block: a lift outside the block keeps MAXED, its increment, Form Focus and no-backoff',
+       ev("isMaxed('Zz Blk Curl')") === true && ev("incForExercise('Zz Blk Curl')") === 7.5 && ev("isFormFocus('Zz Blk Curl')") === true && ev("isNoBackoff('Zz Blk Curl')") === true);
+    ok('meso block: a lift IN the block reads the block, not the permanent split (no leaking STR)', ev("isStrMode('Zz Blk Bench')") === false);
+    ev('mesoActiveSplit = window.__paMAS;');
+    ok('meso block: outside a block the permanent split answers', ev("isStrMode('Zz Blk Bench')") === true);
+    ev("S.split.D1.exercises.push({name:'Zz Inc Hack', inc:5}); S.split.D3.exercises.push({name:'Zz Inc Hack', inc:7.5});");
+    ok('increments: when slots disagree, the one he set wins over the default', ev("incForExercise('Zz Inc Hack')") === 7.5);
+    ev("agApplyFix({type:'addEx', payload:{name:'Zz Inc Hack', day:'D4'}})");
+    ok('increments: adding the lift to another day inherits its increment', ev("S.split.D4.exercises.find(function(x){ return exName(x)==='Zz Inc Hack'; }).inc") === 7.5);
+
+    // --- strength mode can be turned off, and stays off ---
+    ev("S.split.D1.exercises.push('Zz Str Toggle'); S.split.D5.exercises.push({name:'Zz Str Toggle', inc:5, repMode:'str'});");
+    const tIdx = ev("S.split.D5.exercises.findIndex(function(x){ return exName(x)==='Zz Str Toggle'; })");
+    ev("toggleRepMode('D5', " + tIdx + ")");
+    ok('strength mode: turning it off turns it off for the lift, on every day', ev("isStrMode('Zz Str Toggle')") === false &&
+       ev("S.split.D1.exercises.find(function(x){ return exName(x)==='Zz Str Toggle'; }).repMode") === 'hyp');
+    const bIdx0 = ev("S.split.D1.exercises.findIndex(function(x){ return exName(x)==='Barbell Bench Press'; })");
+    if (bIdx0 >= 0) {
+      ev("S.split.D1.exercises[" + bIdx0 + "] = {name:'Barbell Bench Press', inc:5, repMode:null};");
+      ev("localStorage.setItem(LS_KEY, JSON.stringify(S));");
+      ok('strength mode: bench turned off (stored null by older builds) stays off across a reload', ev("load().split.D1.exercises[" + bIdx0 + "].repMode") === null);
+      ev("S.split.D1.exercises[" + bIdx0 + "] = {name:'Barbell Bench Press', inc:5};");
+      ev("localStorage.setItem(LS_KEY, JSON.stringify(S));");
+      ok('strength mode: a bench slot that never had the field is still seeded', ev("load().split.D1.exercises[" + bIdx0 + "].repMode") === 'str');
+    } else ok('strength mode: fixture has bench on D1', false);
+
+    // --- a session records what it was ---
+    ev("S.logs = " + JSON.stringify([{id: 993301, date: pdk(-4), day: 'D2', entries: [{exercise: 'Zz Bound Row', sets: [{w: 150, r: rm.lo + 1, e: 'solid'}, {w: 150, r: rm.lo, e: 'solid'}]}]}]) + "; S.readiness = [{date:todayKey(), sleep:'7-8', sore:'fresh', energy:'ok', stress:'normal', motiv:'ready', tier:'ok'}];");
+    ev("S.coachDayPlan = {date:todayKey(), day:'D2', exercises:['Zz Bound Row','Zz Bound Curl'], notes:{'Zz Bound Row':'keep it smooth'}};");
+    const caBefore = ev('S.meta.changedAt') || 0;
+    ev("_startLiveNow('D2')");
+    // save(), not save(false): a consumption that never advanced changedAt could be undone by the
+    // next background pull, which would hand the plan back.
+    ok('coach plan: consuming it advances changedAt, so a pull cannot hand it back', ev('S.meta.changedAt') > caBefore);
+    ok('coach plan: the consumed plan is gone and the session knows it was one', ev('S.coachDayPlan') === null && ev('live.coachPlan') === true);
+    ev("live.callOff = false; live.call = {call:'easy', score:-2, conf:'low', why:[]};");
+    ev('liveCallToggle()');
+    ok('coach plan: its note survives a call toggle', /^Coach: keep it smooth/.test(ev("live.exercises.find(function(e){ return e.name==='Zz Bound Row'; }).recDetail")));
+    ev("live.exercises.push(Object.assign(buildOneLiveExercise('Zz Spike Press', null, {call:'normal'}), {_swapped:true}));");
+    ev("live.exercises.forEach(function(e){ e.sets.push({w:e.targetW||20, r:8, e:'solid', ts:Date.now()}); });");
+    const lvRow = ev("JSON.stringify((function(e){ return {w:e.targetW, lo:e.lo, n:e.planned}; })(live.exercises.find(function(e){ return e.name==='Zz Bound Row'; })))");
+    ev('endLiveSession()');
+    const lr = ev("S.logs[S.logs.length-1]");
+    ok('log record: keeps the prescription per lift', lr.plan && JSON.stringify({w:lr.plan['Zz Bound Row'].w, lo:lr.plan['Zz Bound Row'].lo, n:lr.plan['Zz Bound Row'].n}) === lvRow && lr.plan['Zz Bound Row'].w === 150, JSON.stringify(lr.plan) + ' vs ' + lvRow);
+    ok('log record: says it was a coach plan, which lifts were swapped in, and what was scheduled',
+       lr.coachPlan === true && JSON.stringify(lr.swapped) === '["Zz Spike Press"]' && typeof lr.scheduled === 'string', JSON.stringify([lr.coachPlan, lr.swapped, lr.scheduled]));
+
+    // --- the retired audit, and the agents' rejection list ---
+    ok('audit: the weekly audit call is gone', ev("typeof maybeRunAudit") === 'undefined' && ev("typeof acceptProposal") === 'undefined');
+    ev("S.audit = {weekStart:'x', proposals:[], status:''};");
+    ok('audit: its leftover state is pruned', ev('pruneRemovedKeys()') === true && ev("'audit' in S") === false);
+    ev("agState().proposals = []; for(var q = 0; q < 8; q++) agState().proposals.push({id:'rj'+q, agent:'delta', title:'Rejected number '+q, status:'rejected', fix:null});");
+    const ctx = ev('agContext()');
+    ok('rejections: the agents see the six most recent, not the six oldest', /Rejected number 0/.test(ctx) && !/Rejected number 7/.test(ctx));
+    ev("agState().proposals = [];");
+  } catch (e) {
+    ok('prescription audit section', false, e.stack);
+  }
+  ev('mesoActiveSplit = window.__paMAS || mesoActiveSplit; live = null; clearLiveDraft();');
+  ev('S = ' + paSaved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  ok('cleanup: real state restored after the prescription audit section', ev('JSON.stringify(S)') === paSaved);
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

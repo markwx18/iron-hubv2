@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2201 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2251 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -251,7 +251,8 @@ so the two orders can no longer disagree.
 | Sync | `autoPullOnLoad()`, `applyPulled()`, `fetchGistData()`, `schedulePush()`, `syncReconcileBeforePush()` |
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()` (`dow` \| `cycle`) |
 | Week windows | `weekStartKey()`, `lastCompletedWeekRange()`, `weeklyVolumeByGroup()` |
-| Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()` |
+| Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()`; jump cautions `e1Spike()` (`SPIKE_PCT`), `atCeiling()` (`STR_CEIL_SETS`) |
+| Per-lift flags | `exSlotsFor()` (split in force, else the permanent split), `isMaxed()`, `incForExercise()`, `slotInc()`, `isFormFocus()`, `isStrMode()`, `toggleRepMode()` |
 | Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
 | Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
@@ -263,7 +264,7 @@ so the two orders can no longer disagree.
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`) |
-| Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()` |
+| Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`; resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()`, `coachValidateAction()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network |
@@ -336,9 +337,12 @@ can change under it). This used to say `agApplyFix()` was the *only* write path,
 These are the others, all tap-to-apply:
 - ZULU's chat cards, which go through `coachValidateAction()` → `coachExecuteAction()`
 - Investigation's Apply fix (`invApplyFix()`)
-- the weekly audit (`acceptProposal()`)
 - the fatigue banner's Start deload (`startDeloadWeek()`)
 - meso split approval
+
+The weekly audit (`maybeRunAudit()` / `acceptProposal()`) was one of these until it was retired on
+2026-09-28: a paid call every training week whose card only rendered into the hidden V1 `#today`,
+and whose Accept wrote the split without `exAcceptName()`. `audit` is in `REMOVED_STATE_KEYS`.
 
 Since 2026-09-25 the chat path shares the queue's limits: calorie and protein bounds, and
 resolved exercise names. Before that, `adjust_fuel` accepted any number at all. Do not add
@@ -629,9 +633,12 @@ What a call does, all in `buildOneLiveExercise()` through `opts.call`:
   one set fewer;
 - **push** changes nothing but the words.
 
-The bounds are the guarantee, and the suite loops every call over every lift to check them: never
-heavier than the normal plan, and never more than one increment or one set lighter. An
-investigation override is left alone. `liveCallToggle()` rebuilds only lifts with no logged set,
+The bounds are the guarantee, and the suite loops every call over every lift type to check them:
+never heavier than the normal plan, never lighter than his last top weight minus one increment, and
+never more than one set fewer. (It used to say "one increment under the normal plan", which a held
+double jump breaks: after an all-easy session the plan is +2 increments, and an easy day holds the
+last weight. Held is the behaviour; the bound was restated on 2026-09-28, not the call loosened.)
+An investigation override is left alone. `liveCallToggle()` rebuilds only lifts with no logged set,
 so a logged set is never rewritten. `live.call` and `logRec.call` (with `off`) keep what the day
 was called and whether he kept it.
 
@@ -693,6 +700,48 @@ anyway if the session before was already that repeat (same weight, also at the c
 that always grinds at the top would never climb. In-session, `intraAdvice()` reads two sets:
 two easy sets at the top of the range ask for another rep, never more load; two grinders under
 mid-range step back one increment, but never on a strength lift.
+
+**The jump has two more cautions** (Mark's choice, 2026-09-28, after the engine prescribed 335 lb on
+his squat off a real-but-one-off 325x10). Both are in both trees, and both only ever hold a weight:
+- **The spike guard** (every lift, `e1Spike()`): a session whose best e1RM sits more than
+  `SPIKE_PCT` (8%) over the median of the lift's previous three cannot earn a jump (`spike-hold`).
+  The session before reaching within `SPIKE_CONFIRM` (3%) of it counts as backed up, so a real new
+  level releases itself after one repeat. It needs `SPIKE_MIN_PRIOR` (2) earlier sessions.
+- **The two-set rule** (strength-mode lifts, `atCeiling()`): the ceiling needs `STR_CEIL_SETS` (2)
+  sets AT the top weight with the top of the range, not one great set. LIVE prescribes the first two
+  sets at the top weight to match, and `intraAdvice()` moves to the back-off load only after them.
+  Grind-hold's "the session before was already that repeat" uses the same `atCeiling()`.
+
+Replayed over his 80 real sessions (433 prescriptions, HEAD vs the change, history before each
+session only): 32 changed, **none heavier**. The squat's one-set jumps held, and five spike-holds
+landed nearer what he actually lifted.
+
+**Form Focus obeys MAXED and the day's call** (`form-maxed`, `form-defer`). Its branch used to return
+before either was read. And Form Focus wins over strength mode on the same lift: LIVE runs it
+`repMode 'hyp'`, with no back-off and no strength rules.
+
+**A reset holds `RESET_HOLD_SESSIONS` (2) sessions, then hands back to the engine.** It used to pin the
+weight for its whole 10-30 day window, blocking an earned jump and repeating an agent target he had
+failed. New resets carry `at` and `sessions`; `invOverrideState()` counts the sessions from the logs
+(deloads excluded), never writes, and is what LIVE, Investigation and `agContext()` all read. A reset
+without `at` (written before 2026-09-28) keeps the old pin until its date.
+
+**Per-lift flags read the split in force, else the permanent split** (`exSlotsFor()`). A lift trained
+during a meso block but not in it (a LIVE swap, a coach plan) used to find no slot and lose MAXED, its
+increment, Form Focus and strength mode. It is a fallback, not a union: a lift in the block reads only
+the block, because a block sets its own rep modes. **Increments are inherited** (`slotInc()`): every
+writer that adds or converts a slot uses the lift's existing increment, and when slots already
+disagree `incForExercise()` prefers the one that is not the default (setting it goes through
+`applyExFlag()`, so a non-default is one he chose). His leg curl read 5 instead of its 15-lb stack.
+
+**Strength mode off is stored as `'hyp'`,** and `load()` seeds bench and squat only when the field is
+absent. The toggle used to store `null`, which the migration read as absent and turned back on at
+every boot. The toggle also writes every slot of the lift on the permanent split.
+
+**A session records what it was** (`endLiveSession()`): `plan` (per lift `{w, lo, hi, n}`, the real
+prescription), `coachPlan`, `swapped`, and `scheduled`. Decisions record the weight LIVE actually
+prescribed (`call-recover`, overrides, deloads, home rounding). Sessions before 2026-09-28 have none
+of these.
 
 **Effort reads go through `effBucket()`.** It prefers the 0–100 lever (`s.ef`) and falls back
 to the legacy tag (`s.e`), which is what lets months of already-logged sessions keep working

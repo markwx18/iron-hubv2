@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-28-v2">
+<meta name="ironhub-build" content="2026-09-28-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1510,7 +1510,6 @@ const DEFAULT_STATE = {
                                // Written only by checkPRs()/prBackfillOnce(); read by the PR History tab.
   prBackfilled: false,         // one-time flag: existing logs have been replayed into prHistory
   fuel: {likes:'', dislikes:'eggs, cup yogurt, rice, cottage cheese', limits:'', calTarget:3000, proTarget:150},
-  audit: {weekStart:'', proposals:null, status:''},  // weak-group reinforcement
   settings: {apiKey:'', repLow:8, repHigh:12, ghToken:'', gistId:'', autoSync:true},
   meta: {changedAt:0, lastSync:0, pushedAt:0}
 };
@@ -1529,7 +1528,10 @@ function load(){
         const nm = typeof x==='string' ? x : x.name;
         if(STR_DEFAULTS.includes(nm)){
           if(typeof x==='string') list[i] = {name:x, inc:incFor(x), repMode:'str'};
-          else if(!x.repMode) list[i] = Object.assign({}, x, {repMode:'str'});
+          // ONLY when the field has never been set. `!x.repMode` also caught a lift he had turned
+          // OFF (the toggle used to store null), so strength mode on bench and squat came back on
+          // every boot -- and not on a device that had just pulled, so two devices could disagree.
+          else if(x.repMode === undefined) list[i] = Object.assign({}, x, {repMode:'str'});
         }
       });
     }
@@ -1546,8 +1548,9 @@ function load(){
                            the calendar through the window, and there is no longer any UI
                            that could turn it off.
      benchPractice       — the standalone home bench-frequency log, removed with its modal.
-     benchPracticeFreq   — DELTA’s frequency target for it, set through the retired bpFreq fix. */
-const REMOVED_STATE_KEYS = ['dateOverrides','tempStrengthSplit','tempStrengthWindow','benchPractice','benchPracticeFreq'];
+     benchPracticeFreq   — DELTA’s frequency target for it, set through the retired bpFreq fix.
+     audit               — the weekly audit's proposals, retired 2026-09-28 (see staleExercises()). */
+const REMOVED_STATE_KEYS = ['dateOverrides','tempStrengthSplit','tempStrengthWindow','benchPractice','benchPracticeFreq','audit'];
 function pruneRemovedKeys(){
   let hit = false;
   if(!S) return false;
@@ -1656,12 +1659,33 @@ function exRepMode(ex){
   if(mw && mw.repLo>0 && mw.repHi>0) return {lo:mw.repLo, hi:mw.repHi};  // then the active phase
   return {lo:S.settings.repLow, hi:S.settings.repHigh};
 }
+/* Every stored slot for one exercise, as the per-lift flag lookups should read them: the split IN
+   FORCE first (during a meso strength block, the block's own copy), and only if the lift is not in
+   it at all, the permanent split. Not a union -- a block sets its own rep modes, and a permanent
+   STR flag must not leak into a block that deliberately left it off.
+   The fallback is the fix: a lift trained during a block but not IN the block (a LIVE swap or
+   add, a coach plan on a D-day) used to find no slot at all and silently lose MAXED, its custom
+   increment, Form Focus and strength mode -- the same failure that put 205 lb on the maxed Leg
+   Curl, from a different door. */
+function exSlotsFor(name){
+  const scan = function(src){
+    const out = []; let found = false;
+    for(const dk in (src||{})){
+      ((src[dk]||{}).exercises||[]).forEach(function(x){
+        if(exName(x) !== name) return;
+        found = true;
+        if(x && typeof x === 'object') out.push(x);
+      });
+    }
+    return {out:out, found:found};
+  };
+  const act = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
+  const a = scan(act);
+  if(a.found || act === S.split) return a.out;
+  return scan(S.split).out;
+}
 function isStrMode(ex){
-  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
-  for(const dk in src)
-    for(const x of (src[dk].exercises||[]))
-      if(exName(x)===ex && typeof x==='object' && x.repMode==='str') return true;
-  return false;
+  return exSlotsFor(ex).some(function(x){ return x.repMode==='str'; });
 }
 /* Every lift currently in strength mode, across the split in force. Companion to maxedList():
    both exist so a prompt can state a fact about a lift that the raw numbers misrepresent. */
@@ -1673,10 +1697,23 @@ function strModeList(){
       if(typeof x==='object' && x.repMode==='str' && out.indexOf(exName(x))<0) out.push(exName(x));
   return out;
 }
+/* Off is stored as 'hyp', never null: load()'s migration re-seeds strength mode on bench and
+   squat whenever the field is absent, and null used to read as absent. Written to every slot of
+   the lift on the permanent split, because isStrMode() answers for the lift, not the slot -- a
+   per-slot toggle left the editor showing HYP while the engine kept prescribing STR. The meso
+   block's copy is left alone: a block sets its own rep modes (mesoSplitToggleRepMode). */
 function toggleRepMode(dk, i){
   ensureObj(dk, i);
   const x = S.split[dk].exercises[i];
-  x.repMode = (x.repMode==='str') ? null : 'str';
+  const nm = exName(x), next = (x.repMode==='str') ? 'hyp' : 'str';
+  for(const d in S.split){
+    const list = (S.split[d]||{}).exercises || [];
+    list.forEach(function(y, j){
+      if(exName(y) !== nm) return;
+      if(typeof y !== 'object') list[j] = y = {name:nm, inc:slotInc(nm)};
+      y.repMode = next;
+    });
+  }
   save(); refreshSplitEditor(); renderToday();
 }
 /* ================= HELPERS ================= */
@@ -1822,39 +1859,31 @@ function incFor(name){
    incFor()'s default — that is what turned a Leg Press set to +15 into a -5 back-off.
    isStrMode() and isMaxed() already resolve through activeSplitObj(); this and
    isFormFocus() were the two that did not. */
+/* Slots can disagree about an increment: every "add this lift to a day" path used to stamp the
+   DEFAULT (incFor) on the new slot, and this used to take whichever day came first -- so adding a
+   +10 squat to an earlier day quietly made every squat jump +5 (or the reverse). Setting an
+   increment goes through applyExFlag(), which writes every slot, so a slot that differs from the
+   default is one he chose: prefer it. New slots now inherit through slotInc(). */
 function incForExercise(name){
-  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
-  for(const dk in src){
-    const list = src[dk].exercises || [];
-    for(const x of list){
-      if(typeof x === 'object' && x.name === name && x.inc != null) return x.inc;
-    }
-  }
-  return incFor(name);
+  const def = incFor(name);
+  const incs = exSlotsFor(name).filter(function(x){ return x.inc != null; }).map(function(x){ return +x.inc; });
+  const custom = incs.find(function(v){ return Math.abs(v - def) > 1e-9; });
+  if(custom != null) return custom;
+  return incs.length ? incs[0] : def;
 }
+/* The increment a NEW slot for this lift should carry: the one the lift already uses anywhere,
+   else the smart default. Every writer that adds or converts a slot goes through here. */
+function slotInc(name){ return incForExercise(name); }
 const FORM_LO = 12, FORM_HI = 20, FORM_STREAK_NEEDED = 3;
 function isFormFocus(name){
-  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;   // see incForExercise()
-  for(const dk in src){
-    const list = src[dk].exercises || [];
-    for(const x of list){
-      if(typeof x === 'object' && x.name === name && x.formFocus) return true;
-    }
-  }
-  return false;
+  return exSlotsFor(name).some(function(x){ return !!x.formFocus; });   // see exSlotsFor()
 }
 /* MAXED: the machine has no heavier pin/plate left. This is a property of the equipment, not
    a training decision, so a flat or declining load trend on a maxed lift is expected rather
    than a problem \u2014 progression has to come from reps, sets or tempo instead. Everything that
    would otherwise nag about stalled weight checks this first. */
 function isMaxed(name){
-  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
-  for(const dk in src){
-    for(const x of (src[dk].exercises||[])){
-      if(typeof x === 'object' && exName(x) === name && x.maxed) return true;
-    }
-  }
-  return false;
+  return exSlotsFor(name).some(function(x){ return !!x.maxed; });   // see exSlotsFor()
 }
 function maxedList(){
   const out = [];
@@ -1873,34 +1902,17 @@ function maxedList(){
    so it needs no approval gate. Per-exercise opt-out via the NOBK toggle. */
 const BACKOFF_PCT = 0.90;
 function isNoBackoff(name){
-  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
-  for(const dk in src){
-    for(const x of (src[dk].exercises||[])){
-      if(typeof x === 'object' && exName(x) === name && x.noBackoff) return true;
-    }
-  }
-  return false;
+  return exSlotsFor(name).some(function(x){ return !!x.noBackoff; });   // see exSlotsFor()
 }
 /* HOME mode: per-exercise skip/substitute, same lookup shape as isMaxed/isNoBackoff.
    Manual, not auto-guessed — exercise names are free text (his own split), so
    pattern-matching a substitute reliably isn't realistic. */
 function homeSkipFor(name){
-  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
-  for(const dk in src){
-    for(const x of (src[dk].exercises||[])){
-      if(typeof x === 'object' && exName(x) === name && x.homeSkip) return true;
-    }
-  }
-  return false;
+  return exSlotsFor(name).some(function(x){ return !!x.homeSkip; });   // see exSlotsFor()
 }
 function homeSubFor(name){
-  const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
-  for(const dk in src){
-    for(const x of (src[dk].exercises||[])){
-      if(typeof x === 'object' && exName(x) === name && x.homeSub) return x.homeSub;
-    }
-  }
-  return null;
+  const x = exSlotsFor(name).find(function(y){ return !!y.homeSub; });   // see exSlotsFor()
+  return x ? x.homeSub : null;
 }
 /* Snap a target weight to the nearest value actually available in an equipment
    list (dumbbells/kettlebells come in fixed increments, not 5-lb plate math).
@@ -1930,6 +1942,7 @@ function roundToInc(v, inc){
 function backoffWeightFor(nm, topW){
   if(!topW || topW<=0) return null;
   if(!isStrMode(nm)) return null;          // strength lifts only
+  if(isFormFocus(nm)) return null;         // Form Focus wins over strength mode (see buildOneLiveExercise)
   if(isNoBackoff(nm)) return null;         // user opted this lift out
   if(isBodyweight(nm)) return null;
   const inc = incForExercise(nm) || 5;
@@ -1949,6 +1962,7 @@ function backoffWeightFor(nm, topW){
      +15 increment into a -5, arriving from the write side instead of the read side.
    The patch is deep-copied per slot so nested values (homeSub) are never shared between days. */
 function applyExFlag(nm, patch){
+  const inc0 = slotInc(nm);   // read before any slot below is rewritten
   const targets = [S.split];
   try{
     const ms = (typeof mesoActiveSplit==='function') ? mesoActiveSplit() : null;
@@ -1961,7 +1975,7 @@ function applyExFlag(nm, patch){
       list.forEach((x,j)=>{
         const hit = (typeof x === 'object') ? exName(x)===nm : String(x)===nm;
         if(!hit) return;
-        if(typeof list[j] !== 'object') list[j] = {name:nm, inc:incFor(nm)};
+        if(typeof list[j] !== 'object') list[j] = {name:nm, inc:inc0};
         Object.assign(list[j], JSON.parse(JSON.stringify(patch)));
       });
     }
@@ -2068,6 +2082,45 @@ function deloadDatesFor(ex){
 }
 
 /* ================= RECOMMENDATION ENGINE ================= */
+/* Two cautions on the jump, chosen by Mark on 2026-09-28 after the engine prescribed 335 lb on
+   his squat. On Sep 20 he logged 325x10 -- real, he confirmed, but a one-off: an e1RM of ~433
+   against ~365-384 in every other session -- and one strength-mode set at the ceiling was
+   enough to earn +10. Both rules live in recommend() AND classifyDecision(), and both only ever
+   hold a weight: neither can make a prescription heavier.
+
+   The spike guard (every lift): a session whose best e1RM sits more than SPIKE_PCT over the
+   median of the lift's previous (up to 3) sessions cannot earn a jump. The weight repeats until
+   a second session backs the level up -- "backed up" meaning the session before already reached
+   within SPIKE_CONFIRM of it, so a genuinely new level releases itself after one repeat.
+   Needs SPIKE_MIN_PRIOR earlier sessions to say anything at all. */
+const SPIKE_PCT = 0.08, SPIKE_CONFIRM = 0.03, SPIKE_MIN_PRIOR = 2;
+function sessionBestE1(sets){
+  let b = 0;
+  (sets||[]).forEach(function(s){ const v = epley(+s.w||0, +s.r||0); if(v > b) b = v; });
+  return b;
+}
+/* hist is historyFor() order: newest first, gym and non-deload only. null = not a spike. */
+function e1Spike(hist){
+  if(!hist || hist.length < 1 + SPIKE_MIN_PRIOR) return null;
+  const cur = sessionBestE1(hist[0].sets);
+  if(!(cur > 0)) return null;
+  const prior = hist.slice(1, 4).map(function(h){ return sessionBestE1(h.sets); }).filter(function(v){ return v > 0; });
+  if(prior.length < SPIKE_MIN_PRIOR) return null;
+  if(prior[0] >= cur * (1 - SPIKE_CONFIRM)) return null;   // the session before already reached this level
+  const m = pxMedian(prior);
+  return (m > 0 && cur > m * (1 + SPIKE_PCT)) ? {cur:Math.round(cur), base:Math.round(m)} : null;
+}
+/* The two-set rule (strength-mode lifts): the ceiling needs STR_CEIL_SETS sets AT the top weight
+   with the top of the range, not one great set. Hypertrophy lifts keep their own rule (every top
+   set at the ceiling). LIVE prescribes the first STR_CEIL_SETS sets at the top weight to match,
+   and intraAdvice() only moves to the back-off load after them. */
+const STR_CEIL_SETS = 2;
+function atCeiling(sets, topW, hi, str){
+  const top = (sets||[]).filter(function(s){ return (+s.w||0) === topW; });
+  if(!top.length) return false;
+  if(str) return top.filter(function(s){ return (+s.r||0) >= hi; }).length >= STR_CEIL_SETS;
+  return Math.min.apply(null, top.map(function(s){ return +s.r||0; })) >= hi;
+}
 function recommend(ex, ready){
   const hist = historyFor(ex);
   const ff = isFormFocus(ex);
@@ -2083,10 +2136,12 @@ function recommend(ex, ready){
   const topSets = last.sets.filter(s=>(+s.w||0)===topW);
   const minReps = Math.min(...topSets.map(s=>+s.r||0));
   const maxReps = Math.max(...topSets.map(s=>+s.r||0));
-  // STR mode: weight moves when the top set hits the ceiling (one great set earns the jump).
-  // HYP mode: weight moves when ALL top sets hit the ceiling (stricter — appropriate for accessory hypertrophy work).
+  // STR mode: weight moves when STR_CEIL_SETS sets at the top weight hit the ceiling (the two-set
+  // rule above; it used to be one great set). HYP mode: weight moves when ALL top sets hit it.
+  // ceilReps is still the rep metric the stall check compares; atCeil is what earns a jump.
   const str = !ff && isStrMode(ex);
   const ceilReps = str ? maxReps : minReps;
+  const atCeil = atCeiling(last.sets, topW, hi, str);
   /* ceilReps made the UPWARD decision mode-aware and every downward branch still tested raw
      minReps, which is wrong for a strength lift in a specific and costly way: a top double at
      a NEW heaviest weight is the entire point of the lift, not a missed set. 275x2 logged after
@@ -2123,6 +2178,15 @@ function recommend(ex, ready){
       const dw = Math.max(topW - inc, inc);
       return {target:dw+' lb \u00d7 '+lo+'+', detail:'Form Focus, but a set broke down ('+summ(last.sets)+'). Step back to '+dw+' lb and rebuild clean reps \u2014 control over load here.', sets:[{w:dw,r:''},{w:dw,r:''},{w:dw,r:''}]};
     }
+    /* The Form Focus bump obeys the same two limits as every other jump: a MAXED machine has no
+       heavier setting, and an easy/recover day (a 'low' tier) holds an earned jump. The FF branch
+       used to return before either was consulted. classifyDecision() mirrors both. */
+    if(streak >= FORM_STREAK_NEEDED && isMaxed(ex)){
+      return {target:topW+' lb \u00d7 '+hi+'+ (maxed)', detail:'Form Focus: '+streak+' easy sessions in a row would earn a bump, but this machine is MAXED \u2014 add reps past '+hi+' or slow the eccentric at '+topW+' lb instead.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    }
+    if(streak >= FORM_STREAK_NEEDED && ready==='low'){
+      return {target:topW+' lb \u00d7 '+lo+'\u2013'+hi+' (bump deferred)', detail:'Form Focus: you earned the bump ('+streak+' easy sessions in a row), but today is a low day. Repeat '+topW+' lb clean and take the bump next session.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    }
     if(streak >= FORM_STREAK_NEEDED){
       const nw = topW + inc;
       return {target:nw+' lb \u00d7 '+lo+'+', detail:'Form Focus: '+streak+' sessions in a row tagged easy across the board ('+summ(last.sets)+'). Your control has outpaced the weight \u2014 bump to '+nw+' lb, reps reset to '+lo+'.', sets:[{w:nw,r:''},{w:nw,r:''},{w:nw,r:''}]};
@@ -2139,18 +2203,19 @@ function recommend(ex, ready){
   if(hist.length>=3){
     const w2=Math.max(...hist[1].sets.map(s=>+s.w||0)), w3=Math.max(...hist[2].sets.map(s=>+s.w||0));
     if(w2===topW && w3===topW){
-      const ts2=hist[1].sets.filter(s=>+s.w===w2), ts3=hist[2].sets.filter(s=>+s.w===w3);
+      const ts2=hist[1].sets.filter(s=>+s.w===w2);
       const ceil2 = str ? Math.max(...ts2.map(s=>+s.r||0)) : Math.min(...ts2.map(s=>+s.r||0));
       if(ceilReps<=ceil2) stall = true;
     }
   }
-  if(ceilReps>=hi){
+  if(atCeil){
     /* MAXED: there is no heavier pin or plate on this machine, so "you earned the jump" has
-       nowhere to go. classifyDecision() has always known this; recommend() did not \u2014 and
-       recommend() is the ONLY function in the app that produces a prescribed weight. So the LIVE
+       nowhere to go. classifyDecision() has always known this; recommend() did not \u2014 so the LIVE
        dock, the Today card and the warm-up ramp all went on climbing while the engine log sitting
        next to them said "this machine is MAXED". That asymmetry is what put 205 lb on a maxed
-       Machine Leg Curl. Keep the two trees in step: any branch added to one belongs in the other. */
+       Machine Leg Curl. Keep the two trees in step: any branch added to one belongs in the other.
+       (recommend() is where every prescribed weight STARTS; buildOneLiveExercise() then applies
+       deload, overrides, today's call and home rounding on top.) */
     if(isMaxed(ex)){
       return {target:topW+' lb \u00d7 '+hi+'+ (maxed)', detail:'You hit the '+hi+'-rep ceiling ('+summ(last.sets)+'), but this machine is MAXED \u2014 there is no heavier setting. Progress from here is a rep beyond '+hi+', an extra set, or a slower eccentric at '+topW+' lb.'+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
     }
@@ -2159,16 +2224,20 @@ function recommend(ex, ready){
     if(ready==='low'){
       return {target:topW+' lb \u00d7 '+hi+' (bump deferred)', detail:'You earned the jump to '+nw+' lb ('+summ(last.sets)+'), but readiness is low today. Repeat '+topW+' lb, keep it crisp, and take the jump next session at full strength.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
     }
+    // The spike guard (see e1Spike). classifyDecision() carries the same branch ('spike-hold').
+    const _sp = e1Spike(hist);
+    if(_sp){
+      return {target:topW+' lb \u00d7 '+hi+' (confirm it)', detail:'Last session ('+summ(last.sets)+') read as an e1RM of '+_sp.cur+' lb, well above your recent ~'+_sp.base+' lb. Repeat '+topW+' lb and back it up before the weight moves \u2014 one standout day does not earn a jump on its own.'+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    }
     /* Earned on grinders: the top of the range, but reached by grinding. Repeat the weight once and
        own it before it goes up -- unless the session before already WAS that repeat (same weight,
        also at the ceiling), or a lift that always grinds at the top would never climb.
        classifyDecision() carries the same branch ('grind-hold'). */
-    const _pts = hist.length>1 ? hist[1].sets.filter(s=>(+s.w||0)===topW) : [];
-    const _pCeil = _pts.length ? (str ? Math.max(..._pts.map(s=>+s.r||0)) : Math.min(..._pts.map(s=>+s.r||0))) : 0;
-    if(hadGrind && !allEasy && !(prevTopW===topW && _pCeil>=hi)){
+    const _pAt = hist.length>1 && atCeiling(hist[1].sets, topW, hi, str);
+    if(hadGrind && !allEasy && !(prevTopW===topW && _pAt)){
       return {target:topW+' lb \u00d7 '+hi+' (own it first)', detail:'You reached '+hi+' ('+summ(last.sets)+'), but on grinders. Repeat '+topW+' lb once and make those reps clean \u2014 the jump to '+nw+' lb comes next time.'+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
     }
-    const hitTxt = str ? 'Your top set hit '+hi+' reps ('+summ(last.sets)+').' : 'You hit '+hi+'+ on every top set ('+summ(last.sets)+').';
+    const hitTxt = str ? STR_CEIL_SETS+' sets at '+topW+' lb hit '+hi+' reps ('+summ(last.sets)+').' : 'You hit '+hi+'+ on every top set ('+summ(last.sets)+').';
     return {target:nw+' lb \u00d7 '+lo+'+', detail:hitTxt+(allEasy?' All tagged easy \u2014 taking a double jump of '+inc+' lb.':' Load goes up '+inc+' lb \u2014 reps reset to the bottom of the range.')+(hadGrind?' Last bump was a grind, so expect this to feel heavy \u2014 that\u2019s normal.':'')+pushNote, sets:[{w:nw,r:''},{w:nw,r:''},{w:nw,r:''}]};
   }
   if(stall && isMaxed(ex)){
@@ -2180,11 +2249,14 @@ function recommend(ex, ready){
     return {target:topW+' lb \u2014 break the stall', detail:'Three sessions at '+topW+' lb without rep progress ('+summ(last.sets)+'). Options: tighten rest to 2\u20133 min and push the first set hard, or drop ~10% for one session and rebuild.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
   }
   if(minReps>=lo){
-    let d = 'Last: '+summ(last.sets)+'. Same load \u2014 '+(str?'push your top set to '+hi+' reps before the weight moves.':'add at least 1 rep to your weakest set before the weight moves.');
+    // A strength lift with ONE set at the ceiling: the two-set rule's hold. Say what earns the jump.
+    const _one = str && topSets.some(s=>(+s.r||0)>=hi);
+    let d = 'Last: '+summ(last.sets)+'. Same load \u2014 '+(_one ? 'one set reached '+hi+'; a second set at '+topW+' lb \u00d7 '+hi+' earns the jump.'
+      : str ? 'get '+STR_CEIL_SETS+' sets to '+hi+' reps before the weight moves.' : 'add at least 1 rep to your weakest set before the weight moves.');
     if(allEasy) d = 'Last: '+summ(last.sets)+', all tagged easy. You\u2019re leaving too much in the tank \u2014 take every set to 1\u20132 reps shy of failure today.';
     else if(hadFail) d = 'Last: '+summ(last.sets)+' with a failed set. Hold '+topW+' lb, stop each set 1 rep before breakdown, and win back the reps.';
     if(ready==='low') d += ' Low readiness: matching last session counts as a win today.';
-    return {target:topW+' lb \u00d7 beat '+maxReps, detail:d+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    return {target:topW+' lb \u00d7 '+(_one ? hi+' on '+STR_CEIL_SETS+' sets' : 'beat '+maxReps), detail:d+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
   }
   if(hadFail && !strHeavyAttempt){
     const dw = Math.max(topW - inc, inc);
@@ -2938,7 +3010,6 @@ function renderToday(){
     return;
   }
   if(_todaySwapDayKey !== dk){ todaySwaps = {}; _todaySwapDayKey = dk; }
-  html += auditCardHTML();
   html += readinessCardHTML();
   const tier = currentReadinessTier();
   html += '<datalist id="exOptions">'+allKnownExerciseNames().map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist>';
@@ -5803,125 +5874,11 @@ function staleExercises(){
   });
   return out.sort((a,b)=>b.weeks-a.weeks).slice(0,3);
 }
-function auditCardHTML(){
-  const a = S.audit || {};
-  const wk = weekStartKey();
-  // already accepted/dismissed for this week
-  if(a.weekStart === wk && a.status === 'done') return '';
-  // have proposals ready to show for this week
-  if(a.weekStart === wk && a.proposals && a.proposals.length){
-    const hasSwap = a.proposals.some(p=>p.type==='swap');
-    let h = '<div class="prop-card"><div class="pt">\u26a1 Weekly Coach Review</div>'+
-      '<p class="small" style="margin:6px 0 4px">'+(hasSwap?'Some volume gaps and stale lifts from last week. Proposed tweaks:':'Last week some muscle groups came up light. Proposed tweaks for this week:')+'</p>';
-    a.proposals.forEach((pr,i)=>{
-      if(pr.type==='swap'){
-        h += '<div style="padding:7px 0;border-top:1px solid var(--line)">'+
-          '<span class="pill" style="margin:0 0 4px;border-color:var(--warn);color:var(--warn);font-size:10px;padding:2px 7px">STALE \u2192 SWAP</span><br>'+
-          '<b style="font-size:13.5px">'+esc(pr.fromExercise||'')+'</b> <span class="small">\u2192</span> <b style="font-size:13.5px;color:var(--accent)">'+esc(pr.exercise||'')+'</b><br>'+
-          '<span class="small" style="color:var(--text)">'+esc(pr.action)+'</span>'+
-          (pr.reason?'<br><span class="small">'+esc(pr.reason)+'</span>':'')+
-          '<div class="prop-act"><button class="btn sm" onclick="acceptProposal('+i+')">Accept swap</button>'+
-          '<button class="btn sm ghost" onclick="dismissProposal('+i+')">Keep current</button></div></div>';
-      } else {
-        h += '<div style="padding:7px 0;border-top:1px solid var(--line)"><b style="font-size:13.5px">'+esc(pr.group)+'</b> '+
-          '<span class="small mono">('+pr.lastSets+' sets last week)</span><br>'+
-          '<span class="small" style="color:var(--text)">'+esc(pr.action)+'</span>'+
-          (pr.reason?'<br><span class="small">'+esc(pr.reason)+'</span>':'')+
-          '<div class="prop-act"><button class="btn sm" onclick="acceptProposal('+i+')">Accept</button>'+
-          '<button class="btn sm ghost" onclick="dismissProposal('+i+')">Skip</button></div></div>';
-      }
-    });
-    h += '<div style="margin-top:8px"><button class="btn ghost sm" onclick="dismissAllProposals()">Dismiss all</button></div></div>';
-    return h;
-  }
-  return '';
-}
-async function maybeRunAudit(){
-  const wk = weekStartKey();
-  S.audit = S.audit || {weekStart:'', proposals:null, status:''};
-  if(S.audit.weekStart === wk) return;          // already handled this week
-  if(!S.settings.apiKey && !window._inClaude) return; // needs AI
-  const {start, end} = lastCompletedWeekRange();
-  const prevLogs = S.logs.filter(l=>l.date>=start && l.date<=end);
-  const vol = weeklyVolumeByGroup(start, end);
-  const weak = MUSCLE_GROUPS.filter(g=>g!=='Abs' && vol[g] < 10).sort((a,b)=>vol[a]-vol[b]);
-  const stale = staleExercises();
-  // nothing to do if no recent training AND nothing stale
-  if(prevLogs.length < 2 && !stale.length){ S.audit = {weekStart:wk, proposals:[], status:'done'}; save(false); return; }
-  const needVolume = prevLogs.length >= 2 && weak.length > 0;
-  if(!needVolume && !stale.length){ S.audit = {weekStart:wk, proposals:[], status:'done'}; save(false); return; }
-  try{
-    const splitTxt = Object.keys(S.split).map(dk=>dk+' ('+S.split[dk].name+'): '+dayExNames(dk).join(', ')).join('\n');
-    const volTxt = MUSCLE_GROUPS.map(g=>g+': '+Math.round(vol[g]*10)/10).join(', ');
-    const staleTxt = stale.length ? stale.map(s=>s.name+' (on '+(s.day||'?')+', flat ~'+s.weeks+' wks at e1RM '+s.bestRecent+')').join('; ') : '(none)';
-    const sys = 'You are a hypertrophy coach reviewing an 18-year-old lifter\u2019s 6-day split. Two jobs:\n'+
-      '1) VOLUME: sets-per-muscle-per-week target ~10-20. For under-trained groups, propose adding one set to an existing exercise (type "add_set") or one new accessory (type "add_exercise").\n'+
-      '2) STALENESS: for each STALE accessory listed, propose ONE swap (type "swap") to a different exercise hitting the SAME muscle/head from a new angle (e.g. cable lateral raise -> dumbbell lateral raise; pec deck -> cable fly). The swap should be a real, common gym exercise.\n'+
-      'NEVER touch main barbell lifts or big compounds (bench, squat, rows, presses, leg press, hip thrust). Keep it minimal: at most 2 volume proposals and one swap per stale item (max 4 total). '+
-      'For swaps, include "fromExercise" (the stale one) and "exercise" (the replacement). '+
-      'Respond ONLY with valid JSON, no markdown: {"proposals":[{"type":"add_set|add_exercise|swap","group":"Side Delts","day":"D4","exercise":"...","fromExercise":"...","sets":1,"inc":5,"action":"short imperative","reason":"one short sentence"}]}';
-    const prompt = 'WEEKLY VOLUME (sets, secondary=half): '+volTxt+'\n\nUNDER-TRAINED: '+(weak.length?weak.join(', '):'(none)')+
-      '\n\nSTALE ACCESSORIES (no e1RM progress 4+ wks \u2014 propose a swap for each): '+staleTxt+
-      '\n\nCURRENT SPLIT:\n'+splitTxt;
-    const reply = await callClaude([{role:'user', content:prompt}], sys, 4000, {route:'audit'});
-    const parsed = parseLooseJSON(reply);
-    const props = (parsed.proposals||[]).slice(0,4).map(pr=>{
-      const base = {
-        type:pr.type||'add_set', group:pr.group||'', day:pr.day, exercise:pr.exercise,
-        fromExercise:pr.fromExercise||null,
-        sets:+pr.sets||1, inc:pr.inc!=null?+pr.inc:null,
-        action:pr.action||'', reason:pr.reason||''
-      };
-      if(pr.type!=='swap'){
-        base.lastSets = Math.round((vol[(MUSCLE_GROUPS.find(g=>g.toLowerCase()===String(pr.group).toLowerCase()))||pr.group]||0)*10)/10;
-      }
-      return base;
-    }).filter(pr=>{
-      // guard: never allow a swap or add that targets a protected compound
-      if(pr.type==='swap' && pr.fromExercise && !isSwapEligible(pr.fromExercise)) return false;
-      return true;
-    });
-    S.audit = {weekStart:wk, proposals:props, status: props.length?'':'done'};
-    save(false);
-  }catch(e){
-    S.audit = {weekStart:wk, proposals:[], status:'done'}; save(false);
-  }
-}
-function acceptProposal(i){
-  const pr = S.audit.proposals[i]; if(!pr) return;
-  if(pr.type==='swap' && pr.fromExercise && pr.exercise){
-    // Replace the stale exercise in whichever day holds it, preserving its increment + form-focus flag.
-    let done = false;
-    for(const dk in S.split){
-      const list = S.split[dk].exercises || [];
-      for(let j=0;j<list.length;j++){
-        if(exName(list[j])===pr.fromExercise){
-          const prev = list[j];
-          const carryInc = (typeof prev==='object' && prev.inc!=null) ? prev.inc : (pr.inc!=null?pr.inc:incFor(pr.exercise));
-          const carryFF  = (typeof prev==='object' && prev.formFocus) ? true : false;
-          list[j] = {name:pr.exercise, inc:carryInc, formFocus:carryFF};
-          done = true; break;
-        }
-      }
-      if(done) break;
-    }
-    // logged history stays under the old name — e1RM history for the prior exercise is preserved as its own series.
-  } else {
-    const dk = pr.day && S.split[pr.day] ? pr.day : Object.keys(S.split)[0];
-    if(pr.exercise && !dayExNames(dk).includes(pr.exercise)){
-      S.split[dk].exercises.push({name:pr.exercise, inc: pr.inc!=null?pr.inc:incFor(pr.exercise)});
-    }
-  }
-  S.audit.proposals.splice(i,1);
-  if(!S.audit.proposals.length) S.audit.status='done';
-  save(); renderToday(); setAccent(); renderHeader();
-}
-function dismissProposal(i){
-  S.audit.proposals.splice(i,1);
-  if(!S.audit.proposals.length) S.audit.status='done';
-  save(false); renderToday();
-}
-function dismissAllProposals(){ S.audit.proposals=[]; S.audit.status='done'; save(false); renderToday(); }
+/* The weekly audit (maybeRunAudit / auditCardHTML / acceptProposal) was retired on 2026-09-28. It spent a
+   call every training week on a card that only ever rendered into the hidden V1 #today, and its
+   Accept path wrote the split without exAcceptName(). DELTA's setCount and intelSummary()'s swap
+   candidates now do its job through the validated proposal queue. staleExercises() above stays:
+   Investigation still reads it. */
 
 /* ================= FUEL TAB ================= */
 function fuelInit(){
@@ -7248,7 +7205,7 @@ function toggleSdDay(dk){
 }
 function ensureObj(dk,i){
   const x = S.split[dk].exercises[i];
-  if(typeof x === 'string') S.split[dk].exercises[i] = {name:x, inc:incFor(x)};
+  if(typeof x === 'string') S.split[dk].exercises[i] = {name:x, inc:slotInc(x)};
   return S.split[dk].exercises[i];
 }
 function renameDay(dk,v){ S.split[dk].name = v.trim()||S.split[dk].name; save(); setAccent(); renderHeader(); }
@@ -7303,7 +7260,7 @@ function delEx(dk,i){
 function addEx(dk){
   const nm = prompt('New exercise name for '+dk+':');
   if(!nm||!nm.trim()) return;
-  S.split[dk].exercises.push({name:nm.trim(), inc:incFor(nm.trim())});
+  S.split[dk].exercises.push({name:nm.trim(), inc:slotInc(nm.trim())});
   save(); refreshSplitEditor(); sdSetOpen(dk, true);
 }
 function exportData(){
@@ -7650,7 +7607,8 @@ function buildOneLiveExercise(nm, homeEquipList, opts){
   const tier = o.call ? callTier(o.call) : currentReadinessTier();
   if(deloadActive()){
     const dex = deloadExercise(nm);
-    dex._decision = {code:'deload', moved:false, reason:'Deload week — loaded ~60% for 2 light sets. This session is excluded from progression and trend charts.'};
+    // .to is the weight on screen, so the engine log and the prescription record agree with it.
+    dex._decision = {code:'deload', from:null, to:(dex.targetW===''?null:+dex.targetW), moved:false, reason:'Deload week — loaded ~60% for 2 light sets. This session is excluded from progression and trend charts.'};
     return dex;
   }
   const rec = recommend(nm, tier);
@@ -7666,14 +7624,18 @@ function buildOneLiveExercise(nm, homeEquipList, opts){
     firstW = _ov.w;
     rec.target = _ov.w+' lb \u00d7 '+lo+'\u2013'+hi+' (rebuild)';
     rec.detail = _ov.note+'. Keep every rep clean \u2014 climbing back fast is the point.';
-    decision = {code:'inv-override', moved:true, reason:'Investigation fix active: targets reset to '+_ov.w+' lb through '+fmtDate(_ov.until)+' to rebuild momentum.'};
+    const _st = invOverrideState(nm, _ov);
+    decision = {code:'inv-override', from:(decision && decision.from != null ? decision.from : null), to:+_ov.w, moved:true,
+      reason:'Reset in force: '+_ov.w+' lb '+(_st && _st.left ? 'for '+_st.left+' more session'+(_st.left===1?'':'s') : 'through '+fmtDate(_ov.until))+', to rebuild momentum.'};
   }
   // A slot's own set count (Settings, or an approved setCount) wins over the engine's default.
   let planned = (o.sets >= 2 && o.sets <= 5) ? Math.round(o.sets) : ((rec.sets||[]).length||3);
-  /* Today's call, inside hard bounds: never heavier than the normal plan, and never more than one
-     increment and one set lighter. Accessories give up a set on an easy or recover day; on a
-     recover day compounds also go one step lighter for 2 sets. An investigation override is a
-     deliberate weight and is left alone. */
+  /* Today's call, inside hard bounds: never heavier than the normal plan, never lighter than one
+     increment under his last top weight, and never more than one set fewer. (An earned jump that
+     waits is a hold at the last weight -- after a double jump that is two increments under the
+     normal plan, which is why the bound is stated from the last weight and not from the plan.)
+     Accessories give up a set on an easy or recover day; on a recover day compounds also go one
+     step lighter. An investigation override is a deliberate weight and is left alone. */
   let _callTrim = false, _callNote = '';
   if(o.call === 'easy' || o.call === 'recover'){
     if(!mesoIsCompound(nm)){
@@ -7687,6 +7649,10 @@ function buildOneLiveExercise(nm, homeEquipList, opts){
       if(planned > 2){ planned -= 1; _callTrim = true; }
       if(_lw < +firstW){
         firstW = _lw; rec.target = _lw+' lb \u00d7 '+lo+'\u2013'+hi+' (recover day)';
+        // The decision recorded at build time said "held at 185" while LIVE prescribed 180, and the
+        // engine log and the agents' summary both read the decision. Record what was prescribed.
+        decision = {code:'call-recover', from:(decision && decision.from != null ? decision.from : null), to:_lw, moved:true,
+          reason:'Recover day: '+_lw+' lb, one step under the normal plan\u2019s '+_nw+' lb.'};
         // recommend()'s own sentence ("repeat 167.5 lb") would now contradict the weight on
         // screen, so a recover day replaces it rather than prefixing it.
         rec.detail = 'Recover day: '+_lw+' lb, one step under the normal plan\u2019s '+_nw+' lb'+(_callTrim ? ', with one set fewer' : '')+
@@ -7705,9 +7671,14 @@ function buildOneLiveExercise(nm, homeEquipList, opts){
   if(homeEquipList && homeEquipList.length){
     if(firstW!=='' && firstW!=null) firstW = roundToEquipList(+firstW, homeEquipList);
     if(backoffW) backoffW = roundToEquipList(backoffW, homeEquipList);
+    if(decision && decision.to != null && firstW !== '' && +decision.to !== +firstW)
+      decision = Object.assign({}, decision, {to:+firstW, reason:(decision.reason||'')+' Rounded to '+firstW+' lb, the nearest you have at home.'});
   }
+  // Form Focus wins over strength mode on the same lift: the engine already trains it 12-20, so
+  // LIVE must not also run it as a strength lift (3-6 chip, back-off sets, strength intraAdvice).
+  const _ff = isFormFocus(nm);
   return {
-    name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
+    name:nm, repMode:(isStrMode(nm) && !_ff)?'str':'hyp', formFocus:_ff,
     targetW:firstW, lo:lo, hi:hi,
     backoffW: backoffW,
     recTarget:rec.target, recDetail:rec.detail,
@@ -7743,10 +7714,12 @@ function buildLiveExercises(dk, call){
   // advice line. It used to arrive as part of the exercise name.
   if(plan && plan.notes) built.forEach(function(ex){
     const n = plan.notes[ex.name];
-    if(n){ ex.recDetail = 'Coach: '+n+'. '+(ex.recDetail||''); ex.advMsg = ex.recDetail; }
+    if(n){ ex._coachNote = n; ex.recDetail = 'Coach: '+n+'. '+(ex.recDetail||''); ex.advMsg = ex.recDetail; }
   });
-  // a today-only plan is consumed once the session is built for that day
-  if(plan){ S.coachDayPlan = null; save(false); }
+  // A today-only plan is consumed once the session is built for that day. save(), not
+  // save(false): starting a session is his action, and a consumption that never advanced
+  // changedAt could be undone by the next background pull, which would hand the plan back.
+  if(plan){ S.coachDayPlan = null; save(); }
   return built;
 }
 function liveStartSession(){
@@ -7763,11 +7736,14 @@ function _startLiveNow(dk){
   // automatically; the line at the top of LIVE says why and puts the normal plan back in one tap.
   let dc = null;
   try{ if(!deloadActive()) dc = dayCall(todayKey(), dk); }catch(e){ dc = null; }
+  // Read before buildLiveExercises() consumes it, so the saved log can say the session was the
+  // coach's plan rather than the split's (experiments and the prescription record exclude those).
+  const _cp = !!coachDayPlanFor(dk);
   const exs = buildLiveExercises(dk, dc ? dc.call : undefined);
   live = { date:todayKey(), day:dk, startedAt:Date.now(), exercises:exs, curIdx:0,
            trimmed:exs.some(function(e){ return e._callTrim; }), home:homeActiveToday(),
            call: dc ? {call:dc.call, score:dc.score, conf:dc.conf, why:dc.why, whoop:dc.whoop, checkIn:dc.checkIn} : null,
-           callOff:false };
+           callOff:false, coachPlan:_cp };
   liveActiveIdx = 0;
   saveLiveDraft();
   renderLive();
@@ -7805,14 +7781,17 @@ function intraAdvice(ex){
     if(ex._homeEquipList) dw = roundToEquipList(dw, ex._homeEquipList);
     return {w:dw, lo:lo, hi:hi, tag:'Back off', cls:'back', msg:'That set fell short — drop to '+dw+' lb and keep the reps clean.'};
   }
-  // Top set is done \u2014 drop to the backoff load for the remaining sets. Deliberately placed
+  // Top sets are done \u2014 drop to the backoff load for the remaining sets. Deliberately placed
   // AFTER the fail branch: if the top set actually fell short, that safety response wins and
-  // we never suggest a weight higher than the autoregulated one.
-  if(ex.backoffW && ex.backoffW < w){
+  // we never suggest a weight higher than the autoregulated one. Only after STR_CEIL_SETS sets at
+  // this weight or heavier: the two-set rule needs two sets AT the top to earn a jump, so LIVE
+  // prescribes two there before the lighter sets.
+  const _atTop = sets.filter(function(st){ return (+st.w||0) >= w; }).length;
+  if(ex.backoffW && ex.backoffW < w && _atTop >= STR_CEIL_SETS){
     const bw = ex.backoffW;
     const grindNote = e==='grind' ? ' That one was a grind, so the lighter sets should feel right.' : '';
     return {w:bw, lo:lo, hi:hi, tag:'Backoff', cls:'hold',
-      msg:'Top set logged at '+w+' lb. Backoff sets run '+bw+' lb \u2014 same rep target, more speed on the bar.'+grindNote};
+      msg:STR_CEIL_SETS+' top sets logged at '+w+' lb. Backoff sets run '+bw+' lb \u2014 same rep target, more speed on the bar.'+grindNote};
   }
   /* Two sets in a row say more than one. Two easy sets at the top of the range: there is a rep
      left, so ask for it (never more load mid-session -- that is next session's call). Two grinds
@@ -8137,7 +8116,7 @@ function liveUpcomingRowHTML(ex,i){
   return '<div class="liveex lv3-row" id="liveex-'+i+'" onclick="focusLiveEx('+i+')">'+
     '<div class="lv3-row-in"><span class="lv3-row-n">'+(i+1)+'</span>'+
     '<div class="lv3-row-mid"><b>'+esc(ex.name)+'</b>'+
-    '<span class="small" style="color:var(--dim)">'+(ex.targetW?ex.targetW+' lb'+(ex.backoffW?' \u2192 '+ex.backoffW+' lb backoff':'')+' \u00b7 ':'')+planned+' sets \u00b7 '+(ex.repMode==='str'?'3\u20136':ex.lo+'\u2013'+ex.hi)+' reps</span></div>'+
+    '<span class="small" style="color:var(--dim)">'+(ex.targetW?ex.targetW+' lb'+(ex.backoffW?' \u00d7'+STR_CEIL_SETS+' \u2192 '+ex.backoffW+' lb backoff':'')+' \u00b7 ':'')+planned+' sets \u00b7 '+(ex.repMode==='str'?'3\u20136':ex.lo+'\u2013'+ex.hi)+' reps</span></div>'+
     '<span class="lv3-row-tag">up next</span></div></div>';
 }
 function liveDoneRowHTML(ex,i){
@@ -8268,6 +8247,20 @@ function endLiveSession(){
   // session left open while he drove home is not a slower session.
   if(isFinite(+live.startedAt) && +live.startedAt > 0) logRec.startedAt = +live.startedAt;
   logRec.endedAt = Date.now();
+  /* What the session WAS, not just what was lifted -- none of these left a trace before, so
+     nothing could later tell a prescribed session from a coach's plan, a swapped lift or a day
+     picked by hand. plan is the prescription per lift (w null when there was none); the summary,
+     the prescription record and experiments all read it. */
+  const _plan = {};
+  live.exercises.forEach(function(e){
+    if(!e || !e.name) return;
+    _plan[e.name] = {w:(e.targetW===''||e.targetW==null) ? null : +e.targetW, lo:e.lo, hi:e.hi, n:e.planned||0};
+  });
+  logRec.plan = _plan;
+  if(live.coachPlan) logRec.coachPlan = true;
+  const _sw = live.exercises.filter(function(e){ return e._swapped && e.sets.length; }).map(function(e){ return e.name; });
+  if(_sw.length) logRec.swapped = _sw;
+  try{ logRec.scheduled = scheduledDayFor(todayKey()); }catch(e){}
   S.logs.push(stampRec(logRec));
   save();
   // Today just turned green. Waiting for the next foreground check would be correct but slow,
@@ -9710,17 +9703,9 @@ function exRenameEverywhere(oldName, newName){
     S.prHistory = out;
   }
 
-  // 4. pain flags, road goals, the weekly audit's proposals, today's coach plan
+  // 4. pain flags, road goals, today's coach plan
   (S.pain||[]).forEach(function(r){ if(r && r.exercise === oldName){ r.exercise = newName; stampRec(r); touched++; } });
   (S.road||[]).forEach(function(g){ if(g && g.exercise === oldName){ g.exercise = newName; touched++; } });
-  try{
-    const ap = S.audit && S.audit.proposals;
-    if(Array.isArray(ap)) ap.forEach(function(p){
-      if(!p) return;
-      if(p.exercise === oldName){ p.exercise = newName; touched++; }
-      if(p.fromExercise === oldName){ p.fromExercise = newName; touched++; }
-    });
-  }catch(e){}
   try{
     if(S.coachDayPlan && Array.isArray(S.coachDayPlan.exercises)){
       S.coachDayPlan.exercises = S.coachDayPlan.exercises.map(function(v){ return v === oldName ? newName : v; });
@@ -10146,6 +10131,7 @@ function classifyDecision(ex, ready){
   const maxReps = Math.max(...topSets.map(s=>+s.r||0));
   const str = !ff && isStrMode(nm);
   const ceilReps = str ? maxReps : minReps;
+  const atCeil = atCeiling(last.sets, topW, hi, str);   // the two-set rule -- see recommend()
   // Mirrors recommend()'s strHeavyAttempt -- see the reasoning there.
   const prevTopW = hist.length>1 ? Math.max(0, ...hist[1].sets.map(s=>+s.w||0)) : 0;
   const strHeavyAttempt = str && (prevTopW===0 || topW >= prevTopW);
@@ -10165,6 +10151,11 @@ function classifyDecision(ex, ready){
     const streak = consecutiveEasyStreak(hist);
     if(hadFail){ const dw=Math.max(topW-inc,inc); return {code:'form-back', from:topW, to:dw, moved:true,
       reason:'Form Focus: a set broke down last time \u2014 stepped back '+topW+'\u2192'+dw+' lb to rebuild clean reps.'}; }
+    // Mirrors recommend(): a MAXED machine and a low tier both hold the Form Focus bump.
+    if(streak>=FORM_STREAK_NEEDED && isMaxed(nm)) return {code:'form-maxed', from:topW, to:topW, moved:false,
+      reason:'Form Focus: '+streak+' easy sessions earned a bump, but this machine is MAXED — held at '+topW+' lb; add reps or slow the eccentric.'};
+    if(streak>=FORM_STREAK_NEEDED && ready==='low') return {code:'form-defer', from:topW, to:topW, moved:false,
+      reason:'Form Focus: earned the bump, but today was a low day — repeated '+topW+' lb to take it fresh.'};
     if(streak>=FORM_STREAK_NEEDED){ const nw=topW+inc; return {code:'form-increase', from:topW, to:nw, moved:true,
       reason:'Form Focus: '+streak+' straight sessions tagged easy across all sets \u2014 control earned the bump '+topW+'\u2192'+nw+' lb.'}; }
     if(minReps<lo) return {code:'form-build', from:topW, to:topW, moved:false,
@@ -10182,7 +10173,7 @@ function classifyDecision(ex, ready){
       if(ceilReps<=ceil2) stall=true;
     }
   }
-  if(ceilReps>=hi){
+  if(atCeil){
     if(isMaxed(nm)){
       // Earned a jump, but there's no heavier setting to jump to. Keep the load and let the
       // rep ceiling drift up rather than telling him to add weight that doesn't exist.
@@ -10191,22 +10182,27 @@ function classifyDecision(ex, ready){
     }
     if(ready==='low') return {code:'defer', from:topW, to:topW, moved:false,
       reason:'Earned the jump (hit '+hi+' reps), but readiness was low \u2014 deferred, repeated '+topW+' lb to take the jump fresh.'};
+    // Mirrors recommend()'s spike guard.
+    const _sp = e1Spike(hist);
+    if(_sp) return {code:'spike-hold', from:topW, to:topW, moved:false,
+      reason:'Hit the ceiling, but that session read as an e1RM of '+_sp.cur+' lb against a recent ~'+_sp.base+' \u2014 repeated '+topW+' lb until a second session backs it up.'};
     // Mirrors recommend()'s grind-hold.
-    const _pts = hist.length>1 ? hist[1].sets.filter(s=>(+s.w||0)===topW) : [];
-    const _pCeil = _pts.length ? (str ? Math.max(..._pts.map(s=>+s.r||0)) : Math.min(..._pts.map(s=>+s.r||0))) : 0;
-    if(hadGrind && !allEasy && !(prevTopW===topW && _pCeil>=hi)) return {code:'grind-hold', from:topW, to:topW, moved:false,
+    const _pAt = hist.length>1 && atCeiling(hist[1].sets, topW, hi, str);
+    if(hadGrind && !allEasy && !(prevTopW===topW && _pAt)) return {code:'grind-hold', from:topW, to:topW, moved:false,
       reason:'Hit the '+hi+'-rep ceiling, but on grinders \u2014 repeated '+topW+' lb once to own it before the jump.'};
     if(allEasy){ const nw=topW+inc*2; return {code:'double', from:topW, to:nw, moved:true,
       reason:'Hit the '+hi+'-rep ceiling AND all sets tagged easy \u2014 double jump '+topW+'\u2192'+nw+' lb.'}; }
     const nw=topW+inc; return {code:'increase', from:topW, to:nw, moved:true,
-      reason:'Hit the '+hi+'-rep ceiling ('+(str?'top set':'every top set')+') \u2014 weight up '+topW+'\u2192'+nw+' lb, reps reset to '+lo+'.'+(hadGrind?' (last was a grind \u2014 expect heavy.)':'')};
+      reason:'Hit the '+hi+'-rep ceiling ('+(str?STR_CEIL_SETS+' top sets':'every top set')+') \u2014 weight up '+topW+'\u2192'+nw+' lb, reps reset to '+lo+'.'+(hadGrind?' (last was a grind \u2014 expect heavy.)':'')};
   }
   if(stall && isMaxed(nm)) return {code:'maxed-hold', from:topW, to:topW, moved:false,
     reason:'Holding at '+topW+' lb \u2014 this machine is MAXED, so a flat weight here is the ceiling, not a stall. Chase reps or an extra set.'};
   if(stall) return {code:'stall', from:topW, to:topW, moved:false,
     reason:'3 sessions at '+topW+' lb with no rep progress \u2014 held to break the stall (tighten rest or drop 10% to rebuild).'};
   if(minReps>=lo){
-    let r='In range but not at ceiling \u2014 held at '+topW+' lb, '+(str?'push top set to '+hi+' reps':'add a rep to your weakest set')+' before load moves.';
+    const _one = str && topSets.some(s=>(+s.r||0)>=hi);   // mirrors recommend(): the two-set rule's hold
+    let r = _one ? 'One set reached '+hi+' at '+topW+' lb \u2014 held; a second set at '+hi+' earns the jump.'
+      : 'In range but not at ceiling \u2014 held at '+topW+' lb, '+(str?'get '+STR_CEIL_SETS+' sets to '+hi+' reps':'add a rep to your weakest set')+' before load moves.';
     if(allEasy) r='In range and all tagged easy \u2014 held at '+topW+' lb but leaving reps in the tank; take sets 1\u20132 shy of failure.';
     else if(hadFail) r='In range with a failed set \u2014 held at '+topW+' lb to win back the reps cleanly.';
     return {code:'hold', from:topW, to:topW, moved:false, reason:r};
@@ -10323,13 +10319,14 @@ function fatigueBannerHTML(){
 /* build deload version of an exercise: 60% of last real working weight, 2 sets */
 function deloadExercise(nm){
   const hist = historyFor(nm); // already excludes prior deloads
-  const rm = exRepMode(nm);
+  const _ff = isFormFocus(nm);
+  const rm = _ff ? {lo:FORM_LO, hi:FORM_HI} : exRepMode(nm);
   let baseW = '';
   if(hist.length){ const topW = Math.max(...hist[0].sets.map(s=>+s.w||0)); baseW = topW; }
   const dw = baseW ? Math.max(roundToInc(baseW*0.6, incForExercise(nm)), 5) : '';
   const reps = rm.lo;
   return {
-    name:nm, repMode:isStrMode(nm)?'str':'hyp', formFocus:isFormFocus(nm),
+    name:nm, repMode:(isStrMode(nm) && !_ff)?'str':'hyp', formFocus:_ff,
     targetW:dw, lo:rm.lo, hi:rm.hi,
     recTarget:(dw?dw+' lb':'light')+' \u00d7 '+reps+' (deload)',
     recDetail:'Deload: '+(dw?'~60% of your '+baseW+' lb working weight':'go light')+', 2 easy sets at '+reps+' reps. Stay 3\u20134 reps from failure \u2014 this is active recovery, not training.',
@@ -11009,17 +11006,17 @@ function invApplyFix(id){
   } else if(fx.type==='pro'){
     S.fuel = S.fuel||{}; S.fuel.proTarget = fx.payload.to;
   } else if(fx.type==='liftReset'){
-    invState().overrides[fx.payload.name] = {w:fx.payload.w, until:dateKeyOf(new Date(Date.now()+fx.payload.days*86400000)), note:'Investigation reset \u2014 rebuild with clean reps, expires '+fx.payload.days+'d'};
+    invState().overrides[fx.payload.name] = invResetRecord(fx.payload.w, fx.payload.days, 'Investigation');
   } else if(fx.type==='deload'){
     startDeloadWeek();
   } else if(fx.type==='addEx'){
     const dk = invLightestDayFor(fx.payload.group);
-    if(dk){ S.split[dk].exercises.push({name:fx.payload.name, inc:incFor(fx.payload.name)}); }
+    if(dk){ S.split[dk].exercises.push({name:fx.payload.name, inc:slotInc(fx.payload.name)}); }
   } else if(fx.type==='swapEx'){
     for(const dk in S.split){
       const arr = S.split[dk].exercises;
       const i = arr.findIndex(x=>exName(x)===fx.payload.from);
-      if(i>=0){ arr[i] = {name:fx.payload.to, inc:incFor(fx.payload.to)}; break; }
+      if(i>=0){ arr[i] = {name:fx.payload.to, inc:slotInc(fx.payload.to)}; break; }
     }
   }
   f.status='applied'; f.appliedAt=todayKey(); save();
@@ -11050,6 +11047,29 @@ function invClearExpiredOverrides(){
 function invNormName(s){
   return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 }
+/* A reset holds for RESET_HOLD_SESSIONS sessions, then hands the lift back to the engine (Mark's
+   call, 2026-09-28). It used to pin the weight for the whole 10-30 day window whatever he lifted:
+   a lift topped out at the reset weight could not take its jump, and an agent target he FAILED
+   (liftReset may sit up to two increments over the last top set) could not step back. Released,
+   the engine still only moves when it is earned, so this costs the rebuild nothing. Counted from
+   the logs, never written back: a pull cannot un-count a session. Resets written before `at`
+   existed keep the old pin until their date. The date is still the backstop for both. */
+const RESET_HOLD_SESSIONS = 2;
+function invResetSessionsSince(nm, at){
+  const want = invNormName(nm);
+  return (S.logs||[]).filter(function(l){
+    return l && !l.deload && +l.id > at && (l.entries||[]).some(function(e){ return invNormName(e.exercise) === want && e.sets && e.sets.length; });
+  }).length;
+}
+/* Whether a stored reset is still in force: null when expired or released, else {left} -- the
+   sessions it still holds for (null for a legacy pin, which only its date ends). The Investigation
+   list, the agents' context and LIVE all read this one answer. */
+function invOverrideState(nm, o){
+  if(!o || !(o.until >= todayKey())) return null;
+  if(!(+o.at > 0)) return {left:null};
+  const need = +o.sessions || RESET_HOLD_SESSIONS, done = invResetSessionsSince(nm, +o.at);
+  return done >= need ? null : {left: need - done};
+}
 function invOverrideFor(nm){
   invClearExpiredOverrides();
   const ov = invState().overrides;
@@ -11061,7 +11081,22 @@ function invOverrideFor(nm){
       if(k) o = ov[k];
     }
   }
-  return (o && o.until >= todayKey()) ? o : null;
+  return invOverrideState(nm, o) ? o : null;
+}
+/* The note a reset carries, in one place for both writers. */
+function invResetRecord(w, days, who){
+  return {w:w, until:dateKeyOf(new Date(Date.now()+days*86400000)), at:Date.now(), sessions:RESET_HOLD_SESSIONS,
+    note:who+' reset — rebuild with clean reps; holds '+RESET_HOLD_SESSIONS+' sessions, then the engine takes over'};
+}
+/* One line per reset still in force, for the Investigation list and the agents. */
+function invOverrideLines(){
+  const ov = invState().overrides;
+  return Object.keys(ov).map(function(k){
+    const st = invOverrideState(k, ov[k]);
+    if(!st) return null;
+    return {name:k, w:ov[k].w, until:ov[k].until,
+      txt: st.left === null ? 'until '+fmtDate(ov[k].until) : 'for '+st.left+' more session'+(st.left === 1 ? '' : 's')+' (at most until '+fmtDate(ov[k].until)+')'};
+  }).filter(Boolean);
 }
 
 /* -------------------- RESOLUTION -------------------- */
@@ -11257,10 +11292,10 @@ function renderInvestigation(){
     hR += '<div class="card" style="border-left:3px solid var(--cyan)"><p class="small" style="margin:0">\u2713 No active flags. Bulk, lifts, and split all look healthy \u2014 or haven\u2019t hit their next scheduled check yet.</p></div>';
   }
   // active lift overrides
-  const ov = invState().overrides; const ovKeys = Object.keys(ov);
-  if(ovKeys.length){
+  const ovL = invOverrideLines();
+  if(ovL.length){
     hR += '<h2 class="inv-h2">Active target overrides</h2><div class="card">';
-    ovKeys.forEach(k=>{ hR += '<div class="inv-finding" style="display:flex;gap:8px;align-items:center"><span>\u25b8 <b>'+esc(k)+'</b> \u2014 '+ov[k].w+' lb until '+fmtDate(ov[k].until)+'</span><button class="del" style="margin-left:auto" onclick="delete invState().overrides[\''+esc(k).replace(/'/g,"\\'")+'\'];save();renderInvestigation()">clear</button></div>'; });
+    ovL.forEach(o=>{ const k = o.name; hR += '<div class="inv-finding" style="display:flex;gap:8px;align-items:center"><span>\u25b8 <b>'+esc(k)+'</b> \u2014 '+o.w+' lb '+esc(o.txt)+'</span><button class="del" style="margin-left:auto" onclick="delete invState().overrides[\''+esc(k).replace(/'/g,"\\'")+'\'];save();renderInvestigation()">clear</button></div>'; });
     hR += '</div>';
   }
   // history
@@ -11435,7 +11470,7 @@ function coachValidateAction(name, inp){
 /* Execute a validated action against S. Returns a short confirmation string. */
 function coachExecuteAction(name, inp){
   if(name==='add_exercise_permanent'){
-    const item = {name:inp.exercise, inc:incFor(inp.exercise)};
+    const item = {name:inp.exercise, inc:slotInc(inp.exercise)};
     const arr = S.split[inp.day].exercises = S.split[inp.day].exercises||[];
     if(inp.position==='start') arr.unshift(item); else arr.push(item);
     save(); setAccent();
@@ -11450,7 +11485,7 @@ function coachExecuteAction(name, inp){
   if(name==='swap_exercise_permanent'){
     const arr = S.split[inp.day].exercises||[];
     const i = arr.findIndex(x=>exName(x).toLowerCase()===inp.from.toLowerCase());
-    if(i>=0) arr[i] = {name:inp.to, inc:incFor(inp.to)};
+    if(i>=0) arr[i] = {name:inp.to, inc:slotInc(inp.to)};
     save(); setAccent();
     return inp.from+' \u2192 '+inp.to+' on '+inp.day+'.';
   }
@@ -11946,7 +11981,7 @@ function mesoActiveStrBlockId(){
 function mesoSplitToggleRepMode(blockId, dk, i){
   const a = mesoState().active; const rec = a && (a.splits||{})[blockId]; if(!rec) return false;
   const list = rec.split[dk].exercises || (rec.split[dk].exercises = []);
-  if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:incFor(list[i])};
+  if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:slotInc(list[i])};
   const x = list[i];
   x.repMode = (x.repMode==='str') ? null : 'str';
   save();
@@ -12111,7 +12146,7 @@ function mesoGenerateStrengthSplit(){
   const out = {};
   MESO_STR_DAYS.forEach(d=>{
     out[d.key] = {name:d.name, hex:d.hex, exercises: picks[d.key].map((s, idx)=>{
-      const o = (typeof s.x==='object') ? JSON.parse(JSON.stringify(s.x)) : {name:s.nm, inc:incFor(s.nm)};
+      const o = (typeof s.x==='object') ? JSON.parse(JSON.stringify(s.x)) : {name:s.nm, inc:slotInc(s.nm)};
       // only the first two exercises (anchor + secondary) run 3-6, even if the secondary is a compound
       // accessories use the global rep range, so strip any per-exercise override
       if(idx < 2 && s.comp) o.repMode = 'str';
@@ -12586,7 +12621,7 @@ function mesoEdAdd(dk){
   const nm = (el.value||'').trim(); if(!nm) return;
   const a = mesoActive(); const rec = a.splits[_mesoEditBlock]; if(!rec) return;
   rec.split[dk].exercises = rec.split[dk].exercises || [];
-  const o = {name:nm, inc:incFor(nm)};
+  const o = {name:nm, inc:slotInc(nm)};
   if(mesoIsCompound(nm)) o.repMode='str';
   rec.split[dk].exercises.push(o);
   save(); mesoOpenSplitEdit(_mesoEditBlock);
@@ -13350,7 +13385,7 @@ function liveSlotSets(dk){
 }
 const DC_WHAT = {push:'Earned jumps go ahead.', normal:'The plan as written.',
   easy:'Earned jumps wait, and accessories get one set fewer.',
-  recover:'Earned jumps wait, compounds go one step lighter, and every lift gets one set fewer.'};
+  recover:'Earned jumps wait, compounds go one step lighter, and lifts with three or more sets lose one.'};
 const DC_COL = {push:'var(--good)', normal:'var(--muted)', easy:'var(--warn)', recover:'var(--bad)'};
 function liveCallHTML(){
   if(!live || !live.call || live.call.conf === 'none') return '';
@@ -13381,7 +13416,10 @@ function liveCallToggle(){
   const c = liveEffectiveCall(), sets = liveSlotSets(live.day);
   live.exercises = live.exercises.map(function(ex){
     if((ex.sets && ex.sets.length) || ex._swapped || ex.done || ex._deload) return ex;
-    return buildOneLiveExercise(ex.name, ex._homeEquipList, {call:c, sets:sets[ex.name]});
+    const nb = buildOneLiveExercise(ex.name, ex._homeEquipList, {call:c, sets:sets[ex.name]});
+    // The plan that carried a coach note was consumed at start, so the rebuild cannot re-read it.
+    if(ex._coachNote){ nb._coachNote = ex._coachNote; nb.recDetail = 'Coach: '+ex._coachNote+'. '+(nb.recDetail||''); nb.advMsg = nb.recDetail; }
+    return nb;
   });
   live.trimmed = !live.callOff && live.exercises.some(function(e){ return e._callTrim; });
   saveLiveDraft(); renderLive();
@@ -14925,21 +14963,20 @@ function agApplyFix(fx){
   if(fx.type==='cal'){ S.fuel = S.fuel||{}; S.fuel.calTarget = (S.fuel.calTarget||3000) + p.delta; return true; }
   if(fx.type==='pro'){ S.fuel = S.fuel||{}; S.fuel.proTarget = p.to; return true; }
   if(fx.type==='liftReset'){
-    invState().overrides[p.name] = {w:p.w, until:dateKeyOf(new Date(Date.now()+p.days*86400000)),
-      note:'Agent reset \u2014 rebuild with clean reps, expires '+p.days+'d'};
+    invState().overrides[p.name] = invResetRecord(p.w, p.days, 'Agent');
     return true;
   }
   if(fx.type==='deload'){ startDeloadWeek(); return true; }
   if(fx.type==='addEx'){
     if(!S.split[p.day]) return false;
-    S.split[p.day].exercises.push({name:p.name, inc:incFor(p.name)});
+    S.split[p.day].exercises.push({name:p.name, inc:slotInc(p.name)});
     return true;
   }
   if(fx.type==='swapEx'){
     for(const dk in S.split){
       const arr = S.split[dk].exercises;
       const i = arr.findIndex(x=>exName(x)===p.from);
-      if(i>=0){ arr[i] = {name:p.to, inc:incFor(p.to)}; return true; }
+      if(i>=0){ arr[i] = {name:p.to, inc:slotInc(p.to)}; return true; }
     }
     return false;
   }
@@ -14948,7 +14985,7 @@ function agApplyFix(fx){
     if(!list) return false;
     const i = list.findIndex(function(x){ return exName(x) === p.exercise; });
     if(i < 0) return false;
-    if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:incFor(list[i])};
+    if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:slotInc(list[i])};
     list[i].sets = p.sets;
     return true;
   }
@@ -15018,9 +15055,9 @@ function agContext(){
       (deloadWindow().source==='meso' ? ', the meso block\u2019s scheduled deload week' : '')+') — loads and sets are '+
       'intentionally reduced; do not flag this window as a stall, regression, or missed progression.'
     : '';
-  const ov = invState().overrides;
-  const ovTxt = Object.keys(ov).length
-    ? Object.keys(ov).map(k=>k+' capped at '+ov[k].w+' lb until '+ov[k].until).join('; ') : 'none';
+  // Only resets still in force: an expired or released one used to be listed as if it were live.
+  const ovL = invOverrideLines();
+  const ovTxt = ovL.length ? ovL.map(o=>o.name+' set to '+o.w+' lb '+o.txt).join('; ') : 'none';
   const flags = invActiveFlags().map(f=>'['+f.severity+'] '+f.title+' ('+f.status+')').join('; ') || 'none';
   const mx = maxedList();
   const mxTxt = mx.length
@@ -15038,7 +15075,9 @@ function agContext(){
       'estimated 1RM (a shift from high reps to a heavy double LOWERS an Epley estimate while the '+
       'lifter gets stronger). Never propose reducing load on one of these because reps fell.'
     : 'none';
-  const recentRejects = agState().proposals.filter(p=>p.status==='rejected').slice(-6)
+  // The queue is kept newest-first (unshift, and a pull re-sorts it descending), so the six most
+  // RECENT rejections are the first six. slice(-6) handed the agents the six oldest.
+  const recentRejects = agState().proposals.filter(p=>p.status==='rejected').slice(0, 6)
     .map(p=>p.agent.toUpperCase()+': '+p.title).join('; ') || 'none';
   // Only ZULU used to be told what was pending, so a specialist had no way of knowing its own
   // proposal from two nights ago was still sitting unanswered -- and re-raised it, verbatim,
@@ -16883,7 +16922,6 @@ try{ renderSidenav(); }catch(e){}
 // .catch keeps a failed/absent sync from blocking the agents entirely.
 const _bootPull = (async()=>{ try{ await autoPullOnLoad(); }catch(e){} })();
 try{ startUpdateWatcher(); }catch(e){}
-try{ maybeRunAudit().then(()=>{ if(MODE==='review' && activeReviewTab==='progress') renderProgressV2(); }); }catch(e){}
 // agents: expire stale proposals on load, then poll for the 9 PM window
 try{ if(agSweepExpired() + agSweepDuplicates()) save(false); }catch(e){}
 _bootPull.then(()=>{
