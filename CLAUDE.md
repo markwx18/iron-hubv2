@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2284 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2310 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -272,6 +272,7 @@ so the two orders can no longer disagree.
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
 | Projections | `anFanProject()` (shared core), `anFanChartSVG()`, `anFanMilestones()`, `bwProjectFor()` |
+| Prediction record | `predTick()` (`S.predictions`), `predLifts()`, `predTopsets()`, `predResolve()`, `predRecord()`, `predRecordCardHTML()`, `predIntelLine()` |
 | Overload status | `olSignals()`, `olBaselineVerdict()`, `olValidateReport()`, `renderAnOverload()` |
 | Exercise swaps | `swapScore()`, `swapPattern()`, `swapEquip()`, `swapCandidates()`, `swapListHTML()` |
 | PR history | `checkPRs()`, `prAppend()`, `prBackfill()`, `renderAnPRs()` |
@@ -683,6 +684,24 @@ sessions against 71%, and grind share alone would have made recovery count for l
 It is about 600 tokens on his real data, and `agBaseContext()` adds it for DELTA, ECHO and ZULU
 (the brief included). Every line is guarded on its own, so a failing line can never cost an agent
 its prompt. Check the usage card before growing it.
+
+**The prediction record scores the engine, and never stores a verdict.** Zero API cost; it extends
+`anEnsembleFor()` and `bulkRate()` rather than adding a model (`projectMetric()` in
+`projectionCardHTML()` is an older second model it deliberately does not use).
+- **`topset`** ("did the prescription hold") is DERIVED from the logs: `logRec.plan`, or a legacy
+  `decisions[].to` scored against today's rep range (and labelled so). Held = the prescribed weight
+  for at least the bottom of the range. Bodyweight lifts are out. On his real data (2026-09-28) it
+  read 74% held (183 of 246), and 54 of the 63 misses were sessions he lifted lighter than
+  prescribed.
+- **`e1rm28`** and **`bw7`** are STORED, one per kind, subject and Monday week (`predTick()`, run from
+  `agForegroundCheck()` after the pull; it `save()`s only when it made something). Rows are
+  immutable and live in `SYNC_HISTORY` (`'q|'+id`, capped at `PRED_MAX`), so neither a second device
+  nor a pull can duplicate or lose one. Up to 6 main lifts (`predLifts()`, compounds first), about
+  1.4 KB a week.
+- **How a forecast turned out is computed at read time** (`predResolve()`), never written back: a
+  stored verdict would lose to an older snapshot. A window with a deload (any lift), a reset or a
+  reshaped session on that lift is `interrupted`, counted apart and never as a miss; no session
+  near the due date is `nodata`.
 
 **Forecasts and insights are descriptive, and they say so.**
 - **`deloadForecast()`** answers in weeks, not days. It uses the fixed `deloadCheck()`, this

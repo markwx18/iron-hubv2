@@ -3821,7 +3821,9 @@ setTimeout(async () => {
     const outsidePicker = pred.replace(/<select[\s\S]*?<\/select>/g, '');
     ok('unselected lift has no content of its own', outsidePicker.indexOf('Pred Beta') === -1);
     ok('exactly one projection card is rendered', (pred.match(/anEnsembleChangeEx/g) || []).length === 1);
-    ok('no stray per-lift milestone cards remain', (pred.match(/class="card"/g) || []).length === 2,
+    // Three cards: the header, the one projection, and the prediction record (2026-09-28) -- which
+    // scores the engine across every lift, so it is not a per-lift milestone card.
+    ok('no stray per-lift milestone cards remain', (pred.match(/class="card"/g) || []).length === 3 && /Prediction record/.test(pred),
       'cards=' + (pred.match(/class="card"/g) || []).length);
 
     const res = ev("anEnsembleFor('Pred Alpha', 84)");
@@ -9782,6 +9784,114 @@ setTimeout(async () => {
   ev("document.getElementById('summaryOverlay').classList.remove('show');");
   ev('S = ' + s1Saved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
   ok('cleanup: real state restored after the after-session section', ev('JSON.stringify(S)') === s1Saved);
+
+  // ============ PREDICTION RECORD (2026-09-28) ============
+  console.log('=== PREDICTION RECORD ===');
+  const s2Saved = ev('JSON.stringify(S)');
+  try {
+    const qd = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const qrm = ev("exRepMode('Zz Pred Row')");
+    ev("S.split.D2.exercises.push({name:'Zz Pred Row', inc:5});");
+    // Eight weeks of a rising, wobbly row (fixed offsets), and weigh-ins two or three a week.
+    const wob = [0, 3, -2, 4, -1, 2, -3, 1, 0];
+    const rows = [];
+    for (let k = 8; k >= 1; k--) {
+      const w0 = 150 + (8 - k) * 2.5;
+      rows.push({id: 995000 + k, date: qd(-7 * k), day: 'D2', entries: [{exercise: 'Zz Pred Row', sets: [{w: w0, r: qrm.lo + 2 + (wob[k] > 0 ? 1 : 0), ef: 60}, {w: w0, r: qrm.lo + 1, ef: 55}]}]});
+    }
+    rows.forEach(function(l, i){ l.entries.push({exercise: 'Hanging Leg Raise', sets: [{w: 1, r: 12 + (i % 3)}, {w: 1, r: 11}]}); l.decisions = {'Hanging Leg Raise': {code: 'hold', to: 1}}; });
+    ev('S.logs = ' + JSON.stringify(rows) + ';');
+    const wts = [];
+    for (let d = 63; d >= 1; d -= 3) wts.push({date: qd(-d), lbs: 170 + (63 - d) * 0.1 + wob[d % 9] * 0.2});
+    ev('S.weights = ' + JSON.stringify(wts) + '; S.predictions = [];');
+
+    // --- this week's forecasts: made once, deterministic ids ---
+    const ca = ev('S.meta.changedAt') || 0;
+    const made = ev('predTick()');
+    const preds = ev('S.predictions');
+    const e1 = preds.find(p => p.kind === 'e1rm28' && p.subject === 'Zz Pred Row'), bw = preds.find(p => p.kind === 'bw7');
+    ok('record: the week’s e1RM forecast is stored with its range and due date', e1 && e1.p10 <= e1.p50 && e1.p50 <= e1.p90 && e1.due === ev('mesoAddDays(todayKey(), 28)') && e1.id === 'e|Zz Pred Row|' + ev('weekKeyOf(todayKey())'), JSON.stringify(e1));
+    ok('record: and the week’s bodyweight forecast is bulkRate(4)', bw && Math.abs(bw.p50 - ev('bulkRate(4).rate')) < 0.01 && bw.due === ev('mesoAddDays(weekKeyOf(todayKey()), 6)'), JSON.stringify(bw));
+    ok('record: making them saves as a push (changedAt advances)', made >= 2 && ev('S.meta.changedAt') > ca && preds.every(p => p.t > 0));
+    ok('record: a bodyweight lift gets no forecast', ev('predLifts()')[0] === 'Zz Pred Row' && ev("predLifts().indexOf('Hanging Leg Raise')") === -1 && !preds.some(p => p.subject === 'Hanging Leg Raise'), JSON.stringify(ev('predLifts()')));
+    ok('record: nor a prescription score', !ev('predTopsets()').some(x => x.name === 'Hanging Leg Raise'));
+    ok('record: a second tick the same week makes nothing', ev('predTick()') === 0 && ev('S.predictions.length') === preds.length);
+    ok('record: the foreground check makes them too', (function(){ ev('S.predictions = []; _agFgAt = 0;'); ev('agForegroundCheck()'); return ev('S.predictions.length') === preds.length; })());
+
+    // --- resolving an e1RM forecast: hit, miss, error math, interrupted, pending, no data ---
+    // The row's sessions near 21 days ago read ~e1RM of the w0 at k=3.
+    const act21 = ev("Math.max.apply(null, e1rmSeries('Zz Pred Row', {excludeHome:true}).filter(function(x){ return x.date >= mesoAddDays(todayKey(), -28) && x.date <= mesoAddDays(todayKey(), -14); }).map(function(x){ return x.v; }))");
+    const mk = (id, p10, p50, p90, due) => ({id: id, kind: 'e1rm28', subject: 'Zz Pred Row', madeOn: qd(-49), wk: qd(-49), due: due || qd(-21), p10, p50, p90, cur: 150, t: 1});
+    const hitP = mk('e|hit', act21 - 5, act21 - 2, act21 + 5), missP = mk('e|miss', act21 + 3, act21 + 10, act21 + 20);
+    const rh = ev('predResolve(' + JSON.stringify(hitP) + ')'), rm2 = ev('predResolve(' + JSON.stringify(missP) + ')');
+    ok('resolve: inside p10-p90 is a hit, with APE on the middle line', rh.state === 'scored' && rh.hit === true && Math.abs(rh.ape - 2 / act21) < 1e-9, JSON.stringify(rh));
+    ok('resolve: outside it is a miss', rm2.state === 'scored' && rm2.hit === false && Math.abs(rm2.ape - 10 / act21) < 1e-9, JSON.stringify(rm2));
+    ok('resolve: not yet due is pending', ev('predResolve(' + JSON.stringify(mk('e|p', 1, 2, 3, qd(10))) + ').state') === 'pending');
+    ok('resolve: nothing logged near the due date is no data, not a miss', ev('predResolve(' + JSON.stringify(Object.assign(mk('e|nd', 1, 2, 3, qd(-100)), {madeOn: qd(-128)})) + ').state') === 'nodata');
+    // A deload week interrupts every lift's forecast, even a session that never touched this one.
+    ev("S.logs.push({id: 995100, date: mesoAddDays(todayKey(), -30), day: 'D4', deload: true, entries: [{exercise: 'Zz Pred Other', sets: [{w: 100, r: 8}]}]});");
+    ok('resolve: a deload inside the window is interrupted, not a miss', ev('predResolve(' + JSON.stringify(missP) + ').state') === 'interrupted');
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 995100; });");
+    ev("S.logs.forEach(function(l){ if(l.id === 995003) l.decisions = {'Zz Pred Row': {code:'inv-override', to:140}}; });");
+    ok('resolve: a reset on the lift inside the window is interrupted', ev('predResolve(' + JSON.stringify(missP) + ').state') === 'interrupted');
+    ev("S.logs.forEach(function(l){ delete l.decisions; });");
+
+    // --- resolving a bodyweight forecast ---
+    const wkA = qd(-14), wkMon = ev('weekKeyOf(' + JSON.stringify(wkA) + ')');
+    ev('S.weights = ' + JSON.stringify([
+      {date: ev('mesoAddDays(' + JSON.stringify(wkMon) + ', -6)'), lbs: 180.2}, {date: ev('mesoAddDays(' + JSON.stringify(wkMon) + ', -3)'), lbs: 180.6},
+      {date: ev('mesoAddDays(' + JSON.stringify(wkMon) + ', 1)'), lbs: 181.0}, {date: ev('mesoAddDays(' + JSON.stringify(wkMon) + ', 4)'), lbs: 181.4}]) + ';');
+    const bwP = {id: 'b|t', kind: 'bw7', subject: 'bodyweight', madeOn: wkMon, wk: wkMon, due: ev('mesoAddDays(' + JSON.stringify(wkMon) + ', 6)'), p50: 0.5, t: 1};
+    const rb = ev('predResolve(' + JSON.stringify(bwP) + ')');
+    ok('resolve: bodyweight change is week average against the week before', rb.state === 'scored' && Math.abs(rb.actual - 0.8) < 1e-9 && rb.hit === true && Math.abs(rb.err - 0.3) < 1e-9, JSON.stringify(rb));
+    ok('resolve: off by more than ' + ev('PRED_BW_TOL') + ' lb is a miss', ev('predResolve(' + JSON.stringify(Object.assign({}, bwP, {p50: 0.2})) + ').hit') === false);
+    ev('S.weights = S.weights.slice(1);');
+    ok('resolve: one weigh-in in a week is no data', ev('predResolve(' + JSON.stringify(bwP) + ').state') === 'nodata');
+
+    // --- the prescription record, derived from the logs ---
+    const P = (w) => ({'Zz Pred Row': {w: w, lo: qrm.lo, hi: qrm.hi, n: 2}});
+    ev('S.logs = ' + JSON.stringify([
+      {id: 995201, date: qd(-20), day: 'D2', plan: P(160), entries: [{exercise: 'Zz Pred Row', sets: [{w: 160, r: qrm.lo + 1}, {w: 160, r: qrm.lo}]}]},
+      {id: 995202, date: qd(-13), day: 'D2', plan: P(165), entries: [{exercise: 'Zz Pred Row', sets: [{w: 160, r: qrm.lo + 2}, {w: 160, r: qrm.lo}]}]},
+      {id: 995203, date: qd(-6), day: 'D2', plan: P(165), entries: [{exercise: 'Zz Pred Row', sets: [{w: 165, r: qrm.lo - 1}, {w: 165, r: qrm.lo - 2}]}]},
+      {id: 995204, date: qd(-5), day: 'D2', plan: P(170), deload: true, entries: [{exercise: 'Zz Pred Row', sets: [{w: 100, r: qrm.lo}]}]},
+      {id: 995205, date: qd(-4), day: 'D2', plan: P(170), call: {call: 'easy', off: false}, entries: [{exercise: 'Zz Pred Row', sets: [{w: 150, r: qrm.lo}]}]},
+      {id: 995206, date: qd(-3), day: 'D2', plan: P(170), call: {call: 'easy', off: true}, entries: [{exercise: 'Zz Pred Row', sets: [{w: 170, r: qrm.lo}]}]},
+      {id: 995207, date: qd(-2), day: 'D2', plan: P(170), swapped: ['Zz Pred Row'], entries: [{exercise: 'Zz Pred Row', sets: [{w: 120, r: qrm.lo}]}]},
+      {id: 995208, date: qd(-1), day: 'D2', decisions: {'Zz Pred Row': {code: 'hold', to: 170}}, entries: [{exercise: 'Zz Pred Row', sets: [{w: 170, r: qrm.lo - 2}]}]}
+    ]) + ';');
+    const ts = ev('predTopsets()');
+    ok('prescriptions: held means the prescribed weight for the bottom of the range', ts.find(x => x.date === qd(-20)).held === true && ts.find(x => x.date === qd(-13)).held === false && ts.find(x => x.date === qd(-6)).held === false && ts.find(x => x.date === qd(-3)).held === true, JSON.stringify(ts.map(x => [x.date, x.held])));
+    ok('prescriptions: deload, a kept easy call and a swap are interrupted; a call he turned down is not',
+       ts.find(x => x.date === qd(-5)).interrupted && ts.find(x => x.date === qd(-4)).interrupted && ts.find(x => x.date === qd(-2)).interrupted && !ts.find(x => x.date === qd(-3)).interrupted);
+    ok('prescriptions: a session from before plans were recorded is scored from its decision, marked legacy', (ts.find(x => x.date === qd(-1)) || {}).legacy === true && (ts.find(x => x.date === qd(-1)) || {}).held === false);
+    const R = ev('predRecord()');
+    ok('record: counts only the clean ones', R.topset.n === 5 && R.topset.held === 2 && R.topset.interrupted === 3 && R.topset.byLift[0].name === 'Zz Pred Row', JSON.stringify(R.topset));
+    ev('S.logs = ' + JSON.stringify(rows) + '; S.predictions = ' + JSON.stringify([hitP, missP, mk('e|p2', 1, 2, 3, qd(10))]) + ';');
+    const R2 = ev('predRecord()');
+    ok('record: e1RM forecasts count hits, misses and pending apart', R2.e1rm28.n === 2 && R2.e1rm28.hits === 1 && R2.e1rm28.pending === 1, JSON.stringify(R2.e1rm28));
+    ok('record: resolving never writes back onto the stored forecast', ev("S.predictions.every(function(p){ return !('actual' in p) && !('hit' in p) && !('state' in p); })"));
+
+    // --- sync: a forecast made after the snapshot survives a pull ---
+    const newest = {id: 'e|sync-test', kind: 'e1rm28', subject: 'Zz Pred Row', madeOn: qd(0), wk: qd(0), due: qd(28), p10: 1, p50: 2, p90: 3, cur: 2, t: Date.now()};
+    ev('S.predictions.push(' + JSON.stringify(newest) + ');');
+    const snapP = ev('JSON.parse(JSON.stringify(S))'); snapP.predictions = snapP.predictions.filter(p => p.id !== 'e|sync-test');
+    w.__snapP = snapP;
+    ev('applyPulled(window.__snapP, ' + (newest.t - 5000) + ')');
+    ok('sync: a forecast this device made after the snapshot is not lost to a pull', ev("S.predictions.some(function(p){ return p.id === 'e|sync-test'; })"));
+
+    // --- on screen and in the agents' summary ---
+    ev('S.logs = ' + JSON.stringify(rows) + '; S.predictions = ' + JSON.stringify([hitP, missP]) + ';');
+    ev('renderAnPred()');
+    const card = ev("document.getElementById('an_pred').textContent");
+    ok('card: the record is on Progress › Strength, with the e1RM hits and a small-sample note', /Prediction record/.test(card) && /1 of 2/.test(card) && /small sample/.test(card), card.slice(-600));
+    ev("S.logs = S.logs.map(function(l, i){ l.plan = {'Zz Pred Row': {w: l.entries[0].sets[0].w, lo: " + qrm.lo + ", hi: " + qrm.hi + ", n: 2}}; return l; });");
+    ok('agents: the summary carries the track record', /Engine track record, last 8 weeks: prescriptions held on \d+%/.test(ev('predIntelLine()')) && /Engine track record/.test(ev('intelSummary()')), ev('predIntelLine()'));
+  } catch (e) {
+    ok('prediction record section', false, e.stack);
+  }
+  ev('S = ' + s2Saved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  ok('cleanup: real state restored after the prediction record section', ev('JSON.stringify(S)') === s2Saved);
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

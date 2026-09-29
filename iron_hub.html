@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-29-v1">
+<meta name="ironhub-build" content="2026-09-29-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1518,6 +1518,8 @@ const DEFAULT_STATE = {
   road: [],                    // {id, exercise, target, start, deadline}
   readiness: [],               // {date, sleep, sore, energy, tier}
   pain: [],                    // {id, date, exercise, level 1-3, note} — flagged from LIVE
+  predictions: [],             // {id, kind, subject, madeOn, wk, due, p10, p50, p90, cur, t} — the engine's
+                               // stored forecasts. Immutable: how they turned out is computed, never written.
   sessionMeta: [],             // {id: logId, date, feel 1-5|null, note, exp?, t} — his optional after-session
                                // answers, one row per session. Its own collection on purpose: see sessionMetaSet().
   photos: {gistId:'', index:[]},  // INDEX only — the images live in their own gist, see photoState()
@@ -1605,7 +1607,8 @@ const SYNC_HISTORY = {
   logs:      {key: r=>'l|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||'')},
   prHistory: {key: r=>'p|'+r.exercise+'|'+r.date+'|'+r.e1rm, ord: r=>String(r.date||''), cap:()=>PR_HISTORY_MAX},
   pain:      {key: r=>'x|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||''), desc:true, cap:()=>200},
-  sessionMeta: {key: r=>'m|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>SESSION_META_MAX}
+  sessionMeta: {key: r=>'m|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>SESSION_META_MAX},
+  predictions: {key: r=>'q|'+r.id, ord: r=>String(r.madeOn||'')+'|'+String(r.id||''), cap:()=>PRED_MAX}
 };
 /* Write time of a history record. The merge needs it to tell "the other device has not heard
    about this yet" apart from "some device deliberately deleted this", which are otherwise the
@@ -13486,6 +13489,7 @@ function intelSummary(){
     });
     if(bits.length) L.push('Engine decisions, last 7 days: '+bits.join(' | '));
   }catch(e){}
+  try{ const pl = predIntelLine(); if(pl) L.push(pl); }catch(e){}
   if(!L.length) return '';
   return '\n\nINTELLIGENCE SUMMARY (computed by the app from his own data \u2014 these are facts, not estimates to redo; interpret and explain them, and prefer them to re-deriving from raw rows):\n'+L.join('\n')+'\n';
 }
@@ -14175,16 +14179,222 @@ function anEnsembleCardHTML(){
   h += '</div>';
   return h;
 }
+/* ============================================================
+   PREDICTION RECORD -- how far to trust the engine, scored against what actually happened.
+   Zero API cost. It extends the existing models (anEnsembleFor, bulkRate) rather than adding one.
+   Three kinds:
+     topset  -- "did the prescription hold": the weight LIVE prescribed against the top set he then
+                lifted. DERIVED from the logs (logRec.plan, or a legacy decisions[].to), never stored,
+                so it reaches back as far as decisions were kept.
+     e1rm28  -- each Monday week, per main lift: the ensemble's p10/p50/p90 four weeks out. Stored.
+     bw7     -- each Monday week: bulkRate(4) as this week's change in weekly-average bodyweight. Stored.
+   Stored forecasts are immutable rows in a SYNC_HISTORY collection with a deterministic id (one
+   per kind, subject and week), so two devices cannot duplicate one and a pull cannot lose one.
+   How each turned out is computed at read time: a stored "resolved" field would lose to an older
+   snapshot on a pull. A window that ran through a deload, a reset or a reshaped session is
+   "interrupted" -- counted apart, never as a miss.
+   ============================================================ */
+const PRED_MAX = 400, PRED_BW_TOL = 0.5, PRED_WINDOW = 7;
+/* Make this week's forecasts if they do not exist yet. Idempotent; called from
+   agForegroundCheck(), which runs after the boot pull. save() only when something was made: a
+   touch there is safe (the pull is done) and pushes the forecasts before another device makes
+   its own copy of the same week. */
+function predTick(){
+  if(!Array.isArray(S.predictions)) S.predictions = [];
+  const t = todayKey(), wk = weekKeyOf(t);
+  const have = {}; S.predictions.forEach(function(p){ if(p && p.id) have[p.id] = 1; });
+  const made = [];
+  try{
+    predLifts().forEach(function(nm){
+      const id = 'e|'+nm+'|'+wk;
+      if(have[id]) return;
+      const res = anEnsembleFor(nm, 28);
+      if(!res || !res.ok) return;
+      const at = function(pc){ const a = res.series[pc]; return a[a.length-1].v; };
+      made.push({id:id, kind:'e1rm28', subject:nm, madeOn:t, wk:wk, due:mesoAddDays(t, 28),
+                 p10:at(10), p50:at(50), p90:at(90), cur:Math.round(res.cur*10)/10});
+    });
+  }catch(e){}
+  try{
+    const id = 'b|bw|'+wk;
+    const br = have[id] ? null : bulkRate(4);
+    if(br && isFinite(br.rate)) made.push({id:id, kind:'bw7', subject:'bodyweight', madeOn:t, wk:wk, due:mesoAddDays(wk, 6),
+                                           p50:Math.round(br.rate*100)/100, cur:br.cur});
+  }catch(e){}
+  if(!made.length) return 0;
+  made.forEach(function(p){ S.predictions.push(stampRec(p)); });
+  if(S.predictions.length > PRED_MAX) S.predictions = S.predictions.slice(-PRED_MAX);
+  save();
+  return made.length;
+}
+/* The lifts worth a 4-week forecast: enough history, loaded, main lifts first. A bodyweight lift
+   logged at ~1 lb has no e1RM to forecast -- his Hanging Leg Raise read 0.7-0.9 "lb" -- so it is out,
+   the same rule intelSummary()'s lift patterns use. */
+function predLifts(){
+  const loaded = function(n){ const h = historyFor(n)[0]; return !!h && Math.max(0, ...h.sets.map(function(st){ return +st.w || 0; })) > 1; };
+  const ls = anBigLifts(5).filter(function(n){ return !isBodyweight(n) && loaded(n); });
+  return ls.filter(mesoIsCompound).concat(ls.filter(function(n){ return !mesoIsCompound(n); })).slice(0, 6);   // ~7 rows a week, ~1.4 KB
+}
+/* A log that was reshaped away from the plan for this lift: the prescription it carried was not the
+   engine's normal answer, so it cannot count for or against it. */
+function predInterrupted(l, nm){
+  if(!l) return true;
+  if(l.deload || l.home || l.coachPlan) return true;
+  if(l.call && !l.call.off && (l.call.call === 'easy' || l.call.call === 'recover')) return true;
+  if(Array.isArray(l.swapped) && l.swapped.indexOf(nm) >= 0) return true;
+  const d = l.decisions && l.decisions[nm];
+  return !!(d && (d.code === 'inv-override' || d.code === 'call-recover' || d.code === 'deload'));
+}
+/* Every prescription the logs can speak to, oldest first. */
+function predTopsets(){
+  const out = [];
+  (S.logs||[]).slice().sort(function(a, b){ return a.date.localeCompare(b.date); }).forEach(function(l){
+    (l.entries||[]).forEach(function(e){
+      const nm = e.exercise, p = l.plan && l.plan[nm], d = l.decisions && l.decisions[nm];
+      let w = null, lo = null, legacy = false;
+      if(p && +p.w > 0){ w = +p.w; lo = +p.lo; }
+      else if(!p && d && d.to != null && +d.to > 0 && d.code !== 'first' && d.code !== 'bw'){
+        // Before plans were recorded: the decision knew the weight, not the range. The range is
+        // today's for this lift, which is right unless it has since changed mode.
+        w = +d.to; lo = isFormFocus(nm) ? FORM_LO : exRepMode(nm).lo; legacy = true;
+      }
+      // A bodyweight lift has no load to prescribe (its "weight" is a 0 or a 1 placeholder).
+      if(!(w > 1) || isBodyweight(nm) || !(e.sets && e.sets.length)) return;
+      const top = e.sets.reduce(function(m, st){ return (+st.w||0) > (+m.w||0) || ((+st.w||0) === (+m.w||0) && (+st.r||0) > (+m.r||0)) ? st : m; }, e.sets[0]);
+      const held = e.sets.some(function(st){ return (+st.w||0) >= w && (+st.r||0) >= lo; });
+      const predE = epley(w, lo), actE = Math.max.apply(null, e.sets.map(function(st){ return epley(+st.w||0, +st.r||0); }));
+      out.push({date:l.date, name:nm, w:w, lo:lo, topW:+top.w||0, topR:+top.r||0, held:held,
+                ape: actE > 0 ? Math.abs(actE - predE)/actE : null, interrupted:predInterrupted(l, nm), legacy:legacy});
+    });
+  });
+  return out;
+}
+/* How a stored forecast turned out. {state: 'pending'|'nodata'|'interrupted'|'scored', ...}. */
+function predResolve(p){
+  const t = todayKey();
+  if(!p) return {state:'nodata'};
+  if(p.kind === 'e1rm28'){
+    const lo = mesoAddDays(p.due, -PRED_WINDOW), hi = mesoAddDays(p.due, PRED_WINDOW);
+    const win = (S.logs||[]).filter(function(l){ return l && l.date > p.madeOn && l.date <= hi; });
+    const touches = win.filter(function(l){ return (l.entries||[]).some(function(e){ return e.exercise === p.subject; }); });
+    if(win.some(function(l){ return l.deload; }) || touches.some(function(l){ return predInterrupted(l, p.subject) && !l.home; }))
+      return {state: t > hi ? 'interrupted' : 'pending'};
+    const pts = e1rmSeries(p.subject, {excludeHome:true}).filter(function(x){ return x.date >= lo && x.date <= hi; });
+    if(!pts.length) return {state: t > hi ? 'nodata' : 'pending'};
+    if(t <= p.due) return {state:'pending'};
+    const act = Math.max.apply(null, pts.map(function(x){ return x.v; }));
+    return {state:'scored', actual:act, hit: act >= p.p10 && act <= p.p90, ape: Math.abs(act - p.p50)/act};
+  }
+  if(p.kind === 'bw7'){
+    if(t <= p.due) return {state:'pending'};
+    const avg = function(a, b){
+      const v = (S.weights||[]).filter(function(x){ return x && x.date >= a && x.date <= b; }).map(function(x){ return +x.lbs; }).filter(isFinite);
+      return v.length >= 2 ? v.reduce(function(m, n){ return m + n; }, 0)/v.length : null;
+    };
+    const before = avg(mesoAddDays(p.wk, -7), mesoAddDays(p.wk, -1)), during = avg(p.wk, p.due);
+    if(before === null || during === null) return {state:'nodata'};
+    const act = Math.round((during - before)*100)/100;
+    return {state:'scored', actual:act, hit: Math.abs(act - p.p50) <= PRED_BW_TOL, err: Math.abs(act - p.p50)};
+  }
+  return {state:'nodata'};
+}
+/* The running record. sinceKey limits it to a recent window (the agents get the last 8 weeks). */
+function predRecord(sinceKey){
+  const since = sinceKey || '0000-00-00';
+  const ts = predTopsets().filter(function(x){ return x.date >= since; });
+  const clean = ts.filter(function(x){ return !x.interrupted; });
+  const mean = function(a){ return a.length ? a.reduce(function(m, n){ return m + n; }, 0)/a.length : null; };
+  const lifts = {};
+  clean.forEach(function(x){ const o = lifts[x.name] || (lifts[x.name] = {name:x.name, n:0, held:0}); o.n++; if(x.held) o.held++; });
+  const out = {
+    topset: {n:clean.length, held:clean.filter(function(x){ return x.held; }).length, interrupted:ts.length - clean.length,
+             ape: mean(clean.map(function(x){ return x.ape; }).filter(function(v){ return v !== null; })),
+             legacy: clean.filter(function(x){ return x.legacy; }).length,
+             byLift: Object.keys(lifts).map(function(k){ return lifts[k]; }).sort(function(a, b){ return b.n - a.n; })},
+    e1rm28: {n:0, hits:0, ape:null, pending:0, interrupted:0, nodata:0},
+    bw7: {n:0, hits:0, mae:null, pending:0, nodata:0},
+    recent: []
+  };
+  const apes = [], errs = [];
+  (S.predictions||[]).filter(function(p){ return p && p.madeOn >= since; }).forEach(function(p){
+    const r = predResolve(p), k = out[p.kind];
+    if(!k) return;
+    if(r.state === 'pending') k.pending++;
+    else if(r.state === 'nodata') k.nodata++;
+    else if(r.state === 'interrupted') k.interrupted = (k.interrupted||0) + 1;
+    else if(r.state === 'scored'){
+      k.n++; if(r.hit) k.hits++;
+      if(p.kind === 'e1rm28') apes.push(r.ape); else errs.push(r.err);
+      out.recent.push({p:p, r:r});
+    }
+  });
+  out.e1rm28.ape = mean(apes); out.bw7.mae = mean(errs);
+  out.recent.sort(function(a, b){ return b.p.due.localeCompare(a.p.due); });
+  out.recent = out.recent.slice(0, 10);
+  return out;
+}
+function predPct(n, d){ return d ? Math.round(n/d*100)+'%' : '\u2014'; }
+function predRecordCardHTML(){
+  let R; try{ R = predRecord(); }catch(e){ return ''; }
+  const since8 = mesoAddDays(todayKey(), -56);
+  let R8; try{ R8 = predRecord(since8); }catch(e){ R8 = null; }
+  const small = function(n){ return n < 8 ? ' <span style="color:var(--dim)">\u00b7 small sample</span>' : ''; };
+  let h = '<div class="card"><div class="k">Prediction record</div>'+
+    '<p class="small">How often the engine\u2019s calls came true. Sessions reshaped by a deload, a reset, the day\u2019s call, HOME, a coach plan or a swap are set aside as interrupted, not counted as misses.</p>';
+  const T = R.topset;
+  h += '<div class="db-row" style="margin-top:12px"><span class="db-k">Prescriptions</span><span class="small">'+
+    (T.n ? '<b>'+predPct(T.held, T.n)+'</b> held \u2014 you lifted the prescribed weight for the bottom of the range on '+T.held+' of '+T.n+' top sets'+
+           (R8 && R8.topset.n ? ' ('+predPct(R8.topset.held, R8.topset.n)+' in the last 8 weeks)' : '')+
+           (T.ape !== null ? '. Typical miss '+(Math.round(T.ape*1000)/10)+'% of e1RM' : '')+'.'+small(T.n)
+         : 'No prescriptions to score yet.')+
+    (T.interrupted ? ' <span style="color:var(--dim)">·'+T.interrupted+' interrupted</span>' : '')+'</span></div>';
+  const E = R.e1rm28;
+  h += '<div class="db-row"><span class="db-k">4-week e1RM</span><span class="small">'+
+    (E.n ? '<b>'+E.hits+' of '+E.n+'</b> landed inside the forecast range; typical miss on the middle line '+(Math.round(E.ape*1000)/10)+'%.'+small(E.n)
+         : 'Nothing has come due yet.')+
+    (E.pending ? ' <span style="color:var(--dim)">·'+E.pending+' still running</span>' : '')+
+    (E.interrupted ? ' <span style="color:var(--dim)">·'+E.interrupted+' interrupted</span>' : '')+'</span></div>';
+  const B = R.bw7;
+  h += '<div class="db-row"><span class="db-k">Bodyweight</span><span class="small">'+
+    (B.n ? '<b>'+B.hits+' of '+B.n+'</b> weeks within \u00b1'+PRED_BW_TOL+' lb of the forecast change; typical miss '+(Math.round(B.mae*100)/100)+' lb.'+small(B.n)
+         : 'Nothing has come due yet.')+
+    (B.pending ? ' <span style="color:var(--dim)">·'+B.pending+' still running</span>' : '')+'</span></div>';
+  if(T.byLift.length){
+    h += '<div style="margin-top:12px">'+T.byLift.slice(0, 5).map(function(x){
+      return '<div class="db-row"><span class="db-k" style="width:auto;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.name)+'</span>'+
+        '<span class="small mono">'+x.held+'/'+x.n+' held</span></div>'; }).join('')+'</div>';
+  }
+  if(R.recent.length){
+    h += '<div style="margin-top:12px">'+R.recent.slice(0, 6).map(function(o){
+      const p = o.p, r = o.r;
+      const what = p.kind === 'bw7' ? 'Week of '+fmtDate(p.wk)+': forecast '+(p.p50>=0?'+':'')+p.p50+' lb, actual '+(r.actual>=0?'+':'')+r.actual
+                                    : esc(p.subject)+' by '+fmtDate(p.due)+': '+Math.round(p.p10)+'\u2013'+Math.round(p.p90)+', actual '+Math.round(r.actual);
+      return '<p class="small" style="margin-top:4px"><span style="color:'+(r.hit?'var(--good)':'var(--warn)')+'">'+(r.hit?'\u2713':'\u2717')+'</span> '+what+'</p>';
+    }).join('')+'</div>';
+  }
+  if(T.legacy) h += '<p class="small" style="color:var(--dim);margin-top:10px">'+T.legacy+' older sessions were scored against today\u2019s rep range, because their range was not recorded.</p>';
+  return h+'</div>';
+}
+/* One line for the agents: how much the engine's own numbers deserve to be trusted lately. */
+function predIntelLine(){
+  const R = predRecord(mesoAddDays(todayKey(), -56));
+  const bits = [];
+  if(R.topset.n >= 5) bits.push('prescriptions held on '+predPct(R.topset.held, R.topset.n)+' of '+R.topset.n+' top sets');
+  if(R.e1rm28.n) bits.push('4-week e1RM forecasts inside their range '+R.e1rm28.hits+' of '+R.e1rm28.n);
+  if(R.bw7.n) bits.push('weekly bodyweight forecasts within '+PRED_BW_TOL+' lb '+R.bw7.hits+' of '+R.bw7.n);
+  return bits.length ? 'Engine track record, last 8 weeks: '+bits.join('; ')+'.' : '';
+}
 function renderAnPred(){
   const el = document.getElementById('an_pred'); if(!el) return;
   const lifts = anBigLifts(5);
-  if(!lifts.length){ el.innerHTML = anEmpty('Predictions need at least 5 sessions per lift spanning a month or more.'); return; }
+  if(!lifts.length){ el.innerHTML = anEmpty('Predictions need at least 5 sessions per lift spanning a month or more.')+predRecordCardHTML(); return; }
   // Deliberately ONE lift's worth of content: whatever the two selectors below say. The tab
   // used to append milestone cards for up to six other lifts underneath, which had nothing
   // to do with the selection and made the dropdown look broken.
   let h = '<div class="card"><div class="k">Predictions</div>'+
     '<p class="small">Straight-line projection of your recent e1RM trend, drawn over the real sessions behind it. Useful as a target date, not a promise \u2014 progress is never actually linear.</p></div>';
   h += anEnsembleCardHTML();
+  h += predRecordCardHTML();
   el.innerHTML = h;
 }
 
@@ -17002,6 +17212,8 @@ function agForegroundCheck(){
   // an interval is frozen for as long as the app is backgrounded. Its own gate decides whether
   // anything actually goes out, and an unchanged week costs nothing.
   try{ gdocPush(); }catch(e){}
+  // This week's forecasts for the prediction record. Idempotent, on-device, no API.
+  try{ predTick(); }catch(e){}
 }
 
 /* ============================================================
