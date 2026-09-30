@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-29-v4">
+<meta name="ironhub-build" content="2026-09-30-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -6103,6 +6103,10 @@ const FP_TAG_LABEL = {snack:'Snack', meal:'Meal', drink:'Drink', quick:'Quick', 
 const FP_CUSTOM_MAX = 60;
 // "Close enough": a gap this small reads as done, and a combo this close reads as closing it.
 const FP_DONE_CAL = 150, FP_DONE_PRO = 10;
+/* One option is ONE meal, not the whole rest of the day. Sized to the gap, an option early in the day
+   stacked 2x servings to reach 2,000+ cal, which nobody eats as a plate (2026-09-30). The gap is still
+   shown in full; each option is capped at a standard meal, and a smaller gap shrinks it further. */
+const FP_PLATE_CAL = 700, FP_PLATE_PRO = 50;
 /* [id, name, category, serving, cal, protein g, carbs g, fat g, tags]. Typical values for the
    stated serving: approximate, and shown with a ~. The suite checks every row's macros add up.
    An id is what S.fuel.foods keys off and what has already synced to every device, so it is
@@ -6371,6 +6375,9 @@ function fpBuild(pool, gapCal, gapPro, used){
       // made "3x blender shake" the first option, which is not a plan anyone follows.
       if(have && have.qty >= 2) return;
       if(!have && items.length >= 5) return;
+      // A hard ceiling, not just the soft penalty below: when only low-protein foods are left, chasing
+      // the protein gap alone once ran a plate to 2x the target in pasta and bagels.
+      if(items.length && (gapCal - rc) + fd.cal > gapCal + 250) return;
       let v = (rc > 0 ? Math.min(fd.cal, rc)/nC : 0) + 1.2*(rp > 0 ? Math.min(fd.p, rp)/nP : 0);
       const over = fd.cal - Math.max(rc, 0) - 250;
       if(over > 0) v -= 1.5*over/nC;
@@ -6407,9 +6414,15 @@ function fpCombos(gapCal, gapPro, opts){
   if(gapCal <= FP_DONE_CAL && gapPro <= FP_DONE_PRO){ res.done = true; return res; }
   let pool = fpPool(opts);
   res.pool = pool.length;
+  const plateCal = Math.min(gapCal, FP_PLATE_CAL), plateP = Math.min(gapPro, FP_PLATE_PRO);
+  res.plateCal = plateCal; res.plateP = plateP;
   const used = {}, seen = {};
   for(let k = 0; k < 3 && pool.length; k++){
-    const c = fpBuild(pool, gapCal, gapPro, used);
+    // Meal-sized plates make the reuse penalty in fpBuild too weak to keep plates apart, so a later
+    // plate draws from foods no earlier plate used, and only falls back to the full pool if that
+    // leaves nothing.
+    const fresh = pool.filter(function(fd){ return !used[fd.id]; });
+    const c = fpBuild(fresh.length ? fresh : pool, plateCal, plateP, used);
     if(!c.items.length) break;
     if(!seen[c.sig]){ seen[c.sig] = 1; res.combos.push(c); }
     c.items.forEach(function(i){ used[i.id] = 1; });
@@ -6650,6 +6663,8 @@ function fpCombOutHTML(){
   fpShown = r.combos;
   let h = '<div class="fp-gap"><span><b>'+r.gapCal.toLocaleString()+'</b> cal</span><span><b>'+r.gapPro+'</b>g protein</span>'+
     '<span class="fp-of">left of '+ct.toLocaleString()+' · '+pt+'g</span></div>';
+  if(!r.done && (r.gapCal > r.plateCal || r.gapPro > r.plateP))
+    h += '<p class="small" style="color:var(--dim);margin:0 0 8px">Each option is one meal (~'+r.plateCal+' cal · '+r.plateP+'g). Eat one, log it in “Already eaten”, and the next is sized to what’s left.</p>';
   if(r.done) return h+'<div class="card"><p class="dash-quiet">You’re there for today. Nothing left to close.</p></div>';
   if(!r.combos.length){
     const anyLiked = fpFoods().some(function(f){ return f.pref === 'l' && !f.stocked; });
@@ -6668,7 +6683,7 @@ function fpComboHTML(c, i){
   const short = [c.shortC ? c.shortC+' cal' : '', c.shortP ? c.shortP+'g protein' : ''].filter(Boolean).join(' · ');
   return '<div class="card fp-combo"><div class="fp-ch"><span class="fp-ct">Option '+(i+1)+'</span>'+
     '<span class="fp-tot">~'+c.cal.toLocaleString()+' cal · '+c.p+'g P</span></div>'+
-    '<div class="small" style="margin-bottom:4px;color:'+(c.closes ? 'var(--good)">Closes the gap' : 'var(--warn)">Short '+short)+'</div>'+
+    '<div class="small" style="margin-bottom:4px;color:'+(c.closes ? 'var(--good)">A standard meal' : 'var(--warn)">Light by '+short)+'</div>'+
     c.items.map(function(it){
       // The amount is scaled to the servings counted (fpServingFor), so the numbers beside it
       // are always the numbers for that amount.
@@ -6837,12 +6852,13 @@ function fpCombosText(r, opts){
   let t = 'Left to close today: '+r.gapCal+' cal, '+r.gapPro+'g protein'+
     (opts.quickOnly ? ' (quick/no-cook only)' : '')+(opts.includeLiked ? ' (liked foods allowed)' : ' (stocked foods only)')+'.\n';
   if(r.done) return t+'That is already close enough -- nothing left to plan.';
+  t += 'Each option is sized to ONE meal (~'+r.plateCal+' cal, '+r.plateP+'g protein at most), not to the whole gap; he eats one, then plans the next.\n';
   if(!r.combos.length) return t+(r.pool ? 'No plate could be built from what fits.' : 'Nothing usable: he has nothing stocked'+(opts.includeLiked ? ' or liked' : '')+' that fits these filters.');
   return t+r.combos.map(function(c, i){
     return 'Option '+(i+1)+': '+c.items.map(function(it){
       return it.n+', '+(it.amt || it.sv)+' (~'+it.cal+' cal, '+it.p+'g P)'+(it.buy ? ' [not in stock]' : '');
     }).join(' + ')+
-      ' = ~'+c.cal+' cal, '+c.p+'g protein, '+(c.closes ? 'closes the gap' : 'short '+c.shortC+' cal / '+c.shortP+'g');
+      ' = ~'+c.cal+' cal, '+c.p+'g protein, '+(c.closes ? 'a full meal' : 'light by '+c.shortC+' cal / '+c.shortP+'g');
   }).join('\n');
 }
 

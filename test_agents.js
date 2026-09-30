@@ -9233,6 +9233,13 @@ setTimeout(async () => {
        rd.combos.length > 0 && rd.combos.every(c => c.items.every(i => i.qty <= 2)) && allIds(rd).indexOf('blend') >= 0,
        rd.combos.map(c => c.items.map(i => i.qty + 'x' + i.id).join('+')).join(' | '));
     ev("delete S.fuel.foods.blend;");
+    // 2026-09-30: an option was sized to the WHOLE day's gap, so a big gap printed 2x servings and
+    // 2,000+ cal. An option is one meal; the gap is still reported in full.
+    ok('combiner: a big gap still gets meal-sized plates, not day-sized ones',
+       r1.plateCal === 700 && r1.plateP === 50 && r1.gapCal === 1500 && r1.combos.every(c => c.cal <= 700 + 250) && r1.combos[0].cal < 1500 - 300,
+       r1.combos.map(c => c.cal + 'cal/' + c.p + 'g ' + c.items.map(i => i.qty + 'x' + i.id + ':' + i.cal).join('+')).join(' | '));
+    ok('combiner: a small gap shrinks the plate below a full meal',
+       ev('fpCombos(400, 25, {}).plateCal') === 400 && ev('fpCombos(400, 25, {}).plateP') === 25);
     ok('combiner: a closed gap asks for nothing', ev('fpCombos(120, 6, {}).done') === true && ev('fpCombos(120, 6, {}).combos.length') === 0);
     ok('combiner: nothing stocked gives no plates, and says why',
        ev("(function(){ var k = S.fuel.foods; S.fuel.foods = {}; var r = fpCombos(1500, 90, {}); S.fuel.foods = k; return r.pool === 0 && r.combos.length === 0; })()") === true);
