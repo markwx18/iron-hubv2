@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-09-30-v1">
+<meta name="ironhub-build" content="2026-10-01-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16871,7 +16871,7 @@ function renderStatusStrip(){
 
 /* ---- the dashboard ---- */
 /* ============================================================
-   WINTER ARC \u2014 a season-length container, Oct 15 to Apr 1
+   WINTER ARC \u2014 a season-length container, Oct 24 to Apr 1
    ============================================================
    Deliberately computed and deliberately quiet. Every number here comes from data already on
    the device: sessions out of S.logs, bodyweight pace out of bulkRate(), lift goals out of
@@ -16887,9 +16887,13 @@ function renderStatusStrip(){
    Object.assign one level deep, so a top-level key lands correctly on every existing install.
    A field on S.meta (or inside any other nested object) would come back ABSENT instead \u2014 that
    is the shape that erased two months of training on 2026-09-02. */
-const WA_START_MD = '10-15', WA_END_MD = '04-01';
+const WA_START_MD = '10-24', WA_END_MD = '04-01';
+/* The start used before 2026-10-01. A stored S.winterArc carries it, and winterState() only builds a
+   season when none is stored, so changing WA_START_MD alone would move nothing on an install that
+   has already rendered Home. The start is not editable, so a stored legacy value is never his own. */
+const WA_LEGACY_START_MD = '10-15';
 const WA_DEFAULT_SESSIONS = 5;
-/* The arc window containing or next following `key`. Oct 15 of one year to Apr 1 of the next,
+/* The arc window containing or next following `key`. Oct 24 of one year to Apr 1 of the next,
    so which year the window belongs to depends on which side of Apr 1 the date falls. */
 function waSeasonFor(key){
   const k = key || todayKey();
@@ -16903,6 +16907,8 @@ function winterState(){
     S.winterArc = Object.assign({bwTarget:null, sessionTarget:WA_DEFAULT_SESSIONS}, S.winterArc||{}, se);
   }
   if(S.winterArc.sessionTarget == null) S.winterArc.sessionTarget = WA_DEFAULT_SESSIONS;
+  if(String(S.winterArc.start).slice(5) === WA_LEGACY_START_MD)
+    S.winterArc.start = S.winterArc.start.slice(0,5) + WA_START_MD;
   return S.winterArc;
 }
 /* 'before' | 'active' | 'done'. String compares on YYYY-MM-DD, like every other window here. */
