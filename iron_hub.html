@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-01-v1">
+<meta name="ironhub-build" content="2026-10-01-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11570,6 +11570,10 @@ function coachValidateAction(name, inp){
   if(name==='swap_exercise_permanent'){
     inp.to = clean(inp.to);
     if(!inp.to) return {ok:false, error:'No exercise to swap in.'};
+    // Same rule as the queue's swapEx (agSwapClashDay): a swap must not leave one lift on a day twice.
+    const nt = invNormName(inp.to);
+    if(invNormName(inp.from||'') !== nt && (S.split[inp.day].exercises||[]).some(x=>invNormName(exName(x))===nt))
+      return {ok:false, error:inp.to+' is already on '+inp.day+'.'};
   }
   if(name==='set_today_workout' && Array.isArray(inp.exercises)){
     const notes = {};
@@ -13217,9 +13221,30 @@ function liftProfile(name){
   let slope = null;
   try{ const pts = e1rmSeries(name).slice(-8); const reg = pts.length >= 3 ? linreg(pts) : null; if(reg) slope = Math.round(reg.slope*7*10)/10; }catch(e){}
   const tw = last3.map(top);
+  const flat3 = tw.length === 3 && tw[0] === tw[1] && tw[1] === tw[2];
+  /* Same weight is not the same as stuck. Adding reps at one weight is double progression doing
+     its job, and calling that a stall is how the agents got offered swaps for lifts that were
+     moving. Stalled = flat weight AND neither the best set gained a rep nor the average set gained
+     half a rep over the three sessions. Average rather than total, so a set added or removed by
+     setCount does not read as progress or regress. The half rep is because one set wobbling by
+     one rep is noise, not progress: his preacher curl went 10,9,7 -> 10,9,8 on 2026-10-01, a
+     third of a rep per set, and a bare "more than before" read that as reps climbing. */
+  const atTop = function(h){ const t = top(h); const r = h.sets.filter(function(st){ return (+st.w || 0) === t; }).map(function(st){ return +st.r || 0; });
+    return {reps:r, best:Math.max(0, ...r), mean: r.length ? r.reduce(function(a, b){ return a + b; }, 0)/r.length : 0}; };
+  let stalled3 = false, flatRun = 0, flatSince = null;
+  if(flat3){
+    const a = atTop(last3[0]), b = atTop(last3[2]);
+    stalled3 = !(b.best > a.best || b.mean >= a.mean + 0.5 - 1e-9);
+    for(let i = n - 1; i >= 0 && top(hist[i]) === tw[2]; i--){ flatRun++; flatSince = hist[i].date; }
+  }
+  // How often the lift actually comes round: a stall over 4 sessions is a month on a lift trained
+  // once an 8-day cycle, and a week and a half on one trained three times a week.
+  const dgap = [];
+  hist.slice(-6).forEach(function(h, i, arr){ if(i) dgap.push(Math.round((Date.parse(h.date) - Date.parse(arr[i-1].date)) / 86400000)); });
   return {name:name, sessions:n, jumps:jumps, stickRate: judged ? Math.round(stuck/judged*100)/100 : null,
           sessionsPerJump: gaps.length ? pxMedian(gaps) : null, effortNow:eff(last3), effortBefore: prev3.length ? eff(prev3) : null,
-          e1rmPerWeek:slope, flat3: tw.length === 3 && tw[0] === tw[1] && tw[1] === tw[2]};
+          e1rmPerWeek:slope, flat3:flat3, stalled3:stalled3, topW:tw[tw.length-1], lastReps:atTop(hist[n-1]).reps,
+          lastDate:hist[n-1].date, flatRun:flatRun, flatSince:flatSince, everyDays: dgap.length ? pxMedian(dgap) : null};
 }
 /* Weekly hard sets per muscle group against how that group's lifts are moving, over the last N
    completed weeks. For the agents' volume calls (setCount): more sets where volume is low and
@@ -13493,14 +13518,38 @@ function intelSummary(){
         L.push('  '+p.name+': '+(p.e1rmPerWeek === null ? '?' : sg(p.e1rmPerWeek, 1))+' lb/wk; '+p.jumps+' jump'+(p.jumps === 1 ? '' : 's')+
           (p.stickRate !== null ? ' ('+Math.round(p.stickRate*100)+'% held)' : '')+
           (p.effortNow !== null ? '; effort '+p.effortNow+(p.effortBefore !== null ? ' vs '+p.effortBefore : '') : '')+
-          (p.flat3 ? '; same weight 3 sessions running' : '')+(isMaxed(p.name) ? '; MAXED machine' : ''));
+          (p.stalled3 ? '; stalled, see below' : p.flat3 ? '; same weight 3 sessions, reps climbing' : '')+(isMaxed(p.name) ? '; MAXED machine' : ''));
       });
     }
   }catch(e){}
+  /* A stalled lift gets the facts the right call depends on, and the options as equals. This used
+     to be one line per flat lift: "Swap option for X (stalled): Y -- propose with swapEx", with Y
+     picked from every name he had ever logged. On 2026-10-01 it offered Rope Cable Curl for his
+     Preacher Curl Machine, both on D2, and DELTA cited the hint as its evidence the stall was real
+     and tried to swap one for the other. Candidates now skip anything already programmed (the
+     Investigation picker, invSuggestSwap(), always did), and nothing here tells it what to pick. */
   try{
-    profiles.filter(function(p){ return p.flat3 && !isMaxed(p.name) && isSwapEligible(p.name); }).slice(0, 4).forEach(function(p){
-      const c = swapCandidates(p.name, {limit:1})[0];
-      if(c) L.push('  Swap option for '+p.name+' (stalled): '+c.name+' (tier '+c.tier+') \u2014 propose with swapEx if a swap is right.');
+    const programmed = new Set();
+    [S.split, (typeof activeSplitObj==='function') ? activeSplitObj() : null].forEach(function(src){
+      Object.keys(src||{}).forEach(function(dk){ (src[dk].exercises||[]).forEach(function(x){ programmed.add(exName(x)); }); });
+    });
+    const stalls = profiles.filter(function(p){ return p.stalled3 && !isMaxed(p.name); }).slice(0, 4);
+    if(stalls.length) L.push('Stalled lifts (same weight, no rep gain, 3 sessions). Facts, not a verdict; holding steady and saying why is also an answer:');
+    stalls.forEach(function(p){
+      const rr = exRepMode(p.name), inc = incForExercise(p.name), str = isStrMode(p.name);
+      const hits = p.lastReps.filter(function(r){ return r >= rr.hi; }).length;
+      const wks = p.flatSince && p.flatRun > 1 ? Math.round((Date.parse(p.lastDate) - Date.parse(p.flatSince)) / 86400000 / 7 * 10) / 10 : null;
+      let opts = 'Options: more sets (setCount), a rep-range experiment if one can start, a smaller increment (his setting, so say it in the summary)';
+      if(isSwapEligible(p.name)){
+        const cs = swapCandidates(p.name, {exclude:[...programmed], limit:2});
+        opts += ', or a swap ('+(cs.length ? 'candidates not already in his split: '+cs.map(function(c){ return c.name+' [tier '+c.tier+']'; }).join(', ')
+                                          : 'no candidate outside his current split')+')';
+      } else opts += '; a main lift, so not a swap candidate';
+      L.push('  '+p.name+': '+p.topW+' lb for '+p.flatRun+' sessions'+(wks ? ' over '+wks+' wks' : '')+
+        (p.everyDays ? ', trained about every '+p.everyDays+' days' : '')+
+        '; last session '+p.lastReps.join(',')+' reps vs '+(str ? 'strength ' : '')+'range '+rr.lo+'-'+rr.hi+' ('+hits+' of '+p.lastReps.length+' sets at '+rr.hi+')'+
+        (inc > 0 && p.topW > 0 ? '; next jump +'+inc+' lb = '+Math.round(inc / p.topW * 100)+'%' : '')+
+        (p.effortNow !== null ? '; top-set effort '+p.effortNow : '')+'. '+opts+'.');
     });
   }catch(e){}
   try{ const mr = muscleResponse(6);
@@ -15700,12 +15749,10 @@ function agValidateFix(fx, who){
     if(!p.from || !p.to) return null;
     // "from" must be in the permanent split, which is all agApplyFix() swaps in; "to" must be a
     // real exercise. Both are resolved, so the apply's exact match cannot silently miss.
-    const inSplit = [];
-    Object.keys(S.split).forEach(function(dk){ (S.split[dk].exercises||[]).forEach(function(x){ inSplit.push(exName(x)); }); });
-    const fw = invNormName(exSplitNote(p.from).name);
-    const from = inSplit.find(function(n){ return n === p.from; }) || inSplit.find(function(n){ return invNormName(n) === fw; });
+    const from = agSwapFrom(p.from);
     const to = exAcceptName(p.to);
     if(!from || !to || to === from) return null;
+    if(agSwapClashDay(from, to)) return null;   // would put the same lift on one day twice
     return {type:'swapEx', payload:{from:from, to:to}};
   }
   if(fx.type==='setCount'){
@@ -15793,6 +15840,27 @@ function agSnapWeight(name, w){
   return Math.round(snapped * 10) / 10;   // .5 survives a 2.5 lb ladder
 }
 
+/* A swap's "from", resolved to the permanent split's own spelling (all agApplyFix() swaps in),
+   or null. Shared by agValidateFix() and agRejectReason() so the reason can never name a
+   different rule from the one that decided. */
+function agSwapFrom(raw){
+  const inSplit = [];
+  Object.keys(S.split).forEach(function(dk){ (S.split[dk].exercises||[]).forEach(function(x){ inSplit.push(exName(x)); }); });
+  const fw = invNormName(exSplitNote(raw).name);
+  return inSplit.find(function(n){ return n === raw; }) || inSplit.find(function(n){ return invNormName(n) === fw; }) || null;
+}
+/* The day a swap would leave holding the same lift twice, or null. addEx has always refused a lift
+   already on its day; swapEx did not, and on 2026-10-01 DELTA tried to swap Preacher Curl Machine
+   for Rope Cable Curl, which is the next lift on the same D2. Only the same day: one lift on two
+   different days is an ordinary split. */
+function agSwapClashDay(from, to){
+  const nt = invNormName(to);
+  for(const dk in S.split){
+    const names = (S.split[dk].exercises||[]).map(exName);
+    if(names.indexOf(from) >= 0 && names.some(function(n){ return invNormName(n) === nt; })) return dk;
+  }
+  return null;
+}
 /* Why agValidateFix() turned a fix down, in plain words rather than a code. Purely for the
    activity log \u2014 it has no authority over the decision, which agValidateFix() alone makes. */
 function agRejectReason(fx, who){
@@ -15838,9 +15906,20 @@ function agRejectReason(fx, who){
   if(fx.type==='experiment') return expValidate(p, who).why || 'not a usable experiment';
   if(fx.type==='fuelFood') return fpCheckFood(p, true).why || 'not a usable food';
   if(fx.type==='swapEx'){
-    if(!p.from || !p.to) return 'missing from/to exercise';
-    if(!exAcceptName(p.to)) return '\u201c'+String(p.to).slice(0,40)+'\u201d does not read as an exercise name';
-    return '\u201c'+String(p.from).slice(0,40)+'\u201d is not in your split';
+    // Say what DID arrive. "missing from/to" on 2026-10-01 left no way to tell whether the model
+    // used other key names or sent nothing, because only the title is kept. Keys only, clipped.
+    if(!p.from || !p.to){
+      const got = Object.keys(p).slice(0, 6).map(function(k){ return String(k).slice(0, 20); });
+      return 'missing from/to exercise (got '+(got.length ? got.join(', ') : 'an empty payload')+')';
+    }
+    const to = exAcceptName(p.to);
+    if(!to) return '\u201c'+String(p.to).slice(0,40)+'\u201d does not read as an exercise name';
+    const from = agSwapFrom(p.from);
+    if(!from) return '\u201c'+String(p.from).slice(0,40)+'\u201d is not in your split';
+    if(to === from) return 'it swaps '+from+' for itself';
+    const dk = agSwapClashDay(from, to);
+    if(dk) return to+' is already on '+dk+', the same day as '+from;
+    return 'malformed';
   }
   return 'value out of the allowed range';
 }

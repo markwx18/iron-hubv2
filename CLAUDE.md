@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2382 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2400 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -683,13 +683,26 @@ sessions against 71%, and grind share alone would have made recovery count for l
 - WHOOP against his usual, and how recovery affects him;
 - the deload forecast;
 - bodyweight against the band, intake against target, and fuel against results;
-- per-lift patterns (bodyweight lifts left out), with a swap candidate for each stalled lift;
+- per-lift patterns (bodyweight lifts left out), and a facts line for each stalled lift;
 - per-muscle volume against trend (the basis for `setCount`);
 - the last 7 days of engine decisions and calls.
 
 It is about 600 tokens on his real data, and `agBaseContext()` adds it for DELTA, ECHO and ZULU
 (the brief included). Every line is guarded on its own, so a failing line can never cost an agent
 its prompt. Check the usage card before growing it.
+
+**The summary states facts, never a pick** (2026-10-01). It used to print "Swap option for X
+(stalled): Y, propose with swapEx", with Y drawn from every name he had ever logged. It offered
+Rope Cable Curl for his Preacher Curl Machine, both on D2. DELTA cited the hint as its evidence and
+tried the swap, and only a malformed payload stopped it reaching the queue. Three rules followed:
+- **A stall is `liftProfile().stalled3`**: flat top weight AND no rep gain. The best set must gain
+  a rep or the average set half a rep, so double progression is not a stall and a one-rep wobble
+  is not progress.
+- **Swap candidates skip everything already programmed**, as `invSuggestSwap()` always did. The
+  stall line lists the options as equals: sets, a rep-range experiment, a smaller increment, a swap.
+- **A swap may not put one lift on a day twice** (`agSwapClashDay()`), in `agValidateFix()` and in
+  ZULU's `swap_exercise_permanent`, the same rule `addEx` already had. A lift on two different days
+  is an ordinary split and still passes.
 
 **The Sunday check-in is notes only** (Mark's choice, 2026-09-28). Nothing in it can change a future
 date; V4's removal of date overrides stands.

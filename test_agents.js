@@ -9105,14 +9105,62 @@ setTimeout(async () => {
        /INTELLIGENCE SUMMARY/.test(sum) && /Today\u2019s call: /.test(sum) && /WHOOP, last 7 days: recovery/.test(sum) && /How recovery affects him/.test(sum), sum.slice(0, 400));
     ok('summary: bodyweight against the band, and intake against target',
        /Bodyweight: \+0\.6\d lb\/wk .*\(pocket; lean-bulk band 0\.5\u20131\)/.test(sum) && /Intake, last 14 days \(5 logged\)/.test(sum), (sum.match(/Bodyweight[^\n]*/) || [''])[0]);
-    ok('summary: per-lift patterns, and a swap option for the stalled lift',
-       /Lift patterns/.test(sum) && /Zz I Press: \+[\d.]+ lb\/wk; 5 jumps \(100% held\)/.test(sum) && /Swap option for Cable Row \(stalled\)/.test(sum), (sum.match(/Lift patterns[\s\S]{0,500}/) || [''])[0]);
+    ok('summary: per-lift patterns, and the stalled lift’s facts',
+       /Lift patterns/.test(sum) && /Zz I Press: \+[\d.]+ lb\/wk; 5 jumps \(100% held\)/.test(sum) && /Cable Row: 150 lb for 6 sessions/.test(sum), (sum.match(/Lift patterns[\s\S]{0,900}/) || [''])[0]);
+    ok('summary: no line tells the agent which fix to propose', !/propose with swapEx/.test(sum));
     ok('summary: muscle groups and the engine\u2019s recent decisions, with the call',
        /Muscle groups, last 6 weeks/.test(sum) && /Engine decisions, last 7 days: .*\[easy\].*Zz I Press increase 170\u2192175/.test(sum), (sum.match(/Engine decisions[^\n]*/) || [''])[0]);
     ok('summary: stays small (under 8000 characters, ~2K tokens)', sum.length < 8000, String(sum.length));
     ok('summary: a lift logged at a 0.5 lb bodyweight marker is left out of the patterns', sum.indexOf('Zz I Dips') < 0);
     ok('summary: DELTA, ECHO and ZULU get it; CHARLIE does not',
        ['delta', 'echo', 'zulu'].every(a => ev("agBaseContext('" + a + "')").indexOf('INTELLIGENCE SUMMARY') >= 0) && ev("agBaseContext('charlie')").indexOf('INTELLIGENCE SUMMARY') < 0);
+
+    // --- stalls and swaps (2026-10-01) ---
+    // His real case: Preacher Curl Machine flat at 70 x 10,9,8, and the summary offered Rope Cable
+    // Curl as its swap, the next lift on the same day. DELTA cited that hint as its evidence and
+    // tried the swap. Reps wobble by a rep, as real ones do; one set count differs, so a mean that
+    // counted sets would read it as change.
+    // The default split already has Preacher Curl Machine on D2 and Incline Dumbbell Curl on D4; Rope
+    // Cable Curl joins D2, as in his real split.
+    ev("S.split.D2.exercises.push({name:'Rope Cable Curl', inc:10});");
+    const st = [];
+    const cs = (w, reps) => reps.map(r => ({w: w, r: r, e: 'solid'}));
+    [[-40, 65, [12, 11, 10]], [-32, 70, [10, 9, 8]], [-24, 70, [10, 9, 7]], [-16, 70, [10, 9, 8, 7]], [-8, 70, [10, 9, 8]]].forEach(([d, w, r], i) =>
+      st.push({id: 897100 + i, date: dk(d), day: 'D2', entries: [
+        {exercise: 'Preacher Curl Machine', sets: cs(w, r)},
+        {exercise: 'Rope Cable Curl', sets: cs(70 + i * 5, [12, 10, 9])},
+        // Same weight every time, a rep more each time: double progression, not a stall.
+        {exercise: 'Incline Dumbbell Curl', sets: cs(30, [8 + i, 8 + i, 7 + i].map(x => Math.min(x, 12)))}]}));
+    ev('S.logs = S.logs.concat(' + JSON.stringify(st) + ');');
+    const pp = ev("liftProfile('Preacher Curl Machine')"), ip = ev("liftProfile('Incline Dumbbell Curl')");
+    ok('stall: flat weight and no rep gain is a stall', pp && pp.stalled3 === true && pp.flatRun === 4 && pp.everyDays === 8, JSON.stringify(pp));
+    ok('stall: flat weight with reps climbing is NOT a stall', ip && ip.flat3 === true && ip.stalled3 === false, JSON.stringify(ip));
+    const sum2 = ev('intelSummary()');
+    const prl = (sum2.match(/ {2}Preacher Curl Machine: \d+ lb for [^\n]*/) || [''])[0];
+    const prr = ev("exRepMode('Preacher Curl Machine')");
+    ok('stall line: the facts the call depends on',
+       /70 lb for 4 sessions over 3\.4 wks, trained about every 8 days/.test(prl) && prl.indexOf('last session 10,9,8 reps vs range ' + prr.lo + '-' + prr.hi) >= 0 &&
+       /next jump \+5 lb = 7%/.test(prl) && /Options: more sets/.test(prl), prl);
+    ok('stall line: never offers a swap to a lift already in his split', prl && !/Rope Cable Curl \[/.test(prl) && !/Incline Dumbbell Curl \[/.test(prl), prl);
+    ok('stall line: a lift gaining reps at one weight gets none, and the pattern line says so',
+       !/ {2}Incline Dumbbell Curl: 30 lb for/.test(sum2) && /Incline Dumbbell Curl: [^\n]*same weight 3 sessions, reps climbing/.test(sum2), (sum2.match(/[^\n]*Incline Dumbbell Curl[^\n]*/g) || []).join(' | '));
+
+    // --- the validator: a swap must not put one lift on a day twice ---
+    const V3 = (fx, who) => ev('JSON.stringify(agValidateFix(' + JSON.stringify(fx) + ', ' + JSON.stringify(who || 'delta') + ') || null)');
+    const R3 = fx => ev('agRejectReason(' + JSON.stringify(fx) + ", 'delta')");
+    const dup = {type: 'swapEx', payload: {from: 'Preacher Curl Machine', to: 'Rope Cable Curl'}};
+    ok('swapEx: refused when "to" is already on the same day, and the reason names the day',
+       V3(dup) === 'null' && /Rope Cable Curl is already on D2/.test(R3(dup)), R3(dup));
+    ok('swapEx: a lowercase spelling of the same-day lift is refused too', V3({type: 'swapEx', payload: {from: 'Preacher Curl Machine', to: 'rope cable curl'}}) === 'null');
+    ok('swapEx: a lift on a DIFFERENT day still passes (one lift on two days is an ordinary split)', (JSON.parse(V3({type: 'swapEx', payload: {from: 'Preacher Curl Machine', to: 'Incline Dumbbell Curl'}})) || {payload: {}}).payload.to === 'Incline Dumbbell Curl');
+    ok('swapEx: a lift not in the split passes', (JSON.parse(V3({type: 'swapEx', payload: {from: 'Preacher Curl Machine', to: 'Spider Curl'}})) || {payload: {}}).payload.to === 'Spider Curl');
+    ok('swapEx: a malformed payload says what keys arrived',
+       /got exercise, replacement/.test(R3({type: 'swapEx', payload: {exercise: 'A', replacement: 'B'}})) && /empty payload/.test(R3({type: 'swapEx', payload: {}})),
+       R3({type: 'swapEx', payload: {exercise: 'A', replacement: 'B'}}));
+    const cva = ev("coachValidateAction('swap_exercise_permanent', {day:'D2', from:'Preacher Curl Machine', to:'Rope Cable Curl'})");
+    ok('chat swap: the same rule, so ZULU’s card cannot do it either', cva && cva.ok === false && /already on D2/.test(cva.error), JSON.stringify(cva));
+    ok('chat swap: an ordinary swap still goes through', ev("coachValidateAction('swap_exercise_permanent', {day:'D2', from:'Preacher Curl Machine', to:'Spider Curl'}).ok") === true);
+
     ev('S.logs = []; S.nutrition = []; S.weights = []; S.readiness = []; S.whoop = {};');
     let emptyOk = true; try { ev('intelSummary()'); ev("agBaseContext('delta')"); } catch (e) { emptyOk = false; }
     ok('summary: an empty history never costs an agent its prompt', emptyOk);
@@ -9828,7 +9876,17 @@ setTimeout(async () => {
     ok('record: a bodyweight lift gets no forecast', ev('predLifts()')[0] === 'Zz Pred Row' && ev("predLifts().indexOf('Hanging Leg Raise')") === -1 && !preds.some(p => p.subject === 'Hanging Leg Raise'), JSON.stringify(ev('predLifts()')));
     ok('record: nor a prescription score', !ev('predTopsets()').some(x => x.name === 'Hanging Leg Raise'));
     ok('record: a second tick the same week makes nothing', ev('predTick()') === 0 && ev('S.predictions.length') === preds.length);
-    ok('record: the foreground check makes them too', (function(){ ev('S.predictions = []; _agFgAt = 0;'); ev('agForegroundCheck()'); return ev('S.predictions.length') === preds.length; })());
+    // The schedulers are stubbed for this one call. agForegroundCheck() also runs agMaybeAutoRun(),
+    // which after 9 PM on the real clock starts a nightly cycle that never settles here and leaves
+    // _agRunning raised, so every later agRunAll() returned at its first gate. The suite went red
+    // only when run in the evening.
+    ok('record: the foreground check makes them too', (function(){
+      ev('window.__fgReal = [whoopMaybeKick, agMaybeAutoRun, agMaybeMorningBrief, gdocPush];');
+      ev('whoopMaybeKick = agMaybeAutoRun = agMaybeMorningBrief = gdocPush = function(){};');
+      try{ ev('S.predictions = []; _agFgAt = 0;'); ev('agForegroundCheck()'); return ev('S.predictions.length') === preds.length; }
+      finally{ ev('whoopMaybeKick = window.__fgReal[0]; agMaybeAutoRun = window.__fgReal[1]; agMaybeMorningBrief = window.__fgReal[2]; gdocPush = window.__fgReal[3];'); }
+    })());
+    ok('record: the foreground check started no nightly cycle', ev('_agRunning') === false);
 
     // --- resolving an e1RM forecast: hit, miss, error math, interrupted, pending, no data ---
     // The row's sessions near 21 days ago read ~e1RM of the w0 at k=3.
