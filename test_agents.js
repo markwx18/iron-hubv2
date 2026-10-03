@@ -5508,8 +5508,8 @@ setTimeout(async () => {
     ev("live = {date:todayKey(), day:'D1', startedAt:Date.now(), exercises:[{name:'Barbell Bench Press'," +
        " sets:[], done:false, planned:3, lo:8, hi:12, targetW:135, advW:135, advLo:8, advHi:12}], curIdx:0};");
     ev('liveActiveIdx = 0; MODE = "live"; renderLive();');
-    // Order matters: setEffLever() calls renderLive(), which regenerates the dock and would
-    // wipe anything already typed into it. Set the lever first, then fill the inputs.
+    // Lever first, then the inputs. That order used to be required -- renderLive() wiped anything
+    // typed into the dock -- and is no longer; the V4 Stage 0 section checks the other order.
     ev('setEffLever(35);');
     ev("document.getElementById('dockW').value = '135'; document.getElementById('dockR').value = '10';");
     ev('logLiveSet(0)');
@@ -10281,6 +10281,200 @@ setTimeout(async () => {
     ok('tips: rendering them wrote nothing to state', ev('JSON.stringify(S)') === s4Saved);
   } catch (e) {
     ok('investigation tips section', false, e.stack);
+  }
+
+  console.log('=== V4 STAGE 0: LIVE DATA SAFETY, CLEAN BACKUPS, HONEST SPEND ===');
+  try {
+    w.__s0Saved = ev('JSON.stringify(S)');
+    ev('window.__s0LastPush = _lastPushExportedAt; window.__realFetchS0 = window.fetch;');
+    ev("MODE = 'live'; liveEditSet = null; painOpenFor = null; painDraftLevel = 0; liveDeltaOpen = false; liveDockEff = ''; liveDockLever = null; stopRest();");
+    const mkLive = function(names, date){
+      return "live = {date:" + (date ? JSON.stringify(date) : 'todayKey()') + ", day:'D1', startedAt:Date.now()-20*60000, curIdx:0, trimmed:false, exercises:[" +
+        names.map(function(n){ return "{name:" + JSON.stringify(n) + ", sets:[], done:false, planned:3, lo:8, hi:12, targetW:135, repMode:'hyp'}"; }).join(',') +
+        "]}; liveActiveIdx = 0; renderLive();";
+    };
+    const val = (id) => ev("(document.getElementById('" + id + "')||{}).value");
+
+    // --- typed values survive a repaint that has nothing to do with them ---
+    // Until this, tapping an effort preset after typing the reps wiped the reps and reset the
+    // weight, so effort had to be tapped first. Each of these taps repaints the whole LIVE body.
+    ev(mkLive(['Zz Keep Bench Press', 'Zz Keep Curl']));
+    ev("document.getElementById('dockW').value = '140'; document.getElementById('dockR').value = '9';");
+    ev("pickEff('grind');");
+    ok('dock: reps typed BEFORE the effort tap survive it', val('dockR') === '9', val('dockR'));
+    ok('dock: and so does a weight typed over the prescription', val('dockW') === '140', val('dockW'));
+    ev('setEffLever(35);');
+    ok('dock: a slider release (a full repaint) keeps them too', val('dockR') === '9' && val('dockW') === '140');
+    ev('painToggle(0);');
+    ok('dock: opening the pain panel keeps them', val('dockR') === '9');
+    ev("document.getElementById('painNote').value = 'left elbow'; painPickLevel(1);");
+    ok('pain: picking a level keeps the note already typed', val('painNote') === 'left elbow', val('painNote'));
+    ok('pain: and the dock values with it', val('dockR') === '9' && val('dockW') === '140');
+    ev('painToggle(0);');
+    ev('logLiveSet(0)');
+    const s0set = ev('live.exercises[0].sets[0]');
+    ok('dock: typed first, tagged second, and the set logs exactly what was typed',
+       s0set && s0set.w === 140 && s0set.r === 9 && s0set.ef === 35 && s0set.e === 'grind', JSON.stringify(s0set));
+    ok('dock: a logged set leaves the next one clean, not pre-filled with the last reps', val('dockR') === '', val('dockR'));
+    ev("document.getElementById('dockR').value = '7';");
+    ev('focusLiveEx(1);');
+    ok('dock: moving to another lift does not carry the reps across', val('dockR') === '', val('dockR'));
+    ev('focusLiveEx(0);');
+    ok('dock: nor back again', val('dockR') === '', val('dockR'));
+    ev('editLiveSet(0, 0);');
+    ev("document.getElementById('esW').value = '145';");
+    ev("liveEditEff(0, 0, 'easy');");
+    ok('set edit: tapping an effort keeps a weight typed but not yet saved', val('esW') === '145', val('esW'));
+    ev('saveLiveSetEdit(0, 0);');
+    ok('set edit: and Save then writes it', ev('live.exercises[0].sets[0].w') === 145);
+    ev("window.__s0Key = S.settings.apiKey; S.settings.apiKey = 'sk-test'; liveDeltaOpen = true; renderLive();");
+    ev("document.getElementById('liveDeltaIn').value = 'is 140 too heavy';");
+    ev("pickEff('easy');");
+    ok('DELTA box: a half-typed question survives a repaint', val('liveDeltaIn') === 'is 140 too heavy', val('liveDeltaIn'));
+    ev("liveDeltaOpen = false; S.settings.apiKey = window.__s0Key; delete window.__s0Key; liveDockEff = ''; liveDockLever = null;");
+
+    // --- the slider can be dragged ---
+    // Every oninput used to repaint, replacing the slider under his finger after one step.
+    ev("renderLive(); window.__s0Range = document.querySelector('#liveBody input[type=range]');");
+    ev('setEffLever(60, true);');
+    ok('slider: dragging does not replace the slider under the finger',
+       ev("!!window.__s0Range && document.querySelector('#liveBody input[type=range]') === window.__s0Range") === true);
+    ok('slider: the readout follows the thumb', /SOLID/.test(ev("document.querySelector('#liveBody .efflv-val').textContent")),
+       ev("document.querySelector('#liveBody .efflv-val').textContent"));
+    ok('slider: and the matching preset lights up', ev("document.querySelector('#dockEff button[data-e=solid]').className") === 'sel e-solid');
+    ok('slider: the value is held for the set', ev('liveDockLever') === 60 && ev('liveDockEff') === 'solid');
+    ev('setEffLever(60);');
+    ok('slider: the release repaints, as before', ev("document.querySelector('#liveBody input[type=range]') !== window.__s0Range") === true);
+    ev("delete window.__s0Range; liveDockEff = ''; liveDockLever = null;");
+
+    // --- the rest note promises what the timer then starts at ---
+    ev('stopRest();');
+    ev(mkLive(['Zz Rest Bench Press']));
+    ev("pickEff('grind');");
+    const note = ev("document.querySelector('#liveBody .lv3-restnote').textContent");
+    const noteMin = parseFloat((note.match(/~([\d.]+) min/) || [])[1]);
+    ev("document.getElementById('dockR').value = '10';");
+    ev('logLiveSet(0)');
+    ok('rest: the note before the set matched the timer it started', noteMin === Math.round(ev('rest.total') / 60 * 10) / 10,
+       note + ' vs a ' + ev('rest.total') + 's timer');
+    ok('rest: including the extra time for the grind just tagged', /hard set/.test(note), note);
+
+    // --- Done does not kill the rest the last set started ---
+    ev('stopRest();');
+    ev(mkLive(['Zz Done Bench Press', 'Zz Done Curl']));
+    ev("document.getElementById('dockR').value = '10'; logLiveSet(0);");
+    ok('rest: logging a set starts the timer', ev('rest.running') === true);
+    ev('finishExercise(0);');
+    ok('rest: tapping Done does not stop it', ev('rest.running') === true);
+    ok('rest: it is shown under the next lift', ev("!!document.querySelector('#liveex-1 #rtTime')") === true);
+    ev("document.getElementById('dockR').value = '12'; logLiveSet(1); finishExercise(1);");
+    ok('rest: once every lift is done it stops', ev('rest.running') === false);
+
+    // --- a session open past midnight is not thrown away ---
+    ev('stopRest(); live = null; clearLiveDraft();');
+    const yday = ev('mesoAddDays(todayKey(), -1)');
+    ev("localStorage.setItem(LIVE_KEY, JSON.stringify({date:'" + yday + "', day:'D1', startedAt:Date.now()-2*3600000, exercises:[]}));");
+    ok('midnight: a session started 2h ago, the evening before, survives a reload', !!ev('loadLiveDraft()'));
+    ev("localStorage.setItem(LIVE_KEY, JSON.stringify({date:'" + yday + "', day:'D1', startedAt:Date.now()-8*3600000, exercises:[]}));");
+    ok('midnight: one left open 8h is a forgotten draft and is not restored', ev('loadLiveDraft()') === null);
+    ev("localStorage.setItem(LIVE_KEY, JSON.stringify({date:todayKey(), day:'D1', startedAt:Date.now()-9*3600000, exercises:[]}));");
+    ok("midnight: today's draft still loads, however old", !!ev('loadLiveDraft()'));
+    ev('clearLiveDraft();');
+    ev(mkLive(['Zz Midnight Row'], yday));
+    ev("document.getElementById('dockR').value = '10'; logLiveSet(0); endLiveSession();");
+    const mlog = ev("S.logs.slice().reverse().find(function(l){ return l.entries.some(function(e){ return e.exercise==='Zz Midnight Row'; }); })");
+    ok('midnight: a session that ran past midnight is logged to the day it started', !!mlog && mlog.date === yday, mlog && mlog.date);
+    ok('midnight: and judged against that day’s schedule', !!mlog && mlog.scheduled === ev("scheduledDayFor('" + yday + "')"), mlog && mlog.scheduled);
+    ev("MODE = 'review'; stopRest(); live = null; clearLiveDraft();");
+
+    // --- a backup is his data, not his credentials ---
+    ev("S.settings.apiKey='sk-zz'; S.settings.ghToken='ghp_zz'; S.settings.gistId='gist_zz'; S.settings.gdocUrl='https://zz'; S.settings.gdocSecret='sec_zz';");
+    const exp = ev('exportPayload()');
+    ok('export: no API key, GitHub token, gist id or doc credentials in the file',
+       ['apiKey', 'ghToken', 'gistId', 'gdocUrl', 'gdocSecret'].every(function(k){ return !(k in exp.settings); }), JSON.stringify(Object.keys(exp.settings)));
+    const pushStrips = ev("(function(){ const d = JSON.parse(syncPayload()).data.settings; return Object.keys(S.settings).filter(function(k){ return !(k in d); }); })()");
+    ok('export: it leaves out at least everything the sync push leaves out',
+       pushStrips.length >= 5 && pushStrips.every(function(k){ return !(k in exp.settings); }), JSON.stringify(pushStrips));
+    ok('export: but it is still all his data', Array.isArray(exp.logs) && exp.logs.length === ev('S.logs.length') && !!exp.split);
+    ok('export: and making it does not touch the device’s own credentials', ev('S.settings.apiKey') === 'sk-zz' && ev('S.settings.ghToken') === 'ghp_zz');
+    w.__s0exp = exp;
+    ev('importApply(JSON.parse(JSON.stringify(window.__s0exp)));');
+    ok('import: restoring a clean backup keeps this device connected',
+       ev('S.settings.apiKey') === 'sk-zz' && ev('S.settings.ghToken') === 'ghp_zz' && ev('S.settings.gistId') === 'gist_zz' && ev('S.settings.gdocSecret') === 'sec_zz');
+    ok('import: and restores the data', ev('S.logs.length') === exp.logs.length);
+    ev("(function(){ const old = JSON.parse(JSON.stringify(window.__s0exp)); old.settings.ghToken = 'ghp_OLD'; importApply(old); })()");
+    ok('import: an old backup cannot put back a token that has since been replaced', ev('S.settings.ghToken') === 'ghp_zz');
+    ev("S.settings.ghToken = ''; (function(){ const old = JSON.parse(JSON.stringify(window.__s0exp)); old.settings.ghToken = 'ghp_OLD'; importApply(old); })()");
+    ok('import: but on a device with none, an old backup still supplies one', ev('S.settings.ghToken') === 'ghp_OLD');
+    ev('delete window.__s0exp;');
+    ev('S = JSON.parse(window.__s0Saved);');
+
+    // --- a reply cut off mid-stream was billed, so it is counted ---
+    const sseS0 = function(evs){ return evs.map(function(e){ return 'event: ' + e.type + '\n' + 'data: ' + JSON.stringify(e) + '\n\n'; }).join(''); };
+    const bytesS0 = function(str){ return Array.from(new TextEncoder().encode(str)); };
+    w.__s0cut = [bytesS0(sseS0([
+      {type:'message_start', message:{id:'m', content:[], stop_reason:null, usage:{input_tokens:1200, output_tokens:1}}},
+      {type:'content_block_start', index:0, content_block:{type:'thinking', thinking:'', signature:''}},
+      {type:'content_block_delta', index:0, delta:{type:'thinking_delta', thinking:'x'.repeat(400)}}
+    ]))];
+    ev("S.settings.apiKey = 'sk-test'; localStorage.removeItem(AI_USAGE_KEY); window.__fetchN = 0;");
+    ev("window.fetch = window.__apiOnly(function(){ return Promise.resolve(window.__sseRes(window.__s0cut.concat(['DROP']))); });");
+    let s0err = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'night:delta'})"); } catch (e) { s0err = e; }
+    const ulog = ev("JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]')");
+    ok('usage: the call really was cut off mid-stream', !!s0err && /cut off/.test(s0err.message), s0err && s0err.message);
+    ok('usage: a reply cut off mid-stream is still counted, because it was billed',
+       ulog.length === 1 && ulog[0].r === 'night:delta' && ulog[0].i === 1200 && ulog[0].x === 1, JSON.stringify(ulog));
+    ok('usage: with what had streamed in as the output floor', !!ulog[0] && ulog[0].o >= 100, JSON.stringify(ulog[0]));
+    ok('usage: and the spend card says so', ev('aiUsageSummary(30).cut') === 1 && /cut off mid-stream/.test(ev('aiUsageCardHTML()')));
+    ev("localStorage.removeItem(AI_USAGE_KEY);");
+    ev("window.fetch = window.__apiOnly(function(){ return Promise.resolve({ok:false, status:500, text: async function(){ return 'overloaded'; }}); });");
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'night:delta'})"); } catch (e) {}
+    ok('usage: an API error reply is not counted as spend', ev("JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]').length") === 0);
+    // ...nor one that arrives INSIDE a stream that had already started: it is an API reply, not a
+    // cut-off, and says nothing about what was generated.
+    w.__s0err = [bytesS0(sseS0([
+      {type:'message_start', message:{id:'m3', content:[], stop_reason:null, usage:{input_tokens:900, output_tokens:1}}},
+      {type:'error', error:{type:'overloaded_error', message:'Overloaded'}}
+    ]))];
+    ev("window.fetch = window.__apiOnly(function(){ return Promise.resolve(window.__sseRes(window.__s0err)); });");
+    let s0apiErr = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'night:delta'})"); } catch (e) { s0apiErr = e; }
+    ok('usage: the in-stream error really did arrive as an API error', !!s0apiErr && /^API 529/.test(s0apiErr.message), s0apiErr && s0apiErr.message);
+    ok('usage: and it is not counted as a cut-off reply', ev("JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]').length") === 0,
+       ev("localStorage.getItem(AI_USAGE_KEY)"));
+    ev('delete window.__s0err;');
+
+    // --- the morning brief is one request with no tools, as its comment has always said ---
+    w.__s0full = [bytesS0(sseS0([
+      {type:'message_start', message:{id:'m2', type:'message', role:'assistant', content:[], stop_reason:null, usage:{input_tokens:500, output_tokens:1}}},
+      {type:'content_block_start', index:0, content_block:{type:'text', text:''}},
+      {type:'content_block_delta', index:0, delta:{type:'text_delta', text:'{"brief":"Nothing needs you today."}'}},
+      {type:'content_block_stop', index:0},
+      {type:'message_delta', delta:{stop_reason:'end_turn'}, usage:{output_tokens:40}},
+      {type:'message_stop'}
+    ]))];
+    ev('if(window.__realData) callClaudeWithData = window.__realData;');
+    ok('harness: the real tool loop is in place for the brief check', /noTools/.test(ev('callClaudeWithData.toString()')));
+    ev("localStorage.removeItem(AI_USAGE_KEY); window.__s0Bodies = []; window.__fetchN = 0;");
+    ev("window.fetch = window.__apiOnly(function(u, init){ window.__s0Bodies.push(JSON.parse(init.body)); return Promise.resolve(window.__sseRes(window.__s0full)); });");
+    const briefTxt = await ev('agWriteBrief(true)');
+    const b0 = ev('window.__s0Bodies[0]') || {};
+    ok('brief: written in exactly one request', ev('window.__fetchN') === 1, 'fetches=' + ev('window.__fetchN'));
+    ok('brief: with no tool definitions sent', ev('window.__s0Bodies.length') === 1 && !('tools' in b0), JSON.stringify(Object.keys(b0)));
+    ok('brief: the reply still comes through', briefTxt === 'Nothing needs you today.', String(briefTxt));
+    ok('brief: and the noTools switch never reaches the API request', JSON.stringify(b0).indexOf('noTools') < 0);
+    const u1 = ev("JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]')");
+    ok('usage: a complete reply is counted without the cut-off mark',
+       u1.length === 1 && u1[0].r === 'brief' && u1[0].o === 40 && !u1[0].x, JSON.stringify(u1));
+    ev('delete window.__s0cut; delete window.__s0full; delete window.__s0Bodies;');
+  } catch (e) {
+    ok('V4 stage 0 section', false, e.stack);
+  } finally {
+    ev("MODE = 'review'; try{ stopRest(); }catch(e){} live = null; try{ clearLiveDraft(); }catch(e){} localStorage.removeItem(AI_USAGE_KEY);");
+    ev('if(window.__realFetchS0) window.fetch = window.__realFetchS0; delete window.__realFetchS0;');
+    ev('if(window.__s0Saved){ S = JSON.parse(window.__s0Saved); delete window.__s0Saved; }');
+    ev('if(window.__s0LastPush !== undefined){ _lastPushExportedAt = window.__s0LastPush; delete window.__s0LastPush; }');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-02-v1">
+<meta name="ironhub-build" content="2026-10-03-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4083,12 +4083,14 @@ function aiBody(messages, system, maxTokens, opts){
 const AI_USAGE_KEY = 'ironhub:usage', AI_USAGE_MAX = 2000;
 // Sonnet 5, USD per million tokens (platform.claude.com pricing, checked 2026-09-25).
 const AI_PRICE = {input:2, output:10, cacheWrite:2.5, cacheRead:0.2};
-function aiUsageNote(route, u){
+function aiUsageNote(route, u, cut){
   if(!u) return;
   try{
     const arr = JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]');
-    arr.push({at:Date.now(), r:String(route||'other'), i:+u.input_tokens||0, o:+u.output_tokens||0,
-              cw:+u.cache_creation_input_tokens||0, cr:+u.cache_read_input_tokens||0});
+    const rec = {at:Date.now(), r:String(route||'other'), i:+u.input_tokens||0, o:+u.output_tokens||0,
+              cw:+u.cache_creation_input_tokens||0, cr:+u.cache_read_input_tokens||0};
+    if(cut) rec.x = 1;   // cut off mid-stream: input exact, output a floor (see aiSend)
+    arr.push(rec);
     localStorage.setItem(AI_USAGE_KEY, JSON.stringify(arr.slice(-AI_USAGE_MAX)));
   }catch(e){}
 }
@@ -4100,7 +4102,7 @@ function aiUsageSummary(days){
   let arr = [];
   try{ arr = JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]'); }catch(e){}
   const n = days || 30, since = Date.now() - n*86400000;
-  const by = {}; let total = 0, calls = 0, first = null;
+  const by = {}; let total = 0, calls = 0, first = null, cut = 0;
   arr.forEach(function(x){
     if(!x || !(x.at >= since)) return;
     const k = String(x.r || 'other').split(':')[0];
@@ -4108,9 +4110,10 @@ function aiUsageSummary(days){
     if(!by[k]) by[k] = {calls:0, cost:0, i:0, o:0};
     by[k].calls++; by[k].cost += c; by[k].i += x.i||0; by[k].o += x.o||0;
     total += c; calls++;
+    if(x.x) cut++;
     if(first === null || x.at < first) first = x.at;
   });
-  return {days:n, calls:calls, total:total, by:by, first:first};
+  return {days:n, calls:calls, total:total, by:by, first:first, cut:cut};
 }
 const AI_ROUTE_LABEL = {night:'Nightly cycle', brief:'Morning brief', letter:'Weekly letter', chat:'Chats',
   live:'Mid-workout DELTA', audit:'Weekly audit', meals:'Meal ideas', import:'Screenshot import', weekplan:'Week plan', other:'Other'};
@@ -4127,7 +4130,9 @@ function aiUsageCardHTML(){
         const r = u.by[k];
         return row(esc(AI_ROUTE_LABEL[k] || k)+' <span class="small">\u00b7 '+r.calls+' call'+(r.calls===1?'':'s')+'</span>', '$'+r.cost.toFixed(2));
       }).join('')+
-      row('Total', '$'+u.total.toFixed(2), true);
+      row('Total', '$'+u.total.toFixed(2), true)+
+      (u.cut ? '<p class="small" style="margin-top:6px;color:var(--dim)">Includes '+u.cut+' repl'+(u.cut===1?'y':'ies')+
+               ' cut off mid-stream. Those were billed too; their output is counted low.</p>' : '');
   }
   return subSection('API spend on this device', body, false,
     {pref:'coach.spend', summary: u.calls ? '$'+u.total.toFixed(2)+' in the last 30 days \u00b7 '+u.calls+' calls' : 'Nothing recorded yet'});
@@ -4202,6 +4207,15 @@ async function aiSend(body){
       aiUsageNote(body._route, reply && reply.usage);
       return reply;
     }catch(e){
+      // A reply cut off after its stream began was still billed -- the API was generating it --
+      // but never reached aiUsageNote() above, so the spend card under-counted exactly the calls
+      // that died. Input is exact (message_start carries it); output is a floor from what had
+      // streamed in, because summarized thinking shows less than the thinking it bills. An API
+      // error reply is not counted: it says nothing about what was generated.
+      if(replied && tel.usage && !/^API \d/.test(String((e && e.message) || ''))){
+        aiUsageNote(body._route, {input_tokens:+tel.usage.input_tokens||0,
+          output_tokens:Math.max(+tel.usage.output_tokens||0, Math.ceil((tel.chars||0)/4))}, true);
+      }
       // Reworded to the fact it actually is -- and worded so agIsNetworkErr() matches it. A
       // night on which every agent timed out really was a dead connection and should still
       // qualify for the cycle-level retry, even though this layer refuses to repeat the
@@ -4306,11 +4320,16 @@ async function aiReadReply(res, tel){
     while((m = /\r?\n\r?\n/.exec(buf))){
       aiStreamEvent(st, buf.slice(0, m.index));
       T.events++; T.what = st.what || T.what;
+      // Kept on the telemetry, which outlives a throw, so a cut-off reply can still be counted.
+      if(st.msg && st.msg.usage) T.usage = st.msg.usage;
+      T.chars = st.chars || 0;
       buf = buf.slice(m.index + m[0].length);
     }
   }
   buf += dec.decode();
   if(buf.trim()){ aiStreamEvent(st, buf); T.events++; T.what = st.what || T.what; }
+  if(st.msg && st.msg.usage) T.usage = st.msg.usage;
+  T.chars = st.chars || 0;
   // A stream can end early without an error of any kind. Half a message is not a reply, and
   // returning it would let a truncated tool call or summary through as though it were whole.
   // Carries the same note: a stream that simply stops is the other half of this question, and
@@ -4348,6 +4367,7 @@ function aiStreamEvent(st, raw){
     case 'content_block_delta': {
       const d = ev.delta || {};
       if(!b) break;
+      st.chars = (st.chars || 0) + String(d.text || d.thinking || d.partial_json || '').length;
       if(d.type === 'text_delta') b.text = (b.text || '') + d.text;
       else if(d.type === 'thinking_delta') b.thinking = (b.thinking || '') + d.thinking;
       else if(d.type === 'signature_delta') b.signature = d.signature;
@@ -7309,8 +7329,19 @@ function addEx(dk){
   S.split[dk].exercises.push({name:nm.trim(), inc:slotInc(nm.trim())});
   save(); refreshSplitEditor(); sdSetOpen(dk, true);
 }
+/* A backup file is for his data, not his credentials. It used to be JSON.stringify(S) whole,
+   which wrote the Anthropic API key and the GitHub token into a file he might email, upload or
+   leave in Downloads. It now leaves out the same per-device settings syncPayload() keeps off the
+   gist, and importData() keeps this device's own values, so restoring a backup does not
+   disconnect sync or the agents. */
+const DEVICE_SECRETS = ['apiKey', 'ghToken', 'gistId', 'gdocUrl', 'gdocSecret'];
+function exportPayload(){
+  const d = JSON.parse(JSON.stringify(S));
+  if(d.settings) DEVICE_SECRETS.forEach(function(k){ delete d.settings[k]; });
+  return d;
+}
 function exportData(){
-  const blob = new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const blob = new Blob([JSON.stringify(exportPayload(),null,2)],{type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'ironhub_backup_'+todayKey()+'.json';
@@ -7324,11 +7355,21 @@ function importData(inp){
       const p = JSON.parse(r.result);
       if(!p.logs || !p.split) throw new Error('Not an Iron Hub backup');
       if(!confirm('Replace ALL current data with this backup ('+p.logs.length+' sessions)?')) return;
-      S = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), p);
+      importApply(p);
       save(); location.reload();
     }catch(e){ alert('Import failed: '+e.message); }
   };
   r.readAsText(f);
+}
+/* This device's credentials win over the file's: a new backup carries none, and an old one may
+   hold a token that has since been replaced. A file's value is used only where this device has
+   none, so restoring onto a fresh install from an old backup still reconnects. */
+function importApply(p){
+  const keep = {};
+  DEVICE_SECRETS.forEach(function(k){ keep[k] = S && S.settings ? S.settings[k] : ''; });
+  S = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), p);
+  if(!S.settings) S.settings = JSON.parse(JSON.stringify(DEFAULT_STATE.settings || {}));
+  DEVICE_SECRETS.forEach(function(k){ if(keep[k]) S.settings[k] = keep[k]; });
 }
 function resetAll(){
   if(!confirm('This wipes every log, weight entry, and setting. Export first if you want a backup. Continue?')) return;
@@ -7639,9 +7680,19 @@ const LIVE_KEY = 'ironhub:live';
 let live = null;      // active session runtime
 let liveActiveIdx = 0;
 
+/* A session still open past midnight is still that night's session. The draft used to be
+   accepted only while its date was todayKey(), so a session started at 11:40 PM was silently
+   dropped by any reload after 12:00 -- the app opened Today instead and every logged set went
+   with it. It is now kept for LIVE_DRAFT_MAX_H after it started, and endLiveSession() dates the
+   log to the day it started. Older than that, it is a forgotten draft, not a session. */
+const LIVE_DRAFT_MAX_H = 6;
 function loadLiveDraft(){
   try{ const raw=localStorage.getItem(LIVE_KEY); if(!raw) return null; const d=JSON.parse(raw);
-    return (d && d.date===todayKey()) ? d : null; }catch(e){ return null; }
+    if(!d) return null;
+    if(d.date===todayKey()) return d;
+    const age = Date.now() - (+d.startedAt || 0);
+    return (+d.startedAt > 0 && age >= 0 && age < LIVE_DRAFT_MAX_H*3600000) ? d : null;
+  }catch(e){ return null; }
 }
 function saveLiveDraft(){ if(live) localStorage.setItem(LIVE_KEY, JSON.stringify(live)); }
 function clearLiveDraft(){ localStorage.removeItem(LIVE_KEY); }
@@ -7921,22 +7972,84 @@ function painHTML(ex, i){
   return h;
 }
 
-function effLeverHTML(){
+function effLeverReadout(){
   const v = (liveDockLever === null) ? '' : liveDockLever;
   const b = (liveDockLever === null) ? (liveDockEff || '') : effBucketFromLever(liveDockLever);
   const col = {fail:'var(--red)', grind:'var(--amber)', solid:'var(--muted)', easy:'var(--cyan)'}[b] || 'var(--dim)';
+  return {v:v, col:col, txt:(b ? b.toUpperCase()+' \u00b7 '+(v===''?'':v) : 'not set')};
+}
+function effLeverHTML(){
+  const r = effLeverReadout();
   return '<div class="efflv">'+
     '<div class="efflv-top"><span>How did that set feel?</span>'+
-      '<span class="efflv-val" style="color:'+col+'">'+(b ? esc(b.toUpperCase())+' \u00b7 '+(v===''?'':v) : 'not set')+'</span></div>'+
-    '<input type="range" min="0" max="100" step="5" value="'+(v===''?50:v)+'" '+
-      'oninput="setEffLever(this.value)" aria-label="Effort: 0 is failure, 100 is easy">'+
+      '<span class="efflv-val" style="color:'+r.col+'">'+esc(r.txt)+'</span></div>'+
+    '<input type="range" min="0" max="100" step="5" value="'+(r.v===''?50:r.v)+'" '+
+      'oninput="setEffLever(this.value,true)" onchange="setEffLever(this.value)" aria-label="Effort: 0 is failure, 100 is easy">'+
     '<div class="efflv-ends"><span>failure</span><span>easy</span></div>'+
     '</div>';
 }
-function setEffLever(v){
+/* While the thumb is still moving (dragging=true, from oninput), a full repaint would replace the
+   slider under his finger and end the drag after a single step -- which is what every oninput
+   did until 2026-10-03. So a drag only patches the readout and the preset highlight in place, and
+   the full repaint (which also moves the rest note) waits for the release, onchange. */
+function setEffLever(v, dragging){
   liveDockLever = Math.max(0, Math.min(100, Math.round(+v/5)*5));
   liveDockEff = effBucketFromLever(liveDockLever) || '';
+  if(dragging && effLeverPatch()) return;
   renderLive();
+}
+function effLeverPatch(){
+  const val = document.querySelector('#liveBody .efflv-val');
+  if(!val) return false;
+  const r = effLeverReadout();
+  val.textContent = r.txt; val.style.color = r.col;
+  document.querySelectorAll('#dockEff button').forEach(function(b){
+    const e = b.getAttribute('data-e');
+    b.className = (liveDockEff === e) ? 'sel e-'+e : '';
+  });
+  return true;
+}
+
+/* Typed-but-unlogged values survive a repaint. renderLive() rebuilds the whole LIVE body, and it
+   is called from taps that have nothing to do with the inputs: an effort preset, the pain panel, a
+   DELTA reply landing. Until 2026-10-03, tapping "grind" after typing the reps wiped the reps and
+   put the weight back to the prescription, so effort had to be tapped first -- and a set logged in
+   the other order went in with whatever he re-typed. A value is carried across only while the
+   context it was typed in still holds (same lift, same set number, same set being edited, same
+   pain panel), so logging a set or moving to the next lift still starts clean. Each input is
+   stamped with its context when drawn; comparing that stamp with the context after the change is
+   what tells a repaint from a move. */
+const LIVE_KEEP_INPUTS = ['dockW', 'dockR', 'esW', 'esR', 'painNote', 'liveDeltaIn'];
+let liveKeptNow = {};   // what the current renderLive() carried over, for the rest note
+function liveInputCtx(id){
+  if(!live) return '';
+  if(id === 'dockW' || id === 'dockR'){
+    const ex = live.exercises[liveActiveIdx];
+    return ex ? liveActiveIdx+'|'+ex.name+'|'+ex.sets.length+'|'+(ex.done ? 1 : 0) : '';
+  }
+  if(id === 'esW' || id === 'esR') return liveEditSet ? liveEditSet.ex+'|'+liveEditSet.set : '';
+  if(id === 'painNote') return (painOpenFor === null) ? '' : String(painOpenFor);
+  if(id === 'liveDeltaIn') return liveDeltaOpen ? 'open' : '';
+  return '';
+}
+function liveKeepInputs(){
+  const kept = {};
+  LIVE_KEEP_INPUTS.forEach(function(id){
+    const el = document.getElementById(id);
+    // An untouched box is not carried, so a prescription that changed still shows.
+    if(el && el.value !== el.defaultValue) kept[id] = {v:el.value, ctx:el.getAttribute('data-ctx')};
+  });
+  return kept;
+}
+function liveRestoreInputs(kept){
+  LIVE_KEEP_INPUTS.forEach(function(id){
+    const el = document.getElementById(id);
+    if(!el) return;
+    const ctx = liveInputCtx(id);
+    el.setAttribute('data-ctx', ctx);
+    const k = kept[id];
+    if(k && ctx !== '' && k.ctx === ctx) el.value = k.v;
+  });
 }
 
 /* ---- render LIVE mode ---- */
@@ -7948,6 +8061,8 @@ function renderLive(){
     initBodyMap('live');
     return;
   }
+  const kept = liveKeepInputs();
+  liveKeptNow = kept;
   let h = '';
   const _rd = todayReadiness();
   const _rdChip = _rd ? '<span class="pill" style="font-size:9px;border-color:'+(_rd.tier==='high'?'var(--cyan-dim);color:var(--cyan)':_rd.tier==='low'?'var(--red-dim);color:var(--red)':'var(--line2);color:var(--muted)')+'">'+_rd.tier.toUpperCase()+(live.trimmed?' \u00b7 TRIMMED':'')+'</span>' : '';
@@ -7961,6 +8076,7 @@ function renderLive(){
        '<button class="btn ghost" onclick="openLiveAddEx()" style="flex:none">+ Add exercise</button>'+
        '<button class="btn cyan block" onclick="endLiveSessionConfirm()">End &amp; save session</button></div>';
   body.innerHTML = h;
+  liveRestoreInputs(kept);
   updateSessionBar();
   // mount rest timer under the active exercise if running
   if(rest.running) mountRestTimer();
@@ -8048,13 +8164,15 @@ function liveIdleHTML(){
    ============================================================ */
 let liveEditSet = null;   // {ex:i, set:j} while a logged set is being edited
 
-/* Smart rest: exercise type + rep mode + how the last set actually went. */
-function smartRestSecs(ex){
+/* Smart rest: exercise type + rep mode + how the last set actually went. `pending` is a set not
+   logged yet ({w, e, ef}); the dock's "Rest after log" note passes the one about to be logged, so
+   it promises the same number the timer will start at. */
+function smartRestSecs(ex, pending){
   if(ex._deload || deloadActive()) return {secs:75, why:'Deload \u2014 keep it moving'};
   const comp = (typeof mesoIsCompound==='function') ? mesoIsCompound(ex.name) : true;
   let secs = comp ? (ex.repMode==='str' ? 195 : 150) : 90;
   let why = comp ? (ex.repMode==='str' ? 'Heavy compound' : 'Compound') : 'Isolation';
-  const last = ex.sets[ex.sets.length-1];
+  const last = pending || ex.sets[ex.sets.length-1];
   if(last){
     const lastB = effBucket(last);
     if(lastB==='grind' || lastB==='fail'){ secs += 30; why += ' \u00b7 hard set'; }
@@ -8123,12 +8241,17 @@ function liveExHTML(ex,i){
        '<div class="field"><label>Weight (lb)</label><input id="dockW" class="lv3-in" inputmode="decimal" value="'+(adv.w||'')+'"></div>'+
        '<div class="field"><label>Reps</label><input id="dockR" class="lv3-in" inputmode="numeric" placeholder="'+adv.lo+'\u2013'+adv.hi+'"></div>'+
        '</div>';
-  h += '<div class="efftog lv3-eff">'+
-       ['easy','solid','grind','fail'].map(e=>'<button class="'+(liveDockEff===e?'sel e-'+e:'')+'" onclick="pickEff(\''+e+'\')">'+e+'</button>').join('')+
+  h += '<div class="efftog lv3-eff" id="dockEff">'+
+       ['easy','solid','grind','fail'].map(e=>'<button data-e="'+e+'" class="'+(liveDockEff===e?'sel e-'+e:'')+'" onclick="pickEff(\''+e+'\')">'+e+'</button>').join('')+
        '</div>';
   h += effLeverHTML();
   h += painHTML(ex, i);
-  const sr = smartRestSecs(ex);
+  // Worked out from the set about to be logged -- the effort already picked and the weight in the
+  // box -- because that is what logLiveSet() hands the timer. It used to read the PREVIOUS set, so
+  // tagging this one a grind started a timer 30s longer than the note had just promised.
+  const _kw = (liveKeptNow.dockW && liveKeptNow.dockW.ctx === liveInputCtx('dockW')) ? parseFloat(liveKeptNow.dockW.v) : NaN;
+  const sr = smartRestSecs(ex, {w:(isFinite(_kw) ? _kw : (+adv.w||0)), e:liveDockEff||undefined,
+                                ef:(liveDockLever===null ? undefined : liveDockLever)});
   h += '<div class="lv3-btns">'+
        '<button class="btn primary lv3-log" onclick="logLiveSet('+i+')">Log set</button>'+
        '<button class="btn cyan lv3-done" onclick="finishExercise('+i+')">Done \u2713</button>'+
@@ -8245,7 +8368,12 @@ function finishExercise(i){
   const next = live.exercises.findIndex((e,idx)=>idx>i && !e.done);
   liveActiveIdx = next>=0 ? next : live.exercises.findIndex(e=>!e.done);
   if(liveActiveIdx<0) liveActiveIdx = i;
-  liveDockEff=''; liveDockLever=null; stopRest(); saveLiveDraft(); renderLive();
+  // Done used to stop the rest timer, so the rest Log set had just started for the last set
+  // vanished the moment he tapped Done -- as he walked to the next station. The timer now moves
+  // with him (renderLive() mounts it under the next lift), and stops only when nothing is left.
+  liveDockEff=''; liveDockLever=null;
+  if(!live.exercises.some(function(e){ return !e.done; })) stopRest();
+  saveLiveDraft(); renderLive();
 }
 
 function updateSessionBar(){
@@ -8282,7 +8410,9 @@ function endLiveSession(){
   // Stamp the day's name at save time. Strength-block day keys (S1/S2/S3) stop resolving
   // once the block ends, and permanent days get renamed — either way the log should keep
   // the label it was actually trained under.
-  const logRec = {id:Date.now(), date:todayKey(), day:live.day, dayName:dayName(live.day), entries, decisions};
+  // Dated to the day it STARTED: a session that runs past midnight belongs to the evening it
+  // was trained, not to the next day's schedule (see loadLiveDraft).
+  const logRec = {id:Date.now(), date:live.date||todayKey(), day:live.day, dayName:dayName(live.day), entries, decisions};
   if(isDeload) logRec.deload = true;
   if(live.home) logRec.home = true;
   // Stamped either way, not just when true. The Readiness tab compares trimmed vs
@@ -8310,7 +8440,7 @@ function endLiveSession(){
   if(live.coachPlan) logRec.coachPlan = true;
   const _sw = live.exercises.filter(function(e){ return e._swapped && e.sets.length; }).map(function(e){ return e.name; });
   if(_sw.length) logRec.swapped = _sw;
-  try{ logRec.scheduled = scheduledDayFor(todayKey()); }catch(e){}
+  try{ logRec.scheduled = scheduledDayFor(logRec.date); }catch(e){}
   S.logs.push(stampRec(logRec));
   save();
   // Today just turned green. Waiting for the next foreground check would be correct but slow,
@@ -11953,6 +12083,13 @@ async function callClaudeWithData(messages, system, maxTokens, opts, onTool){
     return (content||[]).filter(function(b){ return b.type==='text'; })
                         .map(function(b){ return b.text; }).join('\n');
   };
+  // A one-shot summary (the morning brief) passes noTools: no definitions go out, so it is
+  // exactly one request. maxRounds:1 was not that -- the tools were still sent, a lookup was
+  // still allowed, and the cap then cost a second request to get the answer.
+  if(opts && opts.noTools){
+    const one = await aiRequest(msgs, system, null, maxTokens, opts);
+    return {text:textOf(one.content), toolsUsed:0, stop:one.stop_reason||''};
+  }
   for(let round=0; round<rounds; round++){
     const data = await aiRequest(msgs, system, tools, maxTokens, opts);
     const content = data.content || [];
@@ -17703,7 +17840,7 @@ async function agWriteBrief(manual){
     agBriefDebriefLine()+
     '\n'+'\n'+agBaseContext('zulu');
   const res = await callClaudeWithData(
-    [{role:'user', content:'Write this morning\u2019s brief.'}], sys, AG_MAXTOK, {effort:'medium', maxRounds:1, route:'brief'});
+    [{role:'user', content:'Write this morning\u2019s brief.'}], sys, AG_MAXTOK, {effort:'medium', noTools:true, route:'brief'});
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   const parsed = parseLooseJSON(res.text);
   return parsed && parsed.brief ? String(parsed.brief) : null;

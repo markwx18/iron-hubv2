@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2436 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2486 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -263,7 +263,8 @@ so the two orders can no longer disagree.
 | WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`, `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
-| Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`) |
+| Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`); `liveKeepInputs()` / `liveRestoreInputs()` (typed values survive a repaint); `loadLiveDraft()` (`LIVE_DRAFT_MAX_H`, a session past midnight survives) |
+| Backup | `exportPayload()` / `importApply()`, `DEVICE_SECRETS` (a backup file carries no credentials; import keeps this device's) |
 | After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()`, `coachValidateAction()` |
@@ -501,6 +502,12 @@ because each device pays for its own calls and `S` re-uploads on every sync. `ai
 prices it at `AI_PRICE` (Sonnet 5: $2 in / $10 out per million, checked 2026-09-25), and Coach
 shows 30 days by feature. That is the baseline to measure any prompt addition against. Pass a
 `route` in `opts` on any new call site, or it lands under "Other".
+
+A reply cut off after its stream began was billed but, until 2026-10-03, never logged. It is now
+logged with `x:1`: the input is exact (from `message_start`) and the output is a floor taken from
+what had streamed in. An API error reply, in a stream or not, is not logged. The morning brief
+passes `noTools` to `callClaudeWithData()`, so it is exactly one request with no tool
+definitions, as its comment always said. Before that, `maxRounds:1` still sent the tools.
 
 **A repaint must never be able to strand an in-flight flag.** Both runners used to call
 `renderOps()` between raising their module-scoped guard and entering the `try`. A throw from a
@@ -1175,6 +1182,15 @@ refuses to re-render while an input has focus or while a LIVE session is active 
 the dock can hold a typed weight/reps that isn't logged yet, and losing that
 mid-workout is unacceptable. Preserve scroll position on chat repaints; only pin
 to bottom if the user was already near the bottom.
+
+LIVE's own taps repaint too: an effort preset, the pain panel, a DELTA reply. Until 2026-10-03
+each of those wiped the typed reps and reset the weight, so effort had to be tapped first. Now
+`renderLive()` carries every input in `LIVE_KEEP_INPUTS` across the repaint
+(`liveKeepInputs()` / `liveRestoreInputs()`). It carries a value only while the context it was
+typed in still holds (same lift, set number, set under edit, pain panel), so a logged set or the
+next lift still starts clean. A new LIVE text input goes in that list. Dragging the effort slider
+patches the readout in place (`effLeverPatch()`) and repaints only on release, because a repaint
+replaces the slider under his finger.
 
 **Mobile is the primary target.** Most use is on an iPhone, one-handed, mid-set.
 Check at 393px and 320px widths.
