@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-01-v2">
+<meta name="ironhub-build" content="2026-10-02-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11371,17 +11371,89 @@ function invFlagCardHTML(f){
   if(f.status==='applied'){
     h += '<div class="inv-applied">\u2713 Fix applied '+fmtDate(f.appliedAt)+' \u2014 monitoring for resolution. '+
       (f.cat==='lift'?'Clears after 2 consecutive e1RM improvements.':f.cat==='bulk'?'Clears when your rate is back in the '+BULK_LO+'\u2013'+BULK_HI+' lb/wk band.':'Clears when volume gaps close and nothing is stale.')+'</div>';
+    h += invTipsHTML(f);
     h += '<div class="inv-acts"><button class="btn ghost sm" onclick="invDismiss(\''+f.id+'\')">Dismiss anyway</button></div>';
   } else if(f.fix){
     h += '<div class="inv-fix"><div class="inv-fix-h">RECOMMENDED FIX</div><b>'+esc(f.fix.label)+'</b><div class="small" style="margin-top:3px">'+esc(f.fix.desc)+'</div></div>';
+    h += invTipsHTML(f);
     h += '<div class="inv-acts"><button class="btn sm" onclick="invApplyFix(\''+f.id+'\')">Apply fix</button>'+
          '<button class="btn ghost sm" onclick="invDismiss(\''+f.id+'\')">Dismiss</button></div>';
   } else {
     h += '<div class="inv-fix"><div class="small">No forced fix \u2014 this one is informational. The progression engine is already handling it correctly; address the inputs (food, sleep) and it should self-correct.</div></div>';
+    h += invTipsHTML(f);
     h += '<div class="inv-acts"><button class="btn ghost sm" onclick="invDismiss(\''+f.id+'\')">Dismiss</button></div>';
   }
   h += '</div>';
   return h;
+}
+/* What to DO about a flag, in a few plain bullets. The investigators say what is wrong and offer
+   one tap-to-apply fix; they never said what to change at the rack or the table, so a flag with no
+   fix (or one still being monitored after Apply) left him with a warning and no next step.
+   Derived at render from the flag, never stored: a stored list would be absent on every flag
+   raised before this existed, and a wording change would not reach a flag already open. It is
+   advice text only: nothing here reads or writes S. Keyed off the exact titles the investigators
+   produce (invRaise keeps them), and the suite loops every one so a renamed title cannot silently
+   lose its tips. */
+function invTipsFor(f){
+  if(!f) return [];
+  const t = String(f.title||'');
+  const fxType = f.fix && f.fix.type;
+  if(f.cat==='lift'){
+    if(/ declining$/.test(t)) return [
+      'Take the lighter weight and stop every set 1–2 reps short of failure until the trend turns. Clean reps rebuild a lift faster than grinders do.',
+      'Check the inputs this week: 7.5+ hours of sleep and calories at target. A lift that falls while the bulk stalls is usually recovery, not strength.',
+      'If it is still falling after two sessions at the lighter weight, take a deload week before pushing again.',
+      'If a joint hurts (not just heavy or tired), log a pain flag and tell DELTA rather than pushing through it.'];
+    if(/ trending down$/.test(t)) return fxType==='deload' ? [
+      'Grinding plus a falling trend is overreach. Take the deload week, then restart at the weight you were lifting before it.',
+      'During the deload keep the movement patterns and stay well short of failure. The point is to recover, not to test.',
+      'Afterwards, leave a rep in the tank on the first working sets. Hard sets that all grind are what dug the hole.'] : [
+      'Hold the weight, or take the lighter one, and make every set a clean rep. No grinders until the trend flattens.',
+      'Cut one set off the accessories on the days this lift is trained. Less total fatigue leaves more for the main lift.',
+      'Check sleep (7.5+ hours) and calories at target for a week before judging the lift again.'];
+    if(/ flat$/.test(t)) return fxType==='deload' ? [
+      'Heavy grinding with no progress points at recovery. Take the deload week, then push again.',
+      'On the way back, rest 3+ minutes between the heavy sets of this lift.'] : [
+      'Work to the top of the rep range on every set before adding load. The engine only jumps when that is earned.',
+      'Rest 3+ minutes between the heavy sets of this lift. Short rests quietly cost reps.',
+      'Check sleep (7.5+ hours) and calories at target. A flat lift on a flat bulk is usually under-eating.',
+      'If nothing moves in another 2–3 weeks, swap the variation (grip, stance or machine) and rebuild from a comfortable weight.'];
+  }
+  if(f.cat==='bulk'){
+    if(/^Losing weight/.test(t)) return [
+      'Eat the new target every day for two weeks before judging it. One good weekend does not move a weekly average.',
+      'Add the calories where they are easiest: a shake or milk, a carb with each meal, or an extra snack. Do not rely on one huge dinner.',
+      'Log intake on the Fuel tab every day so the check has real numbers to work from.',
+      'Weigh in at the same time each morning. The check reads weekly averages, so one odd weigh-in will not fool it.'];
+    if(/^Bulk rate too slow|^Bulk slightly slow/.test(t)) return [
+      'Add the extra calories at meals you already eat (more rice, an extra carb or fat) so it does not depend on appetite.',
+      'Check the Fuel tab: if the days you log are under target, the fix is eating the target, not raising it.',
+      'Give any change two weeks. Weekly-average weight lags what you eat.'];
+    if(/^Bulk rate too fast|^Bulk slightly hot/.test(t)) return [
+      'Trim calories from the extras (liquid calories, snacks, the second helping) and leave protein where it is.',
+      'Judge it on the weekly average, not single weigh-ins. Salt, a big carb day or creatine can swing a day by a few pounds.',
+      'Slightly hot is fine short-term. Only act if it stays above the band for a second week.'];
+    if(/^Protein target low/.test(t)) return [
+      'Spread protein over 3–4 meals (roughly 30–50 g each) rather than one large serving.',
+      'A shake or Greek yogurt is the quick way to close a gap on a busy day.'];
+  }
+  if(f.cat==='split'){
+    if(/volume light|under target/.test(t)) return [
+      'Close the gap with 2–3 extra hard sets spread across two days, not one big dump on a single day.',
+      'Add one exercise at a time. Recovery, not time, is the limit, and Today’s call will cut sets if you are run down.',
+      'Re-check after a full week. The volume check reads the last completed week, so it will not clear mid-week.'];
+    if(/stale/.test(t)) return [
+      'Swap the variation, or change the rep range (for example 8–12 to 12–15) for 3–4 weeks to give the muscle a fresh stimulus.',
+      'Start the new exercise 2–3 reps short of failure so the weight can climb for several weeks.',
+      'The old exercise’s history stays saved, so you can bring it back later.'];
+  }
+  return [];
+}
+function invTipsHTML(f){
+  const tips = invTipsFor(f);
+  if(!tips.length) return '';
+  return '<div class="inv-fix inv-tips"><div class="inv-fix-h">WHAT TO DO</div>'+
+    tips.map(x=>'<div class="inv-finding">▸ '+esc(x)+'</div>').join('')+'</div>';
 }
 function invRunManual(kind, liftName){
   let r;

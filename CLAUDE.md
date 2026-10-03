@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2400 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2436 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -265,7 +265,7 @@ so the two orders can no longer disagree.
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`) |
 | After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
-| Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`; resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
+| Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()`, `coachValidateAction()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network |

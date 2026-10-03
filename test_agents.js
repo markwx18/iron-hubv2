@@ -10233,6 +10233,56 @@ setTimeout(async () => {
   ev('S = ' + s4Saved + '; localStorage.setItem(LS_KEY, JSON.stringify(S));');
   ok('cleanup: real state restored after the Sunday check-in section', ev('JSON.stringify(S)') === s4Saved);
 
+  // ======================================================================
+  // INVESTIGATION TIPS: every flag the investigators can raise says what to DO, not just what is wrong
+  // ======================================================================
+  try {
+    // [cat, title as the investigator produces it, fix type or null, what the first tip must be about]
+    const tipCases = [
+      ['lift', 'Zz Tip Lift declining', 'liftReset'],
+      ['lift', 'Zz Tip Lift trending down', 'deload'],
+      ['lift', 'Zz Tip Lift trending down', 'liftReset'],
+      ['lift', 'Zz Tip Lift flat', 'deload'],
+      ['lift', 'Zz Tip Lift flat', null],
+      ['bulk', 'Losing weight mid-bulk', 'cal'],
+      ['bulk', 'Bulk rate too slow', 'cal'],
+      ['bulk', 'Bulk slightly slow', 'cal'],
+      ['bulk', 'Bulk rate too fast', 'cal'],
+      ['bulk', 'Bulk slightly hot', null],
+      ['bulk', 'Protein target low', 'pro'],
+      ['split', 'Chest volume light', 'addEx'],
+      ['split', '3 muscle groups under target', null],
+      ['split', 'Zz Tip Lift gone stale', 'swapEx'],
+      ['split', '2 lifts gone stale', null],
+    ];
+    const tipFor = (c) => JSON.parse(ev('JSON.stringify(invTipsFor(' + JSON.stringify({cat: c[0], title: c[1], fix: c[2] ? {type: c[2]} : null}) + '))'));
+    tipCases.forEach((c) => {
+      const t = tipFor(c);
+      ok('tips: "' + c[1] + '" (' + (c[2] || 'no fix') + ') gets 2-4 tips', t.length >= 2 && t.length <= 4, 'n=' + t.length);
+    });
+    // The titles above must still be what the investigators say, or a rename silently drops its tips.
+    const invSrc = ev('investigateBulk.toString()+investigateLift.toString()+investigateSplit.toString()');
+    ['Losing weight mid-bulk', 'Bulk rate too slow', 'Bulk slightly slow', 'Bulk rate too fast', 'Bulk slightly hot', 'Protein target low', ' declining', ' trending down', ' flat', 'volume light', 'under target', 'gone stale', 'lifts gone stale'].forEach((s) => {
+      ok('tips: investigators still produce "' + s.trim() + '"', invSrc.indexOf(s) >= 0);
+    });
+    ok('tips: a deload-backed "trending down" and a reset-backed one read differently', tipFor(tipCases[1])[0] !== tipFor(tipCases[2])[0]);
+    ok('tips: a flag with an unknown title gets none, and so does no flag at all', tipFor(['lift', 'Something else', null]).length === 0 && ev('invTipsFor(null).length') === 0);
+
+    // The card: tips show on an active flag with a fix, an applied one, and one with no fix.
+    const mk = (extra) => JSON.stringify(Object.assign({id: 'zztip1', cat: 'lift', key: 'lift:Zz Tip Lift', severity: 'red', title: 'Zz Tip Lift declining', findings: ['x'], fix: {label: 'Reset', desc: 'd', type: 'liftReset', payload: {}}, status: 'active', created: '2026-10-01', updated: '2026-10-01'}, extra));
+    const cardOf = (extra) => ev('invFlagCardHTML(' + mk(extra) + ')');
+    const withFix = cardOf({});
+    ok('card: an active flag with a fix shows WHAT TO DO, after the fix and before the buttons', /RECOMMENDED FIX[\s\S]*WHAT TO DO[\s\S]*Apply fix/.test(withFix));
+    ok('card: an applied flag keeps its tips while it is monitored', /Fix applied[\s\S]*WHAT TO DO/.test(cardOf({status: 'applied', appliedAt: '2026-10-02'})));
+    const noFix = cardOf({fix: null, severity: 'yellow', title: 'Zz Tip Lift flat'});
+    ok('card: a flag with no fix still tells him what to do', /No forced fix[\s\S]*WHAT TO DO/.test(noFix));
+    ok('card: tip text is rendered as bullets', /▸ Take the lighter weight/.test(withFix));
+    ok('card: an unrecognised flag renders with no empty WHAT TO DO box', !/WHAT TO DO/.test(cardOf({title: 'Something else'})));
+    ok('tips: rendering them wrote nothing to state', ev('JSON.stringify(S)') === s4Saved);
+  } catch (e) {
+    ok('investigation tips section', false, e.stack);
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
