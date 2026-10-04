@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2591 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2639 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -260,7 +260,7 @@ so the two orders can no longer disagree.
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
 | Home / strip | `renderHome()`, `renderStatusStrip()`, `readinessNow()`, `renderNotif()` (`notifDismiss()` one item, `notifClear()` all) |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
-| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`, `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`) |
+| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`; a failed run: `S.whoop.relayError`, `whoopRelayFault()`, `whoopRunFailText()`; `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`, `spendRefresh()`, `relayErrorRecord()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`); `liveKeepInputs()` / `liveRestoreInputs()` (typed values survive a repaint); `loadLiveDraft()` (`LIVE_DRAFT_MAX_H`, a session past midnight survives) |
@@ -1024,6 +1024,33 @@ the first call, after succeeding all morning. A read failure is fatal now and na
 `IRONHUB_GIST_TOKEN` (a classic PAT expires on a fixed date). An unreadable *file* inside a gist we
 could read is still the genuine first-run case and still falls back to the seed. Nothing is lost
 either way - the rotated token stays in the state gist and resumes as soon as the secret works.
+
+**WHOOP can kill the relay's sign-in, and then the relay has to say so.** From 5:49 PM on
+2026-10-03 every run failed with `token refresh failed (400): invalid_request`. The first one took
+12 seconds and every later one about a second, which matches a known WHOOP fault (community thread,
+Jul-Aug 2026). Its refresh endpoint rotates the token and *then* returns a 502, so the new token
+never arrives and the old one is spent. Nothing on our side can get that token back; the fix is
+`node scripts/whoop/whoop-auth.js` and a new `WHOOP_REFRESH_TOKEN` secret. Three things made it
+worse, and all three are fixed:
+- **Re-authorizing could not work.** The stored token always won over the secret, so a fresh
+  secret was never read. `spendRefresh()` now falls back to the secret when WHOOP *refuses* (400/401)
+  the stored token, but only to a secret value never sent before (`seedTried`, a 12-character hash
+  in the state gist). It never falls back on a 5xx, because the stored token may still be alive and
+  sending an older token from the same authorization is what a reuse check punishes.
+- **The useful part of WHOOP's error was cut off.** `error_hint` came after the 200 characters kept.
+  `whoopErrText()` leads with it, and `redact()` keeps tokens out of the log, which any signed-in
+  GitHub user can read on a public repo.
+- **The app blamed the wrong credential.** It cannot read Actions logs, so CHARLIE and Test relay
+  said every failed run was `IRONHUB_GIST_TOKEN`, which was working. A failed run now leaves
+  `relayError` `{at, kind, message, reauth}` in `whoop_data.json`, beside the last good data, and
+  any run that signs in clears it. `whoopRunFailText()` reads it. **No note is evidence too:** a
+  relay that cannot read the gist cannot write one either, which is the gist-secret case, and only
+  then is that secret named. A note older than the failed run is ignored. Settings shows the note
+  and the Connections summary says "WHOOP needs re-authorizing". A failed run is stored as
+  `kind:'run'`, never as "this device's token cannot trigger a run" (it just did).
+
+The suite runs the real script end to end (`spawnSync` with a `-r` preload that fakes `fetch`), and
+`IRONHUB_RELAY=...` points it at a mutant of the relay the way `IRONHUB_HTML` does for the app.
 
 **The relay merges, it does not clobber.** WHOOP creates a recovery record *before* it scores it
 and omits the `score` object entirely while a cycle is `PENDING_SCORE`, so a run landing in that

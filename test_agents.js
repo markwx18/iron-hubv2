@@ -8,6 +8,8 @@ const { JSDOM } = require('jsdom');
 // Resolve relative to this file so the suite runs from any cwd and on any machine.
 // Override with: IRONHUB_HTML=/some/other/path.html node test_agents.js
 const HTML_PATH = process.env.IRONHUB_HTML || path.join(__dirname, 'iron_hub.html');
+// The WHOOP relay script, overridable the same way so a mutant of it can be run: IRONHUB_RELAY=...
+const RELAY_PATH = process.env.IRONHUB_RELAY || path.join(__dirname, 'scripts', 'whoop', 'whoop-sync.js');
 if (!fs.existsSync(HTML_PATH)) {
   console.error('Cannot find app file at: ' + HTML_PATH);
   console.error('Run this from the repo root, or set IRONHUB_HTML to the correct path.');
@@ -10816,6 +10818,237 @@ setTimeout(async () => {
     ok('V4 stage 2 target history section', false, e.stack);
   } finally {
     ev('if(window.__thSaved){ S = JSON.parse(window.__thSaved); delete window.__thSaved; }');
+  }
+
+  console.log('=== THE WHOOP RELAY: A DEAD SIGN-IN, AND SAYING SO ===');
+  /* 2026-10-03 to 10-04: every relay run failed with "token refresh failed (400): invalid_request".
+     WHOOP had refused the stored refresh token (most likely its rotate-then-502 fault), and two
+     things made it worse: the relay preferred the dead stored token over any new secret, so
+     re-authorizing could not fix it; and the app could not read the run log, so CHARLIE and Test
+     relay both blamed IRONHUB_GIST_TOKEN, which was working. */
+  try {
+    const relayW = require(RELAY_PATH);
+    const keepTokW = ev('S.settings.ghToken'), keepGistW = ev('S.settings.gistId');
+    const fsW = require('fs'), osW = require('os'), cpW = require('child_process');
+
+    // --- which token to spend (spendRefresh), through an injected refresh() ---
+    const refusal = function(){ const e = new Error('token refresh failed (400): invalid_request'); e.kind = 'auth'; return e; };
+    const down = function(){ const e = new Error('token refresh failed (502)'); e.kind = 'auth-down'; return e; };
+    const mkRefresh = function(table, sent){
+      return async function(t){ sent.push(t); const r = table[t]; if(r instanceof Error) throw r; if(r) return r; throw refusal(); };
+    };
+    let sent = [];
+    let got = await relayW.spendRefresh({token:'live', seedTried:null}, 'seedA', mkRefresh({live:{refresh_token:'next'}}, sent));
+    ok('relay: a working stored token is used and the secret is never sent', got.from === 'stored' && sent.join() === 'live', sent.join());
+
+    sent = [];
+    got = await relayW.spendRefresh({token:'dead', seedTried:null}, 'fresh', mkRefresh({fresh:{refresh_token:'next'}}, sent));
+    ok('relay: a REFUSED stored token falls back to a new WHOOP_REFRESH_TOKEN secret',
+       got.from === 'seed' && sent.join() === 'dead,fresh', sent.join());
+    ok('relay: and remembers that value as tried, by hash, never the token itself',
+       got.seedTried === relayW.seedHash('fresh') && got.seedTried.indexOf('fresh') < 0 && got.seedTried.length === 12, got.seedTried);
+    ok('relay: so the rotated token replaces the one it spent, not the dead one', got.spent === 'fresh');
+
+    sent = []; let threw = null;
+    try { await relayW.spendRefresh({token:'dead', seedTried:relayW.seedHash('spent')}, 'spent', mkRefresh({}, sent)); } catch(e){ threw = e; }
+    ok('relay: a secret already sent once is not sent again every run',
+       !!threw && threw.kind === 'auth' && sent.join() === 'dead', sent.join());
+
+    sent = []; threw = null;
+    try { await relayW.spendRefresh({token:'maybe', seedTried:null}, 'other', mkRefresh({maybe: down()}, sent)); } catch(e){ threw = e; }
+    ok('relay: a 5xx on the stored token does NOT fall back (the token may be alive, and an older one could get it revoked)',
+       !!threw && threw.kind === 'auth-down' && sent.join() === 'maybe', sent.join());
+
+    sent = []; threw = null;
+    try { await relayW.spendRefresh({token:'same', seedTried:null}, 'same', mkRefresh({}, sent)); } catch(e){ threw = e; }
+    ok('relay: a secret equal to the stored token is not sent twice', !!threw && sent.join() === 'same', sent.join());
+
+    sent = []; threw = null;
+    try { await relayW.spendRefresh({token:'dead', seedTried:null}, 'alsodead', mkRefresh({}, sent)); } catch(e){ threw = e; }
+    ok('relay: a refused secret carries its hash back, so the caller can remember it',
+       !!threw && threw.seedTried === relayW.seedHash('alsodead') && sent.join() === 'dead,alsodead');
+
+    sent = [];
+    got = await relayW.spendRefresh({token:null, seedTried:null}, 'first', mkRefresh({first:{refresh_token:'n'}}, sent));
+    ok('relay: the first run still starts from the secret', got.from === 'seed' && sent.join() === 'first');
+
+    // --- what a refusal says ---
+    const realBody = JSON.stringify({error:'invalid_request', error_description:'The request is missing a required parameter, includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed.', error_hint:'The refresh token has been revoked or was already used.'});
+    const ae = relayW.authError(400, realBody, ['tok123456']);
+    ok('relay: a 400 is a refused sign-in', ae.kind === 'auth' && ae.status === 400);
+    ok('relay: and the message keeps WHOOP’s hint, which the old 200-character cut lost',
+       /already used/.test(ae.message) && /^token refresh failed \(400\): invalid_request/.test(ae.message), ae.message);
+    ok('relay: a 502 is WHOOP’s side, not a verdict on the token', relayW.authError(502, '<html><body>502 Bad Gateway</body></html>', []).kind === 'auth-down');
+    ok('relay: an HTML error page is reduced to its text', /502 Bad Gateway/.test(relayW.authError(502, '<html><body>502 Bad Gateway</body></html>', []).message));
+    const echoed = JSON.stringify({error:'invalid_grant', error_hint:'token tok123456 is unknown'});
+    ok('relay: a credential echoed in an error body never reaches the (public) log',
+       relayW.authError(400, echoed, ['tok123456']).message.indexOf('tok123456') < 0 &&
+       relayW.redact('a tok123456 b', ['tok123456']) === 'a [redacted] b');
+
+    // --- the note it leaves the app ---
+    const rec = relayW.relayErrorRecord(ae, '2026-10-04T12:33:10.000Z');
+    ok('relay: a refused sign-in is written down as needing re-authorization', rec.kind === 'auth' && rec.reauth === true && rec.at === '2026-10-04T12:33:10.000Z');
+    ok('relay: anything unrecognised is "other", and does not claim re-authorization',
+       relayW.relayErrorRecord(new Error('gist write failed (500)'), 'x').kind === 'other' && relayW.relayErrorRecord(new Error('x'), 'x').reauth === false);
+    const prevFile = {fetchedAt:'2026-10-03T18:42:00.000Z', recovery:{date:'2026-10-03', score:61, readAt:'2026-10-03T18:42:00.000Z'},
+                      history:[{date:'2026-10-02', recovery:55}, {date:'2026-10-03', recovery:61}]};
+    const noted = relayW.withRelayError(prevFile, rec);
+    ok('relay: the note rides on the previous file, which is kept exactly',
+       noted.recovery.score === 61 && noted.history.length === 2 && noted.relayError.kind === 'auth' && !prevFile.relayError);
+    ok('relay: and a clean file carries no note', relayW.withRelayError(noted, null).relayError === undefined);
+
+    // --- the app reads the note ---
+    ev('delete S.whoop;');
+    ok('app: the relay’s file with a note passes the validator', ev('applyWhoop(' + relayW.serializeWhoop(noted) + ')') === true);
+    ok('app: the note is kept, and the data with it',
+       ev('S.whoop.relayError && S.whoop.relayError.kind') === 'auth' && ev('S.whoop.relayError.reauth') === true &&
+       ev('S.whoop.history.length') === 2);
+    ev("applyWhoop({fetchedAt:'x', recovery:{date:'2026-10-03', score:61}, relayError:{at:'not a date', kind:'auth', message:'m'}});");
+    ok('app: a note with no real time is dropped', ev('S.whoop.relayError') === undefined);
+    ev("applyWhoop({fetchedAt:'x', recovery:{date:'2026-10-03', score:61}, relayError:{at:'2026-10-04T12:00:00Z', kind:'rm -rf', message:'" + 'y'.repeat(500) + "', reauth:true}});");
+    ok('app: an unknown kind becomes "other", cannot claim re-authorization, and the text is clipped',
+       ev('S.whoop.relayError.kind') === 'other' && ev('S.whoop.relayError.reauth') === false && ev('S.whoop.relayError.message.length') === 300);
+    ev("applyWhoop({fetchedAt:'x', recovery:{date:'2026-10-03', score:61}});");
+    ok('app: a file without a note (a run that worked) clears it', ev('S.whoop.relayError') === undefined);
+
+    const runAt = Date.parse('2026-10-04T12:33:07.000Z');
+    ev('S.whoop = ' + JSON.stringify({fetchedAt:'x', relayError:{at:'2026-10-04T12:33:10.000Z', kind:'auth', message:'token refresh failed (400): invalid_request', reauth:true}}) + ';');
+    const tAuth = ev('whoopRunFailText({at:' + runAt + '})');
+    ok('app: a run that left a refused-sign-in note is blamed on WHOOP, with the fix',
+       /WHOOP refused/.test(tAuth) && /whoop-auth\.js/.test(tAuth) && /WHOOP_REFRESH_TOKEN/.test(tAuth), tAuth);
+    ok('app: and NOT on the gist secret, which was working', tAuth.indexOf('IRONHUB_GIST_TOKEN') < 0, tAuth);
+    const tOld = ev('whoopRunFailText({at:' + (runAt + 3 * 3600000) + '})');
+    ok('app: a note older than the failed run says nothing about it (the gist secret explains a missing note)',
+       /IRONHUB_GIST_TOKEN/.test(tOld) && !/WHOOP refused/.test(tOld), tOld);
+    ev('delete S.whoop;');
+    ok('app: no note at all is the gist secret’s fingerprint', /IRONHUB_GIST_TOKEN/.test(ev('whoopRunFailText({at:' + runAt + '})')));
+
+    // CHARLIE's once-a-day line, on the morning the relay is failing for WHOOP's reason
+    ev('window.__wrFetch = window.fetch;');
+    ev("S.settings.ghToken='t'; S.settings.gistId='g';");
+    ev("window.__runsReply = {workflow_runs:[{id:7, status:'completed', conclusion:'failure', created_at:new Date(Date.now()-600000).toISOString(), event:'schedule'}]};" +
+       "window.fetch = async function(url, opts){ const u = String(url);" +
+       "  if(u.indexOf('/runs?') >= 0) return {ok:true, status:200, json: async()=>window.__runsReply, text: async()=>''};" +
+       "  return {ok:true, status:204, headers:{get:function(){ return null; }}, json: async()=>({}), text: async()=>''}; };");
+    ev("_whoopKickAt=0; localStorage.removeItem('ironhub:whoopkick'); localStorage.removeItem(WHOOP_RUNFAIL_KEY); agState().log=[];");
+    ev('S.whoop = ' + JSON.stringify({fetchedAt:'x', relayError:{at:new Date(Date.now() - 590000).toISOString(), kind:'auth', message:'token refresh failed (400): invalid_request', reauth:true}}) + ';');
+    await withHourAt(7, function(){ return ev('whoopMaybeKick()'); });
+    const charlie = ev("(agState().log.filter(function(e){ return e.agent==='charlie' && /FAILING/.test(e.text); })[0] || {}).text") || '';
+    ok('app: CHARLIE names WHOOP’s refusal and the re-authorization, not the gist secret',
+       /WHOOP refused/.test(charlie) && /WHOOP_REFRESH_TOKEN/.test(charlie) && charlie.indexOf('IRONHUB_GIST_TOKEN') < 0, charlie);
+
+    // Test relay: the note is written just before the run ends, after the last pull, so it reads the gist
+    ev('localStorage.removeItem(WHOOP_RELAY_KEY); delete S.whoop;');
+    ev("window.__wrNote = " + JSON.stringify(relayW.serializeWhoop(relayW.withRelayError(prevFile, {at:'NOW', kind:'auth', message:'token refresh failed (400): invalid_request', reauth:true}))) + ";" +
+       "window.fetch = async function(url, opts){ const u = String(url);" +
+       "  if(u.indexOf('/runs?') >= 0) return {ok:true, status:200, json: async()=>({workflow_runs:[{id:9, status:'completed', conclusion:'failure', created_at:new Date().toISOString(), event:'workflow_dispatch'}]}), text: async()=>''};" +
+       "  if(u.indexOf('/gists/') >= 0) return {ok:true, status:200, json: async()=>({files:{'ironhub_data.json':{content:JSON.stringify({app:'ironhub', data:{}})}," +
+       "    'whoop_data.json':{content: window.__wrNote.replace('NOW', new Date().toISOString())}}}), text: async()=>''};" +
+       "  return {ok:true, status:204, headers:{get:function(){ return null; }}, json: async()=>({}), text: async()=>''}; };");
+    await ev('whoopTestRelay()');
+    const trMsg = ev("document.getElementById('syncMsg') ? document.getElementById('syncMsg').textContent : ''");
+    ok('app: Test relay reads the relay’s note and names WHOOP', /run FAILED/.test(trMsg) && /WHOOP refused/.test(trMsg) && trMsg.indexOf('IRONHUB_GIST_TOKEN') < 0, trMsg);
+    const trNote = ev('whoopRelayNote()') || {};
+    ok('app: the stored verdict still reads as failing, marked as a failed RUN', trNote.ok === false && trNote.kind === 'run', JSON.stringify(trNote));
+    ev('renderSettings();');
+    const trSet = w.document.getElementById('settings').innerHTML;
+    ok('app: Settings shows the relay’s reason', /the last run failed/.test(trSet) && /whoop-auth\.js/.test(trSet));
+    ok('app: and no longer tells him this device’s token cannot trigger a run, since it just did',
+       trSet.indexOf('token cannot trigger a run') < 0, trSet.indexOf('token cannot trigger') >= 0 ? 'still says cannot trigger' : '');
+    ok('app: the folded Connections summary names it', /WHOOP needs re-authorizing/.test(ev('settingsSummaries().connections')), ev('settingsSummaries().connections'));
+    ev('delete S.whoop;');
+    ok('app: a failed run with no note reads as failing runs, not as this device', /WHOOP relay runs are failing/.test(ev('settingsSummaries().connections')), ev('settingsSummaries().connections'));
+    ev('S.whoop = ' + JSON.stringify({fetchedAt:'x', relayError:{at:'2026-10-04T12:33:10.000Z', kind:'auth', message:'<img src=x onerror=alert(1)>', reauth:true}}) + '; renderSettings();');
+    // Asserted on the DOM: an injected <img src=x> comes back out of innerHTML as <img src="x">, so a
+    // string search for the raw text passes whether or not it was escaped.
+    ok('app: the relay’s text is escaped on the way in',
+       !w.document.querySelector('#settings img[onerror]') && w.document.getElementById('settings').textContent.indexOf('<img src=x onerror') >= 0);
+    ev('window.fetch = window.__wrFetch; delete window.__wrFetch; delete window.__wrNote; delete S.whoop; localStorage.removeItem(WHOOP_RELAY_KEY); localStorage.removeItem(WHOOP_RUNFAIL_KEY); agState().log=[];');
+    ev('S.settings.ghToken = ' + JSON.stringify(keepTokW) + '; S.settings.gistId = ' + JSON.stringify(keepGistW) + ';');
+
+    // --- the real script, run end to end with GitHub and WHOOP faked ---
+    // main() is where the stored-versus-secret choice and the note actually happen, so it is run as
+    // the workflow runs it: node scripts/whoop/whoop-sync.js, with fetch replaced by a preload.
+    const tmp = fsW.mkdtempSync(require('path').join(osW.tmpdir(), 'relay-'));
+    const mockFile = require('path').join(tmp, 'mock.js');
+    fsW.writeFileSync(mockFile, [
+      "const fs = require('fs'); const sc = JSON.parse(process.env.RELAY_MOCK); const calls = [];",
+      "process.on('exit', function(){ fs.writeFileSync(sc.out, JSON.stringify(calls)); });",
+      "const reply = function(status, body){ const text = typeof body === 'string' ? body : JSON.stringify(body);",
+      "  return {ok: status >= 200 && status < 300, status: status, json: async function(){ return JSON.parse(text); }, text: async function(){ return text; }}; };",
+      "global.fetch = async function(url, opts){ const u = String(url), m = (opts && opts.method) || 'GET';",
+      "  if(u.indexOf('/oauth2/token') >= 0){ const t = new URLSearchParams(String(opts.body)).get('refresh_token'); calls.push({k:'refresh', t:t});",
+      "    const r = sc.refresh[t]; if(!r) return reply(400, {error:'invalid_request', error_hint:'The refresh token was already used.'});",
+      "    return reply(r.status, r.body); }",
+      "  if(u.indexOf('/gists/STATE') >= 0){ if(m === 'PATCH'){ calls.push({k:'state', c: JSON.parse(opts.body).files['whoop_token.json'].content}); return reply(200, {}); }",
+      "    calls.push({k:'stateRead'}); if(sc.stateStatus !== 200) return reply(sc.stateStatus, {message:'Bad credentials'});",
+      "    return reply(200, {files: {'whoop_token.json': {content: sc.state}}}); }",
+      "  if(u.indexOf('/gists/SYNC') >= 0){ if(m === 'PATCH'){ calls.push({k:'whoop', c: JSON.parse(opts.body).files['whoop_data.json'].content}); return reply(200, {}); }",
+      "    return reply(200, {files: sc.whoopFile ? {'whoop_data.json': {content: sc.whoopFile}} : {}}); }",
+      "  if(u.indexOf('/developer/v2/') >= 0){ calls.push({k:'api'}); if(sc.empty) return reply(200, {records: []});",
+      "    if(u.indexOf('/recovery?limit=1') >= 0) return reply(200, {records: [{created_at: new Date().toISOString(), score: {recovery_score: 57, hrv_rmssd_milli: 71, resting_heart_rate: 52}}]});",
+      "    return reply(200, {records: []}); }",
+      "  throw new TypeError('unexpected request ' + u); };"].join('\n'));
+    const runRelay = function(name, sc){
+      sc.out = require('path').join(tmp, name + '.json');
+      const env = Object.assign({}, process.env, {WHOOP_CLIENT_ID:'cid', WHOOP_CLIENT_SECRET:'csecret', WHOOP_REFRESH_TOKEN: sc.seed || '',
+        IRONHUB_GIST_ID:'SYNC', IRONHUB_GIST_TOKEN:'ghp_x', IRONHUB_STATE_GIST_ID:'STATE', RELAY_MOCK: JSON.stringify(sc)});
+      const r = cpW.spawnSync(process.execPath, ['-r', mockFile, RELAY_PATH], {env: env, encoding: 'utf8', timeout: 30000});
+      let calls = []; try { calls = JSON.parse(fsW.readFileSync(sc.out, 'utf8')); } catch(e){}
+      return {code: r.status, log: (r.stdout || '') + (r.stderr || ''), calls: calls,
+              refreshes: calls.filter(function(c){ return c.k === 'refresh'; }).map(function(c){ return c.t; }).join(),
+              state: calls.filter(function(c){ return c.k === 'state'; }).map(function(c){ return JSON.parse(c.c); }),
+              whoop: calls.filter(function(c){ return c.k === 'whoop'; }).map(function(c){ return JSON.parse(c.c); })};
+    };
+    const prevJson = relayW.serializeWhoop(prevFile);
+    const okTok = {status: 200, body: {access_token: 'acc', refresh_token: 'rotated', expires_in: 3600}};
+
+    // 2026-10-04 as it happened, then fixed: a dead stored token and a freshly authorized secret
+    let rr = runRelay('reauth', {stateStatus: 200, state: JSON.stringify({refresh_token: 'deadtok'}), seed: 'newtok', whoopFile: prevJson,
+                                 refresh: {newtok: okTok}});
+    ok('relay run: a new secret after a dead stored token signs the relay back in', rr.code === 0 && rr.refreshes === 'deadtok,newtok', rr.refreshes + ' | ' + rr.log.slice(0, 400));
+    ok('relay run: the rotated token is stored, with the secret marked as used',
+       rr.state.length === 1 && rr.state[0].refresh_token === 'rotated' && rr.state[0].seedTried === relayW.seedHash('newtok'), JSON.stringify(rr.state));
+    ok('relay run: and it writes WHOOP data with no failure note', rr.whoop.length === 1 && rr.whoop[0].recovery && rr.whoop[0].recovery.score === 57 && !rr.whoop[0].relayError,
+       JSON.stringify(rr.whoop[0] || {}).slice(0, 200));
+    ok('relay run: no token reaches the log', ['deadtok', 'newtok', 'rotated', 'csecret'].every(function(t){ return rr.log.indexOf(t) < 0; }), rr.log.slice(0, 300));
+
+    // before he re-authorizes: the secret still holds the long-spent original
+    rr = runRelay('dead', {stateStatus: 200, state: JSON.stringify({refresh_token: 'deadtok', seedTried: relayW.seedHash('oldseed')}), seed: 'oldseed',
+                           whoopFile: prevJson, refresh: {}});
+    ok('relay run: a dead token with nothing new to try fails, sending only the stored token', rr.code === 1 && rr.refreshes === 'deadtok', rr.refreshes);
+    ok('relay run: and leaves the app a note naming a refused sign-in, with the data kept',
+       rr.whoop.length === 1 && rr.whoop[0].relayError && rr.whoop[0].relayError.kind === 'auth' && rr.whoop[0].relayError.reauth === true &&
+       rr.whoop[0].recovery.score === 61 && rr.whoop[0].history.length === 2, JSON.stringify(rr.whoop[0] || {}).slice(0, 300));
+    ok('relay run: the log says what to do', /WHOOP needs re-authorizing/.test(rr.log) && /already used/.test(rr.log), rr.log.slice(0, 400));
+    ok('relay run: and the stored token is left alone', rr.state.length === 0);
+
+    // the first refusal ever, with the original seed never recorded as tried: sent once, then remembered
+    rr = runRelay('once', {stateStatus: 200, state: JSON.stringify({refresh_token: 'deadtok'}), seed: 'oldseed', whoopFile: prevJson, refresh: {}});
+    ok('relay run: an unrecorded secret is tried once and remembered', rr.code === 1 && rr.refreshes === 'deadtok,oldseed' &&
+       rr.state.length === 1 && rr.state[0].seedTried === relayW.seedHash('oldseed') && rr.state[0].refresh_token === 'deadtok', rr.refreshes + ' ' + JSON.stringify(rr.state));
+
+    // WHOOP's side fails: no fallback, a note that says so
+    rr = runRelay('down', {stateStatus: 200, state: JSON.stringify({refresh_token: 'livetok'}), seed: 'other', whoopFile: prevJson,
+                           refresh: {livetok: {status: 502, body: '<html>502 Bad Gateway</html>'}}});
+    ok('relay run: a 502 sends nothing else and notes WHOOP’s side', rr.code === 1 && rr.refreshes === 'livetok' &&
+       rr.whoop.length === 1 && rr.whoop[0].relayError.kind === 'auth-down' && rr.whoop[0].relayError.reauth === false, rr.refreshes + ' ' + JSON.stringify(rr.whoop));
+
+    // the gist secret itself refused: nothing can be written, and nothing is
+    rr = runRelay('gist', {stateStatus: 401, state: '', seed: 'x', whoopFile: prevJson, refresh: {}});
+    ok('relay run: a refused gist secret writes nothing and sends nothing to WHOOP', rr.code === 1 && rr.refreshes === '' && rr.whoop.length === 0 && rr.state.length === 0,
+       JSON.stringify(rr.calls));
+    ok('relay run: which is exactly the missing note the app reads as the gist secret', /GITHUB auth failure/.test(rr.log));
+
+    // a run that signs in but gets no records still clears an earlier note
+    rr = runRelay('empty', {stateStatus: 200, state: JSON.stringify({refresh_token: 'livetok'}), seed: '', empty: true,
+                            whoopFile: relayW.serializeWhoop(noted), refresh: {livetok: okTok}});
+    ok('relay run: signing in clears an earlier failure note even when WHOOP has nothing new',
+       rr.code === 0 && rr.whoop.length === 1 && !rr.whoop[0].relayError && rr.whoop[0].recovery.score === 61, JSON.stringify(rr.whoop).slice(0, 300));
+    try { fsW.rmSync(tmp, {recursive: true, force: true}); } catch(e){}
+  } catch (e) {
+    ok('WHOOP relay sign-in section', false, e.stack);
+    try { ev('if(window.__wrFetch){ window.fetch = window.__wrFetch; delete window.__wrFetch; } delete S.whoop;'); } catch(e2){}
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

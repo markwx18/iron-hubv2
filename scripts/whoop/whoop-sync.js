@@ -73,10 +73,11 @@ async function ghPatch(id, files) {
   return res.json();
 }
 
-/* The stored refresh token, if a previous run rotated one. WHOOP issues a NEW refresh token
- * every time you spend the old one, so the seeded secret is only ever good for the first run
- * -- after that the live one lives here. */
-async function readStoredToken() {
+/* The token store: {token, seedTried}. token is the refresh token a previous run rotated in, if
+ * any. WHOOP issues a NEW refresh token every time you spend the old one, so the seeded secret is
+ * only ever good for the first run -- after that the live one lives here. seedTried is a short
+ * hash of the WHOOP_REFRESH_TOKEN value last sent to WHOOP (see spendRefresh()). */
+async function readStore() {
   let g;
   try {
     g = await ghGet(STATE_GIST_ID);
@@ -94,23 +95,120 @@ async function readStoredToken() {
       'Nothing is lost meanwhile; the rotated WHOOP refresh token is still in the state gist and ' +
       'the next run picks it up as soon as this secret can read it again.');
   }
+  const store = { token: null, seedTried: null };
   try {
     const f = g.files && g.files[STATE_FILE];
     if (f && f.content) {
       const p = JSON.parse(f.content);
-      if (p && typeof p.refresh_token === 'string' && p.refresh_token) return p.refresh_token;
+      if (p && typeof p.refresh_token === 'string' && p.refresh_token) store.token = p.refresh_token;
+      if (p && typeof p.seedTried === 'string') store.seedTried = p.seedTried;
     }
   } catch (e) {
     // A gist we CAN read that holds no usable token really is the first-run case, and the
     // seeded secret is exactly right for it.
     console.error('Stored token file unusable (' + e.message + ') -- falling back to the seed.');
   }
-  return null;
+  return store;
 }
-async function storeToken(refreshToken) {
-  await ghPatch(STATE_GIST_ID, {
-    [STATE_FILE]: { content: JSON.stringify({ refresh_token: refreshToken, rotatedAt: new Date().toISOString() }, null, 2) },
-  });
+async function storeToken(refreshToken, seedTried) {
+  const rec = { refresh_token: refreshToken, rotatedAt: new Date().toISOString() };
+  if (seedTried) rec.seedTried = seedTried;
+  await ghPatch(STATE_GIST_ID, { [STATE_FILE]: { content: JSON.stringify(rec, null, 2) } });
+}
+
+/* Identifies a seed value without storing it. 12 hex characters of a SHA-256 cannot be turned
+ * back into a token, and only ever need to tell "this secret" from "a different secret". */
+function seedHash(seed) {
+  return require('crypto').createHash('sha256').update(String(seed)).digest('hex').slice(0, 12);
+}
+
+/* Never echo a credential into a log. Public repo logs are readable by any signed-in GitHub user,
+ * and WHOOP's error bodies are not promised to leave the request out. */
+function redact(text, secrets) {
+  let s = String(text == null ? '' : text);
+  for (const v of secrets || []) if (v && v.length >= 6) s = s.split(v).join('[redacted]');
+  return s;
+}
+
+/* WHOOP's OAuth errors are Ory-style JSON, and the useful part is error_hint, which came AFTER the
+ * 200 characters the relay used to keep. On 2026-10-04 the log read only "token refresh failed
+ * (400): {"error":"invalid_request","error_description":"The request is missing a required
+ * parameter, ...", the generic text, with the hint cut off. */
+function whoopErrText(status, body) {
+  let j = null;
+  try { j = JSON.parse(body); } catch (e) { /* not JSON: an HTML 502 page, say */ }
+  if (j && typeof j === 'object' && (j.error || j.error_hint || j.error_description)) {
+    return [j.error, j.error_hint || j.error_description].filter(Boolean).join(': ').slice(0, 300);
+  }
+  return String(body || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+
+/* Why the sign-in failed, as the kind the app keys its advice on:
+ *   'auth'      WHOOP answered and refused the token (400/401). It is dead, and only a new
+ *               authorization fixes it.
+ *   'auth-down' WHOOP's side failed (5xx) or no reply came. The token may or may not have been
+ *               rotated before it failed -- the next run finds out.
+ * The second is how the first usually starts. WHOOP has a known fault where its refresh endpoint
+ * rotates the token and THEN returns a 502, so the new token never reaches the client and the
+ * old one is already spent (WHOOP community, Jul-Aug 2026:
+ * https://www.community.whoop.com/t/oauth-token-desync-caused-by-502-origin-gateway-errors-on-refresh-endpoint/15732).
+ * 2026-10-03 looked like that: one run at 5:49 PM took 12 seconds to fail, then every run after
+ * it got "400 invalid_request" in about a second. Nothing on this side can recover a token that
+ * was never delivered, so the job here is to say so plainly and make the re-authorization a
+ * single secret update. */
+function authError(status, body, secrets) {
+  const hint = redact(whoopErrText(status, body), secrets);
+  const e = new Error('token refresh failed (' + status + ')' + (hint ? ': ' + hint : ''));
+  e.kind = (status === 400 || status === 401) ? 'auth' : 'auth-down';
+  e.status = status;
+  return e;
+}
+
+/* Which refresh token to spend, and what to do when WHOOP refuses it.
+ *
+ * The stored token comes first, as always. Before 2026-10-04, though, the seed was used ONLY when
+ * nothing was stored, so a dead stored token could never be replaced from the obvious place:
+ * re-authorizing and pasting the new token into WHOOP_REFRESH_TOKEN changed nothing, because the
+ * dead one in the state gist still won. Now a refused (400/401) stored token falls back to the
+ * secret, but only to a secret value that has never been sent to WHOOP (seedTried):
+ *   - A spent seed is not retried on every run. It is sent once, then remembered.
+ *   - A 5xx does not fall back at all. The stored token may still be alive, and sending an older
+ *     token from the same authorization is exactly what a refresh-token reuse check punishes.
+ * refresh(token) resolves the token response or throws authError(). */
+async function spendRefresh(store, seed, refresh) {
+  const seedId = seed ? seedHash(seed) : null;
+  if (store.token) {
+    try {
+      return { tok: await refresh(store.token), from: 'stored', spent: store.token, seedTried: store.seedTried };
+    } catch (e) {
+      const untried = seed && seed !== store.token && seedId !== store.seedTried;
+      if (e.kind !== 'auth' || !untried) throw e;
+      console.log('WHOOP refused the stored refresh token (' + e.message + '). The WHOOP_REFRESH_TOKEN ' +
+                  'secret holds a value not tried before, so trying that.');
+    }
+  }
+  if (!seed) {
+    const e = new Error('No refresh token available (neither stored nor seeded).');
+    e.kind = 'auth';
+    throw e;
+  }
+  try {
+    return { tok: await refresh(seed), from: 'seed', spent: seed, seedTried: seedId };
+  } catch (e) {
+    e.seedTried = seedId;   // the caller remembers it, so this seed is not sent again
+    throw e;
+  }
+}
+
+/* What the app is told when a run fails, written into whoop_data.json beside the last good data.
+ * The app cannot read Actions logs, and until this it guessed: every failed run was "the
+ * IRONHUB_GIST_TOKEN secret", which on 2026-10-04 sent him after a secret that was working while
+ * WHOOP had refused the token. A run that cannot write the gist leaves no record, and the absence
+ * is itself the evidence the app then reads as the gist secret. A successful run writes a fresh
+ * file with no record in it, which clears it. */
+function relayErrorRecord(e, nowIso) {
+  const kind = ['auth', 'auth-down', 'whoop'].indexOf(e && e.kind) >= 0 ? e.kind : 'other';
+  return { at: nowIso, kind, message: String((e && e.message) || 'unknown error').slice(0, 300), reauth: kind === 'auth' };
 }
 
 async function refreshAccessToken(refreshToken) {
@@ -121,36 +219,69 @@ async function refreshAccessToken(refreshToken) {
     client_secret: CLIENT_SECRET,
     scope: 'offline',
   });
-  const res = await fetch(WHOOP_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-  });
-  if (!res.ok) throw new Error('token refresh failed (' + res.status + '): ' + (await res.text()).slice(0, 200));
+  // No timeout, on purpose. Cutting a slow refresh off is how a client loses a token WHOOP has
+  // already rotated (see authError()); waiting costs a few seconds of runner time at most.
+  let res;
+  try {
+    res = await fetch(WHOOP_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+  } catch (e) {
+    const err = new Error('token refresh got no reply (' + e.message + ')');
+    err.kind = 'auth-down';
+    throw err;
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    const secrets = [refreshToken, CLIENT_SECRET];
+    console.error('WHOOP token endpoint said (' + res.status + '): ' + redact(text, secrets).slice(0, 1000));
+    throw authError(res.status, text, secrets);
+  }
   return res.json();   // {access_token, refresh_token, expires_in, ...}
 }
 
 async function whoopGet(path, accessToken) {
   const res = await fetch(WHOOP_API + path, { headers: { Authorization: 'Bearer ' + accessToken } });
   if (res.status === 404) return null;              // nothing recorded yet
-  if (!res.ok) throw new Error('WHOOP ' + path + ' failed (' + res.status + ')');
+  if (!res.ok) {
+    const e = new Error('WHOOP ' + path.split('?')[0] + ' failed (' + res.status + ')');
+    e.kind = 'whoop';
+    throw e;
+  }
   return res.json();
 }
 
 const dayOf = (iso) => (typeof iso === 'string' ? iso.slice(0, 10) : null);
 
-async function main() {
-  const stored = await readStoredToken();
-  const startingToken = stored || process.env.WHOOP_REFRESH_TOKEN;
-  if (!startingToken) { console.error('No refresh token available (neither stored nor seeded).'); process.exit(1); }
-  console.log('Using ' + (stored ? 'the stored' : 'the seeded') + ' refresh token.');
+/* Set once the token store has been read, which proves IRONHUB_GIST_TOKEN works. Only then is
+ * there any point trying to leave the app a note about a failure. */
+let gistReadable = false;
 
-  const tok = await refreshAccessToken(startingToken);
+async function main() {
+  const store = await readStore();
+  gistReadable = true;
+  const seed = (process.env.WHOOP_REFRESH_TOKEN || '').trim();
+  console.log('Using ' + (store.token ? 'the stored' : 'the seeded') + ' refresh token.');
+
+  let got;
+  try {
+    got = await spendRefresh(store, seed, refreshAccessToken);
+  } catch (e) {
+    // A seed that was just sent and refused is remembered, so it is not sent again every run.
+    if (e.seedTried && e.seedTried !== store.seedTried) {
+      try { await storeToken(store.token, e.seedTried); } catch (e2) { /* the original error matters more */ }
+    }
+    throw e;
+  }
+  if (got.from === 'seed' && store.token) console.log('The new WHOOP_REFRESH_TOKEN secret worked; the relay is signed in again.');
+  const tok = got.tok;
   // Persist the rotated token FIRST. If the gist write below fails, the worst case is a
   // whoop_data.json that is one cycle stale -- but losing the rotated refresh token means
   // every future run fails and the whole thing has to be re-authorized by hand.
-  if (tok.refresh_token && tok.refresh_token !== startingToken) {
-    await storeToken(tok.refresh_token);
+  if (tok.refresh_token && tok.refresh_token !== got.spent) {
+    await storeToken(tok.refresh_token, got.seedTried);
     console.log('Rotated refresh token stored.');
   }
 
@@ -168,6 +299,9 @@ async function main() {
 
   if (!out.recovery && !out.sleep && !out.strain) {
     console.log('WHOOP returned nothing usable this run; leaving the existing file alone.');
+    // Except a failure note from an earlier run: this run signed in and read WHOOP, so whatever
+    // that note said is no longer true, and the app would go on repeating it.
+    await clearRelayError();
     return;
   }
 
@@ -376,6 +510,51 @@ function serializeWhoop(out) {
   return s;
 }
 
-module.exports = { todaySections, carryForward, historyRows, mergeHistory, serializeWhoop, HIST_DAYS };
+/* ---------------- failure notes for the app ---------------- */
 
-if (IS_MAIN) main().catch((e) => { console.error(e.message); process.exit(1); });
+/* The previous file with a failure note added (or removed, with rec null). Everything else in it
+ * is kept exactly, so a failed run never costs the app the data it already had. */
+function withRelayError(prev, rec) {
+  const out = Object.assign({}, prev || {});
+  if (rec) out.relayError = rec; else delete out.relayError;
+  return out;
+}
+async function readWhoopFile() {
+  const f = ((await ghGet(GIST_ID)).files || {})['whoop_data.json'];
+  return f && f.content ? JSON.parse(f.content) : null;
+}
+async function clearRelayError() {
+  try {
+    const prev = await readWhoopFile();
+    if (prev && prev.relayError) {
+      await ghPatch(GIST_ID, { 'whoop_data.json': { content: serializeWhoop(withRelayError(prev, null)) } });
+      console.log('Cleared the failure note an earlier run left.');
+    }
+  } catch (e) { /* best effort; the next run that writes data clears it anyway */ }
+}
+/* Best effort, and never allowed to hide the real error: that is printed first and the run
+ * still fails. */
+async function reportFailure(e) {
+  if (!gistReadable) return;   // the gist secret itself failed; there is no way to write anything
+  try {
+    const prev = await readWhoopFile();
+    await ghPatch(GIST_ID, { 'whoop_data.json': { content: serializeWhoop(withRelayError(prev, relayErrorRecord(e, new Date().toISOString()))) } });
+    console.error('Left a note for the app in whoop_data.json.');
+  } catch (e2) {
+    console.error('Could not leave a note for the app (' + e2.message + ').');
+  }
+}
+
+module.exports = { todaySections, carryForward, historyRows, mergeHistory, serializeWhoop, HIST_DAYS,
+                   spendRefresh, seedHash, redact, whoopErrText, authError, relayErrorRecord, withRelayError };
+
+if (IS_MAIN) main().catch(async (e) => {
+  console.error(e.message);
+  if (e.kind === 'auth') {
+    console.error('WHOOP needs re-authorizing. On the laptop: node scripts/whoop/whoop-auth.js, approve, ' +
+                  'then paste the token it prints into the WHOOP_REFRESH_TOKEN repository secret. The ' +
+                  'next run uses it.');
+  }
+  await reportFailure(e);
+  process.exit(1);
+});

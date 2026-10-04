@@ -4,7 +4,9 @@
  *
  * Prints a URL, waits for the redirect on http://localhost:8080/callback, exchanges the
  * code, and prints the refresh token to paste into the WHOOP_REFRESH_TOKEN repo secret.
- * After that this file is never needed again -- the scheduled job rotates the token itself.
+ * After that the scheduled job rotates the token itself. Run this again only if WHOOP's sign-in is
+ * lost (the relay's log says "WHOOP needs re-authorizing"): paste the new token into the same
+ * secret, and the next run switches to it even though an older, dead token is stored.
  *
  * Set WHOOP_CLIENT_ID and WHOOP_CLIENT_SECRET in your shell before running. Nothing is
  * written to disk: the token is printed and it is up to you to paste it into the secret.
@@ -73,7 +75,7 @@ const server = http.createServer(async (req, res) => {
       process.exit(1);
     }
     finish('Done. You can close this tab and go back to the terminal.');
-    console.log('\nRefresh token (paste into the WHOOP_REFRESH_TOKEN repo secret):\n\n' + j.refresh_token + '\n');
+    console.log('\nRefresh token (paste into the WHOOP_REFRESH_TOKEN repo secret; the next relay run uses it):\n\n' + j.refresh_token + '\n');
     // A short delay, not an immediate exit: res.end() only guarantees the data was handed to
     // the OS's send buffer, not that the browser has received and rendered it yet.
     setTimeout(() => server.close(() => process.exit(0)), 300);

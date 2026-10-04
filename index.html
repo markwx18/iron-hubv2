@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-03-v2">
+<meta name="ironhub-build" content="2026-10-04-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -5316,7 +5316,15 @@ function applyWhoop(raw){
     const hist = Object.keys(byDate).sort().slice(-WHOOP_HIST_MAX).map(function(k){ return byDate[k]; });
     if(hist.length) out.history = hist;
   }
-  if(!out.recovery && !out.sleep && !out.strain && !out.history) return false;
+  /* The relay's own account of its last failed run (relayErrorRecord() in whoop-sync.js). A run
+     that succeeds writes a file without one, so its presence means "the latest run failed". Same
+     rules as everything above: known kinds only, the text clipped, and it is shown through esc(). */
+  const re = raw.relayError;
+  if(re && typeof re === 'object' && stampOk(re.at) && typeof re.message === 'string'){
+    const kind = ['auth','auth-down','whoop'].indexOf(re.kind) >= 0 ? re.kind : 'other';
+    out.relayError = {at:re.at, kind:kind, message:re.message.slice(0,300), reauth: kind === 'auth'};
+  }
+  if(!out.recovery && !out.sleep && !out.strain && !out.history && !out.relayError) return false;
   S.whoop = out;
   // save(false): this came FROM the cloud, so it is not a local change and must not bump
   // changedAt -- doing so would make autoPullOnLoad() skip its pull and push stale local
@@ -5393,11 +5401,49 @@ const WHOOP_RUNFAIL_KEY = 'ironhub:whooprunfail';   // day-stamped, so the warni
 function whoopRelayNote(){
   try{ return JSON.parse(localStorage.getItem(WHOOP_RELAY_KEY) || 'null'); }catch(e){ return null; }
 }
-function whoopRelaySet(ok, status, msg, diag){
+/* kind 'run': the dispatch was ACCEPTED and the run then failed. Without it Settings read a failed
+   run as "this device's token cannot trigger a run", which blamed the one token proven to work. */
+function whoopRelaySet(ok, status, msg, diag, kind){
   try{
     localStorage.setItem(WHOOP_RELAY_KEY, JSON.stringify(
-      {ok:!!ok, status:status||0, msg:msg||'', diag:diag||'', at:Date.now()}));
+      {ok:!!ok, status:status||0, msg:msg||'', diag:diag||'', at:Date.now(), kind:kind||''}));
   }catch(e){}
+}
+
+/* Why a relay RUN failed. The app cannot read Actions logs, so until 2026-10-04 it guessed, and
+   always guessed the IRONHUB_GIST_TOKEN secret. That morning CHARLIE and Test relay both sent him
+   after that secret while it was working fine: WHOOP had refused the relay's sign-in. The relay
+   now leaves its own note in whoop_data.json (S.whoop.relayError) whenever it can still write the
+   gist. So a note from this run (or later) names the real cause, and NO note is evidence too: a
+   relay that cannot write the gist cannot leave one, which is the gist-secret case.
+   sinceMs is when the failed run was created; a note older than that belongs to an earlier
+   failure and says nothing about this one. */
+function whoopRelayFault(sinceMs){
+  const f = S.whoop && S.whoop.relayError;
+  if(!f) return null;
+  const t = Date.parse(f.at);
+  if(!isFinite(t) || (sinceMs && t < sinceMs - 120000)) return null;
+  return f;
+}
+function whoopFaultText(f){
+  const said = ' (' + f.message.replace(/[.\s]+$/, '') + ')';
+  if(f.kind === 'auth') return 'WHOOP refused the relay’s sign-in' + said + '. WHOOP issues a new token ' +
+    'every time the relay signs in, and the one the relay holds is dead — usually because WHOOP ' +
+    'swapped it and then failed to send the reply. Neither GitHub token is at fault. Fix it once, on ' +
+    'the laptop: run node scripts/whoop/whoop-auth.js, approve, and paste the token it prints into the ' +
+    'WHOOP_REFRESH_TOKEN repository secret. The next run picks it up.';
+  if(f.kind === 'auth-down') return 'WHOOP’s sign-in failed on WHOOP’s side' + said + '. If WHOOP had ' +
+    'already swapped the token, the next run is refused and this will say to re-authorize; otherwise ' +
+    'the next run just works.';
+  if(f.kind === 'whoop') return 'WHOOP itself failed' + said + '. Usually temporary; the next run tries again.';
+  return 'The relay failed' + said + '.';
+}
+function whoopRunFailText(run){
+  const f = whoopRelayFault(run && run.at);
+  if(f) return whoopFaultText(f);
+  return 'The run failed before it could leave a note in the gist. That is what happens when the ' +
+    'IRONHUB_GIST_TOKEN repository secret is refused, since the relay needs it to write anything. ' +
+    'The Actions tab has the exact line.';
 }
 /* GitHub says exactly what is wrong in the response body, and this app used to throw it away
    and report a bare status instead. That is how a 403 survived a token swap: "cannot trigger
@@ -5557,15 +5603,16 @@ async function whoopTestRelay(){
         renderSettings();
         setSyncMsg('\u2713 The relay ran and SUCCEEDED \u2014 recovery should be in within a minute.');
       } else {
-        /* The case that used to read as success. Name which token is at fault, because they are
-           different tokens in different places and that is the whole confusion. */
+        /* The case that used to read as success. Name what is at fault, because there are three
+           credentials in three places and that is the whole confusion. The relay writes its note
+           just before the run ends, after the last 60s pull, so read the gist now for it. */
+        try{ await fetchGistData(); }catch(e){}
+        const why = whoopRunFailText(run);
         whoopRelaySet(false, 0, 'the run itself failed (' + (run.conclusion || 'no result') + ')',
-          ' The dispatch was accepted, so THIS APP\u2019S token is fine. The RELAY failed, which is ' +
-          'the IRONHUB_GIST_TOKEN repository secret \u2014 a different token, set on GitHub, not here.');
+          ' The dispatch was accepted, so THIS APP\u2019S token is fine. ' + why, 'run');
         renderSettings();
         setSyncMsg('The relay was triggered but the run FAILED (' + (run.conclusion || 'no result') +
-                   '). This app\u2019s token is fine \u2014 the fault is the IRONHUB_GIST_TOKEN ' +
-                   'repository secret on GitHub. Open the Actions tab for the exact line.', true);
+                   '). This app\u2019s token is fine. ' + why, true);
       }
     } else {
       const gh = await ghErrMsg(res);
@@ -5623,8 +5670,7 @@ async function whoopMaybeKick(){
         agLog('charlie', 'The WHOOP relay is running but FAILING (last run ' +
           new Date(prev.at).toLocaleString() + ': ' + prev.conclusion + '), so no recovery is ' +
           'reaching the app. This is NOT the token in Settings \u2014 that one is working, or the ' +
-          'run would not have started. It is the IRONHUB_GIST_TOKEN repository secret on GitHub. ' +
-          'Settings \u203a Cloud Sync \u203a Test relay now waits for the verdict and will say the same.');
+          'run would not have started. ' + whoopRunFailText(prev));
         save(false);
       }
     }
@@ -7093,7 +7139,11 @@ function settingsSummaries(){
   parts.push(syncReady() ? 'Sync on' : bad('Sync not connected'));
   parts.push(S.settings.apiKey ? 'API key set' : 'No API key');
   const rn = syncReady() ? whoopRelayNote() : null;
-  if(rn && !rn.ok) parts.push(bad('WHOOP relay can\u2019t run from this device'));
+  // The relay's own note outranks this device's verdict: it says why the latest run failed,
+  // and a relay failing for everyone is the bigger fact.
+  const rf = syncReady() ? whoopRelayFault(0) : null;
+  if(rf) parts.push(bad(rf.reauth ? 'WHOOP needs re-authorizing' : 'WHOOP relay failing'));
+  else if(rn && !rn.ok) parts.push(bad(rn.kind === 'run' ? 'WHOOP relay runs are failing' : 'WHOOP relay can\u2019t run from this device'));
   const gn = gdocNote(), gc = gdocCfg();
   if(gc && gn && gn.ok === false) parts.push(bad('Schedule doc not updating'));
   out.connections = parts.join(' \u00b7 ');
@@ -7181,10 +7231,18 @@ function renderSettings(){
        in this device's Settings, and because the log line scrolls away while the failure
        repeats every morning. */
     const _rn = whoopRelayNote();
+    // The relay's note about its latest run, when it left one (whoopRelayFault()). It is about the
+    // relay, not this device, so it shows beside whatever this device's own verdict is.
+    const _rf = whoopRelayFault(0);
     html += '<p class="small"><span class="ok">\u25cf Connected</span> \u00b7 gist <span class="mono">'+esc(S.settings.gistId.slice(0,10))+'\u2026</span>'+
       (S.meta && S.meta.lastSync ? ' \u00b7 last sync '+new Date(S.meta.lastSync).toLocaleString() : '')+'</p>'+
+      (_rf ? '<p class="small err">\u25cf WHOOP relay: the last run failed ('+esc(new Date(_rf.at).toLocaleString())+'). '+
+        esc(whoopFaultText(_rf))+'</p>' : '')+
       (_rn ? (_rn.ok
         ? '<p class="small" style="color:var(--cyan)">\u25cf WHOOP relay: this device\u2019s token can trigger a run.</p>'
+        : _rn.kind === 'run'
+        ? (_rf ? '' : '<p class="small err">\u25cf WHOOP relay: this device\u2019s token triggered a run, and the run FAILED.'+
+            (_rn.diag ? ' '+esc(_rn.diag.trim()) : '')+'</p>')
         : '<p class="small err">\u25cf WHOOP relay: this device\u2019s token cannot trigger a run ('+_rn.status+
           (_rn.msg ? ' \u2014 '+esc(_rn.msg) : '')+'). Recovery then waits on GitHub\u2019s schedule, which '+
           'misses the morning brief\u2019s window most days. Tokens are per device, so replacing it '+
