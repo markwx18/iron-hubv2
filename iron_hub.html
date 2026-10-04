@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-04-v1">
+<meta name="ironhub-build" content="2026-10-04-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,6 +38,10 @@
     --tier-none:#d23b3b; --tier-slow:#dfae36; --tier-prog:#3da25f;
     --tier-accel:#2f6fd0; --tier-rapid:var(--violet);
     --glow:rgba(242,138,58,.20);
+    /* A×C glow: only on what is live -- the readiness ring, Start, the set he is on. Off under
+       reduced motion (see the media rule). */
+    --glow-amber:0 0 34px rgba(242,138,58,.42);
+    --glow-good:drop-shadow(0 0 6px rgba(84,194,164,.55));
     --disp:'Saira Condensed',sans-serif; --body:'Figtree','Segoe UI',system-ui,sans-serif; --mono:'IBM Plex Mono',monospace;
     --accent:var(--amber); --d1:#d23b3b; --d2:#2f6fd0; --d3:#dfae36; --d4:#3da25f; --d5:#e9e7e2; --d6:#9aa0ab;
   }
@@ -396,7 +400,19 @@
   .botnav .ni.review-tint.on{color:var(--cyan);}
 
   @media (max-width:520px){ .grid2{grid-template-columns:1fr;} .summary .s-grid{gap:7px;} }
-  @media (prefers-reduced-motion:reduce){ *{animation:none !important; transition:none !important;} }
+  @media (prefers-reduced-motion:reduce){ *{animation:none !important; transition:none !important;}
+    :root{--glow-amber:none; --glow-good:none;} }
+  /* Screens arrive with a short fade and rise, on NAVIGATION only: showMainTab() puts .enter on the
+     sections it shows and the class leaves on animationend. The 30s repaint and sync pulls replace
+     a section's insides but never add the class, so a refresh cannot replay the entrance. */
+  @keyframes secIn{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+  main section.enter{animation:secIn .16s ease-out;}
+  @keyframes ringDraw{from{stroke-dashoffset:var(--ring-len, 741)}}
+  .ring-draw{animation:ringDraw .7s ease-out;}
+  /* Press feedback, everywhere except LIVE: the dock never moves under his hands. */
+  #reviewMode button, #reviewMode .btn, .topbar button, .sidenav button, .botnav .ni, .cc-tile, .cc-start{
+    transition:transform .09s ease, color .14s, background-color .14s, border-color .14s, box-shadow .14s, opacity .14s;}
+  #reviewMode button:active, #reviewMode .btn:active, .topbar button:active, .sidenav button:active, .botnav .ni:active, .cc-tile:active, .cc-start:active{transform:scale(.97);}
   .hidden{display:none !important;}
 
   /* ---- fuel: missing V1 classes ---- */
@@ -656,34 +672,63 @@
   .ni{position:relative;}
   .ni-badge{position:absolute; top:-2px; right:-5px; width:7px; height:7px; border-radius:50%; opacity:0; transition:.2s;}
 
+  /* The rail's items, shared by the desktop rail and the phone drawer (V4 stage 3). They used to
+     live inside the desktop media query, because the rail was desktop-only. */
+  .sn-brand{font-family:var(--disp); font-weight:700; font-size:19px; letter-spacing:.12em; color:var(--text);
+    padding:2px 10px 14px;}
+  .sn-brand span{color:var(--amber);}
+  .sn-item{display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:none; border:none;
+    border-left:3px solid transparent; border-radius:0 4px 4px 0; padding:10px 12px; min-height:44px; font-family:var(--disp);
+    font-weight:600; font-size:14.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+    cursor:pointer; transition:color .12s, background .12s, border-color .12s; position:relative;}
+  .sn-item:hover{color:var(--text); background:var(--panel);}
+  .sn-item.on{color:var(--cyan); background:var(--panel); border-left-color:var(--cyan);}
+  .sn-item.sn-live{color:var(--amber);}
+  .sn-item.sn-live:hover{background:rgba(242,138,58,.08);}
+  .sn-item.sn-live.on{background:rgba(242,138,58,.10); border-left-color:var(--amber); color:var(--amber);}
+  .sn-ic{font-size:16px; width:20px; text-align:center; flex:none;}
+  .sn-lbl{flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .sn-sep{height:1px; background:var(--line); margin:8px 10px;}
+  .sn-badge{width:7px; height:7px; border-radius:50%; margin-left:auto; opacity:0; transition:.2s;}
+  .sn-subs{display:flex; flex-direction:column; gap:1px; margin:2px 0 6px; animation:fade .18s ease;}
+  .sn-sub{display:block; width:100%; text-align:left; background:none; border:none; border-left:1px solid var(--line);
+    margin-left:22px; padding:7px 12px; min-height:40px; font-size:12.5px; letter-spacing:.03em; color:var(--dim); cursor:pointer;
+    transition:color .12s, border-color .12s;}
+  .sn-sub:hover{color:var(--muted);}
+  .sn-sub.on{color:var(--cyan); border-left-color:var(--cyan);}
+  .sn-collapse{display:none; margin-top:auto; align-items:center; gap:10px; width:100%; min-height:44px; padding:10px 12px;
+    background:none; border:none; color:var(--dim); font-family:var(--disp); font-weight:600; font-size:12.5px;
+    letter-spacing:.06em; text-transform:uppercase; cursor:pointer; text-align:left;}
+  .sn-collapse:hover{color:var(--text);}
+  /* Two classes, not one: .top-btn sets display:flex further down and would otherwise win, putting
+     a menu button on desktop with nothing to open. */
+  .top-btn.top-menu{display:none;}
+  .nav-scrim{display:none;}
+  /* Phone: the same rail, as a drawer opened from the top bar. Off-canvas and hidden from focus when
+     closed; the bottom bar stays exactly as it was. */
+  @media(max-width:899px){
+    .top-btn.top-menu{display:flex;}
+    .sidenav{display:flex; flex-direction:column; gap:2px; position:fixed; left:0; top:0; bottom:0; width:min(280px, 84vw);
+      background:var(--base); border-right:1px solid var(--line); z-index:90; overflow-y:auto;
+      padding:calc(env(safe-area-inset-top) + 16px) 12px calc(env(safe-area-inset-bottom) + 14px);
+      transform:translateX(-104%); visibility:hidden; transition:transform .2s ease, visibility .2s;}
+    .sidenav.open{transform:none; visibility:visible; box-shadow:0 0 40px rgba(0,0,0,.55);}
+    .nav-scrim.open{display:block; position:fixed; inset:0; z-index:89; background:rgba(8,5,3,.55);}
+  }
   @media(min-width:900px){
     .sidenav{display:flex; flex-direction:column; gap:2px; position:fixed; left:0; top:0; bottom:0; width:212px;
       background:var(--base); border-right:1px solid var(--line); padding:18px 12px calc(env(safe-area-inset-bottom) + 14px);
-      overflow-y:auto; z-index:70;}
-    .sn-brand{font-family:var(--disp); font-weight:700; font-size:19px; letter-spacing:.12em; color:var(--text);
-      padding:2px 10px 14px;}
-    .sn-brand span{color:var(--amber);}
-    .sn-item{display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:none; border:none;
-      border-left:3px solid transparent; border-radius:0 4px 4px 0; padding:10px 12px; font-family:var(--disp);
-      font-weight:600; font-size:14.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
-      cursor:pointer; transition:color .12s, background .12s, border-color .12s; position:relative;}
-    .sn-item:hover{color:var(--text); background:var(--panel);}
-    .sn-item.on{color:var(--cyan); background:var(--panel); border-left-color:var(--cyan);}
-    .sn-item.sn-live{color:var(--amber);}
-    .sn-item.sn-live:hover{background:rgba(242,138,58,.08);}
-    .sn-item.sn-live.on{background:rgba(242,138,58,.10); border-left-color:var(--amber); color:var(--amber);}
-    .sn-ic{font-size:16px; width:20px; text-align:center; flex:none;}
-    .sn-sep{height:1px; background:var(--line); margin:8px 10px;}
-    .sn-badge{width:7px; height:7px; border-radius:50%; margin-left:auto; opacity:0; transition:.2s;}
-    .sn-subs{display:flex; flex-direction:column; gap:1px; margin:2px 0 6px; animation:fade .18s ease;}
-    .sn-sub{display:block; width:100%; text-align:left; background:none; border:none; border-left:1px solid var(--line);
-      margin-left:22px; padding:7px 12px; font-size:12.5px; letter-spacing:.03em; color:var(--dim); cursor:pointer;
-      transition:color .12s, border-color .12s;}
-    .sn-sub:hover{color:var(--muted);}
-    .sn-sub.on{color:var(--cyan); border-left-color:var(--cyan);}
+      overflow-y:auto; z-index:70; transition:width .16s ease;}
+    .sn-collapse{display:flex;}
+    /* Collapsed: a 64px icon rail. A per-device choice (uiPref 'nav.collapsed'), never in S. */
+    .app-shell.nav-collapsed .sidenav{width:64px; padding-left:8px; padding-right:8px;}
+    .app-shell.nav-collapsed .sn-lbl, .app-shell.nav-collapsed .sn-subs, .app-shell.nav-collapsed .sn-sep{display:none;}
+    .app-shell.nav-collapsed .sn-item, .app-shell.nav-collapsed .sn-collapse{justify-content:center; padding-left:0; padding-right:0;}
+    .app-shell.nav-collapsed .sn-badge{position:absolute; top:8px; right:8px; margin:0;}
     /* the shell stops being a 780px phone column and becomes a real desktop layout:
        sidebar owns the left rail, everything else lives in the remaining space. */
     .app-shell{max-width:none; margin:0; padding:0 0 40px 212px;}
+    .app-shell.nav-collapsed{padding-left:64px;}
     .topbar{padding-left:26px; padding-right:26px;}
     .live-body, .review-body{max-width:1180px; margin:0 auto; padding:0 26px;}
     .botnav{display:none !important;}
@@ -1344,6 +1389,85 @@
   .daycall .dc-why{color:var(--text); line-height:1.5;}
   .daycall .dc-what{color:var(--muted); line-height:1.5; margin-top:4px;}
   .daycall .btn{margin-top:10px;}
+
+  /* ===== V4 STAGE 3: TODAY, THE COMMAND CENTER (A × C) =====
+     A's tokens, cards and type; C's layout: the wheel IS Today, huge numbers, hairline sections.
+     The wheel scales with its column (percent geometry on a 361-unit square), so 320px phones fit. */
+  .cc{display:flex; flex-direction:column; gap:18px; margin-top:4px;}
+  .cc-hero{display:flex; flex-direction:column; align-items:center; gap:6px;}
+  .cc-main{display:flex; flex-direction:column; gap:14px; min-width:0;}
+  .cc-eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--amber);}
+  .cc-title{margin:0; font-family:var(--disp); font-weight:700; font-size:clamp(34px, 11vw, 46px); line-height:.95;
+    letter-spacing:.03em; text-transform:uppercase; color:var(--text); text-align:center;}
+  .cc-sub{font-size:14px; color:var(--muted);}
+  .cc-wheel{position:relative; width:100%; max-width:361px; aspect-ratio:1; margin:8px auto 0;}
+  .cc-ring{position:absolute; inset:0; width:100%; height:100%; overflow:visible;}
+  .cc-orbit{fill:none; stroke:var(--panel2); stroke-width:1;}
+  .cc-ticks{fill:none; stroke:var(--line2); stroke-width:4; stroke-dasharray:1.4 16;}
+  .cc-track{fill:none; stroke:var(--panel); stroke-width:8;}
+  .cc-arc{fill:none; stroke-width:8; stroke-linecap:round; filter:var(--glow-good);}
+  .cc-ready{position:absolute; left:50%; top:17.5%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; pointer-events:none;}
+  .cc-ready-n{font-family:var(--disp); font-weight:700; font-size:clamp(26px, 9vw, 34px); line-height:.9; color:var(--text);}
+  .cc-ready-l{font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.05em; text-transform:uppercase;}
+  .cc-start{position:absolute; left:50%; top:50%; width:36%; aspect-ratio:1; transform:translate(-50%,-50%); border-radius:50%;
+    border:none; background:var(--amber); color:var(--on-accent); display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:2px; cursor:pointer; box-shadow:var(--glow-amber);}
+  .cc-start:active{transform:translate(-50%,-50%) scale(.97);}
+  .cc-start-l{font-family:var(--disp); font-weight:700; font-size:clamp(20px, 6.5vw, 25px); letter-spacing:.05em; text-transform:uppercase; line-height:1;}
+  .cc-start-s{font-family:var(--disp); font-weight:700; font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; opacity:.78;}
+  .cc-tile{position:absolute; width:58px; height:58px; transform:translate(-50%,-50%); border:none; border-radius:18px; background:var(--panel);
+    color:var(--text); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer;
+    font-family:var(--disp); font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; box-shadow:var(--lift);}
+  .cc-tile svg{color:var(--amber);}
+  .cc-tile:active{transform:translate(-50%,-50%) scale(.97);}
+  .cc-t0{left:50%; top:11%;} .cc-t1{left:87.1%; top:38%;} .cc-t2{left:72.9%; top:81.6%;} .cc-t3{left:27.1%; top:81.6%;} .cc-t4{left:12.9%; top:38%;}
+  .cc-badge{position:absolute; top:-6px; right:-6px; min-width:20px; height:20px; padding:0 5px; border-radius:10px; background:var(--amber);
+    color:var(--on-accent); font-family:var(--mono); font-size:11px; display:flex; align-items:center; justify-content:center;}
+  .cc-why{margin:4px 0 0; font-size:15px; line-height:1.5; text-align:center; color:var(--text); max-width:44ch;}
+  .cc-lifts{display:flex; flex-direction:column; border-top:1px solid var(--panel2);}
+  .cc-lift{display:flex; align-items:baseline; gap:10px; padding:12px 2px; border-bottom:1px solid var(--panel2); min-width:0;}
+  .cc-lift-k{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); width:40px; flex:none;}
+  .cc-lift-n{font-weight:600; font-size:15px; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .cc-lift-v{font-family:var(--disp); font-weight:700; font-size:20px; letter-spacing:.02em; white-space:nowrap;}
+  .cc-lift-d{font-family:var(--disp); font-weight:700; font-size:14px; color:var(--dim); width:30px; text-align:right; flex:none;}
+  .cc-lift-d.up{color:var(--good);}
+  .cc-dim{color:var(--dim);}
+  .cc-head{display:flex; align-items:baseline; gap:8px;}
+  .cc-head .dash-sec{margin:0;}
+  .cc-note{margin-left:auto; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);}
+  .cc-expect{display:grid; grid-template-columns:repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap:14px;}
+  .cc-x{display:flex; flex-direction:column; gap:6px; min-width:0;}
+  .cc-x-k{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;}
+  .cc-x-v{font-family:var(--disp); font-weight:700; font-size:28px; line-height:.95; letter-spacing:.02em;}
+  .cc-x-s{font-size:12.5px; color:var(--muted); line-height:1.35;}
+  .cc-pips{display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:3px;}
+  .cc-pips i{height:8px; border-radius:2px; background:var(--line2);}
+  .cc-pips i.on{background:var(--warn);}
+  .cc-band{position:relative; height:8px; border-radius:4px; background:var(--panel);}
+  .cc-band-ok{position:absolute; left:33.3%; width:33.3%; top:0; bottom:0; background:color-mix(in srgb, var(--good) 32%, transparent);}
+  .cc-band-mk{position:absolute; top:-3px; width:3px; height:14px; margin-left:-1px; border-radius:2px; background:var(--text);}
+  .cc-agents{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:8px; width:100%; padding:0; border:none; background:none;
+    color:inherit; cursor:pointer; text-align:center;}
+  .cc-ag{display:flex; flex-direction:column; align-items:center; gap:4px; min-width:0;}
+  .cc-glyph{width:36px; height:36px; border-radius:11px; background:color-mix(in srgb, currentColor 16%, transparent); display:flex;
+    align-items:center; justify-content:center; font-family:var(--disp); font-weight:700; font-size:17px; flex:none;}
+  .cc-ag-n{font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--text);}
+  .cc-ag-s{font-size:11.5px; color:var(--muted); line-height:1.3;}
+  .cc-ag-s.cc-warn{color:var(--warn);} .cc-ag-s.cc-bad{color:var(--bad);} .cc-ag-s.cc-run{color:var(--amber);}
+  .cc-chips{display:flex; flex-wrap:wrap; gap:7px;}
+  .cc-chip{display:flex; align-items:center; gap:6px; max-width:100%; min-height:36px; padding:6px 11px; border:none; border-radius:12px;
+    background:var(--panel); color:var(--text); font-size:13px; font-weight:600; cursor:pointer;}
+  .cc-chip i{width:8px; height:8px; border-radius:4px; flex:none;}
+  .cc-chip-n{min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .cc-chip-v{font-size:12px; white-space:nowrap;}
+  .cc-brief{display:flex; gap:12px; align-items:flex-start;}
+  .cc-brief .cc-glyph{width:30px; height:30px; font-size:14px; border-radius:9px;}
+  .cc-brief-b{min-width:0; flex:1;}
+  /* Desktop: the wheel holds the left column, everything else the right (the A × C desktop artboard). */
+  @media(min-width:900px){
+    .cc{display:grid; grid-template-columns:minmax(300px, 380px) minmax(0, 1fr); gap:20px 40px; align-items:start;}
+    .cc-hero{position:sticky; top:16px;}
+  }
 </style>
 
 
@@ -1366,16 +1490,18 @@
 
 <div class="app-shell">
 
-  <nav class="sidenav" id="sidenav"></nav>
+  <nav class="sidenav" id="sidenav" aria-label="Sections"></nav>
+  <div class="nav-scrim" id="navScrim" onclick="navDrawerClose()"></div>
 
   <div class="topbar">
+    <button class="top-btn top-menu" id="topMenu" onclick="navDrawerToggle()" title="Menu" aria-label="Open menu" aria-expanded="false" aria-controls="sidenav"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
     <span class="logo-mark"></span>
     <div class="brand-txt">Iron Hub</div>
     <div class="spacer"></div>
     <button class="notif-btn" id="notifBtn" onclick="notifToggle()" title="Notifications" aria-label="Notifications">
       <span class="notif-ic">◉</span><span class="notif-badge" id="notifBadge"></span>
     </button>
-    <button class="top-btn" id="topCoach" onclick="setMode('review');showMainTab('ops')" title="Coach" aria-label="Coach"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 5.5h15v10h-9l-4.5 4v-4h-1.5z"/></svg><span class="ni-badge" id="niInvBadge"></span></button>
+    <button class="top-btn" id="topCoach" onclick="setMode('review');showMainTab('ops')" title="Hub" aria-label="Intelligence Hub"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 5.5h15v10h-9l-4.5 4v-4h-1.5z"/></svg><span class="ni-badge" id="niInvBadge"></span></button>
     <button class="top-btn" id="topSettings" onclick="setMode('review');showMainTab('settings')" title="Settings" aria-label="Settings"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></svg></button>
   </div>
   <div class="notif-panel" id="notifPanel"></div>
@@ -2379,6 +2505,15 @@ function musclesFor(ex){
 }
 const MUSCLE_GROUPS = ['Chest','Back','Shoulders','Biceps','Triceps','Quads','Hamstrings','Glutes','Abs'];
 function dateKeyOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+/* Motion (V4 stage 3). The CSS reduced-motion rule stops every animation and transition, but a
+   scripted smooth scroll goes straight past it -- so every smooth scroll goes through here. */
+function prefersReducedMotion(){
+  try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(e){ return false; }
+}
+function smoothScroll(el, block){
+  if(!el || !el.scrollIntoView) return;
+  el.scrollIntoView({behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: block || 'center'});
+}
 function weekStartKey(){
   if(scheduleMode()==='cycle'){
     // The "training week" boundary is the start of the current pass through the pattern
@@ -4230,7 +4365,7 @@ function spendPreflight(route){
   if(Date.now() < _spendOkUntil) return;
   const why = spendBlock(route);
   if(!why) return;
-  if(spendIsAuto(route)) throw new Error('Paused: ' + why + '. Raise the cap in Coach › API spend, or it resumes next month.');
+  if(spendIsAuto(route)) throw new Error('Paused: ' + why + '. Raise the cap in Hub › API spend, or it resumes next month.');
   if(typeof confirm === 'function' && confirm('Heads up: ' + why + '. Send anyway?')){ _spendOkUntil = Date.now() + SPEND_OK_MS; return; }
   throw new Error('Not sent: ' + why + '.');
 }
@@ -6799,7 +6934,7 @@ function fpPref(id, p){ if(!fpFood(id) || ['l','d','h'].indexOf(p) < 0) return; 
 function fpConfirmStock(){ fuelInit(); S.fuel.stockWeek = mesoMondayOf(todayKey()); save(); fpRepaint(); }
 function fpOpenPantry(){
   showReviewTab('fuel');
-  setTimeout(function(){ const el = document.getElementById('fpPantry'); if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 60);
+  setTimeout(function(){ const el = document.getElementById('fpPantry'); smoothScroll(el, 'start'); }, 60);
 }
 function fpSetEaten(kind, v){
   const e = fpEatenToday();
@@ -7158,7 +7293,7 @@ function renderSettings(){
   let conn = '', training = '', exercises = '', app = '';
   let html = '<h2>Anthropic API</h2><div class="card">'+
     '<label>API Key</label><input type="password" id="apiKey" value="'+esc(S.settings.apiKey||'')+'" placeholder="sk-ant-…">'+
-    '<p class="small" style="margin-top:6px">Stored only in this browser\'s localStorage. Powers the Coach and screenshot import. Leave blank if running inside Claude.ai preview.</p>'+
+    '<p class="small" style="margin-top:6px">Stored only in this browser\'s localStorage. Powers the agents in the Hub and screenshot import. Leave blank if running inside Claude.ai preview.</p>'+
     '<div style="margin-top:10px"><button class="btn sm" onclick="saveSettings()">Save</button> <span class="ok small" id="setMsg"></span></div></div>';
   conn += html; html = '';
 
@@ -7646,6 +7781,7 @@ function renderHeader(){ /* V2 uses the topbar; no per-day header plate */ }
 /* ===================== MODE SWITCHING ===================== */
 let MODE = 'live';
 function setMode(m){
+  navDrawerClose();   // every drawer item navigates, so navigating is what closes it
   MODE = m;
   document.getElementById('liveMode').classList.toggle('hidden', m!=='live');
   document.getElementById('reviewMode').classList.toggle('hidden', m!=='review');
@@ -7689,7 +7825,7 @@ const NAV_MODEL = [
     {id:'an_recovery', label:'Readiness'}]},
   // Coach keeps the internal id 'ops': the agent layer, its tests and the refresh gate all
   // key off it, and a rename would buy nothing but churn.
-  {id:'ops',      label:'Coach',    ic:'coach', top:true, subs:[
+  {id:'ops',      label:'Hub',      ic:'coach', top:true, subs:[
     {id:'ops',         label:'Agents'},
     {id:'invest',      label:'Flags'}]},
   {id:'settings', label:'Settings', ic:'gear', top:true, subs:[
@@ -7752,6 +7888,7 @@ function navIcon(k, size){
   return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="'+(NAV_IC[k]||'')+'"/></svg>';
 }
 function showMainTab(mainId, subId){
+  navDrawerClose();
   const r = navResolve(mainId, subId);
   const m = navMain(r[0]); if(!m) return;
   mainId = r[0]; subId = r[1];
@@ -7773,7 +7910,11 @@ function showMainTab(mainId, subId){
     sec.style.order = i>=0 ? String(i) : '';
   });
   renderSidenav(); renderSubnav(); buildBotNav();
-  navRenderSub(mainId, sub);
+  // This render is a navigation, so it may animate in (see .enter / _navEnter). A repaint from
+  // rerenderActive() goes through navRenderSub() alone and never sets either.
+  _navEnter = true;
+  try{ navRenderSub(mainId, sub); } finally { _navEnter = false; }
+  document.querySelectorAll('#reviewMode main section.on').forEach(navEnterAnim);
   try{ invUpdateBadge(); }catch(e){}
   window.scrollTo({top:0, behavior:'instant'});
   // Asked for a part further down a merged view (Predictions, inside Strength): land on it.
@@ -7783,15 +7924,54 @@ function showMainTab(mainId, subId){
     if(el) window.scrollTo({top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - 120), behavior:'instant'});
   }
 }
+/* True only while showMainTab() is drawing a screen it just navigated to. Renderers read it to
+   decide whether a one-time entrance (the readiness ring's draw) may play. */
+let _navEnter = false;
+function navEnterAnim(sec){
+  if(!sec || prefersReducedMotion()) return;
+  sec.classList.remove('enter');
+  void sec.offsetWidth;   // restart the animation if the same section is shown again
+  sec.classList.add('enter');
+  sec.addEventListener('animationend', function done(){ sec.classList.remove('enter'); sec.removeEventListener('animationend', done); });
+}
+/* ---- the rail and the drawer (V4 stage 3) ----
+   One #sidenav, two forms: a fixed rail at >=900px that can collapse to icons, and below that a
+   drawer opened from the top bar's menu button. Both states live off the DOM node -- the drawer in
+   a module flag, the collapse in a per-device uiPref -- because renderSidenav() and the 30-second
+   repaint rebuild the markup, and anything kept only on a node is wiped on a timer. */
+let navDrawerOpen = false;
+function navDrawerSet(open){
+  navDrawerOpen = !!open;
+  const sn = document.getElementById('sidenav'), sc = document.getElementById('navScrim'), b = document.getElementById('topMenu');
+  if(sn) sn.classList.toggle('open', navDrawerOpen);
+  if(sc) sc.classList.toggle('open', navDrawerOpen);
+  if(b){ b.setAttribute('aria-expanded', navDrawerOpen ? 'true' : 'false'); b.setAttribute('aria-label', navDrawerOpen ? 'Close menu' : 'Open menu'); }
+}
+function navDrawerToggle(){ navDrawerSet(!navDrawerOpen); }
+function navDrawerClose(){ if(navDrawerOpen) navDrawerSet(false); }
+document.addEventListener('keydown', function(e){ if(e.key === 'Escape') navDrawerClose(); });
+function navCollapsed(){ return !!uiPref()['nav.collapsed']; }
+function navCollapseApply(){
+  const sh = document.querySelector('.app-shell');
+  if(sh) sh.classList.toggle('nav-collapsed', navCollapsed());
+}
+/* The main column changes width without a window resize, and charts are drawn at the width they
+   are shown at (ckW), so the toggle forces the redraw a resize would have triggered. */
+function navCollapseToggle(){
+  uiPrefSet('nav.collapsed', !navCollapsed());
+  navCollapseApply();
+  renderSidenav();
+  try{ rerenderActive(true); }catch(e){}
+}
 function renderSidenav(){
   const el = document.getElementById('sidenav'); if(!el) return;
   let h = '<div class="sn-brand">IRON<span>HUB</span></div>';
-  h += '<button class="sn-item sn-live '+(MODE==='live'?'on':'')+'" onclick="setMode(\'live\')"><span class="sn-ic">'+navIcon('live',18)+'</span>Live</button>';
+  h += '<button class="sn-item sn-live '+(MODE==='live'?'on':'')+'" onclick="setMode(\'live\')" title="Live"><span class="sn-ic">'+navIcon('live',18)+'</span><span class="sn-lbl">Live</span></button>';
   h += '<div class="sn-sep"></div>';
   NAV_MODEL.forEach(m=>{
     const on = MODE==='review' && m.id===activeMainTab;
     const badge = (m.id==='ops') ? '<span class="sn-badge" id="snInvBadge"></span>' : '';
-    h += '<button class="sn-item '+(on?'on':'')+'" onclick="setMode(\'review\');showMainTab(\''+m.id+'\')"><span class="sn-ic">'+navIcon(m.ic,18)+'</span>'+m.label+badge+'</button>';
+    h += '<button class="sn-item '+(on?'on':'')+'" onclick="setMode(\'review\');showMainTab(\''+m.id+'\')" title="'+m.label+'"><span class="sn-ic">'+navIcon(m.ic,18)+'</span><span class="sn-lbl">'+m.label+'</span>'+badge+'</button>';
     if(on && m.subs.length>1){
       h += '<div class="sn-subs">';
       m.subs.forEach(s=>{
@@ -7801,7 +7981,12 @@ function renderSidenav(){
       h += '</div>';
     }
   });
+  const col = navCollapsed();
+  h += '<button class="sn-collapse" onclick="navCollapseToggle()" aria-label="'+(col?'Expand':'Collapse')+' sidebar" title="'+(col?'Expand':'Collapse')+' sidebar">'+
+       '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+(col?'M9.5 6l6 6-6 6':'M14.5 6l-6 6 6 6')+'"/></svg>'+
+       '<span class="sn-lbl">'+(col?'Expand':'Collapse')+'</span></button>';
   el.innerHTML = h;
+  el.classList.toggle('open', navDrawerOpen);
 }
 function renderSubnav(){
   const el = document.getElementById('subnav'); if(!el) return;
@@ -8553,7 +8738,7 @@ function focusLiveEx(i){
   if(ex.done){ ex.done = false; ex._reopened = true; }   // reopening a finished lift is a first-class move now
   liveActiveIdx = i; liveEditSet = null;
   saveLiveDraft(); renderLive();
-  const el = document.getElementById('liveex-'+i); if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  smoothScroll(document.getElementById('liveex-'+i), 'center');
 }
 function pickEff(e){
   // A preset is just a shortcut to its anchor value; deselecting clears both, so a set logged
@@ -8611,7 +8796,7 @@ function logLiveSet(i){
     startRest(smartRestSecs(ex).secs, i);
   }
   renderLive();
-  const el = document.getElementById('liveex-'+i); if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  smoothScroll(document.getElementById('liveex-'+i), 'center');
 }
 
 function finishExercise(i){
@@ -10505,7 +10690,7 @@ function activate1RM(i){
   liveDockEff = ''; liveDockLever = null;
   saveLiveDraft();
   renderLive();
-  document.getElementById('liveex-'+i).scrollIntoView({behavior:'smooth',block:'center'});
+  smoothScroll(document.getElementById('liveex-'+i), 'center');
 }
 function cancel1RM(i){
   if(event) event.stopPropagation();
@@ -17408,7 +17593,7 @@ async function agSendChat(id){
         if(!agIngest(agState(), 'echo', {proposals:[pr]})) return 'Not queued: that food is already waiting in his approval queue.';
         queued++;
         save();
-        return 'Queued for his approval as \u201c'+pr.title+'\u201d. Nothing is added until he approves it in Coach.';
+        return 'Queued for his approval as \u201c'+pr.title+'\u201d. Nothing is added until he approves it in the Hub.';
       };
     }
     const {text} = await callClaudeWithData(msgs, sys, 4000, opts);
@@ -17680,6 +17865,244 @@ function waCardHTML(key){
     : '<button class="btn ghost sm" style="margin-top:8px" onclick="waToggleEdit()">Set targets</button>';
   return h + '</div>';
 }
+/* ---- Today, the command center (V4 stage 3: the A × C look) ----
+   One screen that says where he is: the day and its call, readiness as a ring around a Start button
+   with every section in orbit, what to expect, what the agents are doing, and then only the cards
+   that apply today. Nothing that was here is gone: the slower-moving pieces (the old tiles, the full
+   call card, fuel timing, the Winter Arc countdown, Jump to) sit in one fold at the bottom.
+   Nothing in here writes to S. The key lifts come from buildOneLiveExercise(), never from
+   buildLiveExercises(), which consumes the coach plan and saves. */
+const NEXT_PR_DAYS = 42;
+const HOME_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function homeShortDate(k){ const p = String(k).split('-'); return HOME_MONTHS[(+p[1] || 1) - 1]+' '+(+p[2] || 0); }
+function homeRange(a, b){
+  if(!a || !b || a === b) return homeShortDate(a || b);
+  const pa = a.split('-'), pb = b.split('-');
+  return pa[1] === pb[1] ? homeShortDate(a)+'–'+(+pb[2]) : homeShortDate(a)+' – '+homeShortDate(b);
+}
+/* The first one or two lifts with what LIVE would prescribe today and the change from last time. */
+function todayKeyLifts(dk, call, n){
+  const out = [];
+  if(!dk || dk === 'REST') return out;
+  try{
+    const cp = coachDayPlanFor(dk);
+    const names = (cp && Array.isArray(cp.exercises) && cp.exercises.length) ? cp.exercises.slice() : dayExNames(dk);
+    const sets = liveSlotSets(dk), home = homeActiveToday();
+    names.slice(0, n || 2).forEach(function(nm){
+      if(home){ out.push({name:nm}); return; }   // HOME swaps and rounds at start; no number is better than a wrong one
+      const ex = buildOneLiveExercise(nm, null, {call:call, sets:sets[nm]});
+      const w = +ex.targetW || 0, d = ex._decision || {};
+      const from = (d.from === null || d.from === undefined || d.from === '') ? null : +d.from;
+      out.push({name:nm, w:w, lo:ex.lo, hi:ex.hi,
+                delta:(w > 0 && from !== null && isFinite(from)) ? Math.round((w - from) * 10) / 10 : null});
+    });
+  }catch(e){}
+  return out;
+}
+/* Lifts and sets for the day, and minutes only when there is real timing behind them. */
+function todayPlanShape(dk){
+  const o = {lifts:0, sets:0, mins:null};
+  if(!dk || dk === 'REST') return o;
+  try{
+    const cp = coachDayPlanFor(dk);
+    const names = (cp && Array.isArray(cp.exercises) && cp.exercises.length) ? cp.exercises : dayExNames(dk);
+    const sl = liveSlotSets(dk);
+    o.lifts = names.length;
+    o.sets = names.reduce(function(t, nm){ return t + (+sl[nm] || 3); }, 0);
+    const d = densityByDay()[dk] || [];
+    if(d.length >= DENSITY_MIN){
+      const m = d.map(function(x){ return x.mins; }).sort(function(a, b){ return a - b; });
+      o.mins = m[Math.floor(m.length / 2)];
+    }
+  }catch(e){}
+  return o;
+}
+/* The soonest lift likely to set a new best e1RM within six weeks. The window opens where the
+   optimistic line (p90) first passes his best and closes where the expected one (p50) does: a range,
+   never a date, and nothing at all when no line gets there. */
+function nextPrForecast(){
+  let best = null;
+  try{
+    predLifts().forEach(function(nm){
+      const res = anEnsembleFor(nm, NEXT_PR_DAYS);
+      if(!res || !res.ok) return;
+      const pr = bestE1RM(nm);
+      if(!(pr > 0)) return;
+      const p50 = res.series[50] || [], p90 = res.series[90] || [];
+      const h50 = p50.find(function(pt){ return pt.v > pr; });
+      if(!h50) return;
+      const h90 = p90.find(function(pt){ return pt.v > pr; }) || h50;
+      const c = {lift:nm, from:(h90.date < h50.date ? h90.date : h50.date), to:h50.date, pr:pr, target:Math.floor(pr) + 1, conf:res.conf};
+      if(!best || c.to < best.to) best = c;
+    });
+  }catch(e){}
+  return best;
+}
+function todayDeloadTile(){
+  try{
+    const dw = deloadWindow();
+    if(dw) return {big:'Now', sub:'deload until '+homeShortDate(dw.until)};
+    const f = deloadForecast();
+    if(!f) return null;
+    if(f.planned && f.planned.start){
+      const d = Math.max(0, daysBetween(todayKey(), f.planned.start));
+      return {big:d+' day'+(d === 1 ? '' : 's'), sub:'to the planned deload', pips:Math.min(7, d)};
+    }
+    if(f.weeks === 0) return {big:'Due', sub:'a deload looks due now'};
+    if(f.weeks) return {big:'~'+f.weeks+' wk', sub:'until a deload looks due'};
+    return {big:'Not yet', sub:'no sign of needing one'};
+  }catch(e){ return null; }
+}
+const HOME_BAND_WORD = {losing:'losing weight', flat:'flat', under:'under the band', pocket:'in the band', hot:'over the band'};
+function todayBodyTile(){
+  try{
+    const br = bulkRate(4);
+    // A rate built from rows with no lbs comes back NaN, and the tile printed "NaN lb/wk".
+    if(!br || !isFinite(br.rate)) return null;
+    const band = bulkBand(br.rate);
+    return {big:(br.rate >= 0 ? '+' : '')+br.rate.toFixed(1), rate:br.rate,
+            sub:'lb/wk · '+(band === 'hot' && br.rate > BULK_FAST ? 'well over the band' : (HOME_BAND_WORD[band] || band))};
+  }catch(e){ return null; }
+}
+/* One line per agent, each from something that actually happened. "Missed" needs the evidence: its
+   newest log line says it could not complete, and is newer than its last report. */
+function agStripState(id){
+  const a = agState(), st = (a.status || {})[id] || {};
+  if(_agRunning || (id === 'zulu' && _agBriefRunning)) return {txt:'checking…', tone:'run'};
+  if(id !== 'zulu'){
+    const last = (a.log || []).find(function(l){ return l && l.agent === id; });
+    if(last && /could not complete/i.test(last.text || '') && (!st.at || new Date(last.at) > new Date(st.at)))
+      return {txt:'missed last night', tone:'bad'};
+  }
+  const pend = agPendingFor(id).length;
+  if(pend) return {txt:pend+' request'+(pend === 1 ? '' : 's'), tone:'warn'};
+  if(id === 'zulu'){ const b = agBriefToday(); if(b) return {txt:'brief '+homeClock(b.at), tone:'ok'}; }
+  if(st.at) return {txt:'reported '+agTimeAgo(st.at), tone:'ok'};
+  return {txt:'no report yet', tone:'idle'};
+}
+function homeClock(iso){
+  try{ return new Date(iso).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}); }catch(e){ return ''; }
+}
+function homeEyebrow(t){
+  // On a rest day the title already says "Rest day", so the eyebrow carries the date instead.
+  let s = t.rest ? ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]+' · '+homeShortDate(todayKey()) : t.dayKey;
+  try{
+    const w = mesoCurrentWeek();
+    if(w && MESO_TYPES[w.type]){
+      const lab = {str:'strength block', hyp:'hypertrophy block', deload:'deload week', rest:'rest week', custom:'custom block'}[w.type] || '';
+      s += ' · Week '+w.n+(lab ? ' · '+lab : '');
+    }
+  }catch(e){}
+  return s;
+}
+function homeWheelHTML(rd, t, dc, pendN){
+  const C = 741.4, pct = rd ? Math.max(0, Math.min(100, +rd.pct || 0)) : 0, dash = Math.round(C * pct) / 100;
+  const ringCol = rd ? readinessColor(rd.tone) : 'var(--dim)';
+  const draw = _navEnter ? ' ring-draw' : '';
+  let start;
+  if(live) start = {lab:'Resume', sub:'session in progress', go:"setMode('live')"};
+  else if(t.logged) start = {lab:'Logged', sub:'open Live', go:"setMode('live')"};
+  else if(t.rest) start = {lab:'Train', sub:'anyway · rest day', go:"setMode('live')"};
+  else start = {lab:'Start', sub:(deloadActive() ? 'deload week' : (dc && dc.conf !== 'none' ? 'Call · '+DC_LABEL[dc.call].replace(/ day$/, '') : 'today’s plan')),
+                go:"setMode('live');liveStartSession()"};
+  const tile = function(cls, go, ic, lab, extra){
+    return '<button class="cc-tile '+cls+'" onclick="'+go+'" aria-label="'+lab+(extra ? ', '+extra : '')+'">'+navIcon(ic, 20)+'<span>'+lab+'</span>'+
+      (extra ? '<span class="cc-badge">'+extra.split(' ')[0]+'</span>' : '')+'</button>';
+  };
+  return '<div class="cc-wheel">'+
+    '<svg class="cc-ring" viewBox="0 0 361 361" aria-hidden="true">'+
+      '<circle cx="180.5" cy="180.5" r="141" class="cc-orbit"></circle>'+
+      '<circle cx="180.5" cy="180.5" r="130" class="cc-ticks"></circle>'+
+      '<circle cx="180.5" cy="180.5" r="118" class="cc-track"></circle>'+
+      (rd ? '<circle cx="180.5" cy="180.5" r="118" transform="rotate(-90 180.5 180.5)" class="cc-arc'+draw+'" style="stroke:'+ringCol+';stroke-dasharray:'+dash+' '+C+';--ring-len:'+dash+'"></circle>' : '')+
+    '</svg>'+
+    '<div class="cc-ready"><span class="cc-ready-n">'+(rd ? Math.round(pct) : '—')+'</span>'+
+      '<span class="cc-ready-l" style="color:'+ringCol+'">'+(rd ? 'Ready · '+esc(rd.label) : 'no reading yet')+'</span></div>'+
+    '<button class="cc-start" onclick="'+start.go+'"><span class="cc-start-l">'+esc(start.lab)+'</span><span class="cc-start-s">'+esc(start.sub)+'</span></button>'+
+    tile('cc-t0', "showMainTab('train')", 'train', 'Train')+
+    tile('cc-t1', "showMainTab('progress')", 'progress', 'Progress')+
+    tile('cc-t2', "showMainTab('body')", 'body', 'Body')+
+    tile('cc-t3', "showMainTab('ops')", 'coach', 'Hub', pendN ? pendN+' request'+(pendN === 1 ? '' : 's') : '')+
+    tile('cc-t4', "showMainTab('settings')", 'gear', 'Settings')+
+  '</div>';
+}
+function homeBriefHTML(brief){
+  if(brief){
+    return '<div class="dash-sec">Brief</div>'+
+      '<div class="card cc-brief"><div class="cc-glyph" style="color:'+AGENTS.zulu.col+'">Z</div><div class="cc-brief-b">'+
+      '<p class="small" style="line-height:1.55">'+esc(brief.text)+'</p>'+
+      // Says which of the two stories this card is telling, and gives him the control on the
+      // screen he actually reads in the morning. A brief written before recovery landed is
+      // rewritten automatically once, but only while auto-run is on and the device can reach the
+      // API, so the button is the way out otherwise. Also says when WHOOP has rescored the numbers
+      // it quotes (briefDriftNote).
+      (briefDriftNote(brief)
+        ? '<p class="small" style="color:var(--warn);margin-top:6px">'+esc(briefDriftNote(brief))+'</p>'+
+          '<button class="btn ghost sm" style="margin-top:6px" '+(_agBriefRunning?'disabled':'')+
+          ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing…':'Rewrite')+'</button>'
+        : '')+
+      '<p class="small" style="color:var(--dim);margin-top:6px">ZULU · '+esc(fmtDate(brief.date))+'</p></div></div>';
+  }
+  /* No brief used to render as nothing at all, which is indistinguishable from a brief that simply
+     has not been looked at yet -- and it is what made two days of this invisible. */
+  const tr = briefTrail();
+  if(tr && tr.reason !== 'written'){
+    return '<div class="dash-sec">Brief</div>'+
+      '<div class="card" style="border-left:3px solid var(--line2)">'+
+      '<p class="small" style="line-height:1.55;color:var(--dim)">No brief yet — '+
+      esc(tr.reason)+'.'+(tr.detail ? ' '+esc(tr.detail)+'.' : '')+'</p>'+
+      '<p class="small" style="color:var(--dim);margin-top:4px">Checked '+tr.n+
+      (tr.n===1?' time':' times')+', last at '+esc(new Date(tr.at).toLocaleTimeString())+'.</p>'+
+      '<button class="btn ghost sm" style="margin-top:8px" '+(_agBriefRunning?'disabled':'')+
+      ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing'+String.fromCharCode(8230)
+        :'Write it now')+'</button></div>';
+  }
+  return '';
+}
+function homeExpectHTML(){
+  const pr = nextPrForecast(), dl = todayDeloadTile(), bw = todayBodyTile();
+  if(!pr && !dl && !bw) return '';
+  let h = '<div class="cc-head"><span class="dash-sec">What to expect</span><span class="cc-note">ranges, not promises</span></div><div class="cc-expect">';
+  if(pr){
+    let trust = '';
+    try{ const r = predRecord().e1rm28; if(r && r.n >= 3) trust = ' · forecasts like this held '+r.hits+' of '+r.n; }catch(e){}
+    h += '<div class="cc-x"><span class="cc-x-k" style="color:var(--amber)">Next PR</span><span class="cc-x-v">'+esc(homeRange(pr.from, pr.to))+'</span>'+
+      '<span class="cc-x-s">'+esc(pr.lift)+' e1RM past '+Math.round(pr.pr)+' · '+esc(pr.conf)+esc(trust)+'</span></div>';
+  }
+  if(dl){
+    let pips = '';
+    if(dl.pips !== undefined){ pips = '<span class="cc-pips">'; for(let i = 0; i < 7; i++) pips += '<i'+(i >= dl.pips ? ' class="on"' : '')+'></i>'; pips += '</span>'; }
+    h += '<div class="cc-x"><span class="cc-x-k" style="color:var(--warn)">Deload</span><span class="cc-x-v">'+esc(dl.big)+'</span>'+pips+
+      '<span class="cc-x-s">'+esc(dl.sub)+'</span></div>';
+  }
+  if(bw){
+    const pos = Math.max(0, Math.min(100, bw.rate / 1.5 * 100));
+    h += '<div class="cc-x"><span class="cc-x-k" style="color:var(--good)">Bodyweight</span><span class="cc-x-v">'+esc(bw.big)+'</span>'+
+      '<span class="cc-band" aria-hidden="true"><i class="cc-band-ok"></i><i class="cc-band-mk" style="left:'+pos.toFixed(1)+'%"></i></span>'+
+      '<span class="cc-x-s">'+esc(bw.sub)+'</span></div>';
+  }
+  return h+'</div>';
+}
+function homeAgentsHTML(){
+  const ids = ['zulu'].concat(AG_ORDER);
+  return '<div class="cc-head"><span class="dash-sec">Agents</span></div><button class="cc-agents" onclick="showMainTab(\'ops\')" aria-label="Open the Hub">'+
+    ids.map(function(id){
+      const A = AGENTS[id], s = agStripState(id);
+      return '<span class="cc-ag"><span class="cc-glyph" style="color:'+A.col+'">'+esc(A.name.charAt(0))+'</span>'+
+        '<span class="cc-ag-n">'+esc(A.name)+'</span><span class="cc-ag-s cc-'+s.tone+'">'+esc(s.txt)+'</span></span>';
+    }).join('')+'</button>';
+}
+function homePlateauHTML(){
+  let rows = [];
+  try{ rows = olSignals() || []; }catch(e){ rows = []; }
+  if(!rows.length) return '';
+  return '<div class="cc-head"><span class="dash-sec">Plateau watch</span></div><div class="cc-chips">'+
+    rows.slice(0, 6).map(function(r){
+      const v = OL_VERDICTS[r.verdict] || OL_VERDICTS['on-track'];
+      return '<button class="cc-chip" onclick="showMainTab(\'progress\',\'an_overload\')"><i style="background:'+v.col+'"></i>'+
+        '<span class="cc-chip-n">'+esc(r.lift)+'</span>'+(r.verdict !== 'on-track' ? '<span class="cc-chip-v" style="color:'+v.col+'">'+esc(v.label.toLowerCase())+'</span>' : '')+'</button>';
+    }).join('')+'</div>';
+}
 function renderHome(){
   const el = document.getElementById('home');
   if(!el) return;
@@ -17689,116 +18112,112 @@ function renderHome(){
   const pend = agPending();
   const flags = invActiveFlags();
   const streak = streakDays();
+  let dc = null;
+  try{ if(!t.rest && !deloadActive()) dc = dayCall(todayKey(), t.dayKey); }catch(e){ dc = null; }
+  const callForPlan = (dc && dc.conf !== 'none') ? dc.call : undefined;
 
-  let h = '<h2>Today</h2>';
+  /* -- the hero: the day, the wheel, why -- */
+  const shape = todayPlanShape(t.dayKey);
+  let h = '<div class="cc"><div class="cc-hero">'+
+    '<span class="cc-eyebrow">'+esc(homeEyebrow(t))+'</span>'+
+    '<h2 class="cc-title">'+esc(t.rest ? 'Rest day' : t.name)+'</h2>'+
+    (t.rest ? '<span class="cc-sub">Recover, eat your surplus, sleep.</span>'
+            : '<span class="cc-sub">'+shape.lifts+' lift'+(shape.lifts === 1 ? '' : 's')+' · '+shape.sets+' sets'+
+              (shape.mins ? ' · about '+shape.mins+' min' : '')+'</span>')+
+    homeWheelHTML(rd, t, dc, pend.length);
+  let why = '';
+  if(deloadActive()) why = 'Deload week: lighter loads, same movements.';
+  else if(dc && dc.conf !== 'none') why = (dc.why && dc.why.length ? dc.why.join(' · ')+'. ' : '')+(DC_WHAT[dc.call] || '');
+  else if(rd) why = 'Readiness '+rd.label+(rd.source === 'WHOOP' ? ', from WHOOP.' : ', from your check-in.');
+  else why = 'No readiness reading yet — you’ll be asked when you start a session.';
+  h += '<p class="cc-why">'+esc(why)+'</p></div><div class="cc-main">';
 
-  h += '<div class="dash-hero">';
-  h += '<div class="dash-tile"><div class="dt-l">Recovery</div>'+
-       '<div class="dt-v" style="color:'+(rd?readinessColor(rd.tone):'var(--dim)')+'">'+
-       (rd ? esc(rd.label.toUpperCase()) : '\u2014')+'</div>'+
-       '<div class="dt-s">'+(rd ? esc(rd.source==='WHOOP'?'from WHOOP':'your check-in')
-                                : 'No check-in yet \u2014 you\u2019ll be asked when you start a session.')+'</div></div>';
-  h += '<div class="dash-tile"><div class="dt-l">Scheduled</div>'+
-       '<div class="dt-v" style="color:'+(t.rest?'var(--dim)':dayColor(t.dayKey))+'">'+esc(t.rest?'REST':t.dayKey)+'</div>'+
-       '<div class="dt-s">'+esc(t.name)+(t.logged?' \u00b7 already logged':'')+'</div></div>';
-  h += '<div class="dash-tile"><div class="dt-l">Streak</div>'+
-       '<div class="dt-v" style="color:'+(streak>=3?'var(--cyan)':'var(--text)')+'">'+(streak>0?streak:'\u2014')+'</div>'+
-       '<div class="dt-s">'+(function(){ const L = streakStats().longest;
-         if(streak>0) return 'session'+(streak===1?'':'s')+' without a missed day'+(L > streak ? ' \u00b7 best '+L : '');
-         return L > 0 ? 'Start one today. Best run: '+L+'.' : 'Start one today.'; })()+'</div></div>';
-  h += '</div>';
+  /* -- what the day holds -- */
+  const kl = live ? [] : todayKeyLifts(t.dayKey, callForPlan, 2);
+  if(kl.length){
+    h += '<div class="cc-lifts">'+kl.map(function(x, i){
+      const d = x.delta;
+      const chg = (d === null || d === undefined) ? '' : (d > 0 ? '+'+d : d < 0 ? String(d) : '=');
+      return '<div class="cc-lift"><span class="cc-lift-k">'+(i === 0 ? 'Key' : 'Next')+'</span><span class="cc-lift-n">'+esc(x.name)+'</span>'+
+        (x.w > 0 ? '<span class="cc-lift-v">'+x.w+' × '+x.lo+'–'+x.hi+'</span>' : '<span class="cc-lift-v cc-dim">'+(x.lo ? x.lo+'–'+x.hi : '')+'</span>')+
+        '<span class="cc-lift-d'+(d > 0 ? ' up' : '')+'">'+chg+'</span></div>';
+    }).join('')+'</div>';
+  }
+  try{ h += homeExpectHTML(); }catch(e){ console.warn('expect tiles failed', e); }
+  try{ h += homeAgentsHTML(); }catch(e){ console.warn('agents strip failed', e); }
+  try{ h += homePlateauHTML(); }catch(e){ console.warn('plateau chips failed', e); }
+  try{ h += homeBriefHTML(brief); }catch(e){ console.warn('brief card failed', e); }
 
-  try{ h += dayCallCardHTML(t); }catch(e){ console.warn('day call card failed', e); }
-  try{ h += expChipHTML(); }catch(e){ console.warn('experiment chip failed', e); }
-  // Under the hero and above the brief: a background frame for the day, not a call to action.
-  try{ h += waCardHTML(); }catch(e){ console.warn('winter arc card failed', e); }
-
-  if(brief){
-    h += '<div class="dash-sec">Brief</div>'+
-      '<div class="card" style="border-left:3px solid '+AGENTS.zulu.col+'">'+
-      '<p class="small" style="line-height:1.55">'+esc(brief.text)+'</p>'+
-      // Says which of the two stories this card is telling, and gives him the control on the
-      // screen he actually reads in the morning -- the Ops tab has had this, HOME had nothing.
-      // A brief written before recovery landed is rewritten automatically once, but only while
-      // auto-run is on and the device can reach the API, so the button is the way out otherwise.
-      // Also says when WHOOP has rescored the numbers it quotes (briefDriftNote).
-      (briefDriftNote(brief)
-        ? '<p class="small" style="color:var(--warn);margin-top:6px">'+esc(briefDriftNote(brief))+'</p>'+
-          '<button class="btn ghost sm" style="margin-top:6px" '+(_agBriefRunning?'disabled':'')+
-          ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing\u2026':'Rewrite')+'</button>'
-        : '')+
-      '<p class="small" style="color:var(--dim);margin-top:6px">ZULU \u00b7 '+esc(fmtDate(brief.date))+'</p></div>';
-  } else {
-    /* No brief used to render as nothing at all, which is indistinguishable from a brief that
-       simply has not been looked at yet -- and it is what made two days of this invisible. */
-    const _tr = briefTrail();
-    if(_tr && _tr.reason !== 'written'){
-      h += '<div class="dash-sec">Brief</div>'+
-        '<div class="card" style="border-left:3px solid var(--line2)">'+
-        '<p class="small" style="line-height:1.55;color:var(--dim)">No brief yet \u2014 '+
-        esc(_tr.reason)+'.'+(_tr.detail ? ' '+esc(_tr.detail)+'.' : '')+'</p>'+
-        '<p class="small" style="color:var(--dim);margin-top:4px">Checked '+_tr.n+
-        (_tr.n===1?' time':' times')+', last at '+esc(new Date(_tr.at).toLocaleTimeString())+'.</p>'+
-        '<button class="btn ghost sm" style="margin-top:8px" '+(_agBriefRunning?'disabled':'')+
-        ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing'+String.fromCharCode(8230)
-          :'Write it now')+'</button></div>';
+  /* -- only when they apply today -- */
+  if(pend.length || flags.length){
+    h += '<div class="dash-sec">Waiting on you</div>';
+    if(pend.length) h += pend.map(agPropHTML).join('');
+    if(flags.length){
+      h += '<div class="card"><p class="small">'+flags.length+' investigation flag'+(flags.length===1?'':'s')+
+           ' open. <button class="btn ghost sm" onclick="showReviewTab(\'invest\')">Open Investigate</button></p></div>';
     }
   }
-
-  // DELTA's debrief of the last session, right under the brief (it arrives with the nightly cycle).
+  try{ h += expChipHTML(); }catch(e){ console.warn('experiment chip failed', e); }
+  // DELTA's debrief of the last session (it arrives with the nightly cycle).
   try{
     const db = agDebriefRecent();
     if(db){
       const row = function(k, v){ return v ? '<div class="db-row"><span class="db-k">'+k+'</span><span class="small">'+esc(v)+'</span></div>' : ''; };
       h += '<div class="dash-sec">Last session</div><div class="card">'+
         row('Went well', db.well)+row('Change', db.change)+row('Next time', db.next)+
-        '<p class="small" style="color:var(--dim);margin-top:8px">DELTA \u00b7 '+esc(fmtDate(db.date))+' \u00b7 '+esc(db.day||'')+'</p></div>';
+        '<p class="small" style="color:var(--dim);margin-top:8px">DELTA · '+esc(fmtDate(db.date))+' · '+esc(db.day||'')+'</p></div>';
     }
   }catch(e){ console.warn('debrief card failed', e); }
-
   try{ h += wpCardHTML(); }catch(e){ console.warn('week plan card failed', e); }
-
-  // The Fuel Planner's Monday stock check, until he confirms it. Guarded on its own: a food
-  // list is never worth the dashboard.
+  // The Fuel Planner's Monday stock check, until he confirms it.
   try{
     const stockCard = fpStockCardHTML('home');
     if(stockCard) h += '<div class="dash-sec">Fuel stock</div>'+stockCard;
   }catch(e){ console.warn('stock card failed', e); }
+  // The Winter Arc frames the day once it is running; before it starts, its countdown waits in the fold.
+  let waVisible = false;
+  try{ if(waPhase() === 'active'){ h += waCardHTML(); waVisible = true; } }catch(e){ console.warn('winter arc card failed', e); }
 
-  // Fuel timing, but only when there is a workout time to hang it off -- the brief asks for
-  // it "if a workout time has been set", and an empty clock is worse than no clock.
+  /* -- the fold: everything slower-moving, still one tap away -- */
+  let d = '<div class="dash-hero">';
+  d += '<div class="dash-tile"><div class="dt-l">Recovery</div>'+
+       '<div class="dt-v" style="color:'+(rd?readinessColor(rd.tone):'var(--dim)')+'">'+
+       (rd ? esc(rd.label.toUpperCase()) : '—')+'</div>'+
+       '<div class="dt-s">'+(rd ? esc(rd.source==='WHOOP'?'from WHOOP':'your check-in')
+                                : 'No check-in yet — you’ll be asked when you start a session.')+'</div></div>';
+  d += '<div class="dash-tile"><div class="dt-l">Scheduled</div>'+
+       '<div class="dt-v" style="color:'+(t.rest?'var(--dim)':dayColor(t.dayKey))+'">'+esc(t.rest?'REST':t.dayKey)+'</div>'+
+       '<div class="dt-s">'+esc(t.name)+(t.logged?' · already logged':'')+'</div></div>';
+  d += '<div class="dash-tile"><div class="dt-l">Streak</div>'+
+       '<div class="dt-v" style="color:'+(streak>=3?'var(--cyan)':'var(--text)')+'">'+(streak>0?streak:'—')+'</div>'+
+       '<div class="dt-s">'+(function(){ const L = streakStats().longest;
+         if(streak>0) return 'session'+(streak===1?'':'s')+' without a missed day'+(L > streak ? ' · best '+L : '');
+         return L > 0 ? 'Start one today. Best run: '+L+'.' : 'Start one today.'; })()+'</div></div>';
+  d += '</div>';
+  try{ d += dayCallCardHTML(t); }catch(e){ console.warn('day call card failed', e); }
+  if(!waVisible){ try{ d += waCardHTML(); }catch(e){ console.warn('winter arc card failed', e); } }
+  // Fuel timing, only when there is a workout time to hang it off. Its own fold, remembered.
   fuelInit();
   if(!t.rest && S.fuel.workoutTime){
-    // Foldable, and remembered: on a training day it is a long card, and once he has it
-    // memorised he wants it out of the way. Folded, it still says what is next.
-    h += '<div class="dash-sec">Fuel timing</div>'+
+    d += '<div class="dash-sec">Fuel timing</div>'+
       subSection('Workout at '+fuelClockFrom(S.fuel.workoutTime, 0), fuelTimingHTML({bare:true}), true,
         {pref:'home.fuel', summary:fuelNextLine(), cls:'grp'});
   }
-
-  h += '<div class="dash-sec">Waiting on you</div>';
-  if(pend.length || flags.length){
-    if(pend.length) h += pend.map(agPropHTML).join('');
-    if(flags.length){
-      h += '<div class="card"><p class="small">'+flags.length+' investigation flag'+(flags.length===1?'':'s')+
-           ' open. <button class="btn ghost sm" onclick="showReviewTab(\'invest\')">Open Investigate</button></p></div>';
-    }
-  } else {
-    // The brief is explicit that an empty day must read as a finished screen, not a hole.
-    h += '<div class="card"><p class="dash-quiet">Nothing needs a decision from you. '+
-         (t.rest ? 'It\u2019s a rest day \u2014 eat your surplus and sleep.'
-                 : 'Targets are set for '+esc(t.dayKey)+' \u2014 just train.')+'</p></div>';
+  if(!pend.length && !flags.length){
+    // An empty day must read as a finished screen, not a hole.
+    d += '<div class="dash-sec">Waiting on you</div><div class="card"><p class="dash-quiet">Nothing needs a decision from you. '+
+         (t.rest ? 'It’s a rest day — eat your surplus and sleep.'
+                 : 'Targets are set for '+esc(t.dayKey)+' — just train.')+'</p></div>';
   }
-
-  h += '<div class="dash-sec">Jump to</div><div class="card"><div class="dash-jump">'+
-    '<button class="btn sm" onclick="setMode(\'live\')">\u26a1 Start / open LIVE</button>'+
-    // named for where they land since the V3 regroup: Coach, not Operations, and there is no
-    // Analytics any more (its old target is now part of Progress > Overview, the next button)
-    '<button class="btn ghost sm" onclick="showReviewTab(\'ops\')">Coach</button>'+
+  d += '<div class="dash-sec">Jump to</div><div class="card"><div class="dash-jump">'+
+    '<button class="btn sm" onclick="setMode(\'live\')">⚡ Start / open LIVE</button>'+
+    '<button class="btn ghost sm" onclick="showReviewTab(\'ops\')">Hub</button>'+
     '<button class="btn ghost sm" onclick="showReviewTab(\'progress\')">Progress</button>'+
     '<button class="btn ghost sm" onclick="showReviewTab(\'bulk\')">Body</button>'+
     '</div></div>';
-
+  h += subSection('Details & raw data', d, false,
+    {pref:'home.details', summary:'tiles · today’s call · '+(waVisible ? '' : 'Winter Arc · ')+'fuel timing · jump to', cls:'grp'});
+  h += '</div></div>';
   el.innerHTML = h;
 }
 
@@ -18047,7 +18466,7 @@ function renderOps(){
   const msgCountBefore = agSeen[agActiveChat];
   agSweepExpired();
   const pend = agPending();
-  let h = '<h2>Coach</h2>';
+  let h = '<h2>Hub</h2>';
   h += '<div class="ag-bar">'+
     '<button class="btn sm" onclick="agRunAll(true)"'+(_agRunning?' disabled':'')+'>'+(_agRunning?'Running\u2026':'Run cycle now')+'</button>'+
     '<label class="ag-when" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
@@ -18321,7 +18740,7 @@ function agMaybeMorningBrief(confirmed){
   if(!a.autoRun) return briefNote('auto-run is switched off in Ops');
   if(_agBriefRunning || _agRunning) return;   // transient, and about to resolve itself
   if(!S.settings.apiKey) return briefNote('no API key is set in Settings');
-  { const sb = spendBlock(); if(sb) return briefNote('paused: '+sb, 'raise the cap in Coach › API spend, or tap Write it now'); }
+  { const sb = spendBlock(); if(sb) return briefNote('paused: '+sb, 'raise the cap in Hub › API spend, or tap Write it now'); }
   const b = agBrief();
   const w = S.whoop && S.whoop.recovery;
   const whoopIn = !!(w && w.date === todayKey());
@@ -18410,7 +18829,7 @@ function agMaybeAutoRun(){
   // as run, so raising the cap tonight lets it go; logged once a day so the pause leaves evidence.
   const sb = spendBlock();
   if(sb){
-    if(_spendPauseLogged !== todayKey()){ _spendPauseLogged = todayKey(); agLog('zulu', 'Tonight’s cycle is paused: '+sb+'. Raise the cap in Coach › API spend to run it.'); save(false); }
+    if(_spendPauseLogged !== todayKey()){ _spendPauseLogged = todayKey(); agLog('zulu', 'Tonight’s cycle is paused: '+sb+'. Raise the cap in Hub › API spend to run it.'); save(false); }
     return;
   }
   // Nothing to confirm the gate against on an unsynced device: there is no second instance that
@@ -18626,8 +19045,8 @@ renderLive();
 try{ setMode(_draft ? 'live' : 'review'); }catch(e){ console.warn('initial mode failed', e); }
 // session clock ticker
 setInterval(()=>{ if(live && MODE==='live') updateSessionBar(); }, 1000);
-// review nav wiring
-try{ renderSidenav(); }catch(e){}
+// review nav wiring (the rail's collapsed state is a per-device choice, applied before first paint)
+try{ navCollapseApply(); renderSidenav(); }catch(e){}
 // background sync + weekly audit (no-ops gracefully in sandbox)
 // The initial pull is awaited before the agent scheduler's first check on purpose: running the
 // cycle concurrently with a pull means the pull can swap S mid-flight. The stale-reference guards

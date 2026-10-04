@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2639 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2697 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -258,7 +258,7 @@ so the two orders can no longer disagree.
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
-| Home / strip | `renderHome()`, `renderStatusStrip()`, `readinessNow()`, `renderNotif()` (`notifDismiss()` one item, `notifClear()` all) |
+| Home / strip | `renderHome()` (`todayKeyLifts()`, `todayPlanShape()`, `nextPrForecast()`, `agStripState()`, `homeWheelHTML()`), `renderStatusStrip()`, `readinessNow()`, `renderNotif()` (`notifDismiss()` one item, `notifClear()` all) |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
 | WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`; a failed run: `S.whoop.relayError`, `whoopRelayFault()`, `whoopRunFailText()`; `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`, `spendRefresh()`, `relayErrorRecord()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
@@ -284,6 +284,7 @@ so the two orders can no longer disagree.
 | Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()`, `fuelFoodAllowed()`; targets change only through `fuelTargetSet()`, which logs `S.targetHist` (`fuelTargetHistory()`) |
 | Fuel planner | `FOOD_DB`, `fpFoods()`, `fpPool()`, `fpCombos()` / `fpBuild()`, `fpStockDue()`, `fpCheckFood()`, `fpSetStock()` / `fpSetPref()` / `fpTidy()`; ECHO: `fpToolDefs()`, `fpProposeToolDef()`, `fpPlannerText()` |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
+| Nav shell | `renderSidenav()`, `navDrawerSet()` (`navDrawerOpen`), `navCollapseToggle()`, `showMainTab()` (`_navEnter`, `navEnterAnim()`), `smoothScroll()` |
 | Muscle map data | `bmViewerData()`, `bmStatusFor()`, `bmWeeklyVol()`, `bmTrainedDays()` |
 | 3D viewer | `bm3dInit()`, `bm3dBuild()`, `bm3dApply()`, `bm3dPick()`, `bm3dDispose()`, `bm3dFallback()` |
 | Discord view | `discordView()`, `discordViewFile()`, `syncFiles()`, `DISCORD_VIEW_FILE`; Worker in `discord/src/` |
@@ -1170,8 +1171,9 @@ type with the width it is given. Each `ckArea()` takes its own gradient id; a sh
 make two charts on one page paint with the same gradient. All of this is asserted.
 
 **Navigation is four groups plus Live.** The bottom bar is `NAV_BOTTOM`: Today (`home`), Train,
-Live (raised), Progress, Body. Coach (`ops`, so the agent layer's id did not change) and
-Settings are round buttons in the top bar, and the LIVE/REVIEW switch is gone. Sections kept
+Live (raised), Progress, Body. The Hub (`ops`, so the agent layer's id did not change; it was
+called Coach until V4 stage 3) and Settings are round buttons in the top bar, and the LIVE/REVIEW
+switch is gone. Sections kept
 their ids; only their group moved. So `NAV_LEGACY` lists every section's current group, and
 `navResolve()` routes by the section first: `showMainTab('analytics','an_recovery')` lands in
 Body, where Readiness lives now. It then falls back to the group, then `NAV_MAIN_ALIAS` for
@@ -1191,6 +1193,39 @@ just the first. `NAV_LEGACY` maps a section to the view that shows it, so
 A group with four views or fewer renders its sub-nav as a segmented control (`.seg`). At 320px
 Body's four labels only fit with the tightened track in the ≤360px rule, so re-measure if you
 lengthen a label.
+
+**V4 stage 3: the A × C "Ember HUD" layout.** Mark chose it on 2026-10-03 (canvas artifact
+`2FeybZrjfHfTuYCXzeLMGN`, page "A × C"). It keeps the Forge × Ember tokens and fonts; what changed is
+layout. Two of his wording rules apply everywhere: nothing is called a "Mission", and waiting
+proposals are counted as **requests** ("1 request"), never ideas.
+- **One `#sidenav`, two forms.** At ≥900px it is the rail, and it collapses to 64px icons
+  (`navCollapseToggle()`, kept per device in `uiPref('nav.collapsed')`). Collapsing changes the main
+  column's width without a `resize`, so it calls `rerenderActive(true)`, or charts keep the old
+  width. Below 900px it is a drawer opened by `#topMenu`. Its open state is the module flag
+  `navDrawerOpen`, never the node, and any navigation, the scrim or Escape closes it. The bottom bar
+  did not change. `.top-btn.top-menu` takes two classes because `.top-btn`'s `display:flex` comes
+  later in the file; with one class the menu button showed on desktop with nothing to open.
+- **Motion happens on navigation only.** `showMainTab()` raises `_navEnter` for that one render and
+  adds a one-shot `enter` class to the sections it shows. The readiness ring draws in under the
+  same flag. `rerenderActive()` and pulls never add either, so the 30-second repaint cannot replay
+  an entrance. Under `prefers-reduced-motion`, `smoothScroll()` jumps (`'auto'`), `navEnterAnim()`
+  does nothing, and the glow tokens are `none`. Every smooth scroll goes through `smoothScroll()`.
+- **Today is a command centre** (`renderHome()`). From top to bottom:
+  - the day, as eyebrow and title (on a rest day the eyebrow is the date, not "Rest day" twice);
+  - the wheel: readiness ring, Start, and five tiles;
+  - key lifts, then what to expect, the agents strip, plateau watch and the brief;
+  - the time-sensitive cards;
+  - "Details & raw data", folded and remembered (`home.details`).
+
+  Start calls `liveStartSession()` directly on a training day, opens Live only on a rest day, and
+  says "Logged" once today is in.
+- **Today only reads.** Key lifts come from `todayKeyLifts()`, which calls `buildOneLiveExercise()`
+  with the day's call exactly as `_startLiveNow` does. They never come from `buildLiveExercises()`,
+  which consumes the coach plan and saves. The suite renders Today and checks `S` is byte-identical.
+  `nextPrForecast()` is a window, from where p90 first passes his best to where p50 does, and is
+  shown only when p50 gets there within `NEXT_PR_DAYS`. Minutes in the plan line appear only with
+  `DENSITY_MIN` timed sessions (the median). `agStripState()` says "missed last night" only when
+  the agent's newest log line is a could-not-complete newer than its last report.
 
 **A folded card can remember that it is folded.** `subSection(title, body, open, opts)` takes
 `opts.pref` to store the open/closed choice per device in `localStorage['ironhub:ui']`

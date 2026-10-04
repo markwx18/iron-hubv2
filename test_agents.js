@@ -11051,6 +11051,227 @@ setTimeout(async () => {
     try { ev('if(window.__wrFetch){ window.fetch = window.__wrFetch; delete window.__wrFetch; } delete S.whoop;'); } catch(e2){}
   }
 
+  console.log('=== V4 STAGE 3: THE RAIL, THE DRAWER AND MOTION ===');
+  try {
+    w.__s3Saved = ev('JSON.stringify(S)');
+    w.__s3Pref = ev("localStorage.getItem(UI_PREF_KEY)");
+    ev("setMode('review'); showMainTab('home');");
+
+    // --- the phone drawer: open state off the DOM, so a repaint cannot close it ---
+    ev('navDrawerSet(false); navDrawerToggle();');
+    ok('drawer: the menu button opens it', ev("document.getElementById('sidenav').classList.contains('open')") === true &&
+       ev("document.getElementById('navScrim').classList.contains('open')") === true);
+    ok('drawer: and says so to a screen reader', ev("document.getElementById('topMenu').getAttribute('aria-expanded')") === 'true');
+    ev('renderSidenav(); rerenderActive(true);');
+    ok('drawer: a repaint does not close it (state is module-scoped, not on the node)',
+       ev("document.getElementById('sidenav').classList.contains('open')") === true);
+    ev("showMainTab('train');");
+    ok('drawer: choosing a section closes it', ev('navDrawerOpen') === false &&
+       ev("document.getElementById('sidenav').classList.contains('open')") === false && ev("document.getElementById('navScrim').classList.contains('open')") === false);
+    ev('navDrawerToggle();');
+    ev("document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));");
+    ok('drawer: Escape closes it', ev('navDrawerOpen') === false && ev("document.getElementById('topMenu').getAttribute('aria-expanded')") === 'false');
+    ev("navDrawerToggle(); setMode('live');");
+    ok('drawer: switching to Live closes it', ev('navDrawerOpen') === false);
+    ev("setMode('review'); showMainTab('home');");
+    const s3bot = ev("Array.prototype.map.call(document.querySelectorAll('#botnav .ni'), function(b){ return b.textContent.trim(); }).join()");
+    ok('drawer: the bottom bar is unchanged (Today, Train, Live, Progress, Body)', s3bot === 'Today,Train,Live,Progress,Body', s3bot);
+    /* jsdom has no layout, so the desktop hiding is asserted on the stylesheet. .top-btn sets
+       display:flex later in the file, so a one-class rule lost and the button showed on desktop. */
+    const s3src = require('fs').readFileSync(HTML_PATH, 'utf8');
+    ok('drawer: the menu button is hidden on desktop by a rule that outranks .top-btn',
+       /\.top-btn\.top-menu\{display:none;\}/.test(s3src) && /@media\(max-width:899px\)\{\s*\.top-btn\.top-menu\{display:flex;\}/.test(s3src));
+
+    // --- the desktop rail collapses, per device, and charts redraw for the new width ---
+    ev("uiPrefSet('nav.collapsed', false); navCollapseApply();");
+    ev('window.__s3Rr = 0; window.__s3RealRr = rerenderActive; rerenderActive = function(f){ window.__s3Rr++; return window.__s3RealRr(f); };');
+    ev('navCollapseToggle();');
+    ok('rail: collapsing is remembered on this device', ev("uiPref()['nav.collapsed']") === true && ev('navCollapsed()') === true);
+    ok('rail: the shell takes the narrow form', ev("document.querySelector('.app-shell').classList.contains('nav-collapsed')") === true);
+    ok('rail: and the active tab is redrawn, because charts size to the column', ev('window.__s3Rr') >= 1, ev('window.__s3Rr'));
+    ok('rail: a screen choice never enters synced state', ev('JSON.stringify(S).indexOf(\'nav.collapsed\')') === -1);
+    ev('navCollapseToggle();');
+    ok('rail: and expands again', ev('navCollapsed()') === false && ev("document.querySelector('.app-shell').classList.contains('nav-collapsed')") === false);
+    ev('rerenderActive = window.__s3RealRr; delete window.__s3RealRr; delete window.__s3Rr;');
+
+    // --- Coach is "Hub" wherever he reads it; the id stays ops ---
+    ok('hub: the nav label is Hub', ev("NAV_MODEL.filter(function(m){ return m.id === 'ops'; })[0].label") === 'Hub');
+    ok('hub: the top button is named Hub', ev("document.getElementById('topCoach').getAttribute('aria-label')") === 'Intelligence Hub' &&
+       ev("document.getElementById('topCoach').title") === 'Hub');
+    ok('hub: no "Coach ›" path is left in the copy', !/Coach (\\u203a|›)/.test(s3src));
+    ok('hub: and nothing is called a Mission', !/\bmission\b/i.test(s3src));
+
+    // --- motion: on navigation only, never on a refresh ---
+    ev("showMainTab('progress');");
+    ok('motion: showing a view animates its sections in',
+       ev("[].slice.call(document.querySelectorAll('#reviewMode main section.on')).every(function(s){ return s.classList.contains('enter'); })") === true &&
+       ev("document.querySelectorAll('#reviewMode main section.on').length") > 0);
+    ev("[].slice.call(document.querySelectorAll('#reviewMode main section')).forEach(function(s){ s.classList.remove('enter'); });");
+    ev('rerenderActive(true);');
+    ok('motion: the 30-second repaint does not replay it',
+       ev("document.querySelectorAll('#reviewMode main section.enter').length") === 0);
+    // the readiness ring draws in on navigation only (jsdom: assert the class, not the animation)
+    ev("S.whoop = {fetchedAt: new Date().toISOString(), recovery: {date: todayKey(), score: 71, hrv: 80, rhr: 50}};");
+    ev("showMainTab('home');");
+    ok('motion: the ring draws in when Today is opened', ev("!!document.querySelector('#home .cc-arc.ring-draw')") === true,
+       ev("!!document.querySelector('#home .cc-arc')") ? 'arc present, no draw class' : 'no arc');
+    ev('rerenderActive(true);');
+    ok('motion: and is simply there after a refresh', ev("!!document.querySelector('#home .cc-arc')") === true &&
+       ev("!!document.querySelector('#home .cc-arc.ring-draw')") === false);
+    ok('motion: the flag is only up for that one render', ev('_navEnter') === false);
+    // reduced motion
+    ev("window.__s3mm = window.matchMedia; window.matchMedia = function(q){ return {matches: /reduce/.test(q)}; };");
+    ev("window.__s3si = null; smoothScroll({scrollIntoView: function(o){ window.__s3si = o; }});");
+    ok('motion: under reduced motion, scrolling jumps', ev('window.__s3si && window.__s3si.behavior') === 'auto');
+    ev("var __s3el = document.createElement('section'); navEnterAnim(__s3el);");
+    ok('motion: and nothing animates in', ev("__s3el.classList.contains('enter')") === false);
+    ev("window.matchMedia = function(q){ return {matches: false}; }; window.__s3si = null; smoothScroll({scrollIntoView: function(o){ window.__s3si = o; }});");
+    ok('motion: otherwise it scrolls smoothly', ev('window.__s3si && window.__s3si.behavior') === 'smooth');
+    ev('window.matchMedia = window.__s3mm; delete window.__s3mm; delete window.__s3si;');
+    ok('motion: every smooth scroll goes through smoothScroll',
+       (s3src.match(/'smooth'/g) || []).length === 1 && s3src.indexOf("behavior: prefersReducedMotion() ? 'auto' : 'smooth'") >= 0);
+  } catch (e) {
+    ok('V4 stage 3 shell section', false, e.stack);
+  } finally {
+    ev('navDrawerSet(false);');
+    ev('if(window.__s3Saved){ S = JSON.parse(window.__s3Saved); delete window.__s3Saved; }');
+    ev('try{ if(window.__s3Pref === null) localStorage.removeItem(UI_PREF_KEY); else localStorage.setItem(UI_PREF_KEY, window.__s3Pref); }catch(e){} delete window.__s3Pref; navCollapseApply();');
+  }
+
+  console.log('=== V4 STAGE 3: TODAY AS A COMMAND CENTRE ===');
+  try {
+    w.__s3tSaved = ev('JSON.stringify(S)');
+    ev("setMode('review'); live = null; S.logs = S.logs.filter(function(l){ return l.date !== todayKey(); }); S.coachDayPlan = null; S.deload = null;");
+
+    // --- Start: one tap into a session on a training day, never on a rest day ---
+    ev("S.overrideDay = {date: todayKey(), day: 'D1'}; renderHome();");
+    ok('today: on a training day, Start starts the session itself',
+       ev("document.querySelector('#home .cc-start').getAttribute('onclick')") === "setMode('live');liveStartSession()",
+       ev("document.querySelector('#home .cc-start').getAttribute('onclick')"));
+    ok('today: the title is the day, the eyebrow its key', ev("document.querySelector('#home .cc-title').textContent") === ev("dayMeta('D1').name") &&
+       /^D1\b/.test(ev("document.querySelector('#home .cc-eyebrow').textContent")));
+    ok('today: setMode(’live’) is still reachable from Today', ev("document.getElementById('home').innerHTML").indexOf("setMode('live')") >= 0);
+    ev("S.overrideDay = {date: todayKey(), day: 'REST'}; renderHome();");
+    ok('today: on a rest day it only opens Live, and says Train',
+       ev("document.querySelector('#home .cc-start').getAttribute('onclick')") === "setMode('live')" &&
+       /^Train/.test(ev("document.querySelector('#home .cc-start').textContent")));
+    ok('today: a rest day does not say "Rest day" twice', ev("document.querySelector('#home .cc-eyebrow').textContent").indexOf('Rest day') < 0 &&
+       ev("document.querySelector('#home .cc-eyebrow').textContent").indexOf(ev('homeShortDate(todayKey())')) >= 0,
+       ev("document.querySelector('#home .cc-eyebrow').textContent"));
+    ev("S.overrideDay = {date: todayKey(), day: 'D1'}; S.logs.push(stampRec({id:'s3logged', date: todayKey(), day:'D1', entries:[{exercise:'Barbell Bench Press', sets:[{w:135, r:5}]}]})); renderHome();");
+    ok('today: once today is logged, it says so and does not start another', /^Logged/.test(ev("document.querySelector('#home .cc-start').textContent")) &&
+       ev("document.querySelector('#home .cc-start').getAttribute('onclick')") === "setMode('live')");
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 's3logged'; });");
+
+    // --- key lifts: the prescription LIVE will give, never a second calculation ---
+    const kNm = 'S3 Box Squat';
+    ev("S.coachDayPlan = {date: todayKey(), day: 'D1', exercises: ['" + kNm + "', 'S3 Cable Curl']};");
+    const s3w = [[185, [8, 8, 7]], [190, [10, 9, 9]], [195, [12, 12, 12]]];
+    s3w.forEach(function(x, i){
+      ev("S.logs.push(stampRec({id:'s3k" + i + "', date: mesoAddDays(todayKey(), " + (-12 + i * 4) + "), day:'D1', entries:[{exercise:'" + kNm + "', sets:" +
+         JSON.stringify(x[1].map(function(r){ return {w: x[0], r: r, e: 'ok'}; })) + "}]}));");
+    });
+    const kl = ev("todayKeyLifts('D1')");
+    const ref = ev("(function(){ var ex = buildOneLiveExercise('" + kNm + "', null, {sets: liveSlotSets('D1')['" + kNm + "']}); return {w: +ex.targetW, lo: ex.lo, hi: ex.hi, from: ex._decision && ex._decision.from}; })()");
+    ok('today: key lifts follow today’s plan (a coach plan wins)', kl.length === 2 && kl[0].name === kNm && kl[1].name === 'S3 Cable Curl', JSON.stringify(kl));
+    ok('today: the weight and range are exactly what LIVE would prescribe', kl[0].w === ref.w && kl[0].lo === ref.lo && kl[0].hi === ref.hi,
+       JSON.stringify({today: kl[0], live: ref}));
+    ok('today: the change is measured from the last top weight', ref.from !== undefined && kl[0].delta === Math.round((ref.w - (+ref.from)) * 10) / 10,
+       JSON.stringify({today: kl[0], live: ref}));
+    const klR = ev("todayKeyLifts('D1', 'recover')");
+    const refR = ev("+buildOneLiveExercise('" + kNm + "', null, {call: 'recover', sets: liveSlotSets('D1')['" + kNm + "']}).targetW");
+    ok('today: and the day’s call reaches it, as it reaches LIVE', klR[0].w === refR && refR !== ref.w, JSON.stringify({recover: klR[0], live: refR, normal: ref.w}));
+    ev("window.__s3home = homeActiveToday; homeActiveToday = function(){ return true; };");
+    const klH = ev("todayKeyLifts('D1')");
+    ev("homeActiveToday = window.__s3home; delete window.__s3home;");
+    ok('today: on a HOME day, names only (HOME rounds and swaps at start)', klH.length === 2 && klH[0].w === undefined, JSON.stringify(klH));
+    ev("S.coachDayPlan = null;");
+
+    // --- Today reads, it never writes ---
+    ev("agState(); winterState(); expState(); fuelInit(); S.overrideDay = {date: todayKey(), day: 'D1'};");
+    ev("S.coachDayPlan = {date: todayKey(), day: 'D1', exercises: ['" + kNm + "']};");
+    // No warm-up render before the snapshot: one would have consumed the plan already, and a render
+    // that writes once would then look clean. Lazy state is created above, by name, instead.
+    const snap = ev('JSON.stringify(S)');
+    ev("renderHome(); showMainTab('home'); rerenderActive(true);");
+    ok('today: rendering Today writes nothing to state (a coach plan is not consumed)', ev('JSON.stringify(S)') === snap);
+    ev("S.coachDayPlan = null; S.logs = S.logs.filter(function(l){ return !/^s3k/.test(l.id); });");
+
+    // --- the next PR: a window between the optimistic and the expected line, the soonest lift ---
+    ev("window.__s3stub = {predLifts: predLifts, anEnsembleFor: anEnsembleFor, bestE1RM: bestE1RM};");
+    const day = function(n){ return ev('mesoAddDays(todayKey(), ' + n + ')'); };
+    // Messy, fixed offsets: the expected line wobbles across the best and back before it stays over.
+    const wob = [0, 1.3, -0.8, 2.1, -1.6, 0.4, 1.9, -0.5];
+    const series = function(base, slope){
+      return Array.from({length: 43}, function(_, i){ return {date: day(i), v: +(base + slope * i + wob[i % wob.length]).toFixed(1)}; });
+    };
+    w.__s3ens = {
+      'S3 A': {ok: true, conf: 'moderate', series: {50: series(190, 0.45), 90: series(193, 0.75)}, pr: 200},
+      'S3 B': {ok: true, conf: 'low', series: {50: series(140, 0.30), 90: series(142, 0.55)}, pr: 150},
+      'S3 C': {ok: true, conf: 'low', series: {50: series(100, 0.01), 90: series(104, 0.30)}, pr: 110}
+    };
+    ev("predLifts = function(){ return ['S3 C', 'S3 B', 'S3 A']; };" +
+       "anEnsembleFor = function(nm){ return window.__s3ens[nm]; };" +
+       "bestE1RM = function(nm){ return window.__s3ens[nm].pr; };");
+    const npf = ev('nextPrForecast()');
+    const firstOver = function(s, pr){ return (s.find(function(p){ return p.v > pr; }) || {}).date; };
+    const a50 = firstOver(w.__s3ens['S3 A'].series[50], 200), a90 = firstOver(w.__s3ens['S3 A'].series[90], 200);
+    // C comes first on purpose: its expected line never gets there, and it must not take the others down with it.
+    ok('next PR: the soonest lift wins, past a lift that never gets there', !!npf && npf.lift === 'S3 A', JSON.stringify(npf));
+    ok('next PR: the window opens where the optimistic line first passes his best',
+       !!npf && npf.from === a90 && npf.from < npf.to, JSON.stringify({npf: npf, a90: a90}));
+    ok('next PR: and closes where the expected line first does, wobbles and all', !!npf && npf.to === a50, JSON.stringify({npf: npf, a50: a50}));
+    ok('next PR: the target is the next whole pound over the best', !!npf && npf.target === 201 && npf.conf === 'moderate');
+    ok('next PR: a lift whose expected line never gets there is never offered',
+       ev("(function(){ predLifts = function(){ return ['S3 C']; }; return nextPrForecast(); })()") === null);
+    ev("predLifts = window.__s3stub.predLifts; anEnsembleFor = window.__s3stub.anEnsembleFor; bestE1RM = window.__s3stub.bestE1RM; delete window.__s3stub; delete window.__s3ens;");
+    delete w.__s3ens;
+
+    // --- the agents strip: a real state each, and "requests", never "ideas" ---
+    const nowIso = new Date().toISOString(), hrAgo = new Date(Date.now() - 3600000).toISOString(), dayAgo = new Date(Date.now() - 86400000).toISOString();
+    ev("(function(){ var a = agState(); a.status = {charlie: {at: '" + dayAgo + "'}, delta: {at: '" + hrAgo + "'}, echo: {at: '" + hrAgo + "'}};" +
+       "a.log = [{id: 'l1', agent: 'charlie', at: '" + nowIso + "', text: 'I could not complete tonight\\u2019s check (Load failed). Nothing changed.'}," +
+       "         {id: 'l2', agent: 'echo', at: '" + dayAgo + "', text: 'I could not complete tonight\\u2019s check (x). Nothing changed.'}];" +
+       "a.proposals = [{id: 'p1', agent: 'delta', status: 'pending', title: 't', reasoning: 'r', created: todayKey(), expires: mesoAddDays(todayKey(), 7), fix: {type: 'setCount', payload: {}}}];" +
+       "a.brief = null; })();");
+    ok('strip: an agent whose last word is a failure, after its last report, missed last night', ev("agStripState('charlie').txt") === 'missed last night');
+    ok('strip: an old failure before a newer report is not a miss', /^reported/.test(ev("agStripState('echo').txt")), ev("agStripState('echo').txt"));
+    ok('strip: one waiting proposal reads "1 request"', ev("agStripState('delta').txt") === '1 request');
+    ev("agState().proposals.push({id: 'p2', agent: 'delta', status: 'pending', title: 't2', reasoning: 'r', created: todayKey(), expires: mesoAddDays(todayKey(), 7), fix: {type: 'setCount', payload: {}}});");
+    ok('strip: two read "2 requests"', ev("agStripState('delta').txt") === '2 requests');
+    ok('strip: no report at all says so', ev("agStripState('zulu').txt") === 'no report yet');
+    ev('_agRunning = true;');
+    ok('strip: while the cycle runs, every agent is checking', ev("agStripState('delta').txt") === 'checking…' && ev("agStripState('charlie').txt") === 'checking…');
+    ev('_agRunning = false; renderHome();');
+    const homeHtml = ev("document.getElementById('home').innerHTML");
+    ok('strip: the Hub tile counts requests too', ev("document.querySelector('#home .cc-t3').getAttribute('aria-label')") === 'Hub, 2 requests',
+       ev("document.querySelector('#home .cc-t3').getAttribute('aria-label')"));
+    ok('strip: and Today never says "ideas"', !/\bideas?\b/i.test(homeHtml.replace(/<[^>]+>/g, ' ')));
+
+    // --- plateau watch chips, straight from the Overload status ---
+    ev("window.__s3ol = olSignals; olSignals = function(){ return [{lift: 'S3 Dips', verdict: 'stalling'}, {lift: 'S3 Press <b>', verdict: 'on-track'}, {lift: 'S3 Row', verdict: 'attention'}]; };");
+    const ph = ev('homePlateauHTML()');
+    ev("olSignals = window.__s3ol; delete window.__s3ol;");
+    ok('plateau: a stalling lift is named as stalling', /S3 Dips<\/span><span class="cc-chip-v"[^>]*>stalling</.test(ph), ph.slice(0, 300));
+    ok('plateau: needs attention is named too', /S3 Row<\/span><span class="cc-chip-v"[^>]*>needs attention</.test(ph));
+    ok('plateau: an on-track lift carries no verdict word, only its dot', /S3 Press &lt;b&gt;<\/span><\/button>/.test(ph), ph);
+    ok('plateau: nothing to watch, no section', ev("(function(){ var k = olSignals; olSignals = function(){ return []; }; var h = homePlateauHTML(); olSignals = k; return h; })()") === '');
+
+    // --- plan shape and the bodyweight tile ---
+    ev("window.__s3dens = densityByDay; densityByDay = function(){ return {D1: [{mins: 61}, {mins: 48}, {mins: 55}]}; };");
+    ok('shape: minutes are left out until there are enough timed sessions', ev("todayPlanShape('D1').mins") === null);
+    ev("densityByDay = function(){ return {D1: [{mins: 61}, {mins: 48}, {mins: 55}, {mins: 72}, {mins: 50}]}; };");
+    ok('shape: then it is the median, not the mean', ev("todayPlanShape('D1').mins") === 55, ev("todayPlanShape('D1').mins"));
+    ev("densityByDay = window.__s3dens; delete window.__s3dens;");
+    ev("S.weights = [];" + [0, 1, 2, 3, 4, 5, 6, 7].map(function(i){ return "S.weights.push(stampRec({date: mesoAddDays(todayKey(), " + (-28 + i * 4) + "), w: 170}));"; }).join(''));
+    ok('body tile: weigh-ins with no lbs give no tile, never "NaN lb/wk"', ev('todayBodyTile()') === null);
+  } catch (e) {
+    ok('V4 stage 3 Today section', false, e.stack);
+  } finally {
+    ev('_agRunning = false;');
+    ev('if(window.__s3tSaved){ S = JSON.parse(window.__s3tSaved); delete window.__s3tSaved; }');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
