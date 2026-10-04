@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-04-v2">
+<meta name="ironhub-build" content="2026-10-04-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13363,6 +13363,9 @@ function mesoOpenWeek(n){
        MESO_TYPE_ORDER.map(k=>'<option value="'+k+'"'+(k===w.type?' selected':'')+'>'+MESO_TYPES[k].label+'</option>').join('')+
        '</select></div>';
   h += '<p class="small" style="margin-bottom:8px;color:var(--dim)">Changing a phase splits it out as its own block \u2014 later weeks shift, dates recalculate automatically.</p>';
+  h += '<div class="field" style="margin-bottom:12px"><label>Length (days)</label>'+
+       '<input type="number" inputmode="numeric" min="1" max="60" value="'+(w.days||7)+'" onchange="mesoSetWeekDays('+n+',this.value)"></div>';
+  h += '<p class="small" style="margin-bottom:8px;color:var(--dim)">Shortening a segment pulls every later date forward. A strength block of 4 days runs S1, S2, S3, rest.</p>';
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
        '<button class="btn sm" onclick="mesoInsertWeek('+n+',\'deload\')">Insert deload here</button>'+
        '<button class="btn sm" onclick="mesoInsertWeek('+n+',\'rest\')">Insert rest week here</button>'+
@@ -13383,6 +13386,20 @@ function mesoSetWeekType(n, type){
   mesoPruneSplits(); mesoEnsureProposals();
   save(); renderMeso(); closeMesoOv();
   try{ if(typeof renderLive==='function') renderLive(); }catch(e){}
+}
+/* Resize one segment. mesoResequence() already handles segments of any length (a template phase
+   can be measured in days), but nothing let him resize one that is already on the calendar.
+   The blockId is untouched, so an approved strength split survives; the rotation is anchored to
+   the block's first day and simply stops early. */
+function mesoSetWeekDays(n, v){
+  const a = mesoActive(); if(!a) return;
+  const w = a.weeks.find(x=>x.n===n); if(!w) return;
+  const d = Math.round(Number(v));
+  if(!isFinite(d) || d<1 || d>60) return;
+  w.days = d;
+  mesoResequence(a.weeks, a.startKey);
+  save(); renderMeso(); closeMesoOv();
+  try{ afterScheduleChange(); }catch(e){}
 }
 function mesoInsertWeek(n, type){
   const a = mesoActive(); if(!a) return;

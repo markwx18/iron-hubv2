@@ -11272,6 +11272,40 @@ setTimeout(async () => {
     ev('if(window.__s3tSaved){ S = JSON.parse(window.__s3tSaved); delete window.__s3tSaved; }');
   }
 
+  console.log('=== RESIZING A CALENDAR SEGMENT: A STRENGTH BLOCK CUT TO 4 DAYS ===');
+  // Built 2026-10-03 in the other clone (cc4f6ad) and never pushed; ported 2026-10-04.
+  try {
+    ev("window.__szSaved = JSON.stringify(S.meso || null);");
+    ev("S.meso = S.meso || {template:null, active:null};");
+    // hyp week (Mon Sep 28), strength week (Mon Oct 5, 7 days), deload (3 days). Fixed dates, so this never depends on today.
+    ev("S.meso.active = {startedAt:'2026-09-28', startKey:'2026-09-28', splits:{bSz:{status:'approved', rotation:['S1','S2','S3','REST','REST'], split:{S1:{name:'a',exercises:[]},S2:{name:'b',exercises:[]},S3:{name:'c',exercises:[]}}}}, weeks:["
+       + "{type:'hyp',name:'Hypertrophy',blockId:'bSh',days:7},{type:'str',name:'Strength',blockId:'bSz',days:7},{type:'deload',name:'Deload',blockId:'bSd',days:3}]};");
+    ev("mesoResequence(S.meso.active.weeks, S.meso.active.startKey);");
+    const dayOf = (k) => ev("scheduledDayFor('" + k + "')");
+    ok('segment resize: before, Oct 9 is still a strength-rotation rest and Oct 10 is S1', dayOf('2026-10-09') === 'REST' && dayOf('2026-10-10') === 'S1');
+    // The control is really there, on the week he taps, and wired to the setter.
+    ev('mesoOpenWeek(2);');
+    const szIn = ev("(function(){ var i = document.querySelector('#mesoOvBody input[type=number]'); return i ? {v: i.value, on: i.getAttribute('onchange')} : null; })()");
+    ok('segment resize: the week editor has a Length (days) box, set to the current length', !!szIn && szIn.v === '7' && szIn.on === 'mesoSetWeekDays(2,this.value)', JSON.stringify(szIn));
+    ev('closeMesoOv();');
+    ev('window.__szT = S.meta.changedAt; S.meta.changedAt = 1;');
+    ev("mesoSetWeekDays(2, 4);");
+    ok('segment resize: it is saved as his change, so a background pull cannot revert it', ev('S.meta.changedAt') > 1);
+    ev('S.meta.changedAt = Math.max(S.meta.changedAt, window.__szT || 0); delete window.__szT;');
+    const wk = JSON.parse(ev("JSON.stringify(S.meso.active.weeks.map(x=>[x.type,x.startKey,x.endKey,x.days]))"));
+    ok('segment resize: strength is Oct 5-8 and the deload follows at once, Oct 9-11',
+      wk[1][1] === '2026-10-05' && wk[1][2] === '2026-10-08' && wk[2][1] === '2026-10-09' && wk[2][2] === '2026-10-11', JSON.stringify(wk));
+    ok('segment resize: Oct 5-8 run S1, S2, S3, rest', ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'].map(dayOf).join() === 'S1,S2,S3,REST', ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'].map(dayOf).join());
+    ok('segment resize: the approved split survives the resize', ev("S.meso.active.splits.bSz.status") === 'approved');
+    ok('segment resize: the deload week has no strength rotation', ev("mesoRotationDayFor('2026-10-09')") === null && ev("mesoWeekAt('2026-10-09').type") === 'deload');
+    ev("mesoSetWeekDays(2, 0); mesoSetWeekDays(2, 'abc'); mesoSetWeekDays(2, 99);");
+    ok('segment resize: out-of-range or junk lengths are ignored', ev("S.meso.active.weeks[1].days") === 4);
+    ev("S.meso = JSON.parse(window.__szSaved); delete window.__szSaved;");
+  } catch (e) {
+    ok('segment resize section', false, e.stack);
+    try { ev("if(window.__szSaved){ S.meso = JSON.parse(window.__szSaved); delete window.__szSaved; }"); } catch (e2) {}
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

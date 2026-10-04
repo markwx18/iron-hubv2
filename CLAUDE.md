@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2697 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2705 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -577,7 +577,9 @@ into `-5`.
 **Generating a split is not scheduling it.** A meso block reaches the calendar through
 `mesoRotationDayFor()`, anchored to the *calendar* and consulted ahead of the dow/cycle map in
 `scheduledDayFor()`: day N of the block is always slot N of `['S1','S2','S3','REST','REST']`.
-That is now the only way S1/S2/S3 land on a date.
+That is now the only way S1/S2/S3 land on a date. A segment can be resized in days from the week
+editor (`mesoSetWeekDays()`, 1-60): a 4-day strength block runs S1, S2, S3, rest, and every later
+date moves up. The blockId is kept, so an approved split survives the resize.
 
 There used to be a second way — a **standalone strength window** (`S.tempStrengthSplit` +
 `S.tempStrengthWindow`), generated from a Settings card and sequenced by what he had *logged*
