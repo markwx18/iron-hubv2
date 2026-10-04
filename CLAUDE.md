@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2486 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2591 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -258,7 +258,7 @@ so the two orders can no longer disagree.
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
-| Home / strip | `renderHome()`, `renderStatusStrip()`, `readinessNow()`, `renderNotif()` |
+| Home / strip | `renderHome()`, `renderStatusStrip()`, `readinessNow()`, `renderNotif()` (`notifDismiss()` one item, `notifClear()` all) |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
 | WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`, `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
@@ -267,9 +267,9 @@ so the two orders can no longer disagree.
 | Backup | `exportPayload()` / `importApply()`, `DEVICE_SECRETS` (a backup file carries no credentials; import keeps this device's) |
 | After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
-| Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()`, `coachValidateAction()` |
+| Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()`, `coachValidateAction()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
-| API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network |
+| API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network; the cap: `spendLedgerSync()` (`S.spend`), `spendMonth()`, `spendBlock()`, `spendPreflight()`, `spendManualOk()`, `spendCap()` |
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
 | Projections | `anFanProject()` (shared core), `anFanChartSVG()`, `anFanMilestones()`, `bwProjectFor()` |
@@ -281,7 +281,7 @@ so the two orders can no longer disagree.
 | PR history | `checkPRs()`, `prAppend()`, `prBackfill()`, `renderAnPRs()` |
 | Readiness | `todayReadiness()`, `rdComplete()`, `readinessNow()`, `anReadinessOutcome()`, `anReadinessTrim()`, `renderAnReadiness()` |
 | Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
-| Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()`, `fuelFoodAllowed()` |
+| Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()`, `fuelFoodAllowed()`; targets change only through `fuelTargetSet()`, which logs `S.targetHist` (`fuelTargetHistory()`) |
 | Fuel planner | `FOOD_DB`, `fpFoods()`, `fpPool()`, `fpCombos()` / `fpBuild()`, `fpStockDue()`, `fpCheckFood()`, `fpSetStock()` / `fpSetPref()` / `fpTidy()`; ECHO: `fpToolDefs()`, `fpProposeToolDef()`, `fpPlannerText()` |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
 | Muscle map data | `bmViewerData()`, `bmStatusFor()`, `bmWeeklyVol()`, `bmTrainedDays()` |
@@ -378,6 +378,19 @@ Five rules it enforces:
 - **A rejection is enforced, not just remembered.** `agIngest()` does not re-queue a byte-identical
   fix (`agFixKey`) he turned down within `AG_REJECT_QUIET_DAYS` (14), and logs that it did not.
   Different numbers are a different call and still come through.
+- **A well-formed fix can still collide** (cross-review, the code half, 2026-10-03). `agValidateFix()`
+  is `agValidateFixShape()` followed by `agConflict()`, which only ever refuses:
+  - no `deload` while one is in force, or within `AG_DELOAD_NEAR_DAYS` (14) of a planned meso deload
+    (`agDeloadBlock()`);
+  - no `setCount` on a lift under a reset, with an open Investigation flag, or under a running
+    experiment;
+  - no `setCount` increase or `addEx` next to a "sharp" flag from the last 14 days on that lift or one
+    sharing a primary muscle (`agSharpNear()`); taking sets off is still allowed;
+  - no `liftReset` or `swapEx` on the experiment's lift.
+
+  These used to live only in the Sunday plan's filter or in prompt text. They apply at ingest and
+  again at approval. ZULU's chat (`start_deload`, `add_exercise_permanent`,
+  `swap_exercise_permanent`) shares them, and `agRejectReason()` names the rule that fired.
 
 **Advisory-only proposals are not allowed in the queue.** A proposal with no
 concrete `fix` has nothing to apply, so approving it is a no-op. These are folded
@@ -508,6 +521,22 @@ logged with `x:1`: the input is exact (from `message_start`) and the output is a
 what had streamed in. An API error reply, in a stream or not, is not logged. The morning brief
 passes `noTools` to `callClaudeWithData()`, so it is exactly one request with no tool
 definitions, as its comment always said. Before that, `maxRounds:1` still sent the tools.
+
+**There is a monthly cap, and it sees both devices** (2026-10-03, $20 default, `S.settings.spendCap`).
+- Each device rebuilds its own per-day records in `S.spend` (a `SYNC_HISTORY` collection) from its
+  local usage log (`spendLedgerSync()`, on every note and every foreground check).
+- It **never adds to a record**: the history merge keeps the snapshot's copy of a key both sides
+  hold, so a running total could silently lose an update. A rebuild writes the right number again.
+- `spendMonth()` reads this device from its own log and others from their records, so it is a pure
+  read that never double-counts.
+- `aiSend()` calls `spendPreflight()` before every request, counting the request about to go out.
+- Automatic routes (`night`, `brief`, `letter`, `lift`) are stopped with a `Paused:` error. The
+  9 PM gate and the brief gate pause up front and leave evidence: one log line a day, and a
+  `briefNote`.
+- Anything he started asks first: chat, `weekplan`, Run cycle now and Rewrite (`spendManualOk()`).
+  A yes covers the next 10 minutes.
+- A notification appears at 80% and again at the cap (different ids), and a reached cap is named in
+  the spend card's folded line.
 
 **A repaint must never be able to strand an in-flight flag.** Both runners used to call
 `renderOps()` between raising their module-scoped guard and entering the `try`. A throw from a
@@ -834,6 +863,22 @@ every boot. The toggle also writes every slot of the lift on the permanent split
 prescription), `coachPlan`, `swapped`, and `scheduled`. Decisions record the weight LIVE actually
 prescribed (`call-recover`, overrides, deloads, home rounding). Sessions before 2026-09-28 have none
 of these.
+
+Since 2026-10-03 it also records how it was modified. Each set carries `p:{w,lo,hi}`, the call it
+was given, so a lighter weight he chose can be told from one he was prescribed. A 1RM-test set
+carries `rm:1`. The log carries:
+- `swapFrom` (new name → the planned lift it replaced; `swapped` still lists swaps and adds
+  together, as old readers expect);
+- `removed` (planned lifts he dropped);
+- `call.toggledAt`;
+- `skippedCheckIn`.
+
+**`sessionMods(log)` is the one reader of all of it**, and `sessionModLift(m, name)` asks "was this
+lift's number shaped by something other than the engine?". `predInterrupted()` and `expExcluded()`
+are written on it (no change for existing logs). Investigation's trend and its auto-resolve use
+`e1rmSeries(nm, {excludeHome, excludeMod})`, so kept recover days, resets, coach plans, swaps and
+1RM tests no longer read as a decline. `recommend()` / `classifyDecision()` do NOT read it yet:
+changing what counts as the "last session" changes prescriptions, which needs a replay first.
 
 **Effort reads go through `effBucket()`.** It prefers the 0–100 lever (`s.ef`) and falls back
 to the legacy tag (`s.e`), which is what lets months of already-logged sessions keep working

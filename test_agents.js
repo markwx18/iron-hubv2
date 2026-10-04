@@ -10477,6 +10477,347 @@ setTimeout(async () => {
     ev('if(window.__s0LastPush !== undefined){ _lastPushExportedAt = window.__s0LastPush; delete window.__s0LastPush; }');
   }
 
+  console.log('=== V4 STAGE 2: CROSS-REVIEW BEFORE THE QUEUE ===');
+  try {
+    w.__xrSaved = ev('JSON.stringify(S)');
+    const fx = (t, p) => JSON.stringify({type: t, payload: p});
+    const val = (t, p, who) => ev('JSON.stringify(agValidateFix(' + fx(t, p) + ', ' + JSON.stringify(who || 'delta') + '))');
+    const why = (t, p, who) => ev('agRejectReason(' + fx(t, p) + ', ' + JSON.stringify(who || 'delta') + ')');
+    const clean = "S.deload = null; S.pain = []; expState().active = null; invState().overrides = {}; invState().flags = []; mesoState().active = null;";
+    ev(clean);
+    const cur = ev("exSlotSets('D2', 'Lat Pulldown')");
+    const up = {exercise: 'Lat Pulldown', day: 'D2', sets: cur + 1};
+
+    // --- controls: with nothing in force, every one of these is a legitimate proposal ---
+    ok('xr: a deload passes when none is in force or planned', val('deload', {}) !== 'null');
+    ok('xr: a set change passes on a lift nothing else owns', val('setCount', up) !== 'null', why('setCount', up));
+    ok('xr: a reset passes on a lift with no experiment', val('liftReset', {name: 'Lat Pulldown', w: 100, days: 10}) !== 'null', why('liftReset', {name: 'Lat Pulldown', w: 100, days: 10}));
+
+    // --- a deload inside a deload, or right before a planned one ---
+    ev("S.deload = {startedAt: todayKey(), until: mesoAddDays(todayKey(), 6)};");
+    ok('xr: no deload proposed while one is in force', val('deload', {}) === 'null');
+    ok('xr: and the log says why', /already in force/.test(why('deload', {})), why('deload', {}));
+    ok('xr: Zulu’s chat card is held to the same rule', ev("coachValidateAction('start_deload', {}).ok") === false);
+    ev('S.deload = null;');
+    ok('xr: control: the chat card passes once no deload is in force', ev("coachValidateAction('start_deload', {}).ok") === true);
+    ev("mesoState().active = {startKey: todayKey(), splits: {}, weeks: [" +
+       "{n: 1, type: 'str', startKey: todayKey(), endKey: mesoAddDays(todayKey(), 6)}," +
+       "{n: 2, type: 'deload', startKey: mesoAddDays(todayKey(), 9), endKey: mesoAddDays(todayKey(), 15)}]};");
+    ok('xr: no deload proposed 9 days before a planned one', val('deload', {}) === 'null');
+    ok('xr: and the reason names the planned one', /planned deload starts/.test(why('deload', {})), why('deload', {}));
+    ev("mesoState().active.weeks[1].startKey = mesoAddDays(todayKey(), 20); mesoState().active.weeks[1].endKey = mesoAddDays(todayKey(), 26);");
+    ok('xr: control: a planned deload three weeks out does not block one now', val('deload', {}) !== 'null');
+    ev('mesoState().active = null;');
+
+    // --- a set change on a lift something else already owns ---
+    ev("invState().overrides['Lat Pulldown'] = invResetRecord(100, 10, 'Test');");
+    ok('xr: no set change on a lift under a reset', val('setCount', up) === 'null');
+    ok('xr: reason: the reset decides', /under a reset/.test(why('setCount', up)), why('setCount', up));
+    ev("invState().overrides = {}; invState().flags.push({id: 'xrf', key: 'lift:Lat Pulldown', status: 'active', cat: 'lift', title: 'Lat Pulldown flat'});");
+    ok('xr: no set change on a lift with an open Investigation flag', val('setCount', up) === 'null');
+    ok('xr: reason: Investigation owns it', /Investigation flag/.test(why('setCount', up)), why('setCount', up));
+    ev("invState().flags = []; expState().active = {id: 'xrx', template: 'repRange', lift: 'Lat Pulldown'};");
+    ok('xr: no set change on the lift an experiment is measuring', val('setCount', up) === 'null');
+    ok('xr: reason: it would confound the test', /experiment is running/.test(why('setCount', up)), why('setCount', up));
+    ok('xr: nor a reset on it', val('liftReset', {name: 'Lat Pulldown', w: 100, days: 10}) === 'null');
+    ok('xr: nor swapping it out', val('swapEx', {from: 'Lat Pulldown', to: 'Cable Pullover'}) === 'null', why('swapEx', {from: 'Lat Pulldown', to: 'Cable Pullover'}));
+    ok('xr: nor through Zulu’s chat', ev("coachValidateAction('swap_exercise_permanent', {day: 'D2', from: 'Lat Pulldown', to: 'Cable Pullover'}).ok") === false);
+    ok('xr: control: other lifts are untouched by it', val('setCount', {exercise: 'Cable Row', day: 'D2', sets: ev("exSlotSets('D2', 'Cable Row')") + 1}) !== 'null');
+
+    // --- the approval re-check: an experiment that starts while a proposal waits ---
+    ev("expState().active = null; agState().proposals = agState().proposals.filter(function(p){ return p.id !== 'xrp'; });");
+    ev("agState().proposals.push({id: 'xrp', agent: 'delta', title: 'More pulldown', reasoning: 'r', fix: " + fx('setCount', up) + ", created: todayKey(), expires: mesoAddDays(todayKey(), 7), status: 'pending'});");
+    ev("expState().active = {id: 'xrx', template: 'repRange', lift: 'Lat Pulldown'};");
+    ev("agApprove('xrp');");
+    ok('xr: a proposal that collided while waiting is refused at approval', ev("agState().proposals.find(function(p){ return p.id === 'xrp'; }).status") === 'failed');
+    ok('xr: and nothing was written', ev("exSlotSets('D2', 'Lat Pulldown')") === cur);
+    ok('xr: and the error names the experiment', /experiment is running/.test(ev("agState().proposals.find(function(p){ return p.id === 'xrp'; }).error") || ''));
+
+    // --- volume next to a fresh sharp flag ---
+    ev(clean + " S.pain = [{id: 'xrs', exercise: 'Barbell Bench Press', level: 3, date: todayKey(), note: ''}];");
+    const inc = {exercise: 'Incline Dumbbell Press', day: 'D1', sets: ev("exSlotSets('D1', 'Incline Dumbbell Press')") + 1};
+    const dec = {exercise: 'Incline Dumbbell Press', day: 'D1', sets: ev("exSlotSets('D1', 'Incline Dumbbell Press')") - 1};
+    ok('xr: no extra sets for a lift working the same muscle as a sharp flag', val('setCount', inc) === 'null');
+    ok('xr: reason names the flagged lift', /Barbell Bench Press was flagged sharp/.test(why('setCount', inc)), why('setCount', inc));
+    ok('xr: but taking sets OFF is still allowed', val('setCount', dec) !== 'null', why('setCount', dec));
+    ok('xr: no new chest exercise either', val('addEx', {name: 'Machine Chest Press', day: 'D2'}) === 'null', why('addEx', {name: 'Machine Chest Press', day: 'D2'}));
+    ok('xr: nor through Zulu’s chat', ev("coachValidateAction('add_exercise_permanent', {day: 'D2', exercise: 'Machine Chest Press'}).ok") === false);
+    ok('xr: control: an exercise for other muscles is fine', val('addEx', {name: 'Leg Extension', day: 'D2'}) !== 'null', why('addEx', {name: 'Leg Extension', day: 'D2'}));
+    ev("S.pain[0].level = 2;");
+    ok('xr: control: a "sore" flag does not block volume', val('setCount', inc) !== 'null');
+    ev("S.pain[0].level = 3; S.pain[0].date = mesoAddDays(todayKey(), -20);");
+    ok('xr: control: a sharp flag from 20 days ago no longer blocks it', val('setCount', inc) !== 'null');
+  } catch (e) {
+    ok('V4 stage 2 cross-review section', false, e.stack);
+  } finally {
+    ev('if(window.__xrSaved){ S = JSON.parse(window.__xrSaved); delete window.__xrSaved; }');
+  }
+
+  console.log('=== V4 STAGE 2: DISMISS ONE NOTIFICATION AT A TIME ===');
+  try {
+    w.__ndSaved = ev('JSON.stringify(S)');
+    ev("agState().proposals = [" +
+       "{id: 'ndA', agent: 'delta', title: 'First idea', reasoning: 'a', fix: {type: 'deload', payload: {}}, created: todayKey(), expires: mesoAddDays(todayKey(), 7), status: 'pending'}," +
+       "{id: 'ndB', agent: 'echo', title: 'Second idea', reasoning: 'b', fix: {type: 'pro', payload: {to: 160}}, created: todayKey(), expires: mesoAddDays(todayKey(), 7), status: 'pending'}];");
+    ev("S.notifCleared = ['prop:long-gone'];");
+    const vis = () => ev("notifVisible().map(function(i){ return i.id; })");
+    ok('nd: both proposals are listed to start with', vis().indexOf('prop:ndA') >= 0 && vis().indexOf('prop:ndB') >= 0, JSON.stringify(vis()));
+    ev("notifDismiss('prop:ndA');");
+    ok('nd: dismissing one hides only that one', vis().indexOf('prop:ndA') < 0 && vis().indexOf('prop:ndB') >= 0, JSON.stringify(vis()));
+    ok('nd: the cleared list stays bounded: a stale id is dropped on the next write',
+       ev("JSON.stringify(S.notifCleared)") === JSON.stringify(['prop:ndA']), ev("JSON.stringify(S.notifCleared)"));
+    ok('nd: the proposal itself is untouched, still waiting in Coach', ev("agPending().some(function(p){ return p.id === 'ndA'; })") === true);
+    // The rendered button: it dismisses, and must not also fire the row's tap (which navigates and
+    // closes the panel).
+    ev("notifOpen = true; renderNotif();");
+    const nx = ev("document.querySelectorAll('#notifPanel .notif-x').length");
+    ok('nd: every listed item has its own dismiss button', nx === vis().length && nx > 0, nx + ' buttons for ' + vis().length + ' items');
+    ok('nd: and it is labelled for a screen reader', ev("document.querySelector('#notifPanel .notif-x').getAttribute('aria-label')") === 'Dismiss');
+    ev("window.__ndNav = 0; window.__ndRealShow = showReviewTab; showReviewTab = function(){ window.__ndNav++; };");
+    ev("(function(){ var b = Array.prototype.find.call(document.querySelectorAll('#notifPanel .notif-item'), function(el){ return /Second idea/.test(el.textContent); }).querySelector('.notif-x'); b.click(); })()");
+    ok('nd: tapping the button dismisses that item', vis().indexOf('prop:ndB') < 0, JSON.stringify(vis()));
+    ok('nd: without also opening the item behind it', ev('window.__ndNav') === 0 && ev('notifOpen') === true, 'nav=' + ev('window.__ndNav') + ' open=' + ev('notifOpen'));
+    ev("showReviewTab = window.__ndRealShow; delete window.__ndRealShow; delete window.__ndNav; notifOpen = false; renderNotif();");
+    ev("S.notifCleared = []; notifClear();");
+    ok('nd: clear-all still clears everything', vis().length === 0, JSON.stringify(vis()));
+  } catch (e) {
+    ok('V4 stage 2 notification section', false, e.stack);
+  } finally {
+    ev('if(window.__ndSaved){ S = JSON.parse(window.__ndSaved); delete window.__ndSaved; } notifOpen = false;');
+  }
+
+  console.log('=== V4 STAGE 2: SPEND LEDGER AND THE MONTHLY CAP ===');
+  try {
+    w.__spSaved = ev('JSON.stringify(S)');
+    ev("window.__spUsage = localStorage.getItem(AI_USAGE_KEY); window.__spConfirm = window.confirm; window.__spFetch = window.fetch;");
+    ev("localStorage.removeItem(AI_USAGE_KEY); S.spend = []; delete S.settings.spendCap; _spendOkUntil = 0; _spendPauseLogged = '';");
+    // $1 = 100,000 output tokens at $10 per million. Fixed offsets, never random.
+    const seed = (entries) => ev("localStorage.setItem(AI_USAGE_KEY, JSON.stringify([" + entries.join(',') + "]));");
+    const dev = ev('spendDeviceId()');
+    const today = ev('todayKey()'), yday = ev("mesoAddDays(todayKey(), -1)");
+    const atDay = (k, d, route) => "{at: new Date('" + k + "T12:00:00').getTime(), r:'" + (route || 'night:delta') + "', i:0, o:" + Math.round(d * 100000) + ", cw:0, cr:0}";
+
+    // --- the ledger: this device's day totals, rebuilt from its own log ---
+    seed([atDay(today, 1.25), atDay(today, 0.75), atDay(yday, 0.5)]);
+    ok('ledger: a rebuild reports a change the first time', ev('spendLedgerSync()') === true);
+    const recT = ev("S.spend.find(function(z){ return z.id === '" + dev + "|" + today + "'; })");
+    ok('ledger: one record per device per day, summed', !!recT && Math.abs(recT.usd - 2) < 1e-6 && recT.n === 2 && recT.dev === dev, JSON.stringify(recT));
+    ok('ledger: yesterday gets its own record', Math.abs(ev("S.spend.find(function(z){ return z.id === '" + dev + "|" + yday + "'; }).usd") - 0.5) < 1e-6);
+    ok('ledger: records carry a write stamp for the sync merge', recT && recT.t > 0);
+    ok('ledger: nothing new, nothing written', ev('spendLedgerSync()') === false);
+    // A pull can hand back the snapshot's stale copy of a record this device already updated
+    // (mergeUnseenHistory keeps the snapshot's copy of a key both sides hold). The rebuild heals it.
+    ev("S.spend.find(function(z){ return z.id === '" + dev + "|" + today + "'; }).usd = 0.01;");
+    ok('ledger: a stale copy from a pull is rewritten on the next rebuild', ev('spendLedgerSync()') === true &&
+       Math.abs(ev("S.spend.find(function(z){ return z.id === '" + dev + "|" + today + "'; }).usd") - 2) < 1e-6);
+    ok('ledger: it rides the sync', SYNC_HISTORY_has(ev) && JSON.parse(ev('syncPayload()')).data.spend.length >= 2);
+    function SYNC_HISTORY_has(evf){ return evf("typeof SYNC_HISTORY.spend === 'object'") === true; }
+
+    // --- the month across both devices ---
+    ev("S.spend.push({id:'dOTHER|" + today + "', dev:'dOTHER', day:'" + today + "', usd:3, n:4, t:Date.now()});");
+    ev("S.spend.push({id:'dOTHER|2001-01-01', dev:'dOTHER', day:'2001-01-01', usd:99, n:1, t:Date.now()});");
+    const monthPart = today.slice(0, 7) === yday.slice(0, 7) ? 2.5 : 2;   // yesterday may be last month
+    ok('month: this device from its log plus the other device’s records, not double-counted',
+       Math.abs(ev('spendMonth()') - (monthPart + 3)) < 1e-6, String(ev('spendMonth()')));
+    ok('month: the cap defaults to $20 on an install that never set one', ev('spendCap()') === 20);
+
+    // --- under the cap nothing changes; over it, automatic work stops and his own taps ask ---
+    ev("window.__fetchN = 0; window.fetch = function(){ window.__fetchN++; return Promise.reject(new TypeError('Failed to fetch')); };");
+    ev("window.__cf = 0; window.confirm = function(){ window.__cf++; return window.__cfAns; };");
+    let e1 = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'night:delta'})"); } catch (e) { e1 = e; }
+    ok('cap: under the cap a nightly request goes out as before', ev('window.__fetchN') > 0 && ev('window.__cf') === 0 && !/Paused/.test(e1 && e1.message), e1 && e1.message);
+    ev("S.settings.spendCap = 5; window.__fetchN = 0;");   // month is now over $5
+    let e2 = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'night:delta'})"); } catch (e) { e2 = e; }
+    ok('cap: over it, an automatic request is stopped before it is sent', ev('window.__fetchN') === 0 && !!e2 && /^Paused: the monthly API cap is reached/.test(e2.message), e2 && e2.message);
+    ok('cap: and the failure is not mistaken for a dropped connection', ev('agIsNetworkErr(new Error(' + JSON.stringify(e2 ? e2.message : '') + '))') === false);
+    ev("window.__cfAns = false; window.__cf = 0;");
+    let e3 = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'chat:delta'})"); } catch (e) { e3 = e; }
+    ok('cap: a chat asks first', ev('window.__cf') === 1);
+    ok('cap: and a "no" sends nothing', ev('window.__fetchN') === 0 && !!e3 && /^Not sent/.test(e3.message), e3 && e3.message);
+    ev("window.__cfAns = true; window.__cf = 0;");
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'chat:delta'})"); } catch (e) {}
+    ok('cap: a "yes" sends it', ev('window.__fetchN') > 0 && ev('window.__cf') === 1);
+    ev("window.__fetchN = 0;");
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'chat:delta'})"); } catch (e) {}
+    ok('cap: and covers the rest of that conversation without asking again', ev('window.__cf') === 1 && ev('window.__fetchN') > 0);
+    ev("_spendOkUntil = 0;");
+    // Not overshot by the call itself: $4.90 spent against $5, and a nightly request here typically costs $0.25.
+    ev("S.spend = []; S.settings.spendCap = 5;");
+    seed([atDay(today, 4.4), atDay(today, 0.25), atDay(today, 0.25)]);
+    ok('cap: a request that would cross the cap is held, not just one after it', /cap is reached/.test(ev("spendBlock('night:delta')")), ev("spendBlock('night:delta') + ' | spent=' + spendMonth() + ' est=' + spendEstimate('night:delta')"));
+    ok('cap: control: the bare check (no request) still reads under the cap', ev('spendBlock()') === '');
+
+    // --- the nightly cycle pauses at the gate, and says so once ---
+    seed([atDay(today, 6)]);
+    ev("S.settings.spendCap = 5; S.settings.apiKey = 'sk-test'; agState().autoRun = true; agState().lastRun = ''; agState().log = []; S.settings.gistId = '';");
+    ev("window.__spRuns = 0; window.__spRealRunAll = agRunAll; agRunAll = function(){ window.__spRuns++; return Promise.resolve(); };");
+    await withHourAt(21, function(){ return ev('agMaybeAutoRun()'); });
+    await withHourAt(21, function(){ return ev('agMaybeAutoRun()'); });
+    ok('gate: at the cap, the 9 PM cycle does not start', ev('window.__spRuns') === 0);
+    ok('gate: and the activity log says why, once', ev("agState().log.filter(function(l){ return /cycle is paused: the monthly API cap/.test(l.text); }).length") === 1, JSON.stringify(ev('agState().log')));
+    ok('gate: not stamped as run, so a higher cap lets it go tonight', ev('agState().lastRun') === '');
+    ev("S.settings.spendCap = 50;");
+    await withHourAt(21, function(){ return ev('agMaybeAutoRun()'); });
+    ok('gate: control: under the cap the cycle starts', ev('window.__spRuns') === 1);
+    ev("agRunAll = window.__spRealRunAll; delete window.__spRealRunAll; S.settings.spendCap = 5;");
+    ev("localStorage.removeItem(BRIEF_TRAIL_KEY);");
+    await withHourAt(7, function(){ return ev('agMaybeMorningBrief()'); });
+    ok('gate: the morning brief pauses too, and its trail says why', /paused: the monthly API cap/.test(ev('(briefTrail()||{}).reason') || ''), JSON.stringify(ev('briefTrail()')));
+    ev("window.__cfAns = false; window.__cf = 0;");
+    ok('manual: Run cycle now asks first, and a "no" runs nothing', ev('spendManualOk()') === false && ev('window.__cf') === 1);
+    ev("window.__cfAns = true;");
+    ok('manual: a "yes" lets that cycle’s requests through', ev('spendManualOk()') === true);
+    let e4 = null;
+    try { await ev("callClaude([{role:'user',content:'hi'}], 'sys', 4000, {route:'night:delta'})"); } catch (e) { e4 = e; }
+    ok('manual: so its nightly requests are not then stopped one by one', !(e4 && /^Paused/.test(e4.message)), e4 && e4.message);
+    ev("_spendOkUntil = 0;");
+
+    // --- the warning, and the card ---
+    seed([atDay(today, 4.2)]);
+    ev("S.spend = []; S.settings.spendCap = 5;");
+    const ids = () => ev("notifItems().map(function(i){ return i.id; })");
+    ok('notif: at 80% of the cap a notification appears', ids().indexOf('spend:' + today.slice(0, 7) + ':80') >= 0, JSON.stringify(ids()));
+    seed([atDay(today, 5.5)]);
+    ok('notif: at the cap it is a new one, so dismissing the 80% one does not hide it', ids().indexOf('spend:' + today.slice(0, 7) + ':cap') >= 0, JSON.stringify(ids()));
+    const card = ev('aiUsageCardHTML()');
+    ok('card: the folded line names a reached cap', /Cap reached · \$5\.50 of \$5 this month/.test(card), (card.match(/Cap reached[^<]*/) || ['MISSING'])[0]);
+    ok('card: and has the cap to change', /id="spendCapIn"[^>]*value="5"/.test(card));
+    ev("spendCapSet(30);");
+    ok('card: setting a new cap stores it and lifts the pause', ev('S.settings.spendCap') === 30 && ev('spendBlock()') === '');
+    ev("window.__spAlert = window.alert; window.__al = 0; window.alert = function(){ window.__al++; }; spendCapSet(0); window.alert = window.__spAlert;");
+    ok('card: a nonsense cap is refused', ev('S.settings.spendCap') === 30 && ev('window.__al') === 1);
+  } catch (e) {
+    ok('V4 stage 2 spend section', false, e.stack);
+  } finally {
+    ev("window.confirm = window.__spConfirm; window.fetch = window.__spFetch; _spendOkUntil = 0; _spendPauseLogged = '';");
+    ev("if(window.__spUsage === null) localStorage.removeItem(AI_USAGE_KEY); else localStorage.setItem(AI_USAGE_KEY, window.__spUsage);");
+    ev('if(window.__spSaved){ S = JSON.parse(window.__spSaved); delete window.__spSaved; }');
+  }
+
+  console.log('=== V4 STAGE 2: WHAT A SESSION WAS ===');
+  try {
+    w.__smSaved = ev('JSON.stringify(S)');
+    ev("MODE = 'live'; liveEditSet = null; painOpenFor = null; liveDockEff = ''; liveDockLever = null; stopRest();");
+    ev("S.readySkipDate = todayKey(); _startLiveNow('D1');");
+    ok('session: a skipped check-in is noted at the start', ev('live.skippedCheckIn') === true);
+    const names = ev('live.exercises.map(function(e){ return e.name; })');
+    ok('session: fixture day has at least three lifts', names.length >= 3, JSON.stringify(names));
+    ev("live.exercises[0].targetW = 135; live.exercises[0].lo = 3; live.exercises[0].hi = 6; liveActiveIdx = 0; renderLive();");
+    ev("document.getElementById('dockW').value = '135'; document.getElementById('dockR').value = '5'; logLiveSet(0);");
+    ev("document.getElementById('dockW').value = '125'; document.getElementById('dockR').value = '6'; logLiveSet(0);");
+    const s0 = ev('live.exercises[0].sets[0]'), s1 = ev('live.exercises[0].sets[1]');
+    ok('set: each set keeps what was called for it', s0.p && s0.p.w === 135 && s0.p.lo === 3 && s0.p.hi === 6, JSON.stringify(s0));
+    ok('set: so a lighter weight he chose reads as his choice, not the call', s1.w === 125 && s1.p && s1.p.w === 135, JSON.stringify(s1));
+    ev("openLiveExEdit(1); document.getElementById('liveEditName').value = 'Zz Swap In'; confirmSwapLiveEx(1);");
+    ok('swap: the lift it replaced is kept', ev('live.exercises[1]._swapFrom') === names[1], ev('live.exercises[1]._swapFrom'));
+    ev("focusLiveEx(1); document.getElementById('dockW').value = '50'; document.getElementById('dockR').value = '10'; logLiveSet(1);");
+    ev("removeLiveEx(2);");
+    ok('remove: a dropped planned lift is remembered', JSON.stringify(ev('live.removed')) === JSON.stringify([names[2]]), JSON.stringify(ev('live.removed')));
+    ev("openLiveAddEx(); document.getElementById('liveEditName').value = 'Zz Added'; confirmAddLiveEx();");
+    const ai = ev('live.exercises.length') - 1;
+    ok('add: an added lift is an addition, not a swap', ev('live.exercises[' + ai + ']._added') === true && !ev('live.exercises[' + ai + ']._swapFrom'));
+    ev("focusLiveEx(" + ai + "); document.getElementById('dockW').value = '40'; document.getElementById('dockR').value = '12'; logLiveSet(" + ai + ");");
+    ev("live.call = {call: 'easy', score: 40, conf: 'med', why: [], whoop: false, checkIn: false}; liveCallToggle();");
+    ok('call: toggling the call mid-session is stamped', ev('live.callToggledAt') > 0);
+    ev('endLiveSession()');
+    const log = ev("S.logs.slice().reverse().find(function(l){ return l.entries.some(function(e){ return e.exercise === 'Zz Added'; }); })");
+    ok('log: the session was saved', !!log);
+    const bench = log ? log.entries.find(function(e){ return e.exercise === names[0]; }) : null;
+    ok('log: the per-set call survives the save', !!bench && bench.sets[0].p && bench.sets[0].p.w === 135 && bench.sets[1].w === 125 && bench.sets[1].p.w === 135, JSON.stringify(bench && bench.sets));
+    ok('log: the swap’s source survives', !!log && log.swapFrom && log.swapFrom['Zz Swap In'] === names[1], JSON.stringify(log && log.swapFrom));
+    ok('log: the removed lift survives', !!log && JSON.stringify(log.removed) === JSON.stringify([names[2]]));
+    ok('log: the old swapped field still lists swaps and adds alike', !!log && log.swapped.indexOf('Zz Swap In') >= 0 && log.swapped.indexOf('Zz Added') >= 0);
+    ok('log: the call toggle and the skipped check-in survive', !!log && log.call && log.call.toggledAt > 0 && log.skippedCheckIn === true);
+    w.__smLog = log;
+    const m = ev('sessionMods(window.__smLog)');
+    ok('mods: the reader sees an add as an add', JSON.stringify(m.added) === JSON.stringify(['Zz Added']), JSON.stringify(m.added));
+    ok('mods: and the rest of it', m.swapFrom['Zz Swap In'] === names[1] && m.removed[0] === names[2] && m.toggled === true && m.skippedCheckIn === true);
+    ok('mods: the swapped-in lift was shaped', ev("sessionModLift(sessionMods(window.__smLog), 'Zz Swap In')") === true);
+    ok('mods: control: the lift he did as called was not (the call was turned off, so the day ran normal)',
+       ev("sessionModLift(sessionMods(window.__smLog), " + JSON.stringify(names[0]) + ")") === false);
+    ev("MODE = 'review'; live = null; clearLiveDraft(); stopRest(); delete window.__smLog;");
+
+    // --- a 1RM test is a test, not a prescription ---
+    ok('1rm: the mark is carried into the log', JSON.stringify(ev('liveSetToLog({w: 200, r: 1, rm: 1, ts: 5})')) === JSON.stringify({w: 200, r: 1, ts: 5, rm: 1}));
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 99701; });");
+    ev("S.logs.push({id: 99701, date: mesoAddDays(todayKey(), -2), day: 'D1', entries: [{exercise: 'Zz Test Lift', sets: [{w: 100, r: 10}, {w: 180, r: 1, rm: 1}]}], decisions: {}});");
+    ok('1rm: a session with a test on a lift is shaped for that lift', ev("sessionMods(S.logs.find(function(l){ return l.id === 99701; })).oneRM.indexOf('Zz Test Lift')") >= 0);
+    ok('1rm: so the prediction record does not score it', ev("predInterrupted(S.logs.find(function(l){ return l.id === 99701; }), 'Zz Test Lift')") === true);
+    ok('1rm: and Investigation’s trend leaves it out, while the plain series keeps it',
+       ev("e1rmSeries('Zz Test Lift', {excludeMod: true}).length") === 0 && ev("e1rmSeries('Zz Test Lift').length") === 1);
+
+    // --- Investigation stops calling recover days a decline ---
+    // Rising normal sessions with three kept recover-call sessions mixed in, which are lighter by
+    // design. Fixed offsets. The control is the same numbers without the call markers.
+    const invRows = [[-35, 150, ''], [-30, 152.5, ''], [-25, 155, ''], [-20, 157.5, ''], [-15, 130, 'recover'], [-10, 160, ''], [-5, 130, 'recover'], [-1, 130, 'recover']];
+    const mkInv = (marked) => "S.logs = S.logs.filter(function(l){ return !(l.id >= 99800 && l.id < 99900); });" + invRows.map(function(r, i){
+      return "S.logs.push({id: " + (99800 + i) + ", date: mesoAddDays(todayKey(), " + r[0] + "), day: 'D9', entries: [{exercise: 'Zz Inv Lift', sets: [{w: " + r[1] + ", r: 10}, {w: " + r[1] + ", r: 10}]}], decisions: {}" +
+        ((marked && r[2]) ? ", call: {call: '" + r[2] + "', score: 20, conf: 'high', off: false}" : "") + "});";
+    }).join('');
+    ev(mkInv(true));
+    const sevMarked = ev("investigateLift('Zz Inv Lift').severity");
+    ev(mkInv(false));
+    const sevPlain = ev("investigateLift('Zz Inv Lift').severity");
+    ok('inv: control: without the markers, the same numbers raise a flag', sevPlain === 'red' || sevPlain === 'orange', String(sevPlain));
+    ok('inv: with them, kept recover days no longer read as a decline', sevMarked !== 'red' && sevMarked !== 'orange', String(sevMarked));
+
+    // --- and a flag is resolved on the same sessions that raised it ---
+    ev("S.logs = S.logs.filter(function(l){ return !(l.id >= 99900 && l.id < 99950); });");
+    const resRows = [[-20, 148, null], [-6, 150, null], [-4, 155, null], [-1, 120, 'inv-override']];
+    ev(resRows.map(function(r, i){
+      return "S.logs.push({id: " + (99900 + i) + ", date: mesoAddDays(todayKey(), " + r[0] + "), day: 'D9', entries: [{exercise: 'Zz Res Lift', sets: [{w: " + r[1] + ", r: 8}]}], decisions: " +
+        (r[2] ? "{'Zz Res Lift': {code: '" + r[2] + "', from: 155, to: 120, moved: true, reason: 'reset'}}" : "{}") + "});";
+    }).join(''));
+    ev("invState().flags = invState().flags.filter(function(f){ return f.id !== 'zzres'; }); invState().flags.push({id: 'zzres', cat: 'lift', key: 'lift:Zz Res Lift', status: 'active', severity: 'orange', title: 'Zz Res Lift trending down', findings: ['x'], created: mesoAddDays(todayKey(), -10)});");
+    ev("invCheckResolutions();");
+    ok('inv: a reset session does not block a flag from resolving on the real sessions around it',
+       !ev("invActiveFlags().some(function(f){ return f.id === 'zzres'; })"));
+  } catch (e) {
+    ok('V4 stage 2 session record section', false, e.stack);
+  } finally {
+    ev("MODE = 'review'; try{ stopRest(); }catch(e){} live = null; try{ clearLiveDraft(); }catch(e){}");
+    ev('if(window.__smSaved){ S = JSON.parse(window.__smSaved); delete window.__smSaved; }');
+  }
+
+  console.log('=== V4 STAGE 2: A HISTORY OF TARGET CHANGES ===');
+  try {
+    w.__thSaved = ev('JSON.stringify(S)');
+    ev("S.targetHist = []; fuelInit(); S.fuel.calTarget = 3700; S.fuel.proTarget = 160; S.deload = null; S.pain = []; expState().active = null;");
+    // An agent's change, through the queue and the approval.
+    ev("agState().proposals = [{id: 'thp', agent: 'echo', title: 'More food', reasoning: 'r', fix: {type: 'cal', payload: {delta: 200}}, created: todayKey(), expires: mesoAddDays(todayKey(), 7), status: 'pending'}]; agApprove('thp');");
+    const h1 = ev("fuelTargetHistory('cal')");
+    ok('targets: an approved calorie change is recorded, with who made it', h1.length === 1 && h1[0].from === 3700 && h1[0].to === 3900 && h1[0].by === 'echo' && h1[0].date === ev('todayKey()'), JSON.stringify(h1));
+    ok('targets: and still applied', ev('calTarget()') === 3900);
+    // Zulu's chat card.
+    ev("coachExecuteAction('adjust_fuel', {protein: 170});");
+    const hp = ev("fuelTargetHistory('pro')");
+    ok('targets: a chat card change is recorded as Zulu’s', hp.length === 1 && hp[0].from === 160 && hp[0].to === 170 && hp[0].by === 'zulu', JSON.stringify(hp));
+    // Investigation's Apply fix.
+    ev("invState().flags = invState().flags.filter(function(f){ return f.id !== 'thf'; }); invState().flags.push({id: 'thf', cat: 'bulk', key: 'bulk', status: 'active', severity: 'yellow', title: 'Bulk slightly slow', findings: ['x'], created: todayKey(), fix: {label: 'Eat more', desc: 'd', type: 'cal', payload: {delta: 150}}});");
+    ev("invApplyFix('thf');");
+    const h2 = ev("fuelTargetHistory('cal')");
+    ok('targets: Investigation’s fix is recorded as its own', h2.length === 2 && h2[1].from === 3900 && h2[1].to === 4050 && h2[1].by === 'investigation', JSON.stringify(h2));
+    // His own Save in the Fuel tab.
+    ev("renderFuel(); document.getElementById('fCal').value = '3600'; document.getElementById('fPro').value = '170'; saveFuelPrefs();");
+    const h3 = ev("fuelTargetHistory('cal')"), hp2 = ev("fuelTargetHistory('pro')");
+    ok('targets: his own change in Fuel is recorded as his', h3.length === 3 && h3[2].from === 4050 && h3[2].to === 3600 && h3[2].by === 'you', JSON.stringify(h3));
+    ok('targets: and saving an unchanged value records nothing', hp2.length === 1, JSON.stringify(hp2));
+    // It is history both devices need, merged per row like the others.
+    ok('targets: the history rides the sync', JSON.parse(ev('syncPayload()')).data.targetHist.length === 4);
+    const row = {id: 'gzzremote', kind: 'cal', from: 3600, to: 3800, date: ev('todayKey()'), by: 'you', t: Date.now() + 5000};
+    w.__thRow = row;
+    ev("S.targetHist = S.targetHist.filter(function(r){ return r.id !== 'gzzremote'; }); window.__thN = mergeUnseenHistory({targetHist: [window.__thRow]}, Date.now());");
+    ok('targets: a change made after the last snapshot survives a pull', ev('window.__thN') === 1 && ev("S.targetHist.some(function(r){ return r.id === 'gzzremote'; })") === true);
+    ev("delete window.__thRow; delete window.__thN;");
+  } catch (e) {
+    ok('V4 stage 2 target history section', false, e.stack);
+  } finally {
+    ev('if(window.__thSaved){ S = JSON.parse(window.__thSaved); delete window.__thSaved; }');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

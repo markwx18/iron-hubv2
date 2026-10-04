@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-03-v1">
+<meta name="ironhub-build" content="2026-10-03-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -310,6 +310,9 @@
               font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);}
   .notif-item{padding:10px 12px; border-bottom:1px solid var(--line); border-left:2px solid transparent;}
   .notif-item:last-child{border-bottom:none;}
+  .notif-item{position:relative; padding-right:48px;}
+  .notif-x{position:absolute; top:4px; right:4px; width:40px; height:40px; border:none; border-radius:20px; background:none; color:var(--dim); font-size:18px; line-height:1; cursor:pointer;}
+  .notif-x:hover{color:var(--text); background:var(--panel2);}
   .notif-t{font-size:12px; color:var(--text); font-weight:600;}
   .notif-b{font-size:11px; color:var(--muted); margin-top:3px; line-height:1.45;}
   .notif-when{font-family:var(--mono); font-size:9px; color:var(--dim); margin-top:4px;}
@@ -1520,6 +1523,9 @@ const DEFAULT_STATE = {
   pain: [],                    // {id, date, exercise, level 1-3, note} — flagged from LIVE
   experiments: {active:null, history:[], declined:{}, lastEnded:''},   // see expState(); replaced whole on a pull
   weekPlan: null,              // {week, input:{days:{date:[tags]}, text}, at, reply?, skipped?, err?} — the Sunday check-in
+  targetHist: [],              // {id, kind:'cal'|'pro', from, to, date, by, t} — every target change. See fuelTargetSet().
+  spend: [],                   // {id:'dev|day', dev, day, usd, n, t} — each device's API spend per day, so the
+                               // monthly cap can see both devices. See spendLedgerSync().
   predictions: [],             // {id, kind, subject, madeOn, wk, due, p10, p50, p90, cur, t} — the engine's
                                // stored forecasts. Immutable: how they turned out is computed, never written.
   sessionMeta: [],             // {id: logId, date, feel 1-5|null, note, exp?, t} — his optional after-session
@@ -1610,7 +1616,9 @@ const SYNC_HISTORY = {
   prHistory: {key: r=>'p|'+r.exercise+'|'+r.date+'|'+r.e1rm, ord: r=>String(r.date||''), cap:()=>PR_HISTORY_MAX},
   pain:      {key: r=>'x|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||''), desc:true, cap:()=>200},
   sessionMeta: {key: r=>'m|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>SESSION_META_MAX},
-  predictions: {key: r=>'q|'+r.id, ord: r=>String(r.madeOn||'')+'|'+String(r.id||''), cap:()=>PRED_MAX}
+  predictions: {key: r=>'q|'+r.id, ord: r=>String(r.madeOn||'')+'|'+String(r.id||''), cap:()=>PRED_MAX},
+  spend:     {key: r=>'$|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.dev||''), cap:()=>SPEND_REC_MAX},
+  targetHist: {key: r=>'g|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>TARGET_HIST_MAX}
 };
 /* Write time of a history record. The merge needs it to tell "the other device has not heard
    about this yet" apart from "some device deliberately deleted this", which are otherwise the
@@ -3243,12 +3251,49 @@ const PR_LIFTS = {
   'Barbell Bench Press': {milestones:[95,115,135,155,185,205,225,245], capPerWeek:1.75},
   'Barbell Back Squat':  {milestones:[135,185,225,275,315,365], capPerWeek:2.5}
 };
+/* What a saved session WAS, beyond what was lifted (V4 stage 2). The one reader of every "this was
+   not a normal session" marker, the way effBucket() is the one effort reader, so the prediction
+   record, experiments and Investigation cannot drift apart on what counts. Older logs simply lack
+   the newer fields (swapFrom, removed, set rm/p, toggledAt): absent reads as "not recorded". */
+function sessionMods(l){
+  const m = {session:false, deload:false, home:false, coachPlan:false, call:'', toggled:false, skippedCheckIn:false,
+             swapped:[], swapFrom:{}, added:[], removed:[], oneRM:[], override:[], callRecover:[], liftDeload:[]};
+  if(!l) return m;
+  m.deload = !!l.deload; m.home = !!l.home; m.coachPlan = !!l.coachPlan;
+  if(l.call && !l.call.off && (l.call.call === 'easy' || l.call.call === 'recover')) m.call = l.call.call;
+  m.toggled = !!(l.call && l.call.toggledAt);
+  m.skippedCheckIn = !!l.skippedCheckIn;
+  m.swapped = Array.isArray(l.swapped) ? l.swapped.slice() : [];
+  if(l.swapFrom && typeof l.swapFrom === 'object') m.swapFrom = Object.assign({}, l.swapFrom);
+  // Before swapFrom existed, swapped mixed adds and swaps; with it, an entry without a source is an add.
+  m.added = l.swapFrom ? m.swapped.filter(function(n){ return !m.swapFrom[n]; }) : [];
+  m.removed = Array.isArray(l.removed) ? l.removed.slice() : [];
+  (l.entries || []).forEach(function(e){ if((e.sets || []).some(function(s){ return s && s.rm; })) m.oneRM.push(e.exercise); });
+  Object.keys(l.decisions || {}).forEach(function(nm){
+    const c = (l.decisions[nm] || {}).code;
+    if(c === 'inv-override') m.override.push(nm);
+    else if(c === 'call-recover') m.callRecover.push(nm);
+    else if(c === 'deload') m.liftDeload.push(nm);
+  });
+  // The whole session was shaped by something other than the engine.
+  m.session = m.deload || m.home || m.coachPlan || !!m.call;
+  return m;
+}
+/* This lift's numbers that day were shaped by something other than the engine: the session as a
+   whole, or a swap, a reset, a recover-call step-down, a deloaded lift, or a 1RM test on it. */
+function sessionModLift(m, nm){
+  return !!(m.session || m.swapped.indexOf(nm) >= 0 || m.override.indexOf(nm) >= 0 ||
+            m.callRecover.indexOf(nm) >= 0 || m.liftDeload.indexOf(nm) >= 0 || m.oneRM.indexOf(nm) >= 0);
+}
 function e1rmSeries(ex, opts){
   const excludeHome = opts && opts.excludeHome;
+  // excludeMod: also leave out every session sessionModLift() calls shaped (Investigation's trend).
+  const excludeMod = opts && opts.excludeMod;
   const pts = [];
   [...S.logs].sort((a,b)=>a.date.localeCompare(b.date)).forEach(l=>{
     if(l.deload) return; // exclude deload weeks from strength trend
     if(excludeHome && l.home) return; // HOME sessions run lighter/shorter by design — opt-in exclusion for Investigation
+    if(excludeMod && sessionModLift(sessionMods(l), ex)) return;
     const e = l.entries.find(en=>en.exercise===ex);
     if(!e) return;
     let best = 0;
@@ -4093,6 +4138,117 @@ function aiUsageNote(route, u, cut){
     arr.push(rec);
     localStorage.setItem(AI_USAGE_KEY, JSON.stringify(arr.slice(-AI_USAGE_MAX)));
   }catch(e){}
+  try{ spendLedgerSync(); }catch(e){}
+}
+/* ---- the monthly cap (V4 stage 2) ----
+   The usage log above is per device on purpose: each device pays for its own calls, and S
+   re-uploads on every sync. A cap has to see BOTH devices, so each device also keeps one small
+   record per day in S.spend, a SYNC_HISTORY collection: {id:'dev|day', dev, day, usd, n}.
+   A device only ever writes its own records, and rebuilds them from its local log every time
+   instead of adding to them: mergeUnseenHistory() keeps the snapshot's copy of a record both
+   sides hold, so a running "+= cost" could silently lose an update between pulls, while a
+   rebuild just writes the right number again on the next call.
+   Automatic work (the nightly cycle, the brief, the letter) pauses at the cap and says so. Anything
+   he started himself (a chat, Run cycle now, Rewrite, the Sunday plan) asks first. */
+const SPEND_DEVICE_KEY = 'ironhub:device', SPEND_CAP_DEFAULT = 20, SPEND_KEEP_DAYS = 70, SPEND_REC_MAX = 200;
+const SPEND_AUTO = ['night', 'brief', 'letter', 'lift'];
+const SPEND_OK_MS = 10 * 60000;   // a "send anyway" covers the rest of that conversation or cycle
+function spendDeviceId(){
+  try{
+    let id = localStorage.getItem(SPEND_DEVICE_KEY);
+    if(!id){ id = 'd' + Math.random().toString(36).slice(2, 10); localStorage.setItem(SPEND_DEVICE_KEY, id); }
+    return id;
+  }catch(e){ return 'd-nostore'; }
+}
+// Read with a default, because load() takes a stored settings object wholesale: on an existing
+// install the field is simply absent until he sets it.
+function spendCap(){
+  const c = +(S.settings && S.settings.spendCap);
+  return (c > 0) ? c : SPEND_CAP_DEFAULT;
+}
+function spendUsageLog(){
+  try{ const a = JSON.parse(localStorage.getItem(AI_USAGE_KEY) || '[]'); return Array.isArray(a) ? a : []; }catch(e){ return []; }
+}
+/* Rebuild this device's day records from its own log. True when S.spend changed. */
+function spendLedgerSync(){
+  const dev = spendDeviceId(), cut = mesoAddDays(todayKey(), -SPEND_KEEP_DAYS), byDay = {};
+  spendUsageLog().forEach(function(x){
+    if(!x || !x.at) return;
+    const day = dateKeyOf(new Date(x.at));
+    if(day < cut) return;
+    const b = byDay[day] || (byDay[day] = {usd:0, n:0});
+    b.usd += aiUsageCost(x); b.n++;
+  });
+  if(!Array.isArray(S.spend)) S.spend = [];
+  let changed = false;
+  Object.keys(byDay).forEach(function(day){
+    const id = dev + '|' + day, v = Math.round(byDay[day].usd * 10000) / 10000, n = byDay[day].n;
+    const r = S.spend.find(function(z){ return z && z.id === id; });
+    if(r && Math.abs((+r.usd || 0) - v) < 0.00005 && r.n === n) return;
+    if(r){ r.usd = v; r.n = n; stampRec(r); }
+    else S.spend.push(stampRec({id:id, dev:dev, day:day, usd:v, n:n}));
+    changed = true;
+  });
+  const before = S.spend.length;
+  S.spend = S.spend.filter(function(z){ return z && z.day >= cut; });
+  if(changed || S.spend.length !== before){
+    S.spend.sort(function(a, b){ return SYNC_HISTORY.spend.ord(a).localeCompare(SYNC_HISTORY.spend.ord(b)); });
+    if(S.spend.length > SPEND_REC_MAX) S.spend = S.spend.slice(-SPEND_REC_MAX);
+    return true;
+  }
+  return false;
+}
+/* This month across devices: this device straight from its own log (always current), every other
+   device from its synced records. A pure read. */
+function spendMonth(month){
+  const m = month || todayKey().slice(0, 7), dev = spendDeviceId();
+  let total = 0;
+  spendUsageLog().forEach(function(x){ if(x && x.at && dateKeyOf(new Date(x.at)).slice(0, 7) === m) total += aiUsageCost(x); });
+  (Array.isArray(S.spend) ? S.spend : []).forEach(function(z){
+    if(z && z.dev !== dev && String(z.day).slice(0, 7) === m) total += (+z.usd || 0);
+  });
+  return total;
+}
+/* What one more request on this route is likely to cost: the median of its recent requests here. */
+function spendEstimate(route){
+  const k = String(route || 'other').split(':')[0];
+  const c = spendUsageLog().filter(function(x){ return x && String(x.r || 'other').split(':')[0] === k; })
+                           .slice(-20).map(aiUsageCost).sort(function(a, b){ return a - b; });
+  return c.length ? c[Math.floor(c.length / 2)] : 0.05;
+}
+function spendIsAuto(route){ return SPEND_AUTO.indexOf(String(route || 'other').split(':')[0]) >= 0; }
+/* '' when spending may go ahead; otherwise the reason, in his words. With a route, the request
+   about to go out is counted too, so the cap is not overshot by one big call. */
+function spendBlock(route){
+  const cap = spendCap(), spent = spendMonth();
+  if(spent + (route ? spendEstimate(route) : 0) <= cap) return '';
+  return 'the monthly API cap is reached ($' + spent.toFixed(2) + ' of $' + cap + ' this month, both devices)';
+}
+let _spendOkUntil = 0, _spendPauseLogged = '';
+/* Called by aiSend() before every request. Throws to stop it. */
+function spendPreflight(route){
+  if(Date.now() < _spendOkUntil) return;
+  const why = spendBlock(route);
+  if(!why) return;
+  if(spendIsAuto(route)) throw new Error('Paused: ' + why + '. Raise the cap in Coach › API spend, or it resumes next month.');
+  if(typeof confirm === 'function' && confirm('Heads up: ' + why + '. Send anyway?')){ _spendOkUntil = Date.now() + SPEND_OK_MS; return; }
+  throw new Error('Not sent: ' + why + '.');
+}
+/* For Run cycle now and Rewrite: he tapped it, so ask once rather than letting each request fail. */
+function spendManualOk(){
+  if(Date.now() < _spendOkUntil) return true;
+  const why = spendBlock();
+  if(!why) return true;
+  if(typeof confirm === 'function' && confirm('Heads up: ' + why + '. Run it anyway?')){ _spendOkUntil = Date.now() + SPEND_OK_MS; return true; }
+  return false;
+}
+function spendCapSet(v){
+  const n = Math.round(+v);
+  if(!(n >= 1 && n <= 500)){ alert('Pick a monthly cap between $1 and $500.'); try{ renderOps(); }catch(e){} return; }
+  S.settings.spendCap = n;
+  save();
+  try{ renderOps(); }catch(e){}
+  try{ renderNotif(); }catch(e){}
 }
 function aiUsageCost(x){
   return ((x.i||0)*AI_PRICE.input + (x.o||0)*AI_PRICE.output + (x.cw||0)*AI_PRICE.cacheWrite + (x.cr||0)*AI_PRICE.cacheRead) / 1e6;
@@ -4134,8 +4290,18 @@ function aiUsageCardHTML(){
       (u.cut ? '<p class="small" style="margin-top:6px;color:var(--dim)">Includes '+u.cut+' repl'+(u.cut===1?'y':'ies')+
                ' cut off mid-stream. Those were billed too; their output is counted low.</p>' : '');
   }
-  return subSection('API spend on this device', body, false,
-    {pref:'coach.spend', summary: u.calls ? '$'+u.total.toFixed(2)+' in the last 30 days \u00b7 '+u.calls+' calls' : 'Nothing recorded yet'});
+  // The month across both devices and the cap, above the per-device detail. A cap that is reached
+  // is named in the folded summary too: a fold must never hide a failure.
+  const cap = spendCap(), mo = spendMonth(), blocked = mo >= cap;
+  const capRow = '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)">'+
+    '<div style="display:flex;justify-content:space-between;gap:10px"><span>This month, both devices</span><b>$'+mo.toFixed(2)+' of $'+cap+'</b></div>'+
+    '<div style="height:6px;border-radius:3px;background:var(--panel2)"><div style="height:6px;border-radius:3px;width:'+Math.min(100, Math.round(mo / cap * 100))+'%;background:'+(blocked?'var(--bad)':mo >= 0.8*cap?'var(--warn)':'var(--amber)')+'"></div></div>'+
+    (blocked ? '<p class="small" style="color:var(--bad);margin:0">Cap reached: the nightly cycle, brief and letter are paused. Chats and buttons you tap ask first.</p>' : '')+
+    '<label class="small" style="display:flex;align-items:center;gap:8px">Monthly cap $<input id="spendCapIn" type="number" min="1" max="500" step="1" inputmode="numeric" value="'+cap+'" onchange="spendCapSet(this.value)" style="width:84px"></label>'+
+    '</div>';
+  return subSection('API spend', capRow + body, false,
+    {pref:'coach.spend', summary: (blocked ? 'Cap reached \u00b7 ' : '') + '$'+mo.toFixed(2)+' of $'+cap+' this month' +
+      (u.calls ? ' \u00b7 $'+u.total.toFixed(2)+' in the last 30 days here' : '')});
 }
 /* ---- one transport for every API call ----
    The three request builders here used to each run their own fetch, status check and JSON
@@ -4186,6 +4352,8 @@ const AI_TIMEOUT_MS  = 240000;        // per request; generous, because effort '
 const AI_NET_RETRIES = 2;             // extra attempts, network-rejection only
 const AI_NET_BACKOFF = [1000, 3000];  // ms to wait before attempt 2 and attempt 3
 async function aiSend(body){
+  // The monthly cap, checked here because this is the one place every paid request passes.
+  spendPreflight(body._route);
   const payload = JSON.stringify(Object.assign({}, body, {stream:true}));
   let lastErr;
   for(let attempt=0; attempt<=AI_NET_RETRIES; attempt++){
@@ -5700,6 +5868,28 @@ const NUT_TIER = {
 };
 function calTarget(){ return (S.fuel && +S.fuel.calTarget) || 3000; }
 function proTarget(){ return (S.fuel && +S.fuel.proTarget) || 150; }
+/* Every change to a daily target, and who made it (V4 stage 2). Only the current value used to
+   exist, so a chart could not mark "calories went up here" and fuelVsResults() had to guess where
+   the target had been. S.fuel is replaced whole on a pull, so the history is its own SYNC_HISTORY
+   collection (targetHist), one immutable row per change. Every writer goes through this. */
+const TARGET_HIST_MAX = 200;
+function fuelTargetSet(kind, value, by){
+  const key = kind === 'pro' ? 'proTarget' : 'calTarget';
+  S.fuel = S.fuel || {};
+  const from = kind === 'pro' ? proTarget() : calTarget();
+  const to = Math.round(+value);
+  if(!(to > 0)) return;
+  S.fuel[key] = to;
+  if(to === from) return;
+  if(!Array.isArray(S.targetHist)) S.targetHist = [];
+  S.targetHist.push(stampRec({id:'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    kind:(kind === 'pro' ? 'pro' : 'cal'), from:from, to:to, date:todayKey(), by:String(by || 'you')}));
+  if(S.targetHist.length > TARGET_HIST_MAX) S.targetHist = S.targetHist.slice(-TARGET_HIST_MAX);
+}
+function fuelTargetHistory(kind){
+  return (Array.isArray(S.targetHist) ? S.targetHist : []).filter(function(r){ return r && (!kind || r.kind === kind); })
+    .slice().sort(function(a, b){ return String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)); });
+}
 /* Classify any intake value, not just a bucket midpoint — the history badges run arbitrary
    already-logged numbers through the same two functions the ladder colours itself with, so a
    pill and the row it produces can never disagree about what tier a day was. */
@@ -6802,8 +6992,8 @@ function renderFuel(){
 }
 function saveFuelPrefs(){
   fuelInit();
-  S.fuel.calTarget = parseInt($('#fCal').value)||3000;
-  S.fuel.proTarget = parseInt($('#fPro').value)||150;
+  fuelTargetSet('cal', parseInt($('#fCal').value)||3000, 'you');
+  fuelTargetSet('pro', parseInt($('#fPro').value)||150, 'you');
   S.fuel.dislikes = $('#fDislikes').value.trim();
   S.fuel.limits = $('#fLimits').value.trim();
   save(); $('#fMsg').textContent='✓ saved';
@@ -7842,7 +8032,7 @@ function _startLiveNow(dk){
   live = { date:todayKey(), day:dk, startedAt:Date.now(), exercises:exs, curIdx:0,
            trimmed:exs.some(function(e){ return e._callTrim; }), home:homeActiveToday(),
            call: dc ? {call:dc.call, score:dc.score, conf:dc.conf, why:dc.why, whoop:dc.whoop, checkIn:dc.checkIn} : null,
-           callOff:false, coachPlan:_cp };
+           callOff:false, coachPlan:_cp, skippedCheckIn:(S.readySkipDate === todayKey()) };
   liveActiveIdx = 0;
   saveLiveDraft();
   renderLive();
@@ -8347,8 +8537,13 @@ function logLiveSet(i){
   // precision. effBucket() prefers s.ef and falls back to s.e, so the two can never disagree.
   // ts is when the set was logged. Named ts, not t: on a record, t is the sync write stamp
   // that mergeUnseenHistory() reads, and a set timestamp must never be mistaken for one.
-  ex.sets.push({w:w, r:r, e:liveDockEff||undefined,
-                ef:(liveDockLever===null?undefined:liveDockLever), ts:Date.now()});
+  const st = {w:w, r:r, e:liveDockEff||undefined, ef:(liveDockLever===null?undefined:liveDockLever), ts:Date.now()};
+  // What was called for this set (V4), so a call can later be scored against what he actually
+  // did, and a lighter weight he chose can be told from a lighter weight he was given. A 1RM test
+  // is marked instead: its singles are a test, not a prescription the engine should learn from.
+  if(ex._1rm) st.rm = 1;
+  else if(+ex.advW > 0) st.p = {w:+ex.advW, lo:+ex.advLo||0, hi:+ex.advHi||0};
+  ex.sets.push(st);
   liveDockEff = ''; liveDockLever = null;
   saveLiveDraft();
   if(ex._1rm && ex._1rmRamp){
@@ -8394,6 +8589,10 @@ function liveSetToLog(s){
   if(s.e) o.e = s.e;
   if(s.ef !== undefined && s.ef !== null && s.ef !== '' && isFinite(+s.ef)) o.ef = +s.ef;
   if(s.ts) o.ts = s.ts;
+  // The call for this set and the 1RM-test mark travel too (see logLiveSet): the lever was lost
+  // for a month on exactly this copy, so every field a set carries is copied here or not at all.
+  if(s.p && +s.p.w > 0) o.p = {w:+s.p.w, lo:+s.p.lo||0, hi:+s.p.hi||0};
+  if(s.rm) o.rm = 1;
   return o;
 }
 /* ---- end session: consolidate -> log -> PRs -> summary ---- */
@@ -8440,6 +8639,14 @@ function endLiveSession(){
   if(live.coachPlan) logRec.coachPlan = true;
   const _sw = live.exercises.filter(function(e){ return e._swapped && e.sets.length; }).map(function(e){ return e.name; });
   if(_sw.length) logRec.swapped = _sw;
+  // V4: what the session's modifications were, not just that they happened. sessionMods() is the
+  // one reader. swapped still lists adds and swaps together, as every existing reader expects.
+  const _sf = {};
+  live.exercises.forEach(function(e){ if(e._swapFrom && e.sets.length) _sf[e.name] = e._swapFrom; });
+  if(Object.keys(_sf).length) logRec.swapFrom = _sf;
+  if(Array.isArray(live.removed) && live.removed.length) logRec.removed = live.removed.slice();
+  if(live.callToggledAt && logRec.call) logRec.call.toggledAt = +live.callToggledAt;
+  if(live.skippedCheckIn) logRec.skippedCheckIn = true;
   try{ logRec.scheduled = scheduledDayFor(logRec.date); }catch(e){}
   S.logs.push(stampRec(logRec));
   save();
@@ -10961,6 +11168,9 @@ function confirmSwapLiveEx(i){
   }
   const rebuilt = buildOneLiveExercise(nm, null, {call:liveEffectiveCall()});
   rebuilt._swapped = true;
+  // Which planned lift this replaced, so the log keeps it (only the new name used to survive). A
+  // swap of a lift he added is still an addition, and a swap of a swap still points at the original.
+  if(ex._added) rebuilt._added = true; else rebuilt._swapFrom = ex._swapFrom || ex.name;
   live.exercises[i] = rebuilt;
   if(liveActiveIdx===i || live.exercises[i].done===false) liveActiveIdx = i;
   saveLiveDraft(); closeLiveExEdit(); renderLive();
@@ -10968,6 +11178,9 @@ function confirmSwapLiveEx(i){
 function removeLiveEx(i){
   const ex = live.exercises[i];
   if(!confirm('Remove '+ex.name+' from today\u2019s session? (Today only \u2014 your saved split is untouched.)')) return;
+  // A planned lift he dropped used to vanish before the log's plan was built, so it read as
+  // neither skipped nor prescribed. Removing something he added himself drops nothing planned.
+  if(!ex._added){ live.removed = live.removed || []; const was = ex._swapFrom || ex.name; if(live.removed.indexOf(was) < 0) live.removed.push(was); }
   live.exercises.splice(i,1);
   if(!live.exercises.length){
     // nothing left; just clear the draft entirely
@@ -10995,6 +11208,7 @@ function confirmAddLiveEx(){
   if(!nm) return;
   const rebuilt = buildOneLiveExercise(nm, null, {call:liveEffectiveCall()});
   rebuilt._swapped = true;
+  rebuilt._added = true;
   live.exercises.push(rebuilt);
   saveLiveDraft(); closeLiveExEdit(); renderLive();
 }
@@ -11088,7 +11302,10 @@ function invLastWorkingWeight(nm){
 }
 
 function investigateLift(nm){
-  const pts = e1rmSeries(nm, {excludeHome:true});
+  // V4: a recover-day step-down, a reset he is rebuilding from, a coach's plan, a swap or a 1RM test
+  // is a lighter session by design. Counting it pulled the trend down and raised "declining" flags
+  // on sessions that went exactly as prescribed.
+  const pts = e1rmSeries(nm, {excludeHome:true, excludeMod:true});
   const findings = [];
   if(pts.length < 4){
     return {severity:null, key:'lift:'+nm, title:nm, findings:['Only '+pts.length+' logged session'+(pts.length===1?'':'s')+' \u2014 not enough history to judge a trend.'], fix:null};
@@ -11279,9 +11496,9 @@ function invApplyFix(id){
   const f = invActiveFlags().find(x=>x.id===id); if(!f || !f.fix) return;
   const fx = f.fix;
   if(fx.type==='cal'){
-    S.fuel = S.fuel||{}; S.fuel.calTarget = (S.fuel.calTarget||3000) + fx.payload.delta;
+    S.fuel = S.fuel||{}; fuelTargetSet('cal', (S.fuel.calTarget||3000) + fx.payload.delta, 'investigation');
   } else if(fx.type==='pro'){
-    S.fuel = S.fuel||{}; S.fuel.proTarget = fx.payload.to;
+    fuelTargetSet('pro', fx.payload.to, 'investigation');
   } else if(fx.type==='liftReset'){
     invState().overrides[fx.payload.name] = invResetRecord(fx.payload.w, fx.payload.days, 'Investigation');
   } else if(fx.type==='deload'){
@@ -11384,7 +11601,8 @@ function invCheckResolutions(){
       let resolved=false, note='';
       if(f.cat==='lift'){
         const nm = f.key.slice(5);
-        const pts = e1rmSeries(nm);
+        // Judged on the same sessions that raised it (investigateLift): HOME and shaped sessions out.
+        const pts = e1rmSeries(nm, {excludeHome:true, excludeMod:true});
         // only count sessions logged strictly AFTER the flag was raised — otherwise ordinary
         // non-monotonic noise already sitting in old history can "resolve" a flag on the very
         // next app open with zero new training in between.
@@ -11761,6 +11979,8 @@ function coachValidateAction(name, inp){
     if(!dayOk(inp.day)) return {ok:false, error:'No day "'+inp.day+'" exists in your split.'};
   }
   if(name==='set_today_workout' && !todayDayOk(inp.day)) return {ok:false, error:'No day "'+inp.day+'" exists in your split.'};
+  // The chat path shares the queue's cross-review rules (agConflict), as it shares its limits.
+  if(name==='start_deload'){ const why = agDeloadBlock(); if(why) return {ok:false, error:'Not now: '+why+'.'}; }
   // Known names take their canonical spelling; a name the app has never seen is allowed here,
   // because he may be asking for a new exercise, but never with a coaching note stuck to it.
   const clean = exAcceptName;
@@ -11768,6 +11988,8 @@ function coachValidateAction(name, inp){
     inp.exercise = clean(inp.exercise);
     if(!inp.exercise) return {ok:false, error:'No exercise name given.'};
     if((S.split[inp.day].exercises||[]).some(x=>exName(x)===inp.exercise)) return {ok:false, error:inp.exercise+' is already on '+inp.day+'.'};
+    const sh = agSharpNear(inp.exercise);
+    if(sh) return {ok:false, error:'No added volume for '+inp.exercise+' while '+sh+' has a sharp flag from the last 14 days.'};
   }
   if(name==='swap_exercise_permanent'){
     inp.to = clean(inp.to);
@@ -11776,6 +11998,7 @@ function coachValidateAction(name, inp){
     const nt = invNormName(inp.to);
     if(invNormName(inp.from||'') !== nt && (S.split[inp.day].exercises||[]).some(x=>invNormName(exName(x))===nt))
       return {ok:false, error:inp.to+' is already on '+inp.day+'.'};
+    if(agExpOn(inp.from)) return {ok:false, error:'An experiment is running on '+inp.from+'; swapping it out would end the test early.'};
   }
   if(name==='set_today_workout' && Array.isArray(inp.exercises)){
     const notes = {};
@@ -11852,8 +12075,8 @@ function coachExecuteAction(name, inp){
   }
   if(name==='adjust_fuel'){
     S.fuel = S.fuel||{};
-    if(inp.calories!=null) S.fuel.calTarget = Math.round(inp.calories);
-    if(inp.protein!=null) S.fuel.proTarget = Math.round(inp.protein);
+    if(inp.calories!=null) fuelTargetSet('cal', Math.round(inp.calories), 'zulu');
+    if(inp.protein!=null) fuelTargetSet('pro', Math.round(inp.protein), 'zulu');
     save();
     return 'Fuel targets updated.';
   }
@@ -13819,6 +14042,7 @@ function liveCallHTML(){
 function liveCallToggle(){
   if(!live || !live.call) return;
   live.callOff = !live.callOff;
+  live.callToggledAt = Date.now();   // lifts logged before this keep the old prescription
   const c = liveEffectiveCall(), sets = liveSlotSets(live.day);
   live.exercises = live.exercises.map(function(ex){
     if((ex.sets && ex.sets.length) || ex._swapped || ex.done || ex._deload) return ex;
@@ -14524,11 +14748,7 @@ function predLifts(){
    engine's normal answer, so it cannot count for or against it. */
 function predInterrupted(l, nm){
   if(!l) return true;
-  if(l.deload || l.home || l.coachPlan) return true;
-  if(l.call && !l.call.off && (l.call.call === 'easy' || l.call.call === 'recover')) return true;
-  if(Array.isArray(l.swapped) && l.swapped.indexOf(nm) >= 0) return true;
-  const d = l.decisions && l.decisions[nm];
-  return !!(d && (d.code === 'inv-override' || d.code === 'call-recover' || d.code === 'deload'));
+  return sessionModLift(sessionMods(l), nm);
 }
 /* Every prescription the logs can speak to, oldest first. */
 function predTopsets(){
@@ -14768,14 +14988,10 @@ function expApplies(x, l){
   return (l.entries||[]).some(function(e){ return e.sets && e.sets.length; });
 }
 function expExcluded(x, l){
-  if(!l || l.deload || l.home || l.coachPlan) return true;
-  if(l.call && !l.call.off && (l.call.call === 'easy' || l.call.call === 'recover')) return true;
-  if(x.lift){
-    if(Array.isArray(l.swapped) && l.swapped.indexOf(x.lift) >= 0) return true;
-    const d = l.decisions && l.decisions[x.lift];
-    if(d && (d.code === 'inv-override' || d.code === 'call-recover')) return true;
-  }
-  return false;
+  if(!l) return true;
+  const m = sessionMods(l);
+  if(m.session) return true;
+  return x.lift ? sessionModLift(m, x.lift) : false;
 }
 /* Did he follow the change in this session? true / false / null (the app cannot tell, or he has not
    said). Measured wherever the data allows; asked only for the two that live outside the app. */
@@ -15891,7 +16107,68 @@ function agResetCeiling(name){
     return {max:top, why:'it was flagged sharp in the last 14 days, so no more load than the '+top+' lb last used'};
   return {max:top + 2*inc, why:'at most two steps ('+(2*inc)+' lb) over the '+top+' lb last used'};
 }
+/* Cross-review, the code half (V4 stage 2). A proposal can be perfectly formed and still collide
+   with something that is already deciding the same thing: a deload proposed inside a deload, a set
+   change on a lift that a reset, an Investigation flag or a running experiment owns, more volume
+   next to a fresh "sharp" pain flag. Those rules used to exist only in the Sunday plan's filter or
+   in prompt text, so the nightly queue could carry all of them. They only ever refuse; nothing here
+   reshapes a fix. agValidateFix() applies them on ingest AND again at approval (a proposal can wait
+   a week while an experiment starts under it), and agRejectReason() names the rule that fired. */
+function agDeloadBlock(){
+  if(deloadActive()) return 'a deload is already in force';
+  try{
+    const nd = mesoNextDeload();
+    if(nd && nd.startKey <= mesoAddDays(todayKey(), AG_DELOAD_NEAR_DAYS))
+      return 'a planned deload starts '+fmtDate(nd.startKey);
+  }catch(e){}
+  return '';
+}
+const AG_DELOAD_NEAR_DAYS = 14;
+/* A sharp flag (level 3, "had to stop the set") in the last 14 days on this lift, or on any lift
+   that shares a primary muscle with it. The agents' prompt has always said "never add load or
+   volume to a lift flagged sharp"; this is that sentence as a rule. Returns the flagged lift. */
+function agSharpNear(name){
+  if(!name) return '';
+  const mine = (musclesFor(name).p || []);
+  const sharp = painRecent(14).filter(function(p){ return p.level >= 3; });
+  for(const p of sharp){
+    if(invNormName(p.exercise) === invNormName(name)) return p.exercise;
+    const theirs = musclesFor(p.exercise).p || [];
+    if(theirs.some(function(m){ return mine.indexOf(m) >= 0; })) return p.exercise;
+  }
+  return '';
+}
+function agExpOn(name){
+  const x = expActive();
+  return !!(x && x.lift && name && invNormName(x.lift) === invNormName(name));
+}
+function agConflict(fx){
+  if(!fx) return '';
+  const p = fx.payload || {};
+  if(fx.type === 'deload') return agDeloadBlock();
+  if(fx.type === 'setCount'){
+    const nm = p.exercise;
+    if(invOverrideFor(nm)) return nm+' is under a reset, which decides its sets until it hands back';
+    if(invActiveFlags().some(function(fl){ return fl.key === 'lift:'+nm; })) return nm+' has an open Investigation flag, and its fix goes through Investigation';
+    if(agExpOn(nm)) return 'an experiment is running on '+nm+', and changing its sets would confound it';
+    const sh = (+p.sets > exSlotSets(p.day, nm)) ? agSharpNear(nm) : '';
+    if(sh) return 'no added volume on '+nm+': '+sh+' was flagged sharp in the last 14 days';
+    return '';
+  }
+  if(fx.type === 'addEx'){
+    const sh = agSharpNear(p.name);
+    return sh ? 'no added volume for '+p.name+': '+sh+' was flagged sharp in the last 14 days' : '';
+  }
+  if(fx.type === 'liftReset') return agExpOn(p.name) ? 'an experiment is running on '+p.name+', and a reset would confound it' : '';
+  if(fx.type === 'swapEx') return agExpOn(p.from) ? 'an experiment is running on '+p.from+'; swapping it out would end the test early' : '';
+  return '';
+}
 function agValidateFix(fx, who){
+  const v = agValidateFixShape(fx, who);
+  if(!v || agConflict(v)) return null;
+  return v;
+}
+function agValidateFixShape(fx, who){
   if(!fx || !fx.type) return null;
   if(AG_FIX_TYPES.indexOf(fx.type) < 0) return null;
   if(who && !agFixAllowedFor(who, fx.type)) return null;
@@ -16074,6 +16351,8 @@ function agSwapClashDay(from, to){
    activity log \u2014 it has no authority over the decision, which agValidateFix() alone makes. */
 function agRejectReason(fx, who){
   if(!fx || !fx.type) return 'malformed';
+  // A well-formed fix that a cross-review rule refused: name that rule, not a shape fault.
+  try{ const shaped = agValidateFixShape(fx, who); if(shaped){ const c = agConflict(shaped); if(c) return c; } }catch(e){}
   if(AG_FIX_TYPES.indexOf(fx.type) < 0) return 'unknown fix type \u201c'+String(fx.type).slice(0,24)+'\u201d';
   if(who && !agFixAllowedFor(who, fx.type)) return '\u201c'+fx.type+'\u201d is outside '+((AGENTS[who]||{}).name||who)+'\u2019s area';
   const p = fx.payload||{};
@@ -16175,10 +16454,10 @@ function agFixKey(fx){
 }
 
 /* ---- the only place an agent proposal is allowed to touch state ---- */
-function agApplyFix(fx){
+function agApplyFix(fx, who){
   const p = fx.payload||{};
-  if(fx.type==='cal'){ S.fuel = S.fuel||{}; S.fuel.calTarget = (S.fuel.calTarget||3000) + p.delta; return true; }
-  if(fx.type==='pro'){ S.fuel = S.fuel||{}; S.fuel.proTarget = p.to; return true; }
+  if(fx.type==='cal'){ S.fuel = S.fuel||{}; fuelTargetSet('cal', (S.fuel.calTarget||3000) + p.delta, who || 'agent'); return true; }
+  if(fx.type==='pro'){ fuelTargetSet('pro', p.to, who || 'agent'); return true; }
   if(fx.type==='liftReset'){
     invState().overrides[p.name] = invResetRecord(p.w, p.days, 'Agent');
     return true;
@@ -16228,7 +16507,7 @@ function agApprove(pid){
   // time the split, the schedule mode or the lift's recent weights can change under it.
   const fx = p.fix ? agValidateFix(p.fix, p.agent) : null;
   if(p.fix && !fx){ ok = false; p.error = 'no longer valid: '+agRejectReason(p.fix, p.agent); }
-  else if(fx){ try{ ok = agApplyFix(fx); }catch(e){ ok = false; p.error = e.message; } }
+  else if(fx){ try{ ok = agApplyFix(fx, p.agent); }catch(e){ ok = false; p.error = e.message; } }
   p.status = ok ? 'approved' : 'failed';
   p.closed = todayKey();
   agLog(p.agent, ok ? 'You approved \u201c'+p.title+'\u201d. '+(p.fix?'Applied: '+agFixSummary(p.fix)+'.':'Noted.')
@@ -16677,6 +16956,7 @@ async function agRunAll(manual){
     if(manual) alert('Add your API key in Settings first \u2014 the agents need it to run.');
     return;
   }
+  if(manual && !spendManualOk()) return;
   // The in-flight guard must NOT live on S. S is replaced wholesale by applyPulled(), so a
   // background sync landing mid-cycle would wipe the flag and let a second cycle start on top
   // of the first; and because S persists, a crash mid-cycle would leave a stale `true` on disk
@@ -17495,6 +17775,17 @@ function notifItems(){
   });
   const wr = waterReminder();
   if(wr) out.push({id:'water:'+todayKey(), tone:'var(--cyan)', title:'Water', body:wr, when:null});
+  // Spend at 80% of the monthly cap, and again (a new id) when it is reached.
+  try{
+    const sp = spendMonth(), cap = spendCap(), mo = todayKey().slice(0, 7);
+    if(sp >= 0.8 * cap){
+      const at = sp >= cap;
+      out.push({id:'spend:'+mo+(at?':cap':':80'), tone:at?'var(--bad)':'var(--warn)',
+        title:at ? 'API cap reached' : 'API spend at '+Math.round(sp / cap * 100)+'% of the cap',
+        body:'$'+sp.toFixed(2)+' of $'+cap+' this month, both devices. '+(at ? 'Automatic runs are paused; chats ask first.' : 'Automatic runs pause at the cap.'),
+        when:null, go:"showReviewTab('ops')"});
+    }
+  }catch(e){}
   return out;
 }
 /* Cleared ids, not a "cleared before this time" watermark: proposals and investigation flags
@@ -17515,6 +17806,17 @@ function notifVisible(){
    this one has not synced yet -- so it touches+pushes like any other entry point. */
 function notifClear(){
   S.notifCleared = notifItems().map(function(i){ return i.id; });
+  save();
+  renderNotif();
+}
+/* One item at a time (V4). Clear-all was the only option, so dismissing the water reminder also
+   dismissed a proposal he had not read yet. Bounded the same way notifClear() is: only ids that
+   notifItems() still produces are kept, so a resolved proposal's id drops out on the next write. */
+function notifDismiss(id){
+  const live = notifItems().map(function(i){ return i.id; });
+  const kept = notifClearedIds().filter(function(x){ return live.indexOf(x) >= 0; });
+  if(kept.indexOf(id) < 0) kept.push(id);
+  S.notifCleared = kept;
   save();
   renderNotif();
 }
@@ -17555,6 +17857,7 @@ function renderNotif(){
   h += items.length ? items.map(function(i){
         return '<div class="notif-item" style="border-left-color:'+i.tone+'"'+
           (i.go?' onclick="notifToggle();'+i.go+'" style="cursor:pointer;border-left-color:'+i.tone+'"':'')+'>'+
+          '<button class="notif-x" aria-label="Dismiss" onclick="event.stopPropagation();notifDismiss(\''+esc(i.id).replace(/'/g,"\\'")+'\')">\u00d7</button>'+
           '<div class="notif-t">'+esc(i.title)+'</div>'+
           '<div class="notif-b">'+esc(i.body)+'</div>'+
           (i.when?'<div class="notif-when">'+esc(agTimeAgo(i.when))+'</div>':'')+'</div>';
@@ -17855,6 +18158,7 @@ async function agRunBrief(manual){
     if(manual) alert('Add your API key in Settings first \u2014 ZULU needs it to write the brief.');
     return;
   }
+  if(manual && !spendManualOk()) return;
   // Same trap as agRunAll(): outside the try, a throwing repaint stranded _agBriefRunning at
   // true and every later agMaybeMorningBrief() returned at the first gate, writing nothing.
   _agBriefRunning = true;
@@ -17959,6 +18263,7 @@ function agMaybeMorningBrief(confirmed){
   if(!a.autoRun) return briefNote('auto-run is switched off in Ops');
   if(_agBriefRunning || _agRunning) return;   // transient, and about to resolve itself
   if(!S.settings.apiKey) return briefNote('no API key is set in Settings');
+  { const sb = spendBlock(); if(sb) return briefNote('paused: '+sb, 'raise the cap in Coach › API spend, or tap Write it now'); }
   const b = agBrief();
   const w = S.whoop && S.whoop.recovery;
   const whoopIn = !!(w && w.date === todayKey());
@@ -18043,6 +18348,13 @@ function agMaybeAutoRun(){
   if(!S.settings.apiKey) return;
   if(a.lastRun === todayKey()) return;
   if(new Date().getHours() < 21) return;
+  // At the cap the cycle pauses rather than starting and failing request by request. Not stamped
+  // as run, so raising the cap tonight lets it go; logged once a day so the pause leaves evidence.
+  const sb = spendBlock();
+  if(sb){
+    if(_spendPauseLogged !== todayKey()){ _spendPauseLogged = todayKey(); agLog('zulu', 'Tonight’s cycle is paused: '+sb+'. Raise the cap in Coach › API spend to run it.'); save(false); }
+    return;
+  }
   // Nothing to confirm the gate against on an unsynced device: there is no second instance that
   // could have run tonight, so local state IS the truth. Stays synchronous, and costs no request.
   if(!syncReady() || S.settings.autoSync === false){ agRunAll(false); return; }
@@ -18123,6 +18435,8 @@ function agForegroundCheck(){
   // that, short enough that the first real return of the afternoon is effectively immediate.
   if(now - _agFgAt < 60000) return;
   _agFgAt = now;
+  // This device's spend records, rebuilt from its log, so the other device's cap check sees them.
+  try{ if(spendLedgerSync()) save(false); }catch(e){}
   try{ whoopMaybeKick(); }catch(e){}
   try{ agMaybeAutoRun(); }catch(e){}
   try{ agMaybeMorningBrief(); }catch(e){}
