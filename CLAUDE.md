@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2705 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2751 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -267,7 +267,7 @@ so the two orders can no longer disagree.
 | Backup | `exportPayload()` / `importApply()`, `DEVICE_SECRETS` (a backup file carries no credentials; import keeps this device's) |
 | After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
-| Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()`, `coachValidateAction()` |
+| Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()` (the Hub: `hubFed()`, `hubStatus()`, `hubMapHTML()`, `hubAgentHTML()`, `hubSpendHTML()`), `coachValidateAction()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network; the cap: `spendLedgerSync()` (`S.spend`), `spendMonth()`, `spendBlock()`, `spendPreflight()`, `spendManualOk()`, `spendCap()` |
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
@@ -1228,6 +1228,33 @@ proposals are counted as **requests** ("1 request"), never ideas.
   shown only when p50 gets there within `NEXT_PR_DAYS`. Minutes in the plan line appear only with
   `DENSITY_MIN` timed sessions (the median). `agStripState()` says "missed last night" only when
   the agent's newest log line is a could-not-complete newer than its last report.
+- **The Hub is a map and one card** (`renderOps()`). ZULU sits in the middle with the three
+  specialists around it. A line is lit only when that agent's report fed the last cycle
+  (`hubFed()`: its `status.at` within `HUB_FED_MS` before `lastRunAt`, which the cycle stamps when it
+  ends). Tapping a node selects it (`agSelectChat`). The selected agent's card shows:
+  - waiting requests;
+  - data reads (`status.consulted`, in words);
+  - whether it fed the cycle;
+  - its chat, directly beneath.
+
+  Below that: run bar, brief, pending, experiments, this week, the feed (agent glyphs), the folded
+  letter, then the spend ring (`hubSpendHTML()`, `spendMonth()` against `spendCap()`) above the spend
+  card. `opsSignature()` includes the month's spend. **Set cap** opens the spend card's fold before
+  focusing its input, or the focus lands on a hidden input and does nothing. `SPEND_WARN_FRAC` is the
+  one 80% line for the ring, the card's bar and the notification.
+- **Restyled, every id kept:**
+  - the summary overlay: `#sumHero` holds "Saved · D1", the big sets-against-plan numeral and the
+    minutes (`summaryHeroHTML()`), so `#sumFacts` no longer repeats it;
+  - the experiment card and Today's chip (`expProgHTML()`, with an interim effect that says "too
+    early to call");
+  - the Sunday card's week strip (`wpStripHTML()`, read-only; the chips stay the way to tag, because
+    a day can carry two tags);
+  - the prediction record's ring. `#an_pred` must still hold exactly three `class="card"`, so no
+    extra class goes on that card's root.
+- **Raw data last.** `rawFold(view, …)` wraps Best Sets (Overview), the PR log rows (Strength; the
+  header card stays up) and the 14 days of intake (Bodyweight) in a fold remembered as
+  `open.raw.<view>`. The V2 wrappers append cards after the base renderer, so they finish with
+  `rawFoldsLast(sec)`, or the "last" fold ends up mid-page.
 
 **A folded card can remember that it is folded.** `subSection(title, body, open, opts)` takes
 `opts.pref` to store the open/closed choice per device in `localStorage['ironhub:ui']`

@@ -9775,7 +9775,11 @@ setTimeout(async () => {
     const lid = ev('S.logs[S.logs.length-1].id');
     ok('overlay: the session is saved before anything is asked', ev('S.logs.length') === 2 && ev("document.getElementById('summaryOverlay').classList.contains('show')") === true);
     ok('overlay: it asks how it felt, and says it is optional', /How did that feel\? Optional/.test(ev("document.getElementById('sumFeel').textContent")) && ev("document.querySelectorAll('#sumFeel .rd3-pill').length") === 5);
-    ok('overlay: it shows sets against the plan', /of \d+ planned sets/.test(ev("document.getElementById('sumFacts').textContent")), ev("document.getElementById('sumFacts').textContent"));
+    // V4 stage 3 moved sets-against-plan into the big headline numeral, so it is checked there.
+    ok('overlay: it shows sets against the plan', /^\d+\/\d+$/.test(ev("document.querySelector('#sumHero .s-big').textContent")) &&
+       /of \d+ planned sets/.test(ev("document.getElementById('sumHero').textContent")), ev("document.getElementById('sumHero').textContent"));
+    ok('overlay: and does not say it twice', !/planned sets/.test(ev("document.getElementById('sumFacts').textContent")));
+    ok('overlay: the headline says it was saved, and which day', /^Saved · D2/.test(ev("document.querySelector('#sumHero .s-eye').textContent")));
     ev('closeSummary()');
     ok('feel: Done with no tap writes nothing and closes', ev('S.sessionMeta.length') === 0 && ev("document.getElementById('summaryOverlay').classList.contains('show')") === false);
     ev('showSummary({exercises:1, sets:1, vol:1, prs:[], note:"", logId:' + lid + ', sum:null});');
@@ -11304,6 +11308,179 @@ setTimeout(async () => {
   } catch (e) {
     ok('segment resize section', false, e.stack);
     try { ev("if(window.__szSaved){ S.meso = JSON.parse(window.__szSaved); delete window.__szSaved; }"); } catch (e2) {}
+  }
+
+  console.log('=== V4 STAGE 3: THE INTELLIGENCE HUB ===');
+  try {
+    w.__s3hSaved = ev('JSON.stringify(S)');
+    w.__s3hTok = ev('S.settings.ghToken'); w.__s3hGist = ev('S.settings.gistId');
+    const ago = function(min){ return new Date(Date.now() - min * 60000).toISOString(); };
+    // A cycle that ended 10 minutes ago. ECHO's report is a day old and its last word is a failure.
+    ev("(function(){ var a = agState(); a.lastRunAt = '" + ago(10) + "';" +
+       "a.status = {zulu: {summary: 'z', at: '" + ago(11) + "'}, charlie: {summary: 'c', at: '" + ago(16) + "', consulted: ['list_lifts']}," +
+       " delta: {summary: 'Bench up 2%.', at: '" + ago(14) + "', consulted: ['get_lift_history', 'get_e1rm_series', 'get_weekly_volume']}," +
+       " echo: {summary: 'e', at: '" + ago(10 + 1440) + "'}};" +
+       "a.log = [{id: 'h1', agent: 'echo', at: new Date(todayKey() + 'T00:01:00').toISOString(), text: 'I could not complete tonight\\u2019s check (Load failed). Nothing changed.'}," +
+       "         {id: 'h2', agent: 'delta', at: '" + ago(3000) + "', text: 'An older line <b>with markup</b>.'}];" +
+       "a.proposals = [{id: 'hp1', agent: 'delta', status: 'pending', title: 'Lat Pulldown 3 \\u2192 4 sets', reasoning: 'r', created: todayKey(), expires: mesoAddDays(todayKey(), 7), fix: {type: 'setCount', payload: {}}}];" +
+       "a.brief = null; _agRunning = false; agActiveChat = 'delta'; })();");
+
+    ok('hub: a report that landed during the last cycle fed it', ev("hubFed('delta')") === true && ev("hubFed('zulu')") === true);
+    ok('hub: a report a day older did not', ev("hubFed('echo')") === false);
+    ev("agState().status.charlie.at = '" + ago(5) + "';");
+    ok('hub: nor did one written after the cycle ended (a chat, a later run)', ev("hubFed('charlie')") === false);
+    ev("agState().status.charlie.at = '" + ago(16) + "';");
+
+    ok('hub: one agent missing names it, in red', ev('hubStatus().txt') === 'ECHO missed the last cycle' && ev('hubStatus().tone') === 'bad', JSON.stringify(ev('hubStatus()')));
+    ev("agState().log = agState().log.filter(function(l){ return l.id !== 'h1'; }); agState().status.echo.at = '" + ago(12) + "';");
+    ok('hub: all four reporting says so, with the time', /^All four reported /.test(ev('hubStatus().txt')) && ev('hubStatus().tone') === 'ok', ev('hubStatus().txt'));
+    ev('_agRunning = true;');
+    ok('hub: a cycle in progress says so', ev('hubStatus().txt') === 'Cycle running…');
+    ev('_agRunning = false;');
+    // put ECHO's miss back for the map
+    ev("agState().status.echo.at = '" + ago(10 + 1440) + "'; agState().log.unshift({id: 'h1', agent: 'echo', at: new Date(todayKey() + 'T00:01:00').toISOString(), text: 'I could not complete tonight\\u2019s check (Load failed). Nothing changed.'});");
+
+    ev("setMode('review'); showMainTab('ops');");
+    const OPS = "document.getElementById('ops')";
+    ok('hub: the map has all four agents', ev(OPS + ".querySelectorAll('.hub-node').length") === 4 &&
+       ['ZULU', 'CHARLIE', 'DELTA', 'ECHO'].every(n => ev(OPS + ".querySelector('.hub-map').textContent").indexOf(n) >= 0));
+    ok('hub: a line is lit for each specialist that fed the cycle, and only those',
+       ev("[].slice.call(" + OPS + ".querySelectorAll('.hub-edge.fed')).map(function(e){ return e.getAttribute('data-agent'); }).sort().join()") === 'charlie,delta');
+    ok('hub: each lit line is in its own agent’s colour',
+       ev(OPS + ".querySelector('.hub-edge.fed[data-agent=\"delta\"]').style.stroke").toLowerCase() === ev('AGENTS.delta.col').toLowerCase() ||
+       /242,\s*138,\s*58/.test(ev(OPS + ".querySelector('.hub-edge.fed[data-agent=\"delta\"]').style.stroke")),
+       ev(OPS + ".querySelector('.hub-edge.fed[data-agent=\"delta\"]').getAttribute('style')"));
+    ok('hub: a node says what is waiting on him, as requests', ev(OPS + ".querySelector('.hub-p-delta .hub-s').textContent") === '1 request');
+    ok('hub: and a missed agent says so', ev(OPS + ".querySelector('.hub-p-echo .hub-s').textContent") === 'missed' &&
+       ev(OPS + ".querySelector('.hub-p-echo .hub-s').classList.contains('bad')") === true);
+    ok('hub: the selected agent is marked', ev(OPS + ".querySelector('.hub-p-delta').getAttribute('aria-pressed')") === 'true' &&
+       ev(OPS + ".querySelector('.hub-p-zulu').getAttribute('aria-pressed')") === 'false');
+    const card = ev("document.getElementById('hubAgent').textContent");
+    ok('hub: the card is the selected agent, with its report', /DELTA · Training/.test(card) && /Bench up 2%/.test(card), card.slice(0, 200));
+    ok('hub: its stats are real: waiting, data reads, in the last cycle',
+       ev("[].slice.call(document.querySelectorAll('#hubAgent .hub-stat b')).map(function(b){ return b.textContent; }).join()") === '1,3,Yes');
+    ok('hub: and it says what it read, in words', /lift history/.test(card) && /weekly volume/.test(card) && card.indexOf('get_lift_history') < 0);
+    ev(OPS + ".querySelector('.hub-p-echo').click();");
+    ok('hub: tapping a node selects that agent, and its chat follows',
+       ev('agActiveChat') === 'echo' && /ECHO · Fuel/.test(ev("document.getElementById('hubAgent').textContent")) &&
+       ev(OPS + ".querySelector('.ag-chat-head .t').textContent") === 'ECHO' && !!ev("!!document.getElementById('agChatIn')"));
+
+    // the feed
+    const acts = ev("[].slice.call(" + OPS + ".querySelectorAll('.hub-act')).map(function(r){ return [r.querySelector('.hub-act-t').textContent, r.querySelector('.cc-glyph').textContent, r.querySelector('.hub-act-x').innerHTML]; })");
+    ok('hub: today’s feed lines carry the time and the agent’s glyph', acts[0][0] === ev("homeClock(new Date(todayKey() + 'T00:01:00').toISOString())") && acts[0][1] === 'E', JSON.stringify(acts[0]));
+    ok('hub: older lines carry the date, and agent text is escaped', /^[A-Z][a-z]{2} \d+$/.test(acts[1][0]) && acts[1][2].indexOf('&lt;b&gt;') >= 0, JSON.stringify(acts[1]));
+
+    // the spend ring: both devices against the cap
+    ev("window.__s3ul = spendUsageLog; spendUsageLog = function(){ return []; }; S.settings.spendCap = 20; S.spend = [{id: 'zzdev|' + todayKey(), dev: 'zzdev', day: todayKey(), usd: 3.2, n: 9, t: Date.now()}];");
+    ev('renderOps();');
+    const sig1 = ev('opsSignature()');
+    ok('hub: the ring shows this month, both devices, against the cap', ev(OPS + ".querySelector('.hub-ring-v').textContent") === '$3.20of $20');
+    ok('hub: and the arc is that fraction of the ring',
+       Math.abs(parseFloat(ev(OPS + ".querySelector('.hub-spend-arc').getAttribute('stroke-dasharray')")) - 0.16 * 263.9) < 0.2,
+       ev(OPS + ".querySelector('.hub-spend-arc').getAttribute('stroke-dasharray')"));
+    ev("S.spend[0].usd = 21;");
+    ok('hub: spending changes the repaint signature, so the ring stays current', ev('opsSignature()') !== sig1);
+    ev('renderOps();');
+    ok('hub: at the cap it says runs are paused, in red', /Cap reached/.test(ev(OPS + ".querySelector('.hub-spend').textContent")) &&
+       ev(OPS + ".querySelector('.hub-spend-arc').getAttribute('stroke')") === 'var(--bad)');
+    // Set cap opens the spend card's fold, or focusing its input would do nothing (jsdom: assert the fold, not visibility)
+    ev("(function(){ var i = document.getElementById('spendCapIn'); var s = i && i.closest('.sub'); if(s && s.classList.contains('open')) toggleSub(s.querySelector('.sub-head')); })();");
+    ev('hubCapFocus();');
+    ok('hub: Set cap opens the spend card and puts the cursor in the cap',
+       ev("document.getElementById('spendCapIn').closest('.sub').classList.contains('open')") === true && ev("document.activeElement === document.getElementById('spendCapIn')") === true);
+    ok('hub: one 80% line for the ring, the bar and the notification', ev('SPEND_WARN_FRAC') === 0.8 &&
+       (require('fs').readFileSync(HTML_PATH, 'utf8').match(/0\.8\s*\*\s*cap|0\.8\*cap/g) || []).length === 0);
+  } catch (e) {
+    ok('V4 stage 3 Hub section', false, e.stack);
+  } finally {
+    ev('_agRunning = false; if(window.__s3ul){ spendUsageLog = window.__s3ul; delete window.__s3ul; }');
+    ev('if(window.__s3hSaved){ S = JSON.parse(window.__s3hSaved); delete window.__s3hSaved; }');
+    ev('agActiveChat = \'zulu\';');
+  }
+
+  console.log('=== V4 STAGE 3: SUMMARY, EXPERIMENT, WEEK AND RECORD RESTYLES ===');
+  try {
+    w.__s3rSaved = ev('JSON.stringify(S)');
+    // --- the summary's headline ---
+    const t0 = Date.now() - 52 * 60000;
+    ev("S.logs.push(stampRec({id: 's3sum', date: todayKey(), day: 'D1', entries: [{exercise: 'Zz Sum A', sets: [{w: 100, r: 8, ts: " + t0 + "}, {w: 100, r: 8, ts: " + (t0 + 52 * 60000) + "}]}]}));");
+    ev("showSummary({exercises: 1, sets: 2, vol: 1600, prs: ['Zz Sum A · 100 lb × 8 <i>x</i>'], note: '', logId: 's3sum', sum: {planned: 3, skipped: 1, felt: null, flag: null}});");
+    ok('summary: the headline is sets done against the plan', ev("document.querySelector('#sumHero .s-big').textContent") === '2/3');
+    ok('summary: with the minutes from first set to last', /of 3 planned sets · 52 min/.test(ev("document.getElementById('sumHero').textContent")), ev("document.getElementById('sumHero').textContent"));
+    ok('summary: a PR reads as a new best, escaped', /^New best · Zz Sum A/.test(ev("document.querySelector('#sumPRs .s-pr').textContent")) &&
+       ev("document.querySelector('#sumPRs .s-pr').innerHTML").indexOf('&lt;i&gt;') >= 0);
+    ev('closeSummary();');
+    ev("S.logs.push(stampRec({id: 's3sum2', date: todayKey(), day: 'D2', entries: [{exercise: 'Zz Sum B', sets: [{w: 50, r: 10}]}]}));");
+    ev("showSummary({exercises: 1, sets: 1, vol: 500, prs: [], note: '', logId: 's3sum2', sum: null});");
+    ok('summary: with no plan and no set times, just the sets', ev("document.querySelector('#sumHero .s-big').textContent") === '1' &&
+       ev("document.querySelector('#sumHero .s-big-l').textContent") === 'sets');
+    ev('closeSummary();');
+
+    // --- experiments ---
+    ok('experiments: one segment per required session, filled for each clean one',
+       ev("(function(){ var d = document.createElement('div'); d.innerHTML = expProgHTML(2, 4, '+2.1%'); return [d.querySelectorAll('i').length, d.querySelectorAll('i.on').length, d.querySelector('.exp-eff').textContent].join(); })()") === '4,2,+2.1%');
+    ok('experiments: no effect is printed before there is one', ev("expProgHTML(0, 4, '')").indexOf('exp-eff') < 0);
+
+    // --- the week strip ---
+    const wk = '2026-10-05';
+    ev("window.__s3sdf = scheduledDayFor; scheduledDayFor = function(d){ return d === '2026-10-11' ? 'REST' : 'D' + ((+d.slice(-2) % 6) + 1); };");
+    const strip = ev("wpStripHTML('" + wk + "', {'2026-10-06': ['busy'], '2026-10-07': ['travel', 'lowenergy'], '2026-10-08': ['busy', 'travel', 'nogym']})");
+    ev('scheduledDayFor = window.__s3sdf; delete window.__s3sdf;');
+    const tiles = ev("(function(){ var d = document.createElement('div'); d.innerHTML = " + JSON.stringify(strip) + "; return [].slice.call(d.querySelectorAll('.wp-tile')).map(function(t){ return t.textContent + (t.classList.contains('on') ? '*' : '') + (t.classList.contains('rest') ? '_' : ''); }); })()");
+    ok('week strip: seven days, Monday first', tiles.length === 7 && /^Mon/.test(tiles[0]) && /^Sun/.test(tiles[6]), JSON.stringify(tiles));
+    ok('week strip: a tagged day shows the tag in short words, two stacked', tiles[1] === 'TueBusy*' && tiles[2] === 'WedTripLow*', JSON.stringify(tiles));
+    ok('week strip: a third tag is counted, not crammed in', tiles[3] === 'ThuBusyTrip+1*', JSON.stringify(tiles));
+    ok('week strip: an untagged day shows its plan, a rest day reads Rest', /^MonD\d$/.test(tiles[0]) && tiles[6] === 'SunRest_', JSON.stringify(tiles));
+
+    // --- the prediction record's headline ---
+    ev("window.__s3pr = predRecord; predRecord = function(){ return {topset: {n: 8, held: 6, interrupted: 0, ape: null, legacy: 0, byLift: []}, e1rm28: {n: 3, hits: 2, pending: 0, interrupted: 0, ape: 0.02}, bw7: {n: 0, hits: 0, pending: 1, mae: null}, recent: []}; };");
+    const prc = ev('predRecordCardHTML()');
+    ev('predRecord = window.__s3pr; delete window.__s3pr;');
+    // Read off the ring itself: the Prescriptions line further down also prints "<b>75%</b>".
+    ok('record: the ring is the share of prescriptions that held',
+       ev("(function(){ var d = document.createElement('div'); d.innerHTML = " + JSON.stringify(prc) + "; return d.querySelector('.pr-ring > b').textContent; })()") === '75%', prc.slice(0, 400));
+    ok('record: the forecasts read as counts, and an empty one as a dash',
+       ev("(function(){ var d = document.createElement('div'); d.innerHTML = " + JSON.stringify(prc) + "; return [].slice.call(d.querySelectorAll('.hub-stat b')).map(function(b){ return b.textContent; }).join(); })()") === '2/3,—');
+    ok('record: still a single card', (prc.match(/class="card"/g) || []).length === 1);
+  } catch (e) {
+    ok('V4 stage 3 restyles section', false, e.stack);
+  } finally {
+    ev('if(window.__s3rSaved){ S = JSON.parse(window.__s3rSaved); delete window.__s3rSaved; }');
+  }
+
+  console.log('=== V4 STAGE 3: RAW DATA LAST ===');
+  try {
+    w.__s3fSaved = ev('JSON.stringify(S)');
+    w.__s3fPref = ev("localStorage.getItem(UI_PREF_KEY)");
+    ev("localStorage.removeItem(UI_PREF_KEY); subOpen = {};");
+    ev("S.logs.push(stampRec({id: 's3raw', date: mesoAddDays(todayKey(), -2), day: 'D1', entries: [{exercise: 'Zz Raw Lift', sets: [{w: 135, r: 5}]}]}));");
+    ev("S.prHistory = (S.prHistory || []).concat([{exercise: 'Zz Raw PR', date: mesoAddDays(todayKey(), -2), e1rm: 157.5, weight: 135, reps: 5, t: 5}]);");
+    ev("S.nutrition = [{date: mesoAddDays(todayKey(), -1), cals: 3600, protein: 160}];");
+    ev("setMode('review'); showMainTab('progress', 'progress');");
+    const pf = "document.querySelector('#progress [data-pref=\"open.raw.progress\"]')";
+    ok('raw: Best sets fold to the bottom of Overview, remembered per device', !!ev('!!' + pf) && ev(pf + ".parentElement.classList.contains('open')") === false);
+    ok('raw: folded, its rows are still in the page', /Zz Raw Lift/.test(ev(pf + ".parentElement.querySelector('.sub-body').textContent")));
+    ok('raw: and nothing comes after it in the section', ev("(function(){ var s = document.querySelector('#progress'); var f = " + pf + ".parentElement; return f === s.lastElementChild; })()") === true);
+    ev("uiPrefSet('open.raw.progress', true); subOpen = {}; showMainTab('progress', 'progress');");
+    ok('raw: a fold he opened stays open', ev(pf + ".parentElement.classList.contains('open')") === true);
+
+    ev("anPRPick = 'all'; renderAnPRs();");
+    const sf = "document.querySelector('#an_strength [data-pref=\"open.raw.strength\"]')";
+    ok('raw: the PR log rows fold', !!ev('!!' + sf) && /Zz Raw PR/.test(ev(sf + ".parentElement.querySelector('.sub-body').textContent")));
+    ok('raw: and the PR history header stays out of the fold, on top',
+       /PR history/.test(ev("document.querySelector('#an_strength').firstElementChild.textContent")) && ev("document.querySelector('#an_strength').firstElementChild.classList.contains('sub')") === false);
+
+    // Through the live renderer: renderBulkV2 appends the sleep section after renderBulk's own HTML.
+    ev('REVIEW_RENDER.bulk();');
+    const bf = "document.querySelector('#bulk [data-pref=\"open.raw.bulk\"]')";
+    ok('raw: the 14 days of intake fold, after the projection and the protein note',
+       !!ev('!!' + bf) && /3600 cal/.test(ev(bf + ".parentElement.textContent")) &&
+       ev("(function(){ var s = document.querySelector('#bulk'); var f = " + bf + ".parentElement; return f === s.lastElementChild; })()") === true);
+  } catch (e) {
+    ok('V4 stage 3 raw folds section', false, e.stack);
+  } finally {
+    ev('if(window.__s3fSaved){ S = JSON.parse(window.__s3fSaved); delete window.__s3fSaved; }');
+    ev('try{ if(window.__s3fPref === null) localStorage.removeItem(UI_PREF_KEY); else localStorage.setItem(UI_PREF_KEY, window.__s3fPref); }catch(e){} delete window.__s3fPref; subOpen = {};');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-04-v3">
+<meta name="ironhub-build" content="2026-10-04-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1468,6 +1468,120 @@
     .cc{display:grid; grid-template-columns:minmax(300px, 380px) minmax(0, 1fr); gap:20px 40px; align-items:start;}
     .cc-hero{position:sticky; top:16px;}
   }
+
+  /* ===== V4 STAGE 3: THE INTELLIGENCE HUB =====
+     ZULU in the middle and the three specialists around it, on the mockup's 361 x 330 field in
+     percent, so it scales with its column the way the wheel does. A line is lit in the agent's
+     colour when that agent's report fed the last cycle (hubFed()). */
+  .hub-head{display:flex; flex-direction:column; align-items:center; gap:4px; margin-top:4px;}
+  .hub-title{margin:0; font-family:var(--disp); font-weight:700; font-size:38px; line-height:1; letter-spacing:.04em;
+    text-transform:uppercase; color:var(--text);}
+  .hub-status{display:flex; align-items:center; gap:6px; font-family:var(--disp); font-weight:700; font-size:13px;
+    letter-spacing:.04em; text-transform:uppercase; color:var(--good); text-align:center;}
+  .hub-status i{width:8px; height:8px; border-radius:4px; background:currentColor; flex:none;}
+  .hub-status.warn{color:var(--warn);} .hub-status.bad{color:var(--bad);} .hub-status.run{color:var(--amber);} .hub-status.idle{color:var(--dim);}
+  .hub-map{position:relative; width:100%; max-width:361px; aspect-ratio:361/330; margin:14px auto 0;}
+  .hub-map svg{position:absolute; inset:0; width:100%; height:100%;}
+  .hub-orbit{fill:none; stroke:var(--panel2); stroke-width:1;}
+  .hub-edge{stroke:var(--line2); stroke-width:1.5;}
+  .hub-edge.fed{stroke-width:2.2;}
+  .hub-node{position:absolute; width:22.2%; aspect-ratio:1; transform:translate(-50%,-50%); border:none; border-radius:22px;
+    background:var(--panel); color:var(--text); display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:2px; cursor:pointer; padding:4px; min-width:0;}
+  .hub-node.lead{width:30.5%; border-radius:30px; box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 55%, transparent);}
+  .hub-node.on{box-shadow:inset 0 0 0 2px var(--c);}
+  .hub-node:active{transform:translate(-50%,-50%) scale(.97);}
+  .hub-g{font-family:var(--disp); font-weight:700; font-size:22px; line-height:1; color:var(--c);}
+  .hub-node.lead .hub-g{font-size:30px;}
+  .hub-n{font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.05em; text-transform:uppercase;}
+  .hub-node.lead .hub-n{font-size:14px;}
+  .hub-s{font-size:10.5px; color:var(--muted); line-height:1.2; max-width:100%; text-align:center;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .hub-s.warn{color:var(--warn);} .hub-s.bad{color:var(--bad);} .hub-s.run{color:var(--amber);}
+  .hub-p-zulu{left:50%; top:50%;} .hub-p-delta{left:50%; top:12.4%;} .hub-p-echo{left:20.3%; top:68.8%;} .hub-p-charlie{left:79.7%; top:68.8%;}
+  .hub-hint{text-align:center; font-size:12px; color:var(--dim); margin:4px 0 0;}
+  .hub-agent{background:var(--panel); border-radius:var(--r-card); padding:16px; display:flex; flex-direction:column; gap:12px; margin-top:14px;}
+  .hub-agent-h{display:flex; align-items:center; gap:10px;}
+  .hub-agent-t{display:flex; flex-direction:column; flex:1; min-width:0;}
+  .hub-agent-n{font-family:var(--disp); font-weight:700; font-size:18px; line-height:1.1; letter-spacing:.04em; text-transform:uppercase;}
+  .hub-agent-w{font-size:12px; color:var(--muted);}
+  .hub-agent p{margin:0;}
+  .hub-stats{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); background:var(--panel2); border-radius:14px;}
+  .hub-stat{padding:10px 12px; display:flex; flex-direction:column; min-width:0;}
+  .hub-stat + .hub-stat{border-left:1px solid var(--line2);}
+  .hub-stat b{font-family:var(--disp); font-weight:700; font-size:26px; line-height:1;}
+  .hub-stat b.warn{color:var(--warn);}
+  .hub-stat span{font-size:11.5px; color:var(--muted); line-height:1.3;}
+  .hub-tools{display:flex; flex-wrap:wrap; gap:6px;}
+  .hub-tools span{padding:4px 9px; border-radius:10px; background:var(--panel2); font-size:12px; color:var(--muted);}
+  .hub-act{display:flex; gap:10px; padding:11px 0; border-top:1px solid var(--panel2); align-items:flex-start;}
+  .hub-act-t{font-family:var(--mono); font-size:10.5px; letter-spacing:.04em; color:var(--dim); width:58px; flex:none; padding-top:3px;}
+  .hub-act .cc-glyph{width:22px; height:22px; border-radius:7px; font-size:11px;}
+  .hub-act-x{font-size:14px; line-height:1.4; min-width:0; flex:1; overflow-wrap:anywhere;}
+  .hub-spend{display:flex; align-items:center; gap:18px; padding:18px 0 6px; border-top:1px solid var(--panel2); margin-top:18px;}
+  .hub-ring{position:relative; width:108px; height:108px; flex:none;}
+  .hub-ring svg{transform:rotate(-90deg);}
+  .hub-ring-v{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .hub-ring-v b{font-family:var(--disp); font-weight:700; font-size:24px; line-height:1;}
+  .hub-ring-v span{font-size:11px; color:var(--dim);}
+  .hub-spend-b{display:flex; flex-direction:column; gap:6px; min-width:0;}
+  .hub-spend-b b{font-family:var(--disp); font-weight:700; font-size:17px; letter-spacing:.04em; text-transform:uppercase;}
+  .hub-spend-b p{margin:0; font-size:13px; color:var(--muted); line-height:1.45;}
+  .hub-spend-b .btn{align-self:flex-start;}
+
+  /* The session summary: "Saved · D1", a big sets-against-plan numeral, A's corner brackets. Every id
+     the overlay had is kept. */
+  .summary{position:relative;}
+  .summary::before,.summary::after{content:''; position:absolute; top:-12px; width:16px; height:16px; border-top:2px solid var(--amber);}
+  .summary::before{left:-2px; border-left:2px solid var(--amber);}
+  .summary::after{right:-2px; border-right:2px solid var(--amber);}
+  .s-eye{display:block; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--good);}
+  .s-big{font-family:var(--disp); font-weight:700; font-size:clamp(64px, 22vw, 92px); line-height:.9; letter-spacing:.01em;
+    color:var(--text); margin-top:8px; font-variant-numeric:tabular-nums;}
+  .s-big span{color:var(--dim);}
+  .s-big-l{font-size:14px; color:var(--muted); margin-top:6px;}
+  .summary .s-pr{display:flex; align-items:center; gap:10px; text-transform:none; letter-spacing:0; font-family:var(--body);
+    font-weight:500; font-size:14px; color:var(--text); border:none; background:color-mix(in srgb, var(--amber) 12%, transparent);
+    border-radius:12px; padding:11px 14px; text-align:left;}
+  .summary .s-pr svg{color:var(--amber); flex:none;}
+  .summary .s-pr b{font-family:var(--disp); font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--amber);}
+
+  /* Experiments: the owner's glyph, one segment per required session, the running effect beside it. */
+  .exp-h{display:flex; gap:12px; align-items:flex-start; margin-top:10px;}
+  .exp-h .cc-glyph{width:34px; height:34px; font-size:16px;}
+  .exp-t{display:block; font-family:var(--disp); font-weight:700; font-size:18px; letter-spacing:.04em; text-transform:uppercase; line-height:1.1;}
+  .exp-sub{display:block; font-size:13px; color:var(--muted); margin-top:3px; line-height:1.4;}
+  .exp-prog{display:flex; align-items:center; gap:5px; margin-top:14px;}
+  .exp-prog i{flex:1; height:8px; border-radius:4px; background:var(--line2);}
+  .exp-prog i.on{background:var(--violet);}
+  .exp-eff{font-family:var(--disp); font-weight:700; font-size:26px; line-height:1; margin-left:8px; min-width:60px; text-align:right;}
+  .cc-exp{display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; border:none; border-radius:var(--r-card);
+    background:var(--panel); color:var(--text); text-align:left; cursor:pointer; font:inherit;}
+  .cc-exp-b{display:flex; flex-direction:column; gap:2px; min-width:0; flex:1;}
+  .cc-exp-k{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--violet);}
+  .cc-exp-t{font-weight:600; font-size:15px;}
+  .cc-exp-s{font-size:12.5px; color:var(--muted); line-height:1.35;}
+  .cc-exp .exp-prog{margin:0; width:64px; flex:none;}
+
+  /* The Sunday check-in's week strip. */
+  .wp-head b{font-family:var(--disp); font-weight:700; font-size:20px; letter-spacing:.04em; text-transform:uppercase;}
+  .wp-strip{display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:4px; margin-top:10px;}
+  .wp-tile{display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 2px; border-radius:10px; background:var(--panel2); min-width:0;}
+  .wp-tile.rest{background:none; box-shadow:inset 0 0 0 1px var(--line2);}
+  .wp-tile.on{background:color-mix(in srgb, var(--amber) 16%, transparent);}
+  .wp-dow{font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);}
+  .wp-k{font-family:var(--disp); font-weight:700; font-size:13px; letter-spacing:.03em; text-transform:uppercase; max-width:100%;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .wp-tile.on .wp-k{color:var(--amber); font-size:11.5px;}
+  .wp-tile.rest .wp-k{color:var(--dim);}
+
+  /* The prediction record's headline. */
+  .pr-top{display:flex; align-items:center; gap:16px; margin-top:12px;}
+  .pr-ring{position:relative; width:96px; height:96px; flex:none;}
+  .pr-ring b{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--disp);
+    font-weight:700; font-size:24px;}
+  .pr-h{font-family:var(--disp); font-weight:700; font-size:17px; letter-spacing:.04em; text-transform:uppercase;}
+  .pr-of{color:var(--dim);}
 </style>
 
 
@@ -1600,7 +1714,7 @@
 
 <div class="overlay" id="summaryOverlay">
   <div class="summary">
-    <div class="s-h">Session<br>complete</div>
+    <div class="s-hero" id="sumHero"><div class="s-h">Session<br>complete</div></div>
     <div class="s-sub">Logged automatically · one optional tap below</div>
     <div class="s-grid" id="sumGrid"></div>
     <div class="s-facts" id="sumFacts"></div>
@@ -3900,7 +4014,6 @@ function renderProgress(){
     html += '<div class="card flat" style="padding:0;border:none">'+milestoneBarGraphic(barCur, cfg.milestones)+'</div>';
     html += '<div class="card">'+lineChart(pts, dayColorForLift(lift))+'</div>';
   }
-  html += '<h2>Best Sets — All Exercises</h2><div class="card">';
   const bests = {};
   S.logs.forEach(l=>l.entries.forEach(e=>e.sets.forEach(s=>{
     const w = +s.w||0, r = +s.r||0;
@@ -3909,12 +4022,13 @@ function renderProgress(){
     if(!cur || w>cur.w || (w===cur.w && r>=cur.r)) bests[e.exercise]={w, r, v:epley(w,r), date:l.date};
   })));
   const keys = Object.keys(bests).sort();
-  if(!keys.length) html += '<p class="small">Nothing logged yet.</p>';
+  let bestHTML = '<div class="card">';
+  if(!keys.length) bestHTML += '<p class="small">Nothing logged yet.</p>';
   keys.forEach(k=>{
     const b=bests[k];
-    html += '<div class="h-ex" style="padding:3px 0"><b>'+esc(k)+'</b> — '+b.w+' lb × '+b.r+' <span class="small">(e1RM '+Math.round(b.v)+', '+fmtDate(b.date)+')</span></div>';
+    bestHTML += '<div class="h-ex" style="padding:3px 0"><b>'+esc(k)+'</b> — '+b.w+' lb × '+b.r+' <span class="small">(e1RM '+Math.round(b.v)+', '+fmtDate(b.date)+')</span></div>';
   });
-  html += '</div>';
+  html += rawFold('progress', 'Best sets, all exercises', keys.length+' lift'+(keys.length===1?'':'s'), bestHTML+'</div>');
   el.innerHTML = html;
 }
 function dayColorForLift(l){ return l.includes('Squat') ? '#dfae36' : '#d23b3b'; }
@@ -4287,6 +4401,7 @@ function aiUsageNote(route, u, cut){
    he started himself (a chat, Run cycle now, Rewrite, the Sunday plan) asks first. */
 const SPEND_DEVICE_KEY = 'ironhub:device', SPEND_CAP_DEFAULT = 20, SPEND_KEEP_DAYS = 70, SPEND_REC_MAX = 200;
 const SPEND_AUTO = ['night', 'brief', 'letter', 'lift'];
+const SPEND_WARN_FRAC = 0.8;   // the 80% warning: the notification, the spend card's bar and the Hub ring
 const SPEND_OK_MS = 10 * 60000;   // a "send anyway" covers the rest of that conversation or cycle
 function spendDeviceId(){
   try{
@@ -4430,7 +4545,7 @@ function aiUsageCardHTML(){
   const cap = spendCap(), mo = spendMonth(), blocked = mo >= cap;
   const capRow = '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)">'+
     '<div style="display:flex;justify-content:space-between;gap:10px"><span>This month, both devices</span><b>$'+mo.toFixed(2)+' of $'+cap+'</b></div>'+
-    '<div style="height:6px;border-radius:3px;background:var(--panel2)"><div style="height:6px;border-radius:3px;width:'+Math.min(100, Math.round(mo / cap * 100))+'%;background:'+(blocked?'var(--bad)':mo >= 0.8*cap?'var(--warn)':'var(--amber)')+'"></div></div>'+
+    '<div style="height:6px;border-radius:3px;background:var(--panel2)"><div style="height:6px;border-radius:3px;width:'+Math.min(100, Math.round(mo / cap * 100))+'%;background:'+(blocked?'var(--bad)':mo >= SPEND_WARN_FRAC*cap?'var(--warn)':'var(--amber)')+'"></div></div>'+
     (blocked ? '<p class="small" style="color:var(--bad);margin:0">Cap reached: the nightly cycle, brief and letter are paused. Chats and buttons you tap ask first.</p>' : '')+
     '<label class="small" style="display:flex;align-items:center;gap:8px">Monthly cap $<input id="spendCapIn" type="number" min="1" max="500" step="1" inputmode="numeric" value="'+cap+'" onchange="spendCapSet(this.value)" style="width:84px"></label>'+
     '</div>';
@@ -6201,14 +6316,16 @@ function renderBulk(){
     '<span class="small err" id="nMsg"></span></div></div>';
   html += nutWeekCard();
   const nut = [...S.nutrition].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
-  if(nut.length){
-    html += '<div class="card">'+nut.map(n=>'<div class="h-ex"><b>'+fmtDate(n.date)+'</b> — '+
-      (n.est?'~':'')+n.cals+' cal'+nutBadge(nutTierCal(n.cals, ct))+' · '+
-      (n.est?'~':'')+n.protein+'g protein'+nutBadge(nutTierPro(n.protein, pt))+'</div>').join('')+
-      '<p class="small" style="margin-top:8px;color:var(--dim)">~ marks a tapped range — the stored number is that range’s midpoint.</p></div>';
-  }
   html += bwProjectionCardHTML();
   html += '<div class="card"><p class="small"><b>Protein note:</b> your target is '+pt+'g. Calories drive the scale; protein decides how much of it is muscle — so a day that hits calories and misses protein is not a day that went well.</p></div>';
+  // The day-by-day rows go last, folded; the week card and the projection above already say how it is going.
+  if(nut.length){
+    html += rawFold('bulk', 'Last 14 days of intake', nut.length+' day'+(nut.length===1?'':'s')+' logged',
+      '<div class="card">'+nut.map(n=>'<div class="h-ex"><b>'+fmtDate(n.date)+'</b> — '+
+      (n.est?'~':'')+n.cals+' cal'+nutBadge(nutTierCal(n.cals, ct))+' · '+
+      (n.est?'~':'')+n.protein+'g protein'+nutBadge(nutTierPro(n.protein, pt))+'</div>').join('')+
+      '<p class="small" style="margin-top:8px;color:var(--dim)">~ marks a tapped range — the stored number is that range’s midpoint.</p></div>');
+  }
   el.innerHTML = html;
 }
 function addWeight(){
@@ -9009,12 +9126,29 @@ function summaryFeelNote(txt){
   if((cur && (cur.note||'') === t) || (!cur && !t)) return;
   sessionMetaSet(_sumLogId, {note:t});
 }
+/* The summary's headline (V4 stage 3): "Saved · D1", then sets done against the plan as one big
+   number, with minutes from the first set to the last when the sets carry times. A session with no
+   plan behind it (a free session, or one from before plans were recorded) shows the sets alone. */
+const SUM_TROPHY = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" '+
+  'stroke-linecap="round" stroke-linejoin="round"><path d="M7 4.5h10v4a5 5 0 0 1-10 0zM12 13.5v3M8.5 20h7l-1-3.5h-5z"/></svg>';
+function summaryHeroHTML(d){
+  const sm = d.sum || {}, l = d.logId ? (S.logs || []).find(function(x){ return x.id === d.logId; }) : null;
+  const ts = [];
+  ((l && l.entries) || []).forEach(function(e){ (e.sets || []).forEach(function(s){ if(+s.ts > 0) ts.push(+s.ts); }); });
+  const mins = ts.length >= 2 ? Math.round((Math.max.apply(null, ts) - Math.min.apply(null, ts)) / 60000) : 0;
+  const done = sm.planned ? Math.max(0, sm.planned - (sm.skipped || 0)) : (+d.sets || 0);
+  const lab = (sm.planned ? 'of '+sm.planned+' planned sets' : 'sets')+(mins > 0 ? ' · '+mins+' min' : '');
+  return '<span class="s-eye">Saved'+(l && l.day ? ' · '+esc(l.day) : '')+'</span>'+
+    '<div class="s-big">'+done+(sm.planned ? '<span>/'+sm.planned+'</span>' : '')+'</div>'+
+    '<div class="s-big-l">'+esc(lab)+'</div>';
+}
 function showSummary(d){
   _sumLogId = d.logId || null;
   const sm = d.sum || null;
   const facts = [];
   if(sm && sm.felt) facts.push('Effort <b>RPE '+sm.felt.rpe+'</b> \u00b7 target '+sm.felt.lo+'\u2013'+sm.felt.hi);
-  if(sm && sm.planned) facts.push('<b>'+Math.max(0, sm.planned - sm.skipped)+'</b> of '+sm.planned+' planned sets');
+  // Sets against the plan are the big number now (summaryHeroHTML), so they are not repeated here.
+  const he = document.getElementById('sumHero'); if(he) he.innerHTML = summaryHeroHTML(d);
   document.getElementById('sumFacts').innerHTML = facts.map(function(x){ return '<span class="s-fact">'+x+'</span>'; }).join('');
   document.getElementById('sumFlag').textContent = (sm && sm.flag) ? sm.flag.text : '';
   const fe = document.getElementById('sumFeel'); if(fe) fe.innerHTML = _sumLogId ? summaryFeelHTML(_sumLogId) : '';
@@ -9023,7 +9157,7 @@ function showSummary(d){
     '<div class="s-cell"><div class="n">'+d.exercises+'</div><div class="l">Exercises</div></div>'+
     '<div class="s-cell"><div class="n">'+d.sets+'</div><div class="l">Sets</div></div>'+
     '<div class="s-cell"><div class="n">'+d.vol.toLocaleString()+'</div><div class="l">Lb volume</div></div>';
-  document.getElementById('sumPRs').innerHTML = d.prs.map(p=>'<div class="s-pr">★ '+esc(p)+'</div>').join('');
+  document.getElementById('sumPRs').innerHTML = d.prs.map(p=>'<div class="s-pr">'+SUM_TROPHY+'<span><b>New best</b> · '+esc(p)+'</span></div>').join('');
   document.getElementById('sumNote').textContent = d.note;
   document.getElementById('summaryOverlay').classList.add('show');
 }
@@ -9633,6 +9767,12 @@ function subSection(title, bodyHTML, openByDefault, opts){
     (pk?' data-pref="'+esc(pk)+'"':'')+' role="button" aria-expanded="'+(open?'true':'false')+'" onclick="toggleSub(this)">'+
     '<span class="sub-t"><span>'+esc(title)+'</span>'+(opts.summary?'<span class="sub-sum">'+opts.summary+'</span>':'')+'</span>'+
     '<span class="chev">\u25be</span></div><div class="sub-body">'+bodyHTML+'</div></div>';
+}
+/* Raw data last (V4 stage 3). The verdicts and charts stay on top; the table they come from folds to
+   the bottom of its view, and the fold is remembered per device (open.raw.<view>). subSection()
+   always renders its body, so a fold hides rows from the eye only, never from the page. */
+function rawFold(view, title, summary, bodyHTML){
+  return subSection('Raw data \u00b7 '+title, bodyHTML, false, {pref:'raw.'+view, summary:summary, cls:'grp'});
 }
 
 /* ===================== 1. EXERCISE LIBRARY ===================== */
@@ -10625,6 +10765,16 @@ function renderProgressV2(){
   let phWrap = sec.querySelector('.p2-photos');
   if(!phWrap){ phWrap = document.createElement('div'); phWrap.className = 'p2-photos'; sec.appendChild(phWrap); }
   phWrap.innerHTML = photoCardHTML();
+  rawFoldsLast(sec);
+}
+/* The V2 wrappers append cards after the base renderer has run, which would put them below its raw
+   fold. Raw data goes last in a view, so move any raw fold back to the end once they are done. */
+function rawFoldsLast(sec){
+  if(!sec) return;
+  Array.prototype.slice.call(sec.children).forEach(function(c){
+    const hd = c.classList.contains('sub') ? c.querySelector('.sub-head') : null;
+    if(hd && /^open\.raw\./.test(hd.getAttribute('data-pref') || '')) sec.appendChild(c);
+  });
 }
 /* Road: goals + PR charts + 1RM lab subsection */
 function renderRoadV2(){
@@ -10639,11 +10789,14 @@ function renderRoadV2(){
 /* Bulk: bodyweight chart + sleep/recovery subsection */
 function renderBulkV2(){
   renderBulk();
-  const sec=document.getElementById('bulk'); if(!sec || sec.querySelector('.p2-sleep')) return;
-  const wrap=document.createElement('div'); wrap.className='p2-sleep';
-  wrap.innerHTML = '<h2>Recovery</h2>' + subSection('Sleep & performance', '<div id="sleep"></div>', false);
-  sec.appendChild(wrap);
-  renderSleep();
+  const sec=document.getElementById('bulk'); if(!sec) return;
+  if(!sec.querySelector('.p2-sleep')){
+    const wrap=document.createElement('div'); wrap.className='p2-sleep';
+    wrap.innerHTML = '<h2>Recovery</h2>' + subSection('Sleep & performance', '<div id="sleep"></div>', false);
+    sec.appendChild(wrap);
+    renderSleep();
+  }
+  rawFoldsLast(sec);
 }
 /* re-point the review render map to the V2 wrappers + library */
 REVIEW_RENDER.progress = renderProgressV2;
@@ -14368,7 +14521,8 @@ function renderAnPRs(){
       '<option value="all"'+(anPRPick==='all'?' selected':'')+'>All lifts</option>'+
       lifts.map(l=>'<option value="'+esc(l)+'"'+(l===anPRPick?' selected':'')+'>'+esc(l)+'</option>').join('')+
     '</select></div></div>';
-  h += rows.map(anPRRow).join('');
+  // The header card (count, newest, biggest jump, the lift picker) stays up; the rows fold.
+  h += rawFold('strength', 'PR log', rows.length+' PR'+(rows.length===1?'':'s')+(anPRPick==='all' ? '' : ' · '+esc(anPRPick)), rows.map(anPRRow).join(''));
   el.innerHTML = h;
 }
 
@@ -15104,9 +15258,22 @@ function predRecordCardHTML(){
   const since8 = mesoAddDays(todayKey(), -56);
   let R8; try{ R8 = predRecord(since8); }catch(e){ R8 = null; }
   const small = function(n){ return n < 8 ? ' <span style="color:var(--dim)">\u00b7 small sample</span>' : ''; };
+  const T = R.topset, E0 = R.e1rm28, B0 = R.bw7;
+  /* The headline (V4 stage 3): how often a prescription held, as a ring, then the two forecast
+     records as counts. Still exactly one card: #an_pred holds three, and the suite counts them. */
+  const pct = T.n ? Math.round(T.held / T.n * 100) : null, C = 251.3;
+  const cell = function(k, n, lab){ return '<div class="hub-stat"><b>'+(n ? k+'<span class="pr-of">/'+n+'</span>' : '\u2014')+'</b><span>'+lab+'</span></div>'; };
   let h = '<div class="card"><div class="k">Prediction record</div>'+
-    '<p class="small">How often the engine\u2019s calls came true. Sessions reshaped by a deload, a reset, the day\u2019s call, HOME, a coach plan or a swap are set aside as interrupted, not counted as misses.</p>';
-  const T = R.topset;
+    '<div class="pr-top"><div class="pr-ring"><svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">'+
+      '<circle cx="48" cy="48" r="40" fill="none" stroke="var(--panel2)" stroke-width="8"></circle>'+
+      (pct !== null ? '<circle cx="48" cy="48" r="40" fill="none" stroke="var(--amber)" stroke-width="8" stroke-linecap="round" '+
+        'stroke-dasharray="'+(Math.round(pct / 100 * C * 10) / 10)+' '+C+'" transform="rotate(-90 48 48)"></circle>' : '')+
+      '</svg><b>'+(pct !== null ? pct+'%' : '\u2014')+'</b></div>'+
+      '<div style="min-width:0"><b class="pr-h">Calls that held</b><p class="small" style="margin-top:4px">'+
+        (T.n ? T.held+' of '+T.n+' top sets'+(R8 && R8.topset.n ? '. Last 8 weeks '+predPct(R8.topset.held, R8.topset.n) : '')+'.' : 'Nothing to score yet.')+
+      '</p></div></div>'+
+    '<div class="hub-stats" style="margin-top:12px">'+cell(E0.hits, E0.n, 'e1RM ranges held')+cell(B0.hits, B0.n, 'weigh-in weeks \u00b1'+PRED_BW_TOL+' lb')+'</div>'+
+    '<p class="small" style="margin-top:12px;color:var(--muted)">How often the engine\u2019s calls came true. Sessions reshaped by a deload, a reset, the day\u2019s call, HOME, a coach plan or a swap are set aside as interrupted, not counted as misses.</p>';
   h += '<div class="db-row" style="margin-top:12px"><span class="db-k">Prescriptions</span><span class="small">'+
     (T.n ? '<b>'+predPct(T.held, T.n)+'</b> held \u2014 you lifted the prescribed weight for the bottom of the range on '+T.held+' of '+T.n+' top sets'+
            (R8 && R8.topset.n ? ' ('+predPct(R8.topset.held, R8.topset.n)+' in the last 8 weeks)' : '')+
@@ -15440,10 +15607,20 @@ function expChipHTML(){
   if(!x || !T) return '';
   const ses = expSessions(x), clean = ses.filter(function(z){ return z.state === 'clean'; }).length;
   const ask = ses.filter(function(z){ return z.state === 'unanswered'; }).length;
-  return '<div class="card" style="cursor:pointer" onclick="showReviewTab(\'ops\')"><p class="small"><span class="pill" style="color:var(--violet);margin:0 6px 0 0">Experiment</span>'+
-    esc(T.label)+(x.lift ? ' \u00b7 '+esc(x.lift) : '')+' \u00b7 '+clean+' of '+x.requiredSessions+' sessions'+
-    (ask ? ' \u00b7 <span style="color:var(--warn)">'+ask+' to answer</span>' : '')+'</p>'+
-    '<p class="small" style="color:var(--muted);margin-top:4px">'+esc(T.change(x))+'</p></div>';
+  return '<button class="cc-exp" onclick="showReviewTab(\'ops\')">'+
+    '<span class="cc-glyph" style="color:'+AGENTS[T.owner].col+'">'+AGENTS[T.owner].name.charAt(0)+'</span>'+
+    '<span class="cc-exp-b"><span class="cc-exp-k">Experiment</span>'+
+      '<span class="cc-exp-t">'+esc(T.label)+(x.lift ? ' \u00b7 '+esc(x.lift) : '')+'</span>'+
+      '<span class="cc-exp-s">'+clean+' of '+x.requiredSessions+' sessions'+
+        (ask ? ' \u00b7 <span style="color:var(--warn)">'+ask+' to answer</span>' : '')+'</span>'+
+      '<span class="cc-exp-s">'+esc(T.change(x))+'</span></span>'+
+    expProgHTML(clean, x.requiredSessions, '')+'</button>';
+}
+/* One segment per required session, filled for each clean one, with the running effect beside it. */
+function expProgHTML(done, need, eff){
+  let h = '<span class="exp-prog" role="img" aria-label="'+done+' of '+need+' sessions">';
+  for(let i = 0; i < need; i++) h += '<i'+(i < done ? ' class="on"' : '')+'></i>';
+  return h+(eff ? '<b class="exp-eff">'+esc(eff)+'</b>' : '')+'</span>';
 }
 const EXP_STATE_TXT = {clean:'counted', excluded:'left out (reshaped)', skipped:'left out (not followed)', unanswered:'needs your answer', unknown:'left out (couldn\u2019t measure)'};
 function expCardHTML(){
@@ -15451,9 +15628,17 @@ function expCardHTML(){
   let h = '';
   if(x && T){
     const ses = expSessions(x), clean = ses.filter(function(z){ return z.state === 'clean'; }).length;
-    h += '<div class="card"><div class="k" style="color:var(--violet)">Experiment running</div>'+
-      '<p style="margin-top:6px"><b>'+esc(T.label)+(x.lift ? ' \u2014 '+esc(x.lift) : '')+'</b></p>'+
-      '<p class="small" style="margin-top:6px">'+esc(T.change(x))+'</p>'+
+    /* The running read so far. It is printed with its sample size and, until the required sessions
+       are in, as "too early to call": a mid-test number is a progress report, not a result. */
+    let r = null; try{ r = clean ? expEvaluate(x) : null; }catch(e){ r = null; }
+    const eff = r ? (r.deltaPct >= 0 ? '+' : '')+r.deltaPct+'%' : '';
+    const call = clean < x.requiredSessions ? 'too early to call' : (r && r.confidence === 'moderate' ? 'a clear '+(r.direction === 'better' ? 'gain' : 'drop') : 'no clear difference');
+    h += '<div class="card exp-card"><div class="k" style="color:var(--violet)">Experiment running</div>'+
+      '<div class="exp-h"><span class="cc-glyph" style="color:'+AGENTS[T.owner].col+'">'+AGENTS[T.owner].name.charAt(0)+'</span>'+
+        '<div style="min-width:0"><b class="exp-t">'+esc(T.label)+(x.lift ? ' \u00b7 '+esc(x.lift) : '')+'</b>'+
+        '<span class="exp-sub">'+esc(T.change(x))+'</span></div></div>'+
+      expProgHTML(clean, x.requiredSessions, eff)+
+      '<p class="small" style="margin-top:6px;color:var(--muted)">vs your own trend \u00b7 '+clean+' of '+x.requiredSessions+' sessions \u00b7 '+call+'</p>'+
       '<p class="small" style="margin-top:6px;color:var(--muted)">Measuring: '+esc(T.measure(x))+', against '+(x.baselineIds||[]).length+' earlier sessions.</p>'+
       '<p class="small" style="margin-top:6px;color:var(--muted)">'+esc(AGENTS[T.owner].name)+'\u2019s hypothesis: '+esc(x.hypothesis||'')+'</p>'+
       '<p class="small" style="margin-top:10px"><b>'+clean+' of '+x.requiredSessions+'</b> clean sessions \u00b7 started '+esc(fmtDate(x.startedAt))+'</p>';
@@ -15666,12 +15851,29 @@ function wpContextLine(){
   const said = wpInputLine(wp);
   return said ? '\n\nHIS NOTES FOR THIS WEEK (Sunday check-in; the schedule is unchanged): '+said+'.' : '';
 }
+/* The week at a glance (V4 stage 3): seven tiles, each the day's plan, or what he tagged it with.
+   Read-only on purpose. The chips below stay the way to tag, because a day can carry two tags
+   (travel and low energy) and a tile that cycled through one at a time could not say that. */
+const WP_DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+// A tile is about 40px wide at 320, so the strip uses short words; the chips below keep the full ones.
+const WP_TAG_SHORT = {busy:'Busy', travel:'Trip', nogym:'No gym', lowenergy:'Low'};
+function wpStripHTML(week, days){
+  return '<div class="wp-strip" aria-hidden="true">'+wpDates(week).map(function(d){
+    const k = scheduledDayFor(d), tags = (days && days[d]) || [];
+    const lab = tags.length ? tags.slice(0, 2).map(function(t){ return '<span class="wp-k">'+esc(WP_TAG_SHORT[t] || WP_TAGS[t])+'</span>'; }).join('')+
+                              (tags.length > 2 ? '<span class="wp-k">+'+(tags.length - 2)+'</span>' : '')
+                            : '<span class="wp-k">'+esc(k === 'REST' ? 'Rest' : k)+'</span>';
+    return '<span class="wp-tile'+(tags.length ? ' on' : '')+(k === 'REST' && !tags.length ? ' rest' : '')+'">'+
+      '<span class="wp-dow">'+WP_DOW[new Date(d+'T12:00:00').getDay()]+'</span>'+lab+'</span>';
+  }).join('')+'</div>';
+}
 function wpCardHTML(){
   const stage = wpStage(), week = wpWeekFor(todayKey());
   if(stage === 'ask'){
     if(wpDraft.week !== week) wpDraft = {week:week, days:{}, text:''};
-    let h = '<div class="dash-sec">Plan the week</div><div class="card"><p class="small">'+esc(fmtDate(week))+' to '+esc(fmtDate(mesoAddDays(week, 6)))+
-      '. Anything coming up? Tap what applies, add a line if you want, and ZULU plans around it. Optional; the schedule itself doesn\u2019t change.</p>';
+    let h = '<div class="dash-sec">Plan the week</div><div class="card wp-card">'+
+      '<div class="wp-head"><b>'+esc(homeRange(week, mesoAddDays(week, 6)))+'</b></div>'+wpStripHTML(week, wpDraft.days)+
+      '<p class="small" style="margin-top:10px">Anything coming up? Tap what applies, add a line if you want, and ZULU plans around it. Optional; the schedule itself doesn\u2019t change.</p>';
     wpDates(week).forEach(function(d){
       const k = scheduledDayFor(d), on = wpDraft.days[d] || [];
       h += '<div class="rd3-group" style="margin-top:10px"><span class="rd3-gl">'+esc(fmtDate(d))+' \u00b7 '+esc(k === 'REST' ? 'Rest' : k)+'</span><div class="rd3-pills">'+
@@ -16234,6 +16436,8 @@ function opsSignature(){
     _agRunning?1:0, _agBriefRunning?1:0, a.autoRun?1:0,
     agActiveChat, agChatTall?1:0, agThinkingFor||'', agChatErr?agChatErr.id:'',
     JSON.stringify(S.experiments||null).length, (S.sessionMeta||[]).length, JSON.stringify(S.weekPlan||null).length, _wpRunning?1:0,
+    // the Hub's spend ring: this month's total (both devices) against the cap
+    (function(){ try{ return spendMonth().toFixed(2)+'/'+spendCap(); }catch(e){ return ''; } })(),
     Math.floor(Date.now()/300000)
   ].join('|');
 }
@@ -18272,7 +18476,7 @@ function notifItems(){
   // Spend at 80% of the monthly cap, and again (a new id) when it is reached.
   try{
     const sp = spendMonth(), cap = spendCap(), mo = todayKey().slice(0, 7);
-    if(sp >= 0.8 * cap){
+    if(sp >= SPEND_WARN_FRAC * cap){
       const at = sp >= cap;
       out.push({id:'spend:'+mo+(at?':cap':':80'), tone:at?'var(--bad)':'var(--warn)',
         title:at ? 'API cap reached' : 'API spend at '+Math.round(sp / cap * 100)+'% of the cap',
@@ -18373,23 +18577,6 @@ function agTimeAgo(iso){
   const h = Math.round(mins/60); if(h < 24) return h+'h ago';
   return Math.round(h/24)+'d ago';
 }
-function agCardHTML(id){
-  const A = AGENTS[id], a = agState();
-  const st = a.status[id]||{};
-  const pend = agPendingFor(id).length;
-  const running = _agRunning;
-  const state = running ? 'analyzing' : (pend ? pend+' pending' : (st.summary?'healthy':'idle'));
-  let h = '<div class="ag-card'+(A.lead?' lead':'')+'" style="border-left-color:'+A.col+'">'+
-    '<div class="ag-top"><span class="ag-dot" style="background:'+(running?'var(--amber)':A.col)+'"></span>'+
-    '<span class="ag-nm" style="color:'+A.col+'">'+A.name+'</span>'+
-    (A.lead?'<span class="ag-tag" style="border-color:'+A.col+';color:'+A.col+'">LEAD</span>':'')+
-    '<span class="ag-st" style="margin-left:auto">'+state+' \u00b7 '+agTimeAgo(st.at)+'</span></div>'+
-    '<p class="ag-role">'+esc(A.role)+'</p>';
-  h += st.summary ? '<p class="ag-sum">'+esc(st.summary)+'</p>'
-                  : '<p class="ag-empty">No cycle run yet.</p>';
-  h += '<div class="ag-acts"><button class="btn ghost sm" onclick="agSelectChat(\''+id+'\')">Chat with '+A.name+'</button></div>';
-  return h+'</div>';
-}
 function agPropHTML(p){
   const A = AGENTS[p.agent]||{name:p.agent, col:'var(--muted)'};
   return '<div class="ag-prop" style="border-left:3px solid '+A.col+'">'+
@@ -18467,6 +18654,124 @@ function agClearChat(id){
   if(id==='zulu'){ S.chat = []; } else { agState().chats[id] = []; }
   save(); renderOps();
 }
+/* ---- the Intelligence Hub (V4 stage 3) ----
+   The four cards became one map and one card: ZULU in the middle, the specialists around it, and
+   the selected agent's report with its chat underneath. Every state shown is read from what
+   happened (status stamps, the log, the queue), never assumed. */
+const HUB_FED_MS = 45 * 60000;
+const HUB_ROLE = {zulu:'Lead', charlie:'Logistics', delta:'Training', echo:'Fuel'};
+const HUB_TOOL_WORDS = {list_lifts:'lift list', get_lift_history:'lift history', get_e1rm_series:'e1RM trend',
+  get_bodyweight:'bodyweight', get_nutrition:'nutrition', get_readiness:'readiness', get_weekly_volume:'weekly volume',
+  get_fuel_planner:'fuel planner', plan_fuel_combos:'meal combos'};
+/* Did this agent's report feed the last cycle? lastRunAt is stamped when the cycle ENDS (its
+   finally), and agIngest() stamps status.at as each reply lands, so a report from that cycle sits
+   minutes before it. 45 minutes covers DELTA's longest tool loop. An agent that failed keeps the
+   previous night's stamp, a day older, and its line stays dark. */
+function hubFed(id){
+  const a = agState(), st = (a.status || {})[id] || {};
+  const end = Date.parse(a.lastRunAt || ''), at = Date.parse(st.at || '');
+  if(!isFinite(end) || !isFinite(at)) return false;
+  return at <= end + 60000 && end - at <= HUB_FED_MS;
+}
+function hubWhen(iso){
+  const t = Date.parse(iso || ''); if(!isFinite(t)) return '';
+  const d = new Date(t), k = dateKeyOf(d);
+  if(k === todayKey()) return 'at '+homeClock(iso);
+  if(k === mesoAddDays(todayKey(), -1)) return (d.getHours() >= 17 ? 'last night, ' : 'yesterday, ')+homeClock(iso);
+  return agTimeAgo(iso);
+}
+function hubNames(ids){
+  const n = ids.map(function(id){ return AGENTS[id].name; });
+  return n.length > 1 ? n.slice(0, -1).join(', ')+' and '+n[n.length - 1] : n.join('');
+}
+function hubStatus(){
+  const a = agState();
+  if(_agRunning) return {txt:'Cycle running…', tone:'run'};
+  if(!a.lastRunAt) return {txt:'No cycle yet', tone:'idle'};
+  const missed = AG_ORDER.filter(function(id){ return agStripState(id).tone === 'bad'; });
+  if(missed.length) return {txt:hubNames(missed)+' missed the last cycle', tone:'bad'};
+  const all = ['zulu'].concat(AG_ORDER);
+  const fed = all.filter(hubFed);
+  if(fed.length === all.length) return {txt:'All four reported '+hubWhen(a.lastRunAt), tone:'ok'};
+  return {txt:'Last cycle '+hubWhen(a.lastRunAt)+' · '+fed.length+' of 4 reported', tone:'warn'};
+}
+/* A node has about 80px, so its line is the short form of the Today strip's. */
+function hubShort(txt){
+  return String(txt || '').replace(/^reported /, '').replace('missed last night', 'missed')
+    .replace('no report yet', 'no report');
+}
+function hubNodeHTML(id, sel){
+  const A = AGENTS[id], s = agStripState(id), tone = ({warn:1, bad:1, run:1})[s.tone] ? ' '+s.tone : '';
+  return '<button class="hub-node hub-p-'+id+(A.lead ? ' lead' : '')+(id === sel ? ' on' : '')+'" style="--c:'+A.col+'" '+
+    'onclick="agSelectChat(\''+id+'\')" aria-pressed="'+(id === sel)+'" aria-label="'+A.name+', '+esc(s.txt)+'">'+
+    '<span class="hub-g">'+A.name.charAt(0)+'</span><span class="hub-n">'+A.name+'</span>'+
+    '<span class="hub-s'+tone+'">'+esc(hubShort(s.txt))+'</span></button>';
+}
+function hubMapHTML(sel){
+  const P = {delta:[180.5, 41], echo:[73.1, 227], charlie:[287.9, 227]};
+  let svg = '<svg viewBox="0 0 361 330" aria-hidden="true"><circle cx="180.5" cy="165" r="124" class="hub-orbit"></circle>';
+  AG_ORDER.forEach(function(id){
+    const fed = hubFed(id);
+    svg += '<line x1="180.5" y1="165" x2="'+P[id][0]+'" y2="'+P[id][1]+'" class="hub-edge'+(fed ? ' fed' : '')+'" data-agent="'+id+'"'+
+      (fed ? ' style="stroke:'+AGENTS[id].col+'"' : '')+'></line>';
+  });
+  return '<div class="hub-map" role="group" aria-label="Agents, and which fed the last cycle">'+svg+'</svg>'+
+    ['zulu'].concat(AG_ORDER).map(function(id){ return hubNodeHTML(id, sel); }).join('')+'</div>'+
+    '<p class="hub-hint">Tap an agent for its report and chat. A lit line fed the last cycle.</p>';
+}
+function hubAgentHTML(id){
+  const A = AGENTS[id], st = (agState().status || {})[id] || {}, s = agStripState(id);
+  const pend = agPendingFor(id).length, tools = Array.isArray(st.consulted) ? st.consulted : [], fed = hubFed(id);
+  const stat = function(v, lab, cls){ return '<div class="hub-stat"><b'+(cls ? ' class="'+cls+'"' : '')+'>'+v+'</b><span>'+lab+'</span></div>'; };
+  return '<section class="hub-agent" id="hubAgent" aria-label="'+A.name+', selected">'+
+    '<div class="hub-agent-h"><span class="cc-glyph" style="color:'+A.col+'">'+A.name.charAt(0)+'</span>'+
+      '<div class="hub-agent-t"><span class="hub-agent-n">'+A.name+' · '+HUB_ROLE[id]+'</span>'+
+      '<span class="hub-agent-w">'+esc(s.txt)+'</span></div>'+
+      '<button class="btn ghost sm" onclick="hubChatFocus()">Chat</button></div>'+
+    '<div class="hub-stats">'+stat(pend, pend === 1 ? 'request waiting' : 'requests waiting', pend ? 'warn' : '')+
+      stat(tools.length, tools.length === 1 ? 'data read' : 'data reads')+stat(fed ? 'Yes' : 'No', 'in the last cycle')+'</div>'+
+    '<p class="ag-role">'+esc(A.role)+'</p>'+
+    (st.summary ? '<p class="ag-sum">'+esc(st.summary)+'</p>' : '<p class="ag-empty">No report yet.</p>')+
+    (tools.length ? '<div class="hub-tools" aria-label="What it read">'+
+      tools.map(function(t){ return '<span>'+esc(HUB_TOOL_WORDS[t] || t)+'</span>'; }).join('')+'</div>' : '')+
+    '</section>';
+}
+function hubChatFocus(){
+  const i = document.getElementById('agChatIn');
+  if(i){ smoothScroll(i, 'center'); try{ i.focus({preventScroll:true}); }catch(e){ i.focus(); } }
+}
+/* The cap input lives in the spend card, which is a fold: open it first (through toggleSub(), so the
+   open state is remembered like a tap), or focusing a hidden input does nothing at all. */
+function hubCapFocus(){
+  const i = document.getElementById('spendCapIn'); if(!i) return;
+  const sub = i.closest('.sub');
+  if(sub && !sub.classList.contains('open')){ const hd = sub.querySelector('.sub-head'); if(hd) toggleSub(hd); }
+  smoothScroll(i, 'center'); try{ i.focus({preventScroll:true}); }catch(e){ i.focus(); }
+}
+/* This month's spend against the cap, both devices (spendMonth()), and where the month is heading.
+   The pace is a straight line from the days so far, and is left out for the first two days of a
+   month, when one night's cycle would read as the whole month's trend. */
+function hubSpendHTML(){
+  let spent = 0; try{ spent = spendMonth(); }catch(e){ spent = 0; }
+  const cap = spendCap(), C = 263.9, frac = Math.max(0, Math.min(1, spent / cap));
+  const now = new Date(), day = now.getDate(), days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const pace = day >= 3 ? spent / day * days : null;
+  const over = spent >= cap, col = over ? 'var(--bad)' : (frac >= SPEND_WARN_FRAC ? 'var(--warn)' : 'var(--amber)');
+  const month = now.toLocaleString('en-US', {month:'long'});
+  return '<section class="hub-spend" aria-label="API spend this month">'+
+    '<div class="hub-ring"><svg width="108" height="108" viewBox="0 0 108 108" aria-hidden="true">'+
+      '<circle cx="54" cy="54" r="42" fill="none" stroke="var(--panel)" stroke-width="9"></circle>'+
+      '<circle cx="54" cy="54" r="42" fill="none" stroke="'+col+'" stroke-width="9" stroke-linecap="round" '+
+        'stroke-dasharray="'+(Math.round(frac * C * 10) / 10)+' '+C+'" class="hub-spend-arc"></circle>'+
+      '<circle cx="54" cy="54" r="42" fill="none" stroke="var(--warn)" stroke-width="13" stroke-dasharray="1.5 '+C+'" '+
+        'stroke-dashoffset="-'+(Math.round(SPEND_WARN_FRAC * C * 10) / 10)+'"></circle></svg>'+
+      '<div class="hub-ring-v"><b>$'+spent.toFixed(2)+'</b><span>of $'+cap+'</span></div></div>'+
+    '<div class="hub-spend-b"><b>'+month+' · both devices</b>'+
+      '<p>'+(over ? 'Cap reached. Automatic runs are paused until next month, and anything you start asks first.'
+                  : (pace !== null ? 'On pace for about $'+pace.toFixed(2)+'. ' : '')+
+                    'At the cap, automatic runs pause and say so; chat asks first.')+'</p>'+
+      '<button class="btn ghost sm" onclick="hubCapFocus()">Set cap</button></div></section>';
+}
 function renderOps(){
   const el = document.getElementById('ops'); if(!el) return;
   // Capture chat scroll BEFORE the repaint. Previously this function unconditionally slammed
@@ -18483,8 +18788,12 @@ function renderOps(){
   const msgCountBefore = agSeen[agActiveChat];
   agSweepExpired();
   const pend = agPending();
-  let h = '<h2>Hub</h2>';
-  h += '<div class="ag-bar">'+
+  const hs = hubStatus();
+  let h = '<div class="hub-head"><span class="cc-eyebrow">Intelligence</span><h2 class="hub-title">Hub</h2>'+
+    '<span class="hub-status '+hs.tone+'"><i></i>'+esc(hs.txt)+'</span></div>';
+  // the map, then the selected agent's report with its chat directly beneath
+  h += hubMapHTML(agActiveChat)+hubAgentHTML(agActiveChat)+agChatHTML();
+  h += '<div class="ag-bar" style="margin-top:16px">'+
     '<button class="btn sm" onclick="agRunAll(true)"'+(_agRunning?' disabled':'')+'>'+(_agRunning?'Running\u2026':'Run cycle now')+'</button>'+
     '<label class="ag-when" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
       '<input type="checkbox" '+(a.autoRun?'checked':'')+' onchange="agState().autoRun=this.checked;save();renderOps()" style="width:auto"> auto-run daily at 9 PM</label>'+
@@ -18493,10 +18802,6 @@ function renderOps(){
     // day at 9 PM, the brief is written fresh the next morning once WHOOP has reported.
     '<span class="ag-when" style="flex-basis:100%;color:var(--dim)">Cycle runs at 9 PM. '+
       'The brief is written separately each morning, once your WHOOP recovery lands.</span></div>';
-
-  // hierarchy: ZULU on top, the three reports nested beneath
-  h += '<div class="ag-lead">'+agCardHTML('zulu')+
-       '<div class="ag-kids">'+AG_ORDER.map(agCardHTML).join('')+'</div></div>';
 
   const _brief = agBrief(), _letter = agLetter();
   const _briefToday = agBriefToday();
@@ -18535,11 +18840,9 @@ function renderOps(){
       (_agBriefRunning?'ZULU is writing this morning'+String.fromCharCode(8217)+'s brief'+String.fromCharCode(8230)
         :'Not written yet today \u2014 it goes out each morning once your WHOOP recovery lands.')+'</p></div>';
   }
-  if(_letter){
-    h += subSection('Weekly letter \u2014 '+fmtDate(_letter.week),
-      '<div class="card flat"><p class="small" style="white-space:pre-wrap;line-height:1.55">'+
-      esc(_letter.text)+'</p></div>', false);
-  }
+  h += '<h2>Pending proposals'+(pend.length?' ('+pend.length+')':'')+'</h2>';
+  h += pend.length ? pend.map(agPropHTML).join('')
+                   : '<div class="card"><p class="ag-empty">Nothing awaiting your approval.</p></div>';
 
   try{ const _xh = expCardHTML(); if(_xh) h += '<h2>Experiments</h2>'+_xh; }catch(e){ console.warn('experiments card failed', e); }
   try{
@@ -18548,25 +18851,29 @@ function renderOps(){
       (_wp.reply.days||[]).map(function(d){ return '<div class="db-row"><span class="db-k">'+esc(fmtDate(d.date))+'</span><span class="small">'+esc(d.note)+'</span></div>'; }).join('')+
       '<p class="small" style="color:var(--dim);margin-top:6px">You said: '+esc(wpInputLine(_wp) || 'nothing in particular')+'</p></div>';
   }catch(e){ console.warn('week plan card failed', e); }
-  h += '<h2>Pending proposals'+(pend.length?' ('+pend.length+')':'')+'</h2>';
-  h += pend.length ? pend.map(agPropHTML).join('')
-                   : '<div class="card"><p class="ag-empty">Nothing awaiting your approval.</p></div>';
 
-  h += '<h2>Agent chat</h2>'+agChatHTML();
-
-  h += '<h2>Activity log</h2><div class="card"><div class="ag-log">';
+  // The feed: when, who (the agent's glyph in its colour), what. Today's lines show the time,
+  // older ones the date.
+  h += '<h2>Activity log</h2><div class="ag-log">';
   if(!a.log.length){
     h += '<p class="ag-empty">No activity yet. Run a cycle to get started.</p>';
   } else {
     h += a.log.slice(0,40).map(e=>{
-      const A = AGENTS[e.agent]||{name:e.agent, col:'var(--muted)'};
-      return '<div class="ag-le"><span class="ag-dot" style="background:'+A.col+';margin-top:6px"></span>'+
-        '<div class="ag-le-b"><div class="ag-le-h" style="color:'+A.col+'">'+A.name+' \u00b7 '+
-        new Date(e.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</div>'+
-        '<div class="ag-le-t">'+esc(e.text)+'</div></div></div>';
+      const A = AGENTS[e.agent]||{name:String(e.agent||'?').toUpperCase(), col:'var(--muted)'};
+      const d = new Date(e.at), today = isFinite(d) && dateKeyOf(d) === todayKey();
+      const when = !isFinite(d) ? '' : today ? homeClock(e.at) : d.toLocaleString([], {month:'short', day:'numeric'});
+      return '<div class="hub-act"><span class="hub-act-t">'+esc(when)+'</span>'+
+        '<span class="cc-glyph" style="color:'+A.col+'" title="'+esc(A.name)+'" aria-label="'+esc(A.name)+'">'+esc(A.name.charAt(0))+'</span>'+
+        '<span class="hub-act-x">'+esc(e.text)+'</span></div>';
     }).join('');
   }
-  h += '</div>'+(a.log.length?'<div style="margin-top:8px"><button class="btn ghost sm" onclick="if(confirm(\'Clear the activity log? Proposals and memory are kept.\')){agState().log=[];save();renderOps();}">Clear log</button></div>':'')+'</div>';
+  h += '</div>'+(a.log.length?'<div style="margin-top:8px"><button class="btn ghost sm" onclick="if(confirm(\'Clear the activity log? Proposals and memory are kept.\')){agState().log=[];save();renderOps();}">Clear log</button></div>':'');
+  if(_letter){
+    h += subSection('Weekly letter \u2014 '+fmtDate(_letter.week),
+      '<div class="card flat"><p class="small" style="white-space:pre-wrap;line-height:1.55">'+
+      esc(_letter.text)+'</p></div>', false);
+  }
+  try{ h += hubSpendHTML(); }catch(e){}
   try{ h += aiUsageCardHTML(); }catch(e){}
 
   el.innerHTML = h;
