@@ -10321,12 +10321,15 @@ setTimeout(async () => {
     const s0set = ev('live.exercises[0].sets[0]');
     ok('dock: typed first, tagged second, and the set logs exactly what was typed',
        s0set && s0set.w === 140 && s0set.r === 9 && s0set.ef === 35 && s0set.e === 'grind', JSON.stringify(s0set));
-    ok('dock: a logged set leaves the next one clean, not pre-filled with the last reps', val('dockR') === '', val('dockR'));
+    // V4 stage 4 (his choice, 2026-10-04): the next set starts at the call's AIM, not empty. What
+    // must still never happen is a typed number riding along to a set or lift it was not typed for.
+    ok('dock: a logged set leaves the next one at the call’s aim, not at what was typed',
+       val('dockR') === String(ev('intraAdvice(live.exercises[0]).aim')) && ev('intraAdvice(live.exercises[0]).tag') === 'Hold', val('dockR'));
     ev("document.getElementById('dockR').value = '7';");
     ev('focusLiveEx(1);');
-    ok('dock: moving to another lift does not carry the reps across', val('dockR') === '', val('dockR'));
+    ok('dock: moving to another lift does not carry the reps across; it starts at its own aim', val('dockR') === '8', val('dockR'));
     ev('focusLiveEx(0);');
-    ok('dock: nor back again', val('dockR') === '', val('dockR'));
+    ok('dock: nor back again', val('dockR') === String(ev('intraAdvice(live.exercises[0]).aim')) && val('dockR') !== '7', val('dockR'));
     ev('editLiveSet(0, 0);');
     ev("document.getElementById('esW').value = '145';");
     ev("liveEditEff(0, 0, 'easy');");
@@ -11481,6 +11484,241 @@ setTimeout(async () => {
   } finally {
     ev('if(window.__s3fSaved){ S = JSON.parse(window.__s3fSaved); delete window.__s3fSaved; }');
     ev('try{ if(window.__s3fPref === null) localStorage.removeItem(UI_PREF_KEY); else localStorage.setItem(UI_PREF_KEY, window.__s3fPref); }catch(e){} delete window.__s3fPref; subOpen = {};');
+  }
+
+  console.log('=== V4 STAGE 4: HIS GEAR AND THE PLATES ===');
+  try {
+    // --- what each lift is loaded with ---
+    const kinds = ev("['Barbell Bench Press','Smith Machine Bench Press','Trap Bar Deadlift','Barbell Hip Thrust','Leg Press','Plate-Loaded Lat Pulldown','Hip Thrust Machine'," +
+      "'Reverse EZ Bar Curl','Incline Dumbbell Press','Lat Pulldown','Cable Row','Machine Leg Curl','Hammer Curl'].map(function(n){ var g = liftLoad(n); return g.kind + (g.bar !== undefined ? g.bar : ''); }).join()");
+    ok('gear: bar lifts on a 45 bar (Smith and trap included), plate machines on none, EZ fixed, dumbbells, the rest left alone',
+       kinds === 'bar45,bar45,bar45,bar45,plates0,plates0,plates0,ez,db,other,other,other,other', kinds);
+
+    // --- every weight from 5 to 500: loadable exactly as the plates say, or the nearest either side ---
+    const sweep = ev("(function(){ var bad = []; ['Barbell Bench Press', 'Leg Press'].forEach(function(n){ var bar = gearBar(n);" +
+      " for(var x = 5; x <= 500; x += 2.5){ var ok = gearLoadable(n, x), pc = plateCalc(x, bar);" +
+      "  if(ok){ var sum = bar + 2 * pc.plates.reduce(function(a, b){ return a + b; }, 0); if(!pc.exact || Math.abs(sum - x) > 1e-9) bad.push(n+':'+x+' sums '+sum); }" +
+      "  else { var nr = gearNear(n, x); if(x >= bar && !(nr.lo < x && x < nr.hi && gearLoadable(n, nr.lo) && gearLoadable(n, nr.hi) && nr.hi - nr.lo === 5)) bad.push(n+':'+x+' near '+JSON.stringify(nr)); } } });" +
+      " for(var d = 2.5; d <= 140; d += 2.5){ var okd = gearLoadable('Incline Dumbbell Press', d); var want = d <= 120 && d % 5 === 0; if(okd !== want) bad.push('db:'+d); }" +
+      " return bad; })()");
+    ok('plates: every load 5-500 either sums exactly to his plates on the right bar, or names the nearest on each side', sweep.length === 0, JSON.stringify(sweep.slice(0, 5)));
+    ok('plates: a bench at 160 is 45 + 10 + 2.5 a side', ev("gearLine('Barbell Bench Press', 160)") === '45 + 10 + 2.5 a side', ev("gearLine('Barbell Bench Press', 160)"));
+    ok('plates: a Smith bench gets plates too, which it never did', ev("gearLine('Smith Machine Bench Press', 135)") === '45 a side');
+    ok('plates: a leg press is plates only, with no bar', ev("gearLine('Leg Press', 270)") === '45 + 45 + 45 a side', ev("gearLine('Leg Press', 270)"));
+    ok('plates: a weight his plates cannot make is said, with both neighbours, never quietly changed',
+       ev("gearLine('Barbell Bench Press', 162.5)") === '162.5 lb isn’t loadable with your plates — nearest 160 or 165', ev("gearLine('Barbell Bench Press', 162.5)"));
+    ok('plates: a dumbbell past his rack says the heaviest he has', /nearest 120$/.test(ev("gearLine('Incline Dumbbell Press', 125)")), ev("gearLine('Incline Dumbbell Press', 125)"));
+    ok('plates: a fixed EZ bar is named as fixed, with no plate math', ev("gearLine('Reverse EZ Bar Curl', 60)") === 'Fixed EZ bar');
+    ok('plates: the swap to the back-off is said the way you strip a bar',
+       ev("plateChange('Barbell Bench Press', 160, 145)") === 'pull the 10 and the 2.5, add a 5 each side', ev("plateChange('Barbell Bench Press', 160, 145)"));
+    ok('plates: and going up is just what to add', ev("plateChange('Barbell Back Squat', 135, 185)") === 'add a 25 each side' &&
+       ev("plateChange('Barbell Back Squat', 225, 315)") === 'add a 45 each side');
+    ok('plates: nothing to say for a machine stack, or the same weight', ev("plateChange('Lat Pulldown', 140, 130)") === '' && ev("plateChange('Barbell Bench Press', 160, 160)") === '');
+  } catch (e) {
+    ok('V4 stage 4 gear section', false, e.stack);
+  }
+
+  console.log('=== V4 STAGE 4: THE CALL FOR EACH SET ===');
+  try {
+    w.__s4cSaved = ev('JSON.stringify(S)');
+    const ia = (o) => ev('intraAdvice(' + JSON.stringify(Object.assign({name: 'Zz Aim Curl', lo: 8, hi: 12, targetW: 40, recDetail: '', sets: []}, o)) + ')');
+    // --- the aim for each branch ---
+    ok('aim: a first set with no history starts at the floor', ia({}).aim === 8);
+    ev("S.logs.push(stampRec({id: 's4aim', date: mesoAddDays(todayKey(), -7), day: 'D2', entries: [{exercise: 'Zz Aim Row', sets: [{w: 100, r: 10}, {w: 100, r: 9}]}]}));");
+    ok('aim: the same weight as last time asks for one more rep', ia({name: 'Zz Aim Row', targetW: 100}).aim === 11);
+    ok('aim: a new, heavier weight builds from the floor', ia({name: 'Zz Aim Row', targetW: 105}).aim === 8);
+    ok('aim: a lighter day keeps the reps he already owns', ia({name: 'Zz Aim Row', targetW: 95}).aim === 10);
+    ev("S.logs.push(stampRec({id: 's4aim2', date: mesoAddDays(todayKey(), -3), day: 'D2', entries: [{exercise: 'Zz Aim Row', sets: [{w: 100, r: 12}]}]}));");
+    ok('aim: and never past the top of the range', ia({name: 'Zz Aim Row', targetW: 100}).aim === 12);
+    ok('aim: a set that fell short goes back to the floor', ia({sets: [{w: 40, r: 6, e: 'solid'}]}).aim === 8 && ia({sets: [{w: 40, r: 6, e: 'solid'}]}).tag === 'Back off');
+    ok('aim: a grind is matched, not chased', ia({sets: [{w: 40, r: 9, e: 'grind'}]}).aim === 9);
+    ok('aim: a solid set asks for one more', ia({sets: [{w: 40, r: 9, e: 'solid'}]}).aim === 10);
+    ok('aim: one more, but never past the top', ia({sets: [{w: 40, r: 12, e: 'solid'}]}).aim === 12);
+    ok('aim: easy at the top holds the top', ia({sets: [{w: 40, r: 12, e: 'easy'}]}).aim === 12 && ia({sets: [{w: 40, r: 12, e: 'easy'}]}).tag === 'Strong');
+    ok('aim: two easy sets at the top ask for one past it', ia({sets: [{w: 40, r: 12, ef: 85}, {w: 40, r: 12, ef: 90}]}).aim === 13);
+    const bo = ev("intraAdvice({name: 'Zz Aim Bench', lo: 3, hi: 6, targetW: 160, backoffW: 145, repMode: 'str', recDetail: '', sets: [{w: 160, r: 5, e: 'solid'}, {w: 160, r: 4, e: 'solid'}]})");
+    ok('aim: back-off sets keep the top sets’ reps, at the lighter weight', bo.tag === 'Backoff' && bo.w === 145 && bo.aim === 4, JSON.stringify(bo));
+    // --- the reason, in numbers ---
+    ok('reason: a slider effort is quoted as a number', ia({sets: [{w: 40, r: 9, e: 'grind', ef: 35}]}).why === 'Set 1: 40 × 9, effort 35. Hold 40, aim for 9.', ia({sets: [{w: 40, r: 9, e: 'grind', ef: 35}]}).why);
+    ok('reason: a preset alone is a word, never a made-up number', ia({sets: [{w: 40, r: 9, e: 'grind'}]}).why === 'Set 1: 40 × 9, grind. Hold 40, aim for 9.');
+    ok('reason: a drop says so', /^Set 1: 40 × 6, fail\. Drop to 35, aim for 8\.$/.test(ia({sets: [{w: 40, r: 6, e: 'fail'}]}).why), ia({sets: [{w: 40, r: 6, e: 'fail'}]}).why);
+    ok('reason: none before the first set', ia({}).why === '');
+
+    // --- the bounds, over generated sequences on every kind of lift ---
+    const bounds = ev("(function(){ var bad = [], n = 0;" +
+      " var lifts = [{name:'Zz B Bench', repMode:'str', lo:3, hi:6, targetW:160, backoffW:145}, {name:'Zz B Curl', repMode:'hyp', lo:8, hi:12, targetW:40}," +
+      "  {name:'Zz B Home', repMode:'hyp', lo:8, hi:12, targetW:30, _homeEquipList:[2,5,8,12,15,20,30,40,50]}, {name:'Zz B Form', repMode:'hyp', lo:12, hi:20, targetW:50}];" +
+      " var effs = [{e:'easy'}, {e:'solid'}, {e:'grind'}, {e:'fail'}, {}, {ef:90}, {ef:20}];" +
+      " lifts.forEach(function(L){ [0, -5, 5].forEach(function(dw){ for(var r = L.lo - 2; r <= L.hi + 2; r++){ effs.forEach(function(ef1){ effs.forEach(function(ef2){" +
+      "   var w1 = L.targetW + dw, s1 = Object.assign({w:w1, r:r}, ef1), s2 = Object.assign({w:w1, r:Math.max(1, r - 1)}, ef2);" +
+      "   [[s1], [s1, s2]].forEach(function(sets){ n++; var a = intraAdvice(Object.assign({recDetail:''}, L, {sets:sets}));" +
+      "     var cap = Math.max(+L.targetW, +sets[sets.length-1].w);" +
+      "     if(!(+a.w <= cap)) bad.push(L.name+' heavier '+JSON.stringify(sets)+' -> '+a.w);" +
+      "     if(!(a.aim >= L.lo && a.aim <= L.hi + 1)) bad.push(L.name+' aim '+a.aim+' '+JSON.stringify(sets)); }); }); }); } }); });" +
+      " return {n:n, bad:bad}; })()");
+    ok('bounds: across ' + bounds.n + ' generated sequences the call is never heavier than the plan or his own last set, and the aim stays in the range (one past the top at most)',
+       bounds.n > 1000 && bounds.bad.length === 0, JSON.stringify(bounds.bad.slice(0, 4)));
+
+    // --- the dock: pre-filled, steppers, and a Log button that says what it will log ---
+    ev("MODE = 'live'; liveEditSet = null; painOpenFor = null; liveDockEff = ''; liveDockLever = null; stopRest();");
+    ev("live = {date: todayKey(), day: 'D1', startedAt: Date.now() - 10 * 60000, trimmed: false, exercises: [" +
+       "{name: 'Zz Dock Curl', sets: [], done: false, planned: 3, lo: 8, hi: 12, targetW: 40, repMode: 'hyp'}," +
+       "{name: 'Smith Machine Zz Press', sets: [], done: false, planned: 3, lo: 6, hi: 10, targetW: 135, repMode: 'hyp'}]}; liveActiveIdx = 0; renderLive();");
+    const v = (id) => ev("(document.getElementById('" + id + "')||{}).value");
+    const btn = () => ev("document.getElementById('liveLogBtn').textContent");
+    ok('dock: the reps start at the aim', v('dockR') === '8' && v('dockW') === '40', v('dockW') + ' x ' + v('dockR'));
+    ok('dock: and Log says exactly what it will record', btn() === 'Log 40 × 8', btn());
+    ev("liveStep('dockW', 1, 0); liveStep('dockR', 1, 0); liveStep('dockR', 1, 0);");
+    ok('dock: the steppers move the boxes in place, and the button follows', v('dockW') === '45' && v('dockR') === '10' && btn() === 'Log 45 × 10', btn());
+    ev("liveStep('dockR', -1, 0); for(var k = 0; k < 20; k++) liveStep('dockR', -1, 0);");
+    ok('dock: reps never step below 1', v('dockR') === '1');
+    ev("document.getElementById('dockR').value = '11'; liveLogLabel(); pickEff('easy');");
+    ok('dock: a typed number survives a repaint and beats the pre-fill', v('dockR') === '11' && v('dockW') === '45' && btn() === 'Log 45 × 11', v('dockR') + ' ' + btn());
+    ev('logLiveSet(0);');
+    ok('dock: and Log records exactly what the button said', JSON.stringify(ev('[live.exercises[0].sets[0].w, live.exercises[0].sets[0].r]')) === '[45,11]');
+    // A preset tap stores its anchor (easy = 90) alongside the bucket, so the call quotes the number.
+    ok('dock: the per-set call is shown in numbers', /Set 1: 45 × 11, effort 90\. Hold 45, aim for 12\./.test(ev("document.querySelector('#liveBody .lv-why').textContent")), ev("(document.querySelector('#liveBody .lv-why')||{}).textContent"));
+    ev('focusLiveEx(1);');
+    ok('dock: a plate-loaded lift steps by 5 and shows its plates', (function(){ ev("liveStep('dockW', -1, 1);"); return v('dockW') === '130'; })() &&
+       ev("document.querySelector('#liveBody .lv-gear').textContent") === '45 a side', ev("(document.querySelector('#liveBody .lv-gear')||{}).textContent"));
+  } catch (e) {
+    ok('V4 stage 4 calls section', false, e.stack);
+  } finally {
+    ev('live = null; stopRest();');
+    ev('if(window.__s4cSaved){ S = JSON.parse(window.__s4cSaved); delete window.__s4cSaved; }');
+  }
+
+  console.log('=== V4 STAGE 4: PR WATCH, FINISH TIME, REST, SCREEN ===');
+  try {
+    w.__s4sSaved = ev('JSON.stringify(S)');
+    // --- PR watch ---
+    ev("S.logs.push(stampRec({id: 's4pr', date: mesoAddDays(todayKey(), -5), day: 'D1', entries: [{exercise: 'Zz PR Bench', sets: [{w: 160, r: 6}, {w: 160, r: 5}]}]}));");
+    const pw = (o) => ev('livePrWatch(' + JSON.stringify(Object.assign({name: 'Zz PR Bench', lo: 3, hi: 6, targetW: 160, sets: []}, o)) + ', null)');
+    const p1 = pw({});
+    ok('PR watch: the fewest reps at tonight’s weight that beat his best (160 × 6 = e1RM 192)', p1 && p1.r === 7 && p1.best === 192 && /^160 × 7 tonight beats your best \(e1RM 197, now 192\)$/.test(p1.txt), JSON.stringify(p1));
+    ok('PR watch: only when it is within one rep of the top of the range', pw({hi: 5}) === null);
+    ok('PR watch: a heavier call needs fewer', pw({targetW: 165}).r === 5);
+    ok('PR watch: never on a 1RM test or a deload', pw({_1rm: true}) === null && pw({_deload: true}) === null);
+
+    // --- the finish time ---
+    ev("live = {date: todayKey(), day: 'D4', startedAt: Date.now(), exercises: [" +
+       "{name: 'Zz Fin A', sets: [{w: 50, r: 10}], done: false, planned: 3, lo: 8, hi: 12, targetW: 50, repMode: 'hyp'}," +
+       "{name: 'Zz Fin B', sets: [], done: false, planned: 3, lo: 8, hi: 12, targetW: 30, repMode: 'hyp'}," +
+       "{name: 'Zz Fin C', sets: [{w: 1, r: 1}], done: true, planned: 3, lo: 8, hi: 12, targetW: 30, repMode: 'hyp'}]};");
+    ev("S.logs = S.logs.filter(function(l){ return l.day !== 'D4'; });");
+    const fe1 = ev('liveFinishEstimate(1000000)');
+    const restEach = ev("smartRestSecs(live.exercises[0]).secs") + 40;
+    ok('finish: with too few timed sessions it is the rest arithmetic, never a guess dressed as history',
+       fe1.from === 'rest' && fe1.sets === 5 && fe1.secs === Math.round(2 * restEach + 3 * (ev("smartRestSecs(live.exercises[1]).secs") + 40)), JSON.stringify(fe1));
+    // Four D4 sessions, each gap different, and two 20-minute breaks that must not count: with them the
+    // median would move from 160 to 165, so a fixture with one break (where it would not) proves nothing.
+    const gapsets = [[0, 140, 285, 1485], [0, 150, 305, 1505], [0, 160, 325], [0, 170, 345]];
+    gapsets.forEach(function(g, k){
+      const t0 = 1700000000000 + k * 86400000;
+      ev("S.logs.push(stampRec({id: 's4fin" + k + "', date: mesoAddDays(todayKey(), " + (-30 + k * 7) + "), day: 'D4', entries: [{exercise: 'Zz Fin A', sets: " +
+         JSON.stringify(g.map(function(s){ return {w: 50, r: 10, ts: t0 + s * 1000}; })) + "}]}));");
+      if(k === 2) ok('finish: three timed sessions are still not enough to call it his', ev('liveFinishEstimate(1000000)').from === 'rest');
+    });
+    const fe2 = ev('liveFinishEstimate(1000000)');
+    // gaps 140,145 | 150,155 | 160,165 | 170,175, the two 1200 s breaks dropped: median 160
+    ok('finish: with four timed D4 sessions it is his own median gap between sets', fe2.from === 'history' && fe2.secs === 5 * 160, JSON.stringify(fe2));
+    ok('finish: the time is in the session bar', (function(){ ev('liveActiveIdx = 0; renderLive();'); return /^finish about \d/.test(ev("document.getElementById('sbFin').textContent")); })(),
+       ev("(document.getElementById('sbFin')||{}).textContent"));
+
+    // --- rest knows the day ---
+    ev("live.exercises[0].sets = [];");
+    const r0 = ev('smartRestSecs(live.exercises[0])');
+    ev("live.call = {call: 'recover', why: []}; live.callOff = false;");
+    const r1 = ev('smartRestSecs(live.exercises[0])');
+    ok('rest: a recover day adds 20 s, and says why', r1.secs === r0.secs + 20 && /recover day/.test(r1.why), JSON.stringify([r0, r1]));
+    ev("window.__s4rd = todayReadiness; todayReadiness = function(){ return {tier: 'low'}; };");
+    const r2 = ev('smartRestSecs(live.exercises[0])');
+    ev("todayReadiness = window.__s4rd; delete window.__s4rd; live.call = null;");
+    ok('rest: a low check-in adds 15 more', r2.secs === r1.secs + 15 && /low readiness/.test(r2.why), JSON.stringify(r2));
+
+    // --- the rest card previews the next set, with the plate swap ---
+    ev("live = {date: todayKey(), day: 'D1', startedAt: Date.now(), exercises: [{name: 'Barbell Zz Bench', sets: [{w: 160, r: 5, e: 'solid'}, {w: 160, r: 4, e: 'solid'}], done: false, planned: 4, lo: 3, hi: 6, targetW: 160, backoffW: 145, repMode: 'str'}]}; liveActiveIdx = 0;");
+    ok('rest: the next set is previewed, with the plates to change while resting',
+       ev('restPreviewText(0)') === 'Then 145 × 4 back-off · pull the 10 and the 2.5, add a 5 each side', ev('restPreviewText(0)'));
+    ev('renderLive(); startRest(90, 0);');
+    ok('rest: and the timer shows it', ev("(document.getElementById('rtNext')||{}).textContent") === ev('restPreviewText(0)'));
+    ev('stopRest();');
+
+    // --- keep the screen on: a remembered switch, honest where the browser cannot ---
+    ev("window.__s4pref = localStorage.getItem(UI_PREF_KEY); uiPrefSet('live.wake', false);");
+    ok('screen: with no Wake Lock API the switch says so instead of pretending', /not supported here/.test(ev('liveWakeHTML()')));
+    ev("window.__s4wl = {req: 0, rel: 0}; navigator.wakeLock = {request: async function(){ window.__s4wl.req++; return {release: async function(){ window.__s4wl.rel++; }, addEventListener: function(){}}; }};");
+    ok('screen: off by default', /Keep screen on/.test(ev('liveWakeHTML()')));
+    ev('liveWakeToggle();');
+    await new Promise(r => setTimeout(r, 30));
+    ok('screen: turning it on takes the lock, remembered on this device', ev('window.__s4wl.req') === 1 && ev("uiPref()['live.wake']") === true && /Screen stays on/.test(ev('liveWakeHTML()')));
+    ok('screen: a choice about this phone, never synced', ev("JSON.stringify(S).indexOf('live.wake')") === -1);
+    ev('live = null; renderLive();');
+    await new Promise(r => setTimeout(r, 30));
+    ok('screen: and lets it go when the session ends', ev('window.__s4wl.rel') === 1);
+    ev("delete navigator.wakeLock; try{ if(window.__s4pref === null) localStorage.removeItem(UI_PREF_KEY); else localStorage.setItem(UI_PREF_KEY, window.__s4pref); }catch(e){} delete window.__s4pref; delete window.__s4wl;");
+  } catch (e) {
+    ok('V4 stage 4 session section', false, e.stack);
+  } finally {
+    ev('live = null; stopRest();');
+    ev('if(window.__s4sSaved){ S = JSON.parse(window.__s4sSaved); delete window.__s4sSaved; }');
+  }
+
+  console.log('=== V4 STAGE 4: QUICK ADJUSTMENTS ===');
+  try {
+    w.__s4qSaved = ev('JSON.stringify(S)');
+    ev("S.pain = []; window.__s4al = window.alert; window.__s4alN = 0; window.alert = function(){ window.__s4alN++; };");
+    [-15, -10, -5].forEach(function(o, k){
+      ev("S.logs.push(stampRec({id: 's4q" + k + "', date: mesoAddDays(todayKey(), " + o + "), day: 'D1', entries: [{exercise: 'Zz Quick Press', sets: [{w: 150, r: " + (8 + k) + "}, {w: 150, r: 8}]}]}));");
+    });
+    ev("MODE = 'live'; liveEditSet = null; painOpenFor = null; liveDockEff = ''; liveDockLever = null; stopRest();");
+    ev("live = {date: todayKey(), day: 'D1', startedAt: Date.now(), trimmed: false, exercises: [" +
+       "{name: 'Zz Quick Curl', sets: [{w: 40, r: 10}], done: false, planned: 3, lo: 8, hi: 12, targetW: 40, repMode: 'hyp'}," +
+       "buildOneLiveExercise('Zz Quick Press', null, {})," +
+       "{name: 'Zz Quick Raise', sets: [], done: false, planned: 2, lo: 12, hi: 15, targetW: 20, repMode: 'hyp'}]}; liveActiveIdx = 0; renderLive();");
+    const planned = () => ev('live.exercises.map(function(e){ return e.planned; }).join()');
+    const before = planned();
+    ok('quick: the three chips are under the current lift', ev("document.querySelectorAll('#liveBody .lv-quick .lv-chip').length") === 3 &&
+       ev("document.querySelectorAll('#liveBody .lv-quick .lv-chip')[1].getAttribute('onclick')") === 'openLiveExEdit(0)');
+    ev('liveShortOnTime();');
+    ok('quick: short on time takes a set off each lift not started, never below 2, and leaves the started one alone',
+       planned() === '3,' + (+before.split(',')[1] - 1) + ',2', before + ' -> ' + planned());
+    ok('quick: recorded, and not as the call’s trim (the Readiness tab compares those)', ev("live.quick[0].k === 'short' && live.quick[0].lifts.join() === 'Zz Quick Press'") === true && ev('live.trimmed') === false);
+    ev('liveShortOnTime();');
+    ok('quick: one tap undoes it', planned() === before && ev('live.quick.length') === 0);
+    ev("live.exercises[2].planned = 2; live.exercises[1].planned = 2; liveShortOnTime();");
+    ok('quick: with nothing left to trim it says so and records nothing', ev('window.__s4alN') === 1 && ev('live.quick.length') === 0);
+    ev("live.exercises[1] = buildOneLiveExercise('Zz Quick Press', null, {}); renderLive();");
+
+    // --- something feels off: the pain entry, then the offer, then the switch ---
+    ok('feels off: the recover switch is not offered before anything hurts', ev("document.getElementById('liveBody').innerHTML").indexOf('liveRecoverRest()') < 0);
+    ev('liveFeelsOff(0);');
+    ok('feels off: it opens the pain entry on the current lift', ev('painOpenFor') === 0);
+    ev("painDraftLevel = 2; painSubmit(0);");
+    ok('feels off: once a flag is saved, one tap is offered', ev("document.getElementById('liveBody').innerHTML").indexOf('liveRecoverRest()') >= 0);
+    const curlBefore = ev('JSON.stringify(live.exercises[0])');
+    const normalW = ev('live.exercises[1].targetW');
+    ev('liveRecoverRest();');
+    ok('feels off: a lift with sets logged is untouched', ev('JSON.stringify(live.exercises[0])') === curlBefore);
+    ok('feels off: a compound not started steps down, recorded as call-recover, so his trend leaves it out',
+       ev('mesoIsCompound(\'Zz Quick Press\')') === true && +ev('live.exercises[1].targetW') < +normalW &&
+       ev("live.exercises[1]._decision && live.exercises[1]._decision.code") === 'call-recover', ev('live.exercises[1].targetW') + ' vs ' + normalW);
+    ok('feels off: never lighter than one step under the normal plan', +normalW - +ev('live.exercises[1].targetW') <= ev("incForExercise('Zz Quick Press')"));
+    ok('feels off: recorded once; a second tap does nothing', (function(){ ev('liveRecoverRest();'); return ev("live.quick.filter(function(q){ return q.k === 'off'; }).length") === 1; })());
+
+    // --- the saved session carries what he did, without the undo bookkeeping ---
+    ev("live.exercises[1].sets.push({w: +live.exercises[1].targetW, r: 8, ts: Date.now()}); live.exercises[2].sets.push({w: 20, r: 12, ts: Date.now()}); liveShortOnTime();");
+    ev('endLiveSession(); closeSummary();');
+    const lg = ev('S.logs[S.logs.length - 1]');
+    ok('record: the log keeps the quick adjustments, kind, time and lifts', Array.isArray(lg.quick) && lg.quick.map(q => q.k).join() === 'off' &&
+       lg.quick[0].lifts.indexOf('Zz Quick Press') >= 0 && !('prev' in lg.quick[0]), JSON.stringify(lg.quick));
+    ok('record: sessionMods() reads them', ev('sessionMods(S.logs[S.logs.length - 1]).quick').join() === 'off' &&
+       ev("sessionModLift(sessionMods(S.logs[S.logs.length - 1]), 'Zz Quick Press')") === true);
+  } catch (e) {
+    ok('V4 stage 4 quick section', false, e.stack);
+  } finally {
+    ev('live = null; stopRest(); painOpenFor = null; if(window.__s4al){ window.alert = window.__s4al; delete window.__s4al; }');
+    ev('if(window.__s4qSaved){ S = JSON.parse(window.__s4qSaved); delete window.__s4qSaved; }');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

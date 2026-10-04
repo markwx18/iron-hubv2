@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-04-v4">
+<meta name="ironhub-build" content="2026-10-04-v5">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1582,6 +1582,35 @@
     font-weight:700; font-size:24px;}
   .pr-h{font-family:var(--disp); font-weight:700; font-size:17px; letter-spacing:.04em; text-transform:uppercase;}
   .pr-of{color:var(--dim);}
+
+  /* ===== V4 STAGE 4: LIVE numbers =====
+     Steppers either side of the dock's boxes (44px targets, one-handed), the call in numbers, PR
+     watch, the finish time and screen switch, the rest card's next-set preview, the quick chips. */
+  .lv-stepper{display:flex; align-items:stretch; gap:4px;}
+  .lv-stepper .lv3-in{flex:1; min-width:0; padding-left:4px !important; padding-right:4px !important;}
+  .lv-step{flex:none; width:40px; min-height:44px; border:none; border-radius:var(--r-ctl); background:var(--panel2); color:var(--text);
+    font-family:var(--disp); font-weight:700; font-size:22px; line-height:1; cursor:pointer;}
+  .lv-step:active{background:var(--line2);}
+  /* At 393 the two boxes stay side by side (where his thumb already goes). On a 320-360 screen
+     side by side leaves a box too narrow for "162.5", so weight and reps take a row each. */
+  @media(max-width:360px){ .lv3-inrow{flex-direction:column;} }
+  .lv3-presc.lv-why{background:none; padding:0 13px; margin-top:-4px; font-size:13px; color:var(--muted);}
+  .lv3-presc.lv-prw{display:flex; align-items:center; gap:8px; background:color-mix(in srgb, var(--amber) 12%, transparent);}
+  .lv3-presc.lv-prw svg{color:var(--amber); flex:none;}
+  .lv3-presc.lv-prw b{font-family:var(--disp); font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--amber);}
+  .lv-subbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:-4px 0 10px; font-size:12.5px; color:var(--muted);}
+  .sb-fin:empty{display:none;}
+  .lv-wake{margin-left:auto; border:none; border-radius:999px; padding:6px 12px; min-height:32px; background:var(--panel2);
+    color:var(--muted); font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.05em; text-transform:uppercase; cursor:pointer;}
+  .lv-wake.on{background:color-mix(in srgb, var(--good) 18%, transparent); color:var(--good);}
+  span.lv-wake.off{cursor:default; color:var(--dim); background:none;}
+  .rt-next{margin-top:12px; font-size:13.5px; color:var(--text); line-height:1.45;}
+  .lv-quick{display:flex; flex-wrap:wrap; gap:7px; margin:12px 16px 4px;}
+  .lv-chip{min-height:40px; padding:8px 13px; border:none; border-radius:12px; background:var(--panel2); color:var(--text);
+    font-size:13px; font-weight:600; cursor:pointer;}
+  .lv-chip.on{background:color-mix(in srgb, var(--warn) 18%, transparent); color:var(--warn);}
+  .lv-offer{display:flex; flex-direction:column; gap:6px; margin-top:8px;}
+  .lv-offer .btn{align-self:flex-start;}
 </style>
 
 
@@ -2547,17 +2576,100 @@ function recommend(ex, ready){
 function summ(sets){ return sets.map(function(s){ const b = effBucket(s); return s.w+'×'+s.r+(b?(EFF_MARK[b]||''):''); }).join(', '); }
 
 
-/* ================= PLATE CALCULATOR ================= */
-function plateCalc(total){
-  const BAR = 45;
+/* ================= GEAR AND PLATES (V4 stage 4) =================
+   What he loads at Vanguard, as he gave it on 2026-10-04: the barbell, Smith and trap bar are 45 lb;
+   plate pairs are 2.5, 5, 10, 25, 35 and 45, with no 1.25s; dumbbells run 5-120 in 5s; EZ bars are
+   fixed and pre-loaded; and on the plate-loaded machines (Leg Press, Plate-Loaded Lat Pulldown, Hip
+   Thrust Machine) the weight he logs is the plates alone. The patterns are anchored (\b) because
+   unanchored keywords have mis-matched here before (see the style notes in CLAUDE.md). */
+const GEAR_PLATES = [45, 35, 25, 10, 5, 2.5];
+const GEAR_BAR = 45, GEAR_DB_STEP = 5, GEAR_DB_MAX = 120;
+function liftLoad(nm){
+  const n = String(nm || '');
+  if(/\bez\b|\bez[- ]?bar\b/i.test(n)) return {kind:'ez'};
+  if(/^barbell\b|\bsmith\b|\btrap[- ]?bar\b|\bhex[- ]?bar\b/i.test(n)) return {kind:'bar', bar:GEAR_BAR};
+  if(/\bleg press\b|\bplate[- ]loaded\b|\bhip thrust machine\b/i.test(n)) return {kind:'plates', bar:0};
+  if(/\bdumbbells?\b/i.test(n)) return {kind:'db', step:GEAR_DB_STEP, max:GEAR_DB_MAX};
+  return {kind:'other'};
+}
+/* The bar, when this lift is loaded with plates (0 on a plate machine), else null. */
+function gearBar(nm){ const g = liftLoad(nm); return (g.kind === 'bar' || g.kind === 'plates') ? g.bar : null; }
+function plateCalc(total, bar){
+  const BAR = (bar === undefined || bar === null) ? GEAR_BAR : +bar;
   let per = (total - BAR) / 2;
   if(per < 0) return null;
-  if(per === 0) return {plates:[], txt:'empty bar (45)'};
+  if(per === 0) return {plates:[], txt: BAR ? 'empty bar ('+BAR+')' : 'no plates', exact:true};
   const out = [];
-  [45,35,25,10,5,2.5].forEach(pl=>{ while(per >= pl-0.001){ out.push(pl); per -= pl; } });
-  return {plates:out, txt:out.join(' + ') + (per>0.01 ? ' (+'+per.toFixed(1)+' short)' : '')};
+  GEAR_PLATES.forEach(pl=>{ while(per >= pl-0.001){ out.push(pl); per -= pl; } });
+  return {plates:out, txt:out.join(' + ') + (per>0.01 ? ' (+'+per.toFixed(1)+' short)' : ''), exact: per <= 0.01};
 }
-function isPlateLift(ex){ return /^barbell/i.test(ex); }
+function isPlateLift(ex){ return gearBar(ex) !== null; }
+/* Can this exact weight be put together with his gear? With pairs down to 2.5 lb, a plate load is any
+   bar + a multiple of 5; a dumbbell is a 5-lb step up to 120. Everything else is not modelled and
+   passes. */
+function gearLoadable(nm, w){
+  const g = liftLoad(nm), x = +w;
+  if(!(x > 0)) return true;
+  if(g.kind === 'bar' || g.kind === 'plates') return x >= g.bar && Math.abs(((x - g.bar) / 5) - Math.round((x - g.bar) / 5)) < 1e-9;
+  if(g.kind === 'db') return x <= g.max && Math.abs(x / g.step - Math.round(x / g.step)) < 1e-9;
+  return true;
+}
+/* The nearest loads either side of a weight his gear cannot make. Shown, never applied: rounding a
+   prescription down would trap a lift whose increment his plates cannot load (a 2.5-lb step on a
+   barbell with no 1.25s) in a loop, the engine asking for the same jump every session. */
+function gearNear(nm, w){
+  const g = liftLoad(nm), x = +w;
+  if(g.kind === 'bar' || g.kind === 'plates'){
+    const lo = g.bar + Math.floor((x - g.bar) / 5 + 1e-9) * 5;
+    return {lo:Math.max(g.bar, lo), hi:lo + 5};
+  }
+  if(g.kind === 'db'){
+    const lo = Math.floor(x / g.step + 1e-9) * g.step;
+    return {lo:Math.max(g.step, Math.min(g.max, lo)), hi:Math.min(g.max, lo + g.step)};
+  }
+  return {lo:x, hi:x};
+}
+/* The line under a prescription that tells him how to load it. '' when there is nothing to say. */
+function gearLine(nm, w){
+  const g = liftLoad(nm), x = +w;
+  if(!(x > 0)) return '';
+  if(!gearLoadable(nm, x)){
+    const nr = gearNear(nm, x);
+    return x+' lb isn’t loadable with your '+(g.kind === 'db' ? 'dumbbells' : 'plates')+
+      (nr.lo !== nr.hi ? ' — nearest '+nr.lo+' or '+nr.hi : ' — nearest '+nr.lo);
+  }
+  if(g.kind === 'bar' || g.kind === 'plates'){
+    const pc = plateCalc(x, g.bar);
+    return pc ? (pc.plates.length ? pc.plates.join(' + ')+' a side' : pc.txt) : '';
+  }
+  if(g.kind === 'ez') return 'Fixed EZ bar';
+  return '';
+}
+/* The plate swap from one load to the next, in his words: "pull the 10s and 2.5s, add a 5". Plates
+   are counted per side and reconciled smallest first, the way you strip a bar. '' when there is no
+   change or the lift is not plate-loaded. */
+function plateChange(nm, fromW, toW){
+  const bar = gearBar(nm);
+  if(bar === null || !(+fromW > 0) || !(+toW > 0) || +fromW === +toW) return '';
+  const a = plateCalc(+fromW, bar), b = plateCalc(+toW, bar);
+  if(!a || !b || !a.exact || !b.exact) return '';
+  const cnt = function(list){ const m = {}; list.forEach(function(p){ m[p] = (m[p] || 0) + 1; }); return m; };
+  const ca = cnt(a.plates), cb = cnt(b.plates), off = [], on = [];
+  GEAR_PLATES.slice().reverse().forEach(function(p){
+    const d = (cb[p] || 0) - (ca[p] || 0);
+    for(let k = 0; k < Math.abs(d); k++) (d > 0 ? on : off).push(p);
+  });
+  // "the 10 and the 2.5" / "a 25 and a 5" / "2 × 45": biggest first, a count when a plate repeats.
+  const words = function(list, art){
+    const m = cnt(list), keys = Object.keys(m).map(Number).sort(function(x, y){ return y - x; });
+    const w = keys.map(function(p){ return m[p] > 1 ? m[p]+' × '+p : art+p; });
+    return w.length > 1 ? w.slice(0, -1).join(', ')+' and '+w[w.length - 1] : w[0];
+  };
+  const parts = [];
+  if(off.length) parts.push('pull '+words(off, 'the '));
+  if(on.length) parts.push('add '+words(on, 'a '));
+  return parts.length ? parts.join(', ')+' each side' : '';
+}
 
 /* ================= MUSCLE MAP ================= */
 const EX_MUSCLES = {
@@ -3251,8 +3363,8 @@ function exBlockHTML(i, exObj, tier){
   }
   let plateTxt = '';
   if(isPlateLift(ex) && rec.sets[0] && +rec.sets[0].w > 0){
-    const pc = plateCalc(+rec.sets[0].w);
-    if(pc) plateTxt = '<span class="ex-note mono" style="color:var(--accent)">Per side: '+esc(pc.txt)+' (45 lb bar)</span>';
+    const gl = gearLine(ex, +rec.sets[0].w);
+    if(gl) plateTxt = '<span class="ex-note mono" style="color:var(--accent)">'+esc(gl)+'</span>';
   }
   const swapped = todaySwaps[i] != null && todaySwaps[i] !== original;
   let html = '<div class="ex" id="exblock-'+i+'">'+
@@ -3505,13 +3617,16 @@ const PR_LIFTS = {
    record, experiments and Investigation cannot drift apart on what counts. Older logs simply lack
    the newer fields (swapFrom, removed, set rm/p, toggledAt): absent reads as "not recorded". */
 function sessionMods(l){
-  const m = {session:false, deload:false, home:false, coachPlan:false, call:'', toggled:false, skippedCheckIn:false,
+  const m = {session:false, deload:false, home:false, coachPlan:false, call:'', toggled:false, skippedCheckIn:false, quick:[],
              swapped:[], swapFrom:{}, added:[], removed:[], oneRM:[], override:[], callRecover:[], liftDeload:[]};
   if(!l) return m;
   m.deload = !!l.deload; m.home = !!l.home; m.coachPlan = !!l.coachPlan;
   if(l.call && !l.call.off && (l.call.call === 'easy' || l.call.call === 'recover')) m.call = l.call.call;
   m.toggled = !!(l.call && l.call.toggledAt);
   m.skippedCheckIn = !!l.skippedCheckIn;
+  // Quick adjustments (V4 stage 4), read only: a recover switch already shows in callRecover through
+  // the decisions, so nothing that judges a lift needs this yet.
+  m.quick = Array.isArray(l.quick) ? l.quick.map(function(q){ return q && q.k; }).filter(Boolean) : [];
   m.swapped = Array.isArray(l.swapped) ? l.swapped.slice() : [];
   if(l.swapFrom && typeof l.swapFrom === 'object') m.swapFrom = Object.assign({}, l.swapFrom);
   // Before swapFrom existed, swapped mixed adds and swaps; with it, an entry without a source is an add.
@@ -8411,10 +8526,43 @@ function endLiveSessionConfirm(){
   if(confirm('End and save this session? '+logged+' exercise'+(logged>1?'s':'')+' logged.')) endLiveSession();
 }
 
-/* intra-session autoregulation: tune the NEXT set from the last one */
+/* intra-session autoregulation: tune the NEXT set from the last one.
+
+   V4 stage 4: the call also names an AIM (the reps to go for, which LIVE pre-fills, at his choice on
+   2026-10-04) and a reason with the numbers in it. Every weight rule below is unchanged; the aim
+   only ever asks for the same reps, one more, or the floor -- it never adds load. */
 function intraAdvice(ex){
+  const a = intraAdviceCalc(ex), sets = ex.sets || [];
+  a.aim = Math.max(1, Math.round(+a.aim || +ex.lo || 1));
+  a.why = '';
+  if(sets.length){
+    const last = sets[sets.length - 1], lw = +last.w || 0;
+    // The number only when the slider set one; a preset alone is a word, not a measurement.
+    const hasEf = last.ef !== undefined && last.ef !== null && last.ef !== '' && isFinite(+last.ef);
+    const b = effBucket(last);
+    const felt = hasEf ? ', effort '+Math.round(+last.ef) : (b ? ', '+b : '');
+    const did = lw > 0 ? lw+' × '+last.r : last.r+' reps';
+    const act = lw > 0 ? ((+a.w < lw ? 'Drop to ' : 'Hold ')+a.w+', aim for '+a.aim) : 'Aim for '+a.aim;
+    a.why = 'Set '+sets.length+': '+did+felt+'. '+act+'.';
+  }
+  return a;
+}
+/* The first set's aim, from the last time he did this lift: one more rep at the same weight, the
+   floor on a new heavier one, and the reps he already owns on a lighter day. Always inside the range. */
+function intraFirstAim(ex){
+  const w = +ex.targetW || 0, lo = +ex.lo || 1, hi = +ex.hi || lo;
+  let ls = null; try{ ls = lastSessionFor(ex.name); }catch(e){ ls = null; }
+  if(!ls || !ls.sets || !ls.sets.length) return lo;
+  const top = ls.sets.reduce(function(m, s){ return (+s.w || 0) > (+m.w || 0) ? s : m; }, ls.sets[0]);
+  const tw = +top.w || 0, tr = +top.r || 0;
+  if(!(w > 0) || !(tr > 0)) return lo;
+  if(w > tw) return lo;
+  if(w < tw) return Math.max(lo, Math.min(hi, tr));
+  return Math.max(lo, Math.min(hi, tr + 1));
+}
+function intraAdviceCalc(ex){
   const sets = ex.sets;
-  if(!sets.length) return {w:ex.targetW, lo:ex.lo, hi:ex.hi, tag:'', cls:'', msg:ex.recDetail};
+  if(!sets.length) return {w:ex.targetW, lo:ex.lo, hi:ex.hi, tag:'', cls:'', msg:ex.recDetail, aim:intraFirstAim(ex)};
   const last = sets[sets.length-1];
   const r=+last.r||0, e=effBucket(last), w=+last.w||0;
   const lo=ex.lo, hi=ex.hi, inc=incForExercise(ex.name);
@@ -8428,7 +8576,7 @@ function intraAdvice(ex){
   if(e==='fail' || (!_str && r>0 && r<lo)){
     let dw=Math.max(w-inc,inc);
     if(ex._homeEquipList) dw = roundToEquipList(dw, ex._homeEquipList);
-    return {w:dw, lo:lo, hi:hi, tag:'Back off', cls:'back', msg:'That set fell short — drop to '+dw+' lb and keep the reps clean.'};
+    return {w:dw, lo:lo, hi:hi, tag:'Back off', cls:'back', msg:'That set fell short — drop to '+dw+' lb and keep the reps clean.', aim:lo};
   }
   // Top sets are done \u2014 drop to the backoff load for the remaining sets. Deliberately placed
   // AFTER the fail branch: if the top set actually fell short, that safety response wins and
@@ -8440,7 +8588,8 @@ function intraAdvice(ex){
     const bw = ex.backoffW;
     const grindNote = e==='grind' ? ' That one was a grind, so the lighter sets should feel right.' : '';
     return {w:bw, lo:lo, hi:hi, tag:'Backoff', cls:'hold',
-      msg:STR_CEIL_SETS+' top sets logged at '+w+' lb. Backoff sets run '+bw+' lb \u2014 same rep target, more speed on the bar.'+grindNote};
+      msg:STR_CEIL_SETS+' top sets logged at '+w+' lb. Backoff sets run '+bw+' lb \u2014 same rep target, more speed on the bar.'+grindNote,
+      aim:Math.max(lo, Math.min(hi, r || lo))};
   }
   /* Two sets in a row say more than one. Two easy sets at the top of the range: there is a rep
      left, so ask for it (never more load mid-session -- that is next session's call). Two grinds
@@ -8450,20 +8599,98 @@ function intraAdvice(ex){
   if(prev && (+prev.w||0) === w){
     const pl = effLever(prev), ll = effLever(last), pr = +prev.r||0, mid = (lo+hi)/2;
     if(pl !== null && ll !== null && pl >= 76 && ll >= 76 && r >= hi && pr >= hi)
-      return {w:w, lo:lo, hi:hi, tag:'Strong', cls:'up', msg:'Two easy sets at the top of the range \u2014 stay at '+w+' and go for '+(hi+1)+'.'};
+      return {w:w, lo:lo, hi:hi, tag:'Strong', cls:'up', msg:'Two easy sets at the top of the range \u2014 stay at '+w+' and go for '+(hi+1)+'.', aim:hi+1};
     if(!_str && effBucket(prev) === 'grind' && e === 'grind' && r < mid && pr < mid){
       let dw = Math.max(w-inc, inc);
       if(ex._homeEquipList) dw = roundToEquipList(dw, ex._homeEquipList);
-      return {w:dw, lo:lo, hi:hi, tag:'Back off', cls:'back', msg:'Two grinders under '+Math.ceil(mid)+' reps \u2014 drop to '+dw+' lb and keep the rest clean.'};
+      return {w:dw, lo:lo, hi:hi, tag:'Back off', cls:'back', msg:'Two grinders under '+Math.ceil(mid)+' reps \u2014 drop to '+dw+' lb and keep the rest clean.', aim:lo};
     }
   }
   if(r>=hi && (e==='easy'||!e)){
-    return {w:w, lo:lo, hi:hi, tag:'Strong', cls:'up', msg:'Top of the range — hold '+w+'. Keep this up and you earn a jump next session.'};
+    return {w:w, lo:lo, hi:hi, tag:'Strong', cls:'up', msg:'Top of the range — hold '+w+'. Keep this up and you earn a jump next session.', aim:hi};
   }
   if(e==='grind'){
-    return {w:w, lo:lo, hi:hi, tag:'Hold', cls:'hold', msg:'That was a grind — stay at '+w+', match the reps, stop one short of failure.'};
+    return {w:w, lo:lo, hi:hi, tag:'Hold', cls:'hold', msg:'That was a grind — stay at '+w+', match the reps, stop one short of failure.', aim:Math.max(lo, Math.min(hi, r || lo))};
   }
-  return {w:w, lo:lo, hi:hi, tag:'On target', cls:'hold', msg:'Solid — repeat '+w+' lb and chase one more rep than last set.'};
+  return {w:w, lo:lo, hi:hi, tag:'On target', cls:'hold', msg:'Solid — repeat '+w+' lb and chase one more rep than last set.', aim:Math.max(lo, Math.min(hi, r + 1))};
+}
+
+/* ---- the dock's steppers and Log label (V4 stage 4) ----
+   −/+ change the box in place, never a repaint, and the Log button follows what the boxes hold, so
+   what it says is exactly what it will record. A plate-loaded weight steps 5 lb (2.5 a side, his
+   smallest pair), a dumbbell steps 5, anything else by its own increment. */
+function liveStepSize(nm){
+  const g = liftLoad(nm);
+  if(g.kind === 'bar' || g.kind === 'plates') return 5;
+  if(g.kind === 'db') return g.step;
+  return Math.max(1, +incForExercise(nm) || 5);
+}
+function liveStep(id, dir, i){
+  const el = document.getElementById(id), ex = live && live.exercises[i];
+  if(!el || !ex) return;
+  const cur = parseFloat(el.value);
+  if(id === 'dockR'){
+    el.value = String(Math.max(1, (isFinite(cur) ? Math.round(cur) : (+ex.advLo || 1)) + dir));
+  } else {
+    const base = isFinite(cur) ? cur : (+ex.advW || 0);
+    el.value = String(Math.max(0, Math.round((base + dir * liveStepSize(ex.name)) * 100) / 100));
+  }
+  liveLogLabel();
+}
+function liveLogText(w, r){ return (+w > 0 && +r > 0) ? 'Log '+(+w)+' × '+(+r) : 'Log set'; }
+function liveLogLabel(){
+  const b = document.getElementById('liveLogBtn'); if(!b) return;
+  const w = document.getElementById('dockW'), r = document.getElementById('dockR');
+  b.textContent = liveLogText(w ? parseFloat(w.value) : NaN, r ? parseInt(r.value, 10) : NaN);
+}
+/* PR watch: the fewest reps at the called weight that would beat his best e1RM, shown only when it
+   is within one rep of the top of the range -- a target he could actually hit tonight. */
+function livePrWatch(ex, adv){
+  if(!ex || ex._1rm || ex._deload || isBodyweight(ex.name)) return null;
+  const w = +((adv && adv.w) || ex.targetW) || 0, best = bestE1RM(ex.name), hi = +ex.hi || 0;
+  if(!(w > 0) || !(best > 0) || !(hi > 0)) return null;
+  for(let r = 1; r <= hi + 1; r++){
+    const e1 = epley(w, r);
+    if(e1 > best + 0.05) return {w:w, r:r, e1:Math.round(e1), best:Math.round(best),
+      txt:w+' × '+r+' tonight beats your best (e1RM '+Math.round(e1)+', now '+Math.round(best)+')'};
+  }
+  return null;
+}
+/* When he will likely be done: the sets still planned, times his own median gap between sets on this
+   day type (set ts, first set to the next). Gaps over 15 minutes are a break, not a set, and are left
+   out. Below DENSITY_MIN timed sessions it falls back to the rest arithmetic: the rest the timer would
+   give plus 40 s to do the set. Cached per day for the session, since the bar repaints every second. */
+let _liveGap = {k:null, v:null};
+function liveSetGapSecs(dk){
+  const key = dk+'|'+(S.logs || []).length;
+  if(_liveGap.k === key) return _liveGap.v;
+  const gaps = []; let n = 0;
+  (S.logs || []).filter(function(l){ return l && l.day === dk && !l.deload; }).slice(-12).forEach(function(l){
+    const ts = [];
+    (l.entries || []).forEach(function(e){ (e.sets || []).forEach(function(s){ if(+s.ts > 0) ts.push(+s.ts); }); });
+    if(ts.length < 2) return;
+    n++; ts.sort(function(a, b){ return a - b; });
+    for(let k = 1; k < ts.length; k++){ const g = (ts[k] - ts[k-1]) / 1000; if(g >= 20 && g <= 900) gaps.push(g); }
+  });
+  let v = null;
+  if(n >= DENSITY_MIN && gaps.length){ gaps.sort(function(a, b){ return a - b; }); v = gaps[Math.floor(gaps.length / 2)]; }
+  _liveGap = {k:key, v:v};
+  return v;
+}
+function liveFinishEstimate(now){
+  if(!live) return null;
+  const t = now || Date.now();
+  let left = 0, restSum = 0;
+  live.exercises.forEach(function(ex){
+    if(ex.done) return;
+    const k = Math.max(0, Math.max(ex.planned || 3, (ex.sets || []).length) - (ex.sets || []).length);
+    left += k;
+    if(k) restSum += k * (smartRestSecs(ex).secs + 40);
+  });
+  if(!left) return null;
+  const gap = liveSetGapSecs(live.day);
+  const secs = gap ? left * gap : restSum;
+  return {at:t + secs * 1000, secs:Math.round(secs), sets:left, from:gap ? 'history' : 'rest'};
 }
 
 let liveDockEff = '';  // legacy bucket for the in-progress set, kept for the presets
@@ -8498,6 +8725,12 @@ function painHTML(ex, i){
     h += '<div class="pain-flagged"><span>\u26a0</span><span>Flagged today: <b>'+esc(lab)+'</b>'+
          (today[0].note ? ' \u2014 '+esc(today[0].note) : '')+'</span>'+
          '<button class="pain-btn" style="margin-left:auto" onclick="painRemove(\''+today[0].id+'\');renderLive()">undo</button></div>';
+    // V4 stage 4: once something hurts, one tap takes the rest of the session to a recover day.
+    // Offered, never applied: only the lifts he has not started would change.
+    if(live && !liveQuickOn('off') && live.exercises.some(function(e){ return !e.done && !(e.sets || []).length && !e._swapped && !e._deload && !e._1rm; }))
+      h += '<div class="lv-offer"><button type="button" class="btn sm" onclick="liveRecoverRest()">Switch the rest to recover</button>'+
+           '<span class="small">Lighter compounds and one set fewer on the lifts you haven’t started. Logged sets stay as they are.</span></div>';
+    else if(live && liveQuickOn('off')) h += '<div class="small lv-offer" style="color:var(--dim)">The rest of this session is on a recover call.</div>';
     return h;
   }
   if(painOpenFor !== i){
@@ -8609,6 +8842,7 @@ function renderLive(){
   if(!live){
     body.innerHTML = welcomeHTML() + deloadBannerHTML() + fatigueBannerHTML() + liveIdleHTML();
     initBodyMap('live');
+    liveWakeApply();   // no session: let the screen sleep again
     return;
   }
   const kept = liveKeepInputs();
@@ -8618,6 +8852,10 @@ function renderLive(){
   const _rdChip = _rd ? '<span class="pill" style="font-size:9px;border-color:'+(_rd.tier==='high'?'var(--cyan-dim);color:var(--cyan)':_rd.tier==='low'?'var(--red-dim);color:var(--red)':'var(--line2);color:var(--muted)')+'">'+_rd.tier.toUpperCase()+(live.trimmed?' \u00b7 TRIMMED':'')+'</span>' : '';
   h += '<div class="sessionbar"><span class="sb-day">'+esc(live.day)+' · '+esc(dayName(live.day)||live.day)+'</span>'+_rdChip+
        '<span class="sb-prog" id="sbProg"></span><span class="sb-clock" id="sbClock">00:00</span></div>';
+  // The finish estimate is worked out once per repaint (it reads the logs); the 1 s tick only
+  // moves it along the clock. And the screen-on switch, per device.
+  try{ const fe = liveFinishEstimate(); _liveFinishSecs = fe ? fe.secs : null; }catch(e){ _liveFinishSecs = null; }
+  h += '<div class="lv-subbar"><span class="sb-fin" id="sbFin"></span>'+liveWakeHTML()+'</div>';
   h += liveCallHTML();
   h += warmupCardHTML(live.day);
   live.exercises.forEach((ex,i)=>{ h += liveExHTML(ex,i); });
@@ -8627,7 +8865,9 @@ function renderLive(){
        '<button class="btn cyan block" onclick="endLiveSessionConfirm()">End &amp; save session</button></div>';
   body.innerHTML = h;
   liveRestoreInputs(kept);
+  liveLogLabel();   // after the restore: a typed value is what the button must say
   updateSessionBar();
+  liveWakeApply();
   // mount rest timer under the active exercise if running
   if(rest.running) mountRestTimer();
   const dbox = document.getElementById('liveDeltaBox');
@@ -8730,6 +8970,10 @@ function smartRestSecs(ex, pending){
     const best = bestE1RM(ex.name);
     if(comp && best>0 && (+last.w||0) >= best*0.9){ secs += 30; why += ' \u00b7 near-max load'; }
   }
+  // V4 stage 4: the day around the set. A recover day and a low check-in both earn a little more
+  // rest; the why-line names them so a longer timer never looks arbitrary.
+  try{ if(liveEffectiveCall() === 'recover'){ secs += 20; why += ' \u00b7 recover day'; } }catch(e){}
+  try{ const _rd = todayReadiness(); if(_rd && _rd.tier === 'low'){ secs += 15; why += ' \u00b7 low readiness'; } }catch(e){}
   const _xf = (typeof expRestFloor==='function') ? expRestFloor(ex.name) : 0;
   if(_xf && secs < _xf){ secs = _xf; why += ' \u00b7 experiment'; }
   return {secs:Math.max(45, secs), why};
@@ -8769,9 +9013,10 @@ function liveExHTML(ex,i){
   if(adv.tag || adv.msg){
     h += '<div class="lv3-presc">'+(adv.tag?'<b style="color:'+(adv.cls==='up'?'var(--cyan)':adv.cls==='back'?'var(--red)':'var(--amber)')+'">'+esc(adv.tag)+'</b> \u00b7 ':'')+esc(adv.msg)+'</div>';
   }
-  if(isPlateLift(ex.name) && adv.w){
-    const pc = plateCalc(+adv.w); if(pc) h += '<div class="lv3-presc" style="color:var(--dim)">Per side: '+esc(pc.txt)+' (45 lb bar)</div>';
-  }
+  // The call in numbers: what the last set was and what this one should be.
+  if(adv.why) h += '<div class="lv3-presc lv-why">'+esc(adv.why)+'</div>';
+  { const pw = livePrWatch(ex, adv); if(pw) h += '<div class="lv3-presc lv-prw">'+SUM_TROPHY+'<span><b>PR watch</b> \u00b7 '+esc(pw.txt)+'</span></div>'; }
+  { const gl = adv.w ? gearLine(ex.name, +adv.w) : ''; if(gl) h += '<div class="lv3-presc lv-gear" style="color:var(--dim)">'+esc(gl)+'</div>'; }
 
   /* logged sets (tap to edit) + ghost rows for the rest of the plan */
   h += '<div class="liveex-sets">';
@@ -8787,9 +9032,15 @@ function liveExHTML(ex,i){
   /* dock */
   h += '<div class="livedock lv3-dock">';
   h += lastSessionStrip(ex.name);
+  // Reps start at the call's aim (his choice, 2026-10-04): a set done as called is one tap on Log,
+  // and the button spells out exactly what it will record, so an unedited number is never a surprise.
+  const stp = function(id, d, lab){ return '<button type="button" class="lv-step" aria-label="'+lab+'" onclick="liveStep(\''+id+'\','+d+','+i+')">'+(d < 0 ? '\u2212' : '+')+'</button>'; };
   h += '<div class="dockrow lv3-inrow">'+
-       '<div class="field"><label>Weight (lb)</label><input id="dockW" class="lv3-in" inputmode="decimal" value="'+(adv.w||'')+'"></div>'+
-       '<div class="field"><label>Reps</label><input id="dockR" class="lv3-in" inputmode="numeric" placeholder="'+adv.lo+'\u2013'+adv.hi+'"></div>'+
+       '<div class="field"><label>Weight (lb)</label><div class="lv-stepper">'+stp('dockW', -1, 'Weight down')+
+         '<input id="dockW" class="lv3-in" inputmode="decimal" value="'+(adv.w||'')+'" oninput="liveLogLabel()">'+stp('dockW', 1, 'Weight up')+'</div></div>'+
+       '<div class="field"><label>Reps</label><div class="lv-stepper">'+stp('dockR', -1, 'One rep fewer')+
+         '<input id="dockR" class="lv3-in" inputmode="numeric" placeholder="'+adv.lo+'\u2013'+adv.hi+'" value="'+(adv.aim||'')+'" oninput="liveLogLabel()">'+
+         stp('dockR', 1, 'One rep more')+'</div></div>'+
        '</div>';
   h += '<div class="efftog lv3-eff" id="dockEff">'+
        ['easy','solid','grind','fail'].map(e=>'<button data-e="'+e+'" class="'+(liveDockEff===e?'sel e-'+e:'')+'" onclick="pickEff(\''+e+'\')">'+e+'</button>').join('')+
@@ -8803,12 +9054,74 @@ function liveExHTML(ex,i){
   const sr = smartRestSecs(ex, {w:(isFinite(_kw) ? _kw : (+adv.w||0)), e:liveDockEff||undefined,
                                 ef:(liveDockLever===null ? undefined : liveDockLever)});
   h += '<div class="lv3-btns">'+
-       '<button class="btn primary lv3-log" onclick="logLiveSet('+i+')">Log set</button>'+
+       '<button class="btn primary lv3-log" id="liveLogBtn" onclick="logLiveSet('+i+')">'+esc(liveLogText(adv.w, adv.aim))+'</button>'+
        '<button class="btn cyan lv3-done" onclick="finishExercise('+i+')">Done \u2713</button>'+
        '</div>';
   h += '<div class="lv3-restnote">Rest after log: ~'+Math.round(sr.secs/60*10)/10+' min \u00b7 '+sr.why+'</div>';
-  h += '</div><div id="restSlot"></div></div>';
+  h += '</div><div id="restSlot"></div>'+liveQuickHTML(i)+'</div>';
   return h;
+}
+/* ---- quick adjustments (V4 stage 4) ----
+   Three things that happen at the gym, each one tap, each recorded in live.quick (and so in the log's
+   quick list). None touches a set already logged, and none applies itself: Short on time trims only
+   lifts not yet started and undoes in one tap; Equipment taken is the existing swap sheet; Something
+   feels off opens the pain entry, and the recover switch is offered only once a flag is saved. */
+function liveQuickOn(k){ return !!(live && (live.quick || []).some(function(q){ return q.k === k; })); }
+function liveQuickHTML(i){
+  const short = liveQuickOn('short');
+  return '<div class="lv-quick" role="group" aria-label="Quick adjust">'+
+    '<button type="button" class="lv-chip'+(short ? ' on' : '')+'" onclick="liveShortOnTime()">'+(short ? 'Short on time \u00b7 undo' : 'Short on time')+'</button>'+
+    '<button type="button" class="lv-chip" onclick="openLiveExEdit('+i+')">Equipment taken</button>'+
+    '<button type="button" class="lv-chip" onclick="liveFeelsOff('+i+')">Something feels off</button></div>';
+}
+/* One set fewer on every lift not yet started, never below 2. It is NOT live.trimmed: that field means
+   the day's call took sets off, and the Readiness tab compares exactly those sessions. */
+function liveShortOnTime(){
+  if(!live) return;
+  live.quick = live.quick || [];
+  const k = live.quick.findIndex(function(q){ return q.k === 'short'; });
+  if(k >= 0){
+    const q = live.quick[k];
+    live.exercises.forEach(function(ex){
+      if(!(ex.sets || []).length && q.prev && q.prev[ex.name] !== undefined) ex.planned = q.prev[ex.name];
+    });
+    live.quick.splice(k, 1);
+  } else {
+    const prev = {}, lifts = [];
+    live.exercises.forEach(function(ex){
+      if(ex.done || (ex.sets || []).length || ex._1rm || ex._deload) return;
+      const p = ex.planned || 3;
+      if(p > 2){ prev[ex.name] = p; ex.planned = p - 1; lifts.push(ex.name); }
+    });
+    if(!lifts.length){ alert('Nothing left to trim: every lift still to do is already at 2 sets.'); return; }
+    live.quick.push({k:'short', at:Date.now(), lifts:lifts, prev:prev});
+  }
+  saveLiveDraft(); renderLive();
+}
+function liveFeelsOff(i){
+  if(painOpenFor !== i) painToggle(i); else renderLive();
+  smoothScroll(document.getElementById('liveex-'+i), 'center');
+}
+/* The rest of the session as a recover day: the lifts with no set logged are rebuilt with the recover
+   call, exactly the way liveCallToggle() rebuilds them, so the same hard bounds hold (never heavier
+   than the plan, at most one set fewer). A compound that steps down records call-recover, which
+   sessionModLift() already sets apart from his trend. */
+function liveRecoverRest(){
+  if(!live || liveQuickOn('off')) return;
+  const sets = liveSlotSets(live.day), lifts = [];
+  const short = (live.quick || []).find(function(q){ return q.k === 'short'; });
+  live.exercises = live.exercises.map(function(ex){
+    if((ex.sets && ex.sets.length) || ex._swapped || ex.done || ex._deload || ex._1rm) return ex;
+    const nb = buildOneLiveExercise(ex.name, ex._homeEquipList, {call:'recover', sets:sets[ex.name]});
+    if(ex._coachNote){ nb._coachNote = ex._coachNote; nb.recDetail = 'Coach: '+ex._coachNote+'. '+(nb.recDetail||''); nb.advMsg = nb.recDetail; }
+    // A Short on time trim survives the rebuild, still never below 2.
+    if(short && short.lifts.indexOf(ex.name) >= 0 && nb.planned > 2) nb.planned -= 1;
+    lifts.push(ex.name);
+    return nb;
+  });
+  live.quick = live.quick || [];
+  live.quick.push({k:'off', at:Date.now(), lifts:lifts});
+  saveLiveDraft(); renderLive();
 }
 function liveSetRowHTML(i,j,s,editable){
   return '<div class="lset logged'+(editable?' lv3-tap':'')+'"'+(editable?' onclick="editLiveSet('+i+','+j+')"':'')+'>'+
@@ -8937,7 +9250,47 @@ function updateSessionBar(){
   if(clk){ const s=Math.floor((Date.now()-live.startedAt)/1000); clk.textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
   const prog = document.getElementById('sbProg');
   if(prog){ const done=live.exercises.filter(e=>e.done).length; prog.textContent=done+' / '+live.exercises.length+' done'; }
+  const fin = document.getElementById('sbFin');
+  if(fin) fin.textContent = (_liveFinishSecs > 0) ? 'finish about '+homeClock(new Date(Date.now() + _liveFinishSecs * 1000).toISOString()) : '';
 }
+let _liveFinishSecs = null;
+
+/* ---- keep the screen on (V4 stage 4) ----
+   His choice: a switch, off until he turns it on, remembered per device (uiPref, never S). The lock
+   is taken while a session runs and the page is visible; iOS drops it whenever the app goes to the
+   background, so it is asked for again on the way back. Where the API is missing the switch says
+   so rather than looking like it works. */
+let _liveWake = null, _liveWakeBusy = false;
+function liveWakeSupported(){ try{ return !!(navigator.wakeLock && navigator.wakeLock.request); }catch(e){ return false; } }
+function liveWakeWanted(){ return !!uiPref()['live.wake']; }
+/* One request at a time. The switch calls this and so does the repaint it triggers, and both used to
+   see "no lock yet" during the first request's await, take a second lock, and leak one of them. A call
+   that lands mid-request is not lost: the loop re-checks what is wanted when the request settles. */
+async function liveWakeApply(){
+  if(_liveWakeBusy) return;
+  _liveWakeBusy = true;
+  try{
+    for(let k = 0; k < 3; k++){
+      const want = !!live && liveWakeWanted() && liveWakeSupported() && document.visibilityState === 'visible';
+      if(want && !_liveWake){
+        const lock = await navigator.wakeLock.request('screen');
+        _liveWake = lock;
+        if(lock && lock.addEventListener) lock.addEventListener('release', function(){ if(_liveWake === lock) _liveWake = null; });
+      } else if(!want && _liveWake){
+        const w = _liveWake; _liveWake = null; await w.release();
+      } else break;
+    }
+  }catch(e){ _liveWake = null; }
+  finally{ _liveWakeBusy = false; }
+}
+function liveWakeToggle(){ uiPrefSet('live.wake', !liveWakeWanted()); liveWakeApply(); renderLive(); }
+function liveWakeHTML(){
+  if(!liveWakeSupported()) return '<span class="lv-wake off" title="This browser cannot keep the screen on">Screen on: not supported here</span>';
+  const on = liveWakeWanted();
+  return '<button type="button" class="lv-wake'+(on ? ' on' : '')+'" aria-pressed="'+on+'" onclick="liveWakeToggle()">'+
+    (on ? 'Screen stays on' : 'Keep screen on')+'</button>';
+}
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) liveWakeApply(); });
 
 /* One live set, as it is kept in the log. This used to be an inline {w,r,e}, which left the
    lever value behind: from 2026-08-24 every set carried s.ef through the whole session and
@@ -9007,6 +9360,9 @@ function endLiveSession(){
   if(Array.isArray(live.removed) && live.removed.length) logRec.removed = live.removed.slice();
   if(live.callToggledAt && logRec.call) logRec.call.toggledAt = +live.callToggledAt;
   if(live.skippedCheckIn) logRec.skippedCheckIn = true;
+  // V4 stage 4: the quick adjustments he made, without the undo bookkeeping.
+  if(Array.isArray(live.quick) && live.quick.length)
+    logRec.quick = live.quick.map(function(q){ return {k:q.k, at:q.at, lifts:(q.lifts || []).slice()}; });
   try{ logRec.scheduled = scheduledDayFor(logRec.date); }catch(e){}
   S.logs.push(stampRec(logRec));
   save();
@@ -9193,8 +9549,29 @@ function mountRestTimer(){
     '<circle class="rt-bg" cx="79" cy="79" r="70"></circle>'+
     '<circle class="rt-fg" id="rtArc" cx="79" cy="79" r="70" stroke-dasharray="'+RT_C.toFixed(1)+'" stroke-dashoffset="0"></circle>'+
     '</svg><div class="rt-center"><div class="rt-time" id="rtTime">0:00</div><div class="rt-label" id="rtLabel">Rest</div></div></div>'+
-    '<div class="rt-btns"><button onclick="adjustRest(-15)">−15s</button><button onclick="adjustRest(15)">+15s</button><button onclick="skipRest()">Skip</button></div></div>';
+    '<div class="rt-btns"><button onclick="adjustRest(-15)">−15s</button><button onclick="adjustRest(15)">+15s</button><button onclick="skipRest()">Skip</button></div>'+
+    (function(){ const t = restPreviewText(liveActiveIdx); return t ? '<div class="rt-next" id="rtNext">'+esc(t)+'</div>' : ''; })()+'</div>';
   paintRest();
+}
+/* What comes after this rest (V4 stage 4): the next set's call and, on a plate-loaded lift, the plate
+   swap to make while resting. After Done it is the next lift's first set. Read-only: it shows the
+   same intraAdvice() the dock will pre-fill, so the two can never disagree. */
+function restPreviewText(i){
+  if(!live) return '';
+  let ex = live.exercises[i], next = false;
+  if(!ex) return '';
+  if(ex.done){
+    const k = live.exercises.findIndex(function(e, idx){ return idx !== i && !e.done; });
+    if(k < 0) return '';
+    ex = live.exercises[k]; next = true;
+  }
+  let adv; try{ adv = intraAdvice(ex); }catch(e){ return ''; }
+  const w = +adv.w || 0;
+  let t = 'Then '+(next ? ex.name+' · ' : '')+(w > 0 ? w+' × '+adv.aim : adv.aim+' reps')+(adv.tag === 'Backoff' ? ' back-off' : '');
+  const lw = !next && ex.sets.length ? +ex.sets[ex.sets.length - 1].w || 0 : 0;
+  const swap = (lw && w) ? plateChange(ex.name, lw, w) : '';
+  if(swap) t += ' · '+swap;
+  return t;
 }
 function paintRest(){
   const arc=document.getElementById('rtArc'), t=document.getElementById('rtTime'), l=document.getElementById('rtLabel');
@@ -10895,7 +11272,7 @@ function liveExHTML_1rm(ex, i, active){
     h += esc(step.label)+(step.pct>0?' \u00b7 '+Math.round(step.pct*100)+'%':'')+(step.note?' \u2014 <em style="color:var(--dim)">'+esc(step.note)+'</em>':'');
     h += '</div>';
     if(step.w!=='Bar' && isPlateLift(ex.name)){
-      const pc = plateCalc(+step.w); if(pc) h += '<div class="dock-presc" style="color:var(--muted)">Per side: '+esc(pc.txt)+'</div>';
+      const gl = gearLine(ex.name, +step.w); if(gl) h += '<div class="dock-presc" style="color:var(--muted)">'+esc(gl)+'</div>';
     }
     h += '<div class="dockrow">'+
       '<div class="field"><label>Weight (lb)</label><input id="dockW" inputmode="decimal" value="'+(step.w==='Bar'?45:step.w)+'"></div>'+

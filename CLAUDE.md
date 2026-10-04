@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2751 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2818 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -263,7 +263,7 @@ so the two orders can no longer disagree.
 | WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`; a failed run: `S.whoop.relayError`, `whoopRelayFault()`, `whoopRunFailText()`; `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`, `spendRefresh()`, `relayErrorRecord()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
-| Live session | `renderLive()`, the dock, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`); `liveKeepInputs()` / `liveRestoreInputs()` (typed values survive a repaint); `loadLiveDraft()` (`LIVE_DRAFT_MAX_H`, a session past midnight survives) |
+| Live session | `renderLive()`, the dock (`intraAdvice()` aim and why, `liveStep()`, `liveLogLabel()`, `livePrWatch()`, `liveFinishEstimate()`, `liveWakeApply()`, quick chips `liveShortOnTime()` / `liveRecoverRest()`), gear `liftLoad()` / `plateCalc()` / `gearLine()` / `plateChange()`, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`); `liveKeepInputs()` / `liveRestoreInputs()` (typed values survive a repaint); `loadLiveDraft()` (`LIVE_DRAFT_MAX_H`, a session past midnight survives) |
 | Backup | `exportPayload()` / `importApply()`, `DEVICE_SECRETS` (a backup file carries no credentials; import keeps this device's) |
 | After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
@@ -1327,6 +1327,53 @@ typed in still holds (same lift, set number, set under edit, pain panel), so a l
 next lift still starts clean. A new LIVE text input goes in that list. Dragging the effort slider
 patches the readout in place (`effLeverPatch()`) and repaints only on release, because a repaint
 replaces the slider under his finger.
+
+**V4 stage 4, the numbers in LIVE** (his answers, 2026-10-04):
+- **His gear is modelled by `liftLoad(nm)`, not `gearFor()`.** `gearFor()` is the older wraps, belt
+  and sleeves helper. A second function with the same name silently replaced the first, so
+  everything here goes through `liftLoad()`. It knows:
+  - bar lifts on a 45 (Barbell…, Smith…, Trap Bar…);
+  - plate machines with no bar (Leg Press, Plate-Loaded…, Hip Thrust Machine: he logs the plates
+    alone);
+  - fixed EZ bars;
+  - dumbbells 5-120 in 5s.
+
+  His plates are 2.5/5/10/25/35/45 pairs, with no 1.25s. `plateCalc(total, bar)`, `gearLine()` and
+  `plateChange()` ("pull the 10 and the 2.5, add a 5 each side") read it.
+- **A prescription is never rounded to the gear.** A weight his plates cannot make (162.5 on a bar)
+  is named with both neighbours ("nearest 160 or 165") and left for him to pick. Rounding it down
+  would trap a lift whose increment the plates cannot load: the engine would ask for the same jump
+  every session.
+- **The per-set call.** `intraAdvice()` keeps every weight rule and adds an `aim` (reps) and a
+  `why` with the numbers ("Set 1: 160 × 5, effort 72. Hold 160, aim for 6.").
+  - The aim is the same reps, one more, the top, one past the top after two easy sets, or the floor.
+    A test loops over a thousand generated set sequences: never heavier than the plan or his own
+    last set, and the aim stays in the range.
+  - The effort number is quoted only when `s.ef` exists (a preset stores its anchor).
+- **Reps are pre-filled with the aim** (his choice). This replaces Stage 0's "the next set starts
+  clean". The Log button reads "Log 160 × 6", and `liveLogLabel()` patches it as he types or steps,
+  with no repaint. −/+ steppers step 5 on a plate-loaded lift and the lift's increment otherwise.
+  A typed value still beats the pre-fill through `liveKeepInputs()`. At 360px and under, weight and
+  reps take a row each.
+- **PR watch** (`livePrWatch()`): the fewest reps at the called weight that beat `bestE1RM()`,
+  within one of the top of the range.
+- **Finish time** (`liveFinishEstimate()`): sets left times his median gap between sets on this day
+  type (set `ts`; gaps over 15 minutes are breaks and are dropped). It needs `DENSITY_MIN` timed
+  sessions, and otherwise uses rest + 40 s a set. It is worked out once per repaint, because the 1 s
+  tick only moves it along the clock.
+- **Rest** adds 20 s on a recover day and 15 s on a low check-in. The rest card previews the next
+  set with the plate swap (`restPreviewText()`).
+- **Screen on** is `navigator.wakeLock`, a per-device `uiPref('live.wake')`, off by default.
+  - `liveWakeApply()` lets only one request run at a time. The switch and the repaint it triggers
+    both used to take a lock, and one leaked.
+  - The idle branch of `renderLive()` releases the lock, or it stayed held after End.
+- **Quick adjustments** (`live.quick` → `logRec.quick`, read by `sessionMods().quick`):
+  - **Short on time** takes a set off lifts not started (never below 2), and one tap undoes it. It
+    is not `live.trimmed`, which means the call trimmed and is what Readiness compares.
+  - **Equipment taken** is the swap sheet.
+  - **Something feels off** opens the pain entry. Once a flag is saved, it offers **Switch the rest
+    to recover** (`liveRecoverRest()`), which rebuilds only lifts with no logged set, the way
+    `liveCallToggle()` does. Compounds that step down record `call-recover`.
 
 **Mobile is the primary target.** Most use is on an iPhone, one-handed, mid-set.
 Check at 393px and 320px widths.
