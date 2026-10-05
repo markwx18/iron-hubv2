@@ -12652,6 +12652,212 @@ setTimeout(async () => {
     ev('if(window.__pbSaved){ S = JSON.parse(window.__pbSaved); delete window.__pbSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== TRAIN IN A × C: PLAN, LOG, LIBRARY (2026-10-05) ===');
+  try {
+    w.__peSaved = ev('JSON.stringify(S)');
+    // A fixed Tuesday, day 2 of a 5-day strength block, so nothing here depends on when the suite runs.
+    ev("window.__peTK = todayKey; todayKey = function(){ return '2026-10-06'; }; live = null; logFilter = 'all'; logOpen = {}; libQuery = ''; libGroup = 'all'; libSel = null;");
+    ev(`S.logs = []; S.prHistory = []; S.sessionMeta = []; S.overrideDay = null; S.coachDayPlan = null; S.deload = null; S.pain = [];
+        S.scheduleMode = 'dow'; S.schedule = {0:'REST',1:'D1',2:'D2',3:'REST',4:'D1',5:'D2',6:'D1'};
+        S.split = {D1:{name:'Push', hex:'#d23b3b', exercises:[{name:'Barbell Bench Press', inc:5}, {name:'Overhead Press', inc:5, maxed:true}, {name:'Hammer Curl', inc:5, formFocus:true}]},
+                   D2:{name:'Legs', hex:'#54C2A4', exercises:[{name:'Barbell Back Squat', inc:10}, {name:'Lat Pulldown', inc:5}, 'Lying Leg Curl']}};
+        S.meso = {template:null, active:{startedAt:'2026-08-17', startKey:'2026-08-17', splits:{
+          bS:{status:'approved', rotation:['S1','S2','S3','REST','REST'], split:{S1:{name:'Squat', exercises:[{name:'Barbell Back Squat', sets:4, inc:10}]},
+             S2:{name:'Press', exercises:[{name:'Barbell Bench Press', sets:4, inc:5}, {name:'Close-Grip Bench Press', sets:3, inc:5}]}, S3:{name:'Pull', exercises:[{name:'Lat Pulldown', sets:3, inc:5}]}}},
+          bS2:{status:'proposed', rotation:['S1','S2','S3','REST','REST'], split:{S1:{name:'a', exercises:[]}, S2:{name:'b', exercises:[]}, S3:{name:'c', exercises:[]}}}},
+          weeks:[{type:'hyp', name:'Base', blockId:'b0', days:7}]
+            .concat([1,2,3,4,5,6].map(function(){ return {type:'hyp', name:'Hypertrophy', blockId:'bH', days:7, repLo:8, repHi:12}; }))
+            .concat([{type:'str', name:'Strength', blockId:'bS', days:5, repLo:3, repHi:5}, {type:'deload', name:'Deload', blockId:'bD', days:3},
+                     {type:'hyp', name:'Hypertrophy', blockId:'bH2', days:7, repLo:8, repHi:12}, {type:'str', name:'Strength', blockId:'bS2', days:5, repLo:3, repHi:5}])}};
+        mesoResequence(S.meso.active.weeks, S.meso.active.startKey);`);
+    const T0 = Date.parse('2026-10-05T17:00:00');
+    const sets = (wt, r, n, m0) => JSON.stringify(Array.from({length: n}, (_, i) => ({w: wt, r: r, ts: T0 + (m0 + i * 3) * 60000})));
+    // lg1 (Oct 5) is timed: 7 sets from minute 0 to minute 18.
+    ev("S.logs.push(stampRec({id: 9001, date: '2026-10-05', day: 'D1', entries: [{exercise: 'Barbell Bench Press', sets: " + sets(185, 6, 3, 0) +
+       "}, {exercise: 'Overhead Press', sets: " + sets(115, 8, 2, 9) + "}, {exercise: 'Hammer Curl', sets: " + sets(40, 12, 2, 15) + "}]}));");
+    ev("S.logs.push(stampRec({id: 9002, date: '2026-09-29', day: 'D2', entries: [{exercise: 'Lat Pulldown', sets: [{w: 165, r: 10}, {w: 165, r: 9}]}, {exercise: 'Lying Leg Curl', sets: [{w: 90, r: 12}]}]}));");
+    ev("S.logs.push(stampRec({id: 9003, date: '2026-09-28', day: 'D1', entries: [{exercise: 'Barbell Bench Press', sets: [{w: 180, r: 6}]}]}));");
+    ev("S.logs.push(stampRec({id: 9004, date: '2026-09-21', day: 'D1', entries: [{exercise: 'Barbell Bench Press', sets: [{w: 175, r: 6}]}]}));");
+    ev("S.logs.push(stampRec({id: 9005, date: '2025-12-20', day: 'D2', entries: [{exercise: 'Barbell Back Squat', sets: [{w: 225, r: 5}]}]}));");
+    // A squat PR on Sep 28 is not a PR for that session: it trained bench only.
+    ev("S.prHistory = [{exercise: 'Barbell Bench Press', weight: 185, reps: 6, e1rm: 222, date: '2026-10-05'}, {exercise: 'Barbell Back Squat', weight: 275, reps: 5, e1rm: 320, date: '2026-09-28'}];");
+    ev("S.sessionMeta = [{id: 9001, date: '2026-10-05', feel: 4, t: 1}];");
+    const q = (sel) => ev("(function(){ var e = document.querySelector(" + JSON.stringify(sel) + "); return e ? e.textContent : null; })()");
+    const qa = (sel, js) => JSON.parse(ev("JSON.stringify([].slice.call(document.querySelectorAll(" + JSON.stringify(sel) + ")).map(function(e){ return " + (js || 'e.textContent') + "; }))"));
+
+    // ---------- Plan ----------
+    const blocks = JSON.parse(ev("JSON.stringify(planBlocks(mesoActive()).map(function(b){ return [b.id, b.days, b.start, b.end]; }))"));
+    ok('plan: segments are grouped into blocks by blockId and sized in days', JSON.stringify(blocks) === JSON.stringify([['b0', 7, '2026-08-17', '2026-08-23'], ['bH', 42, '2026-08-24', '2026-10-04'],
+       ['bS', 5, '2026-10-05', '2026-10-09'], ['bD', 3, '2026-10-10', '2026-10-12'], ['bH2', 7, '2026-10-13', '2026-10-19'], ['bS2', 5, '2026-10-20', '2026-10-24']]), JSON.stringify(blocks));
+    ev("window.__peDiv = document.body.appendChild(document.createElement('div')); __peDiv.id = 'peDiv'; __peDiv.innerHTML = planHeroHTML();");
+    ok('plan: the hero names the block and counts the day, "2 of 5 days", with its rep range', q('#peDiv .plan-name') === 'Strength' &&
+       q('#peDiv .plan-day b') === '2' && /^of 5 days/.test(q('#peDiv .plan-day span')) && /3–5 reps/.test(q('#peDiv .plan-day')), q('#peDiv .plan-head'));
+    const segs = qa('#peDiv .plan-tl-seg', "[e.className.replace('plan-tl-seg ', ''), +((e.getAttribute('style') || '').match(/flex:(\\d+)/) || [])[1]]");
+    ok('plan: the timeline shows the block before, this one and two after, each sized by its days', JSON.stringify(segs) === JSON.stringify([['past', 42], ['now', 5], ['deload', 3], ['next', 7]]), JSON.stringify(segs));
+    const keys = qa('#peDiv .plan-tl-key');
+    ok('plan: its legend names each block with weeks or days, and which is now', JSON.stringify(keys) === JSON.stringify(['Hypertrophy · 6 wk · done', 'Strength · 5 d · now', 'Deload · 3 d', 'Hypertrophy · 7 d']), JSON.stringify(keys));
+    const tiles = qa('#peDiv .plan-tile', "[e.querySelector('b').textContent, e.className]");
+    ok('plan: the next 5 days are tiles, the block rotation first, then the normal schedule after it ends', JSON.stringify(tiles.map(t => t[0])) === JSON.stringify(['S2', 'S3', 'Rest', 'Rest', 'D1']) &&
+       /today/.test(tiles[0][1]) && !/today/.test(tiles[1][1]) && /rest/.test(tiles[2][1]) && !/rest/.test(tiles[4][1]), JSON.stringify(tiles));
+    ok('plan: each tile is what the schedule says for that date', JSON.stringify(tiles.map(t => t[0] === 'Rest' ? 'REST' : t[0])) ===
+       JSON.stringify(['2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10'].map(k => ev("scheduledDayFor('" + k + "')"))));
+    ok('plan: an approved strength split raises no warning', q('#peDiv .plan-warn') === null);
+    ev("S.meso.active.splits.bS.status = 'proposed'; __peDiv.innerHTML = planHeroHTML();");
+    ok('plan: a strength split waiting for approval is a warning in the hero, never folded away', /proposed but not approved/.test(q('#peDiv .plan-warn') || ''));
+    ev("S.meso.active.splits.bS.status = 'approved'; __peDiv.innerHTML = planHeroHTML();");
+    const kl = JSON.parse(ev("JSON.stringify(todayKeyLifts('S2', undefined, 12).map(function(l){ return [l.name, l.w > 0 ? String(l.w) : '—']; }))"));
+    const pl = qa('#peDiv .plan-lift', "[e.querySelector('b').textContent, e.querySelector('.plan-lift-w').firstChild.textContent, e.querySelector('.plan-lift-b span').textContent]");
+    ok('plan: today’s lifts are the block day’s, at the weights LIVE would give', kl.length === 2 && JSON.stringify(pl.map(p => [p[0], p[1]])) === JSON.stringify(kl), JSON.stringify(pl) + ' vs ' + JSON.stringify(kl));
+    ok('plan: with the block’s set counts', /^4 × /.test(pl[0][2]) && /^3 × /.test(pl[1][2]), JSON.stringify(pl));
+    ok('plan: Start starts today’s session', ev("(function(){ var b = document.querySelector('#peDiv .plan-acts button'); return b ? b.getAttribute('onclick') + '|' + b.textContent : null; })()") === 'liveStartSession()|Start S2');
+    ev("S.logs.push({id: 9009, date: '2026-10-06', day: 'S2', entries: []}); __peDiv.innerHTML = planHeroHTML();");
+    ok('plan: once today is logged it says so, with nothing to start', /Logged today/.test(q('#peDiv .plan-acts')) && q('#peDiv .plan-acts button') === null);
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 9009; }); live = {}; __peDiv.innerHTML = planHeroHTML(); live = null;");
+    ok('plan: during a session it resumes it', ev("document.querySelector('#peDiv .plan-acts button').getAttribute('onclick')") === "setMode('live')");
+    ev("__peDiv.innerHTML = planHeroHTML();");
+    const lenIn = ev("(function(){ var i = document.querySelector('#peDiv #planLen'); return i ? i.value + '|' + i.getAttribute('onchange') : null; })()");
+    ok('plan: the Length box holds this segment’s days and calls the week editor’s own setter', lenIn === '5|mesoSetWeekDays(8,this.value)', lenIn);
+    ev("window.__peT = S.meta.changedAt; S.meta.changedAt = 1; planLenStep(1);");
+    ok('plan: + makes the segment a day longer and moves the deload a day later, saved as his change',
+       ev("S.meso.active.weeks[7].days") === 6 && ev("S.meso.active.weeks[8].startKey") === '2026-10-11' && ev('S.meta.changedAt') > 1);
+    ev("planLenStep(-1);");
+    ok('plan: − takes it back', ev("S.meso.active.weeks[7].days") === 5 && ev("S.meso.active.weeks[8].startKey") === '2026-10-10');
+    ev("planLenStep(-10);");
+    ok('plan: it never goes under one day', ev("S.meso.active.weeks[7].days") === 1);
+    ev("mesoSetWeekDays(8, 5); S.meta.changedAt = Math.max(S.meta.changedAt, window.__peT || 0); delete window.__peT; __peDiv.innerHTML = planHeroHTML();");
+    ok('plan: the type chips light this segment’s type', q('#peDiv .plan-types .lv-chip.on') === ev("MESO_TYPES.str.label"));
+    ev("window.__peCf = 0; window.__peCfAns = false; window.__peCfK = window.confirm; window.confirm = function(){ window.__peCf++; return window.__peCfAns; };" +
+       " window.__peMst = mesoSetWeekType; mesoSetWeekType = function(n, k){ window.__peMstArgs = [n, k]; };");
+    ev("planSetType('str');");
+    ok('plan: tapping the type it already is asks nothing and changes nothing', ev('window.__peCf') === 0 && ev('window.__peMstArgs === undefined'));
+    ev("planSetType('hyp');");
+    ok('plan: a different type asks first, and a no changes nothing', ev('window.__peCf') === 1 && ev('window.__peMstArgs === undefined'));
+    ev("window.__peCfAns = true; planSetType('hyp');");
+    ok('plan: a yes goes through the week editor’s own type setter, for this segment', ev('JSON.stringify(window.__peMstArgs)') === '[8,"hyp"]');
+    ev("mesoSetWeekType = window.__peMst; window.confirm = window.__peCfK; delete window.__peMst; delete window.__peMstArgs; delete window.__peCfK;");
+    ev("renderMeso();");
+    ok('plan: the Plan tab opens on the hero, with the old segment card folded under it', ev("!!document.querySelector('#meso > .plan-hero')") &&
+       ev("document.getElementById('meso').firstElementChild.classList.contains('plan-hero')") && /This segment in detail/.test(q('#meso')), (q('#meso') || '').slice(0, 200));
+    let snap = ev('JSON.stringify(S)');
+    ev("renderMeso(); planHeroHTML();");
+    ok('plan: rendering writes nothing', ev('JSON.stringify(S)') === snap);
+
+    // ---------- Log ----------
+    ev("renderLog();");
+    ok('log: this week is 1 of the 4 planned days (the block rotation, then Saturday’s D1)', q('#log .lg-week .plan-day b') === '1' && /^of 4/.test(q('#log .lg-week .plan-day span')), q('#log .lg-week'));
+    ok('log: the streak chip is the app’s own streak', new RegExp('Streak ' + ev('streakStats().current') + ' · best ' + ev('streakStats().longest')).test(q('#log .lg-side')), q('#log .lg-side'));
+    ok('log: the year count leaves last year out', /4 sessions in 2026/.test(q('#log .lg-side')), q('#log .lg-side'));
+    const cols = JSON.parse(ev("JSON.stringify([].slice.call(document.querySelectorAll('#log .lg-heat .lg-col')).map(function(c){ return [].slice.call(c.children).map(function(i){ return i.className; }); }))"));
+    ok('log: the strip is 8 weeks of Monday-to-Sunday columns', cols.length === 8 && cols.every(c => c.length === 7));
+    ok('log: this week: Monday trained, today amber, the rest still ahead', JSON.stringify(cols[7]) === JSON.stringify(['done', 'today', 'future', 'future', 'future', 'future', 'future']), JSON.stringify(cols[7]));
+    ok('log: last week: trained, trained, a rest day, three planned days missed, a rest day', JSON.stringify(cols[6]) === JSON.stringify(['done', 'done', 'rest', 'miss', 'miss', 'miss', 'rest']), JSON.stringify(cols[6]));
+    ok('log: the first column starts seven Mondays back', ev("document.querySelector('#log .lg-heat .lg-col i').getAttribute('title')") === ev("fmtDate('2026-08-17')"));
+    ok('log: chips for All, PRs and each day he has logged', JSON.stringify(qa('#log .lg-chips .lv-chip')) === JSON.stringify(['All', 'PRs', 'D1', 'D2']) && q('#log .lg-chips .lv-chip.on') === 'All');
+    const rows = qa('#log .lg-row');
+    ok('log: a row per session, newest first', rows.length === 5 && /D1 · Push/.test(rows[0]) && /D2/.test(rows[4]), JSON.stringify(rows));
+    ok('log: a row reads lifts, sets and the minutes from its set times, with its PR count and his feel',
+       /3 lifts · 7 sets · 18 min/.test(rows[0]) && /PR ×1/.test(rows[0]) && rows[0].indexOf(ev('FEEL_LABELS[3]')) >= 0, rows[0]);
+    ok('log: a PR on that date for a lift the session did not train is not its PR', !/PR/.test(rows[2]) && /Sep 28|9\/28|28/.test(rows[2]), rows[2]);
+    ok('log: an untimed session shows no minutes', !/min/.test(rows[1]), rows[1]);
+    ev("logSetFilter('pr');");
+    ok('log: PRs shows only the sessions that set one', JSON.stringify(qa('#log .lg-row', "e.getAttribute('onclick')")) === JSON.stringify(['logToggle(9001)']) && q('#log .lg-chips .lv-chip.on') === 'PRs');
+    ev("logSetFilter('D2');");
+    ok('log: a day chip shows only that day', JSON.stringify(qa('#log .lg-row', "e.getAttribute('onclick')")) === JSON.stringify(['logToggle(9002)', 'logToggle(9005)']));
+    ev("logSetFilter('S1');");
+    ok('log: a filter with nothing in it says so', qa('#log .lg-row').length === 0 && /Nothing matches that filter/.test(q('#log')));
+    ev("logSetFilter('all'); logToggle(9001);");
+    const open = ev("(function(){ var o = document.querySelector('#log .lg-open'); if(!o) return null; var b = o.querySelectorAll('.lg-acts button'); return {txt: o.textContent, edit: b[0].getAttribute('onclick'), del: b[1].getAttribute('onclick'), prev: o.previousElementSibling.getAttribute('aria-expanded')}; })()");
+    ok('log: tapping a row opens its sets, the PR marked, with Edit and Delete for that session', !!open && /Barbell Bench Press/.test(open.txt) && /· PR/.test(open.txt) &&
+       open.edit === 'openEditSession(9001)' && open.del === 'delLog(9001)' && open.prev === 'true', JSON.stringify(open));
+    ok('log: and its engine log', ev("!!document.querySelector('#log .lg-open .elog-wrap')"));
+    ev("renderLog();");
+    ok('log: the 30-second repaint keeps it open', ev("document.querySelectorAll('#log .lg-open').length") === 1);
+    ev("document.querySelector('#log .lg-row').click();");
+    ok('log: tapping the row again closes it', ev("document.querySelectorAll('#log .lg-open').length") === 0);
+    ok('log: screenshot import and manual entry keep their ids, folded under "Log a past session"', /Log a past session/.test(q('#log')) &&
+       ['shot', 'mDate', 'mDay', 'mForm'].every(id => ev("!!document.querySelector('#log #" + id + "')")));
+    ev("for(var i = 0; i < 33; i++) S.logs.push({id: 9100 + i, date: '2026-02-' + String(1 + (i % 27)).padStart(2, '0'), day: 'D2', entries: []}); renderLog();");
+    ok('log: at most ' + 30 + ' rows', ev('LOG_ROWS') === 30 && qa('#log .lg-row').length === 30);
+    ev("S.logs = S.logs.filter(function(l){ return l.id < 9100; }); renderLog();");
+    snap = ev('JSON.stringify(S)');
+    ev("renderLog(); logSetFilter('pr'); logSetFilter('all'); logToggle(9002); logToggle(9002);");
+    ok('log: filtering, opening and repainting write nothing', ev('JSON.stringify(S)') === snap);
+
+    // ---------- Library ----------
+    const ll = JSON.parse(ev("JSON.stringify(libLifts().map(function(x){ return x.name + ':' + x.days.join(','); }))"));
+    ok('library: every lift in the split and in the block in force, once each, with all its days', JSON.stringify(ll) === JSON.stringify(['Barbell Bench Press:D1,S2', 'Overhead Press:D1', 'Hammer Curl:D1',
+       'Barbell Back Squat:D2,S1', 'Lat Pulldown:D2,S3', 'Lying Leg Curl:D2', 'Close-Grip Bench Press:S2']), JSON.stringify(ll));
+    ev("window.__pePw = plateauWatch; plateauWatch = function(){ return [{lift: 'Lat Pulldown', lvl: 'red', word: 'stalled', sig: [{txt: '5 sessions at 165, reps flat'}]}, {lift: 'Barbell Bench Press', lvl: 'green', word: 'on track', sig: []}]; };");
+    ev("renderLibrary();");
+    const lrow = (nm) => ev("(function(){ var r = document.querySelector('#library .lib-row[data-name=\"" + nm + "\"]'); if(!r) return null; return {txt: r.textContent, dot: r.querySelector('i').getAttribute('style'), best: r.querySelector('.lib-r b').textContent, word: r.querySelector('.lib-r span').textContent, wc: r.querySelector('.lib-r span').getAttribute('style'), vis: r.style.display !== 'none', exp: r.getAttribute('aria-expanded')}; })()");
+    ok('library: a row per lift', qa('#library .lib-row').length === 7);
+    const lp = lrow('Lat Pulldown');
+    ok('library: a stalled lift reads "stalled" in the stall colour, with its dot', lp && lp.word === 'stalled' && /var\(--bad\)/.test(lp.wc || '') && /var\(--bad\)/.test(lp.dot), JSON.stringify(lp));
+    ok('library: the best number is the lift’s best e1RM', lp.best === String(Math.round(ev("bestE1RM('Lat Pulldown')"))) && +lp.best > 0, lp.best);
+    const bp = lrow('Barbell Bench Press');
+    ok('library: an on-track lift is not coloured', bp.word === 'on track' && !bp.wc, JSON.stringify(bp));
+    ok('library: logged but not watched, and never logged, read differently', lrow('Overhead Press').word === 'not watched' && lrow('Close-Grip Bench Press').word === 'no data' && lrow('Close-Grip Bench Press').best === '—');
+    ok('library: the row carries the muscle, the days and the flags', /Back · D2, S3/.test(lp.txt) && /MAXED/.test(lrow('Overhead Press').txt) && /FORM/.test(lrow('Hammer Curl').txt) && !/MAXED|FORM|STRENGTH/.test(lp.txt), lp.txt + ' / ' + lrow('Overhead Press').txt);
+    ev("libSetGroup('legs');");
+    ok('library: a muscle chip shows only the lifts working it', JSON.stringify(qa('#library .lib-row', "e.getAttribute('data-name')")) === JSON.stringify(['Barbell Back Squat', 'Lying Leg Curl']) && q('#library .lg-chips .lv-chip.on') === 'Legs',
+       JSON.stringify(qa('#library .lib-row', "e.getAttribute('data-name')")));
+    ev("libSetGroup('all'); window.__peIn = document.getElementById('libSearch'); __peIn.value = 'curl'; __peIn.dispatchEvent(new Event('input'));");
+    const vis = () => qa('#library .lib-row', "e.style.display === 'none' ? '' : e.getAttribute('data-name')").filter(Boolean);
+    ok('library: typing filters the rows as he types', JSON.stringify(vis()) === JSON.stringify(['Hammer Curl', 'Lying Leg Curl']), JSON.stringify(vis()));
+    ok('library: without repainting under his fingers', ev("document.getElementById('libSearch') === window.__peIn"));
+    ok('library: the no-match line stays hidden while something matches', ev("document.getElementById('libNone').style.display") === 'none');
+    ev("__peIn.value = 'zzz'; __peIn.dispatchEvent(new Event('input'));");
+    ok('library: a search with no match says so', vis().length === 0 && ev("document.getElementById('libNone').style.display") === '');
+    ev("__peIn.value = 'curl'; __peIn.dispatchEvent(new Event('input')); renderLibrary();");
+    ok('library: the search survives a repaint', ev("document.getElementById('libSearch').value") === 'curl' && JSON.stringify(vis()) === JSON.stringify(['Hammer Curl', 'Lying Leg Curl']));
+    ev("libSetGroup('legs');");
+    ok('library: search and muscle combine', JSON.stringify(vis()) === JSON.stringify(['Lying Leg Curl']), JSON.stringify(vis()));
+    ev("libFilterRows(''); libSetGroup('all'); libPick('Lat Pulldown');");
+    const card = ev("(function(){ var r = document.querySelector('#library .lib-row[data-name=\"Lat Pulldown\"]'); var c = r.nextElementSibling; return {exp: r.getAttribute('aria-expanded'), card: !!c && c.classList.contains('lib-card') && c.getAttribute('data-name'), n: document.querySelectorAll('#library .lib-card').length, txt: c ? c.textContent : ''}; })()");
+    ok('library: tapping a row opens its card right under it', card.exp === 'true' && card.card === 'Lat Pulldown' && card.n === 1, JSON.stringify(card));
+    ok('library: the card says why it is flagged and the lift’s step', /stalled/.test(card.txt) && card.txt.indexOf('5 sessions at 165, reps flat. +5 lb steps.') >= 0 && /lb best e1RM/.test(card.txt), card.txt);
+    ok('library: the old trend and form cues are in a fold on the card', /Trend and form cues/.test(card.txt));
+    ev("document.querySelector('#library .lib-row[data-name=\"Lat Pulldown\"]').click();");
+    ok('library: tapping it again closes it', ev("document.querySelectorAll('#library .lib-card').length") === 0);
+    ev("libPick('Overhead Press');");
+    const sw = () => qa('#library .lib-card .lib-sw input', 'e.checked');
+    ok('library: the switches show strength mode, form focus and MAXED as they are', JSON.stringify(sw()) === '[false,false,true]', JSON.stringify(sw()));
+    ev("window.__peT = S.meta.changedAt; S.meta.changedAt = 1; (function(){ var i = document.querySelectorAll('#library .lib-card .lib-sw input')[2]; i.checked = false; i.dispatchEvent(new Event('change')); })();");
+    ok('library: MAXED off is written to the lift, saved as his change', ev("isMaxed('Overhead Press')") === false && ev('S.meta.changedAt') > 1 && JSON.stringify(sw()) === '[false,false,false]', JSON.stringify(sw()));
+    ev("(function(){ var i = document.querySelectorAll('#library .lib-card .lib-sw input')[0]; i.checked = true; i.dispatchEvent(new Event('change')); })();");
+    ok('library: strength mode on', ev("isStrMode('Overhead Press')") === true);
+    ev("(function(){ var i = document.querySelectorAll('#library .lib-card .lib-sw input')[0]; i.checked = false; i.dispatchEvent(new Event('change')); })();");
+    ok('library: strength mode off is stored as hyp, never null, so load() cannot turn it back on', ev("isStrMode('Overhead Press')") === false && ev("S.split.D1.exercises[1].repMode") === 'hyp');
+    ev("(function(){ var i = document.querySelectorAll('#library .lib-card .lib-sw input')[1]; i.checked = true; i.dispatchEvent(new Event('change')); })();");
+    ok('library: form focus on', ev("isFormFocus('Overhead Press')") === true);
+    ev("S.meta.changedAt = Math.max(S.meta.changedAt, window.__peT || 0); delete window.__peT;");
+    ev("libPick('Barbell Back Squat'); (function(){ var i = document.querySelectorAll('#library .lib-card .lib-sw input')[1]; i.checked = true; i.dispatchEvent(new Event('change')); })();");
+    ok('library: a flag on a lift in the block in force is written to the block and the permanent split', ev("S.split.D2.exercises[0].formFocus") === true && ev("S.meso.active.splits.bS.split.S1.exercises[0].formFocus") === true);
+    ev("window.__peAl = 0; window.__peAlK = window.alert; window.alert = function(){ window.__peAl++; }; libPick('Hammer Curl'); document.getElementById('libRenameIn').value = 'DB Hammer Curl';" +
+       " document.querySelector('#library .lib-rename button').click();");
+    ok('library: Rename everywhere renames the lift in the split and the logs, and keeps its card open', ev("S.split.D1.exercises[2].name") === 'DB Hammer Curl' &&
+       ev("S.logs.find(function(l){ return l.id === 9001; }).entries[2].exercise") === 'DB Hammer Curl' && ev('libSel') === 'DB Hammer Curl' &&
+       ev("(document.querySelector('#library .lib-card') || {}).getAttribute ? document.querySelector('#library .lib-card').getAttribute('data-name') : null") === 'DB Hammer Curl');
+    ev("libPick('Barbell Bench Press'); document.getElementById('libRenameIn').value = 'Bench'; document.querySelector('#library .lib-rename button').click();");
+    ok('library: a rename the app refuses says why and changes nothing', ev('window.__peAl') === 1 && ev("S.split.D1.exercises[0].name") === 'Barbell Bench Press' && ev('libSel') === 'Barbell Bench Press');
+    ev("window.__peCfK = window.confirm; window.confirm = function(){ return false; }; libPick('Lat Pulldown'); document.getElementById('libRenameIn').value = 'Wide Lat Pulldown'; document.querySelector('#library .lib-rename button').click(); window.confirm = window.__peCfK; delete window.__peCfK;");
+    ok('library: a rename he cancels changes nothing', ev("S.split.D2.exercises[1].name") === 'Lat Pulldown' && ev('libSel') === 'Lat Pulldown');
+    ev("window.alert = window.__peAlK; delete window.__peAlK;");
+    ev("window.__peRf = exRenameFlow; exRenameFlow = function(a, b){ window.__peRfArgs = [a, b]; return 'cancel'; }; window.__peEx = document.body.appendChild(document.createElement('input')); __peEx.id = 'exnNew'; __peEx.value = 'Cable Pulldown'; exnSel = 'Lat Pulldown'; exnApply();" +
+       " exRenameFlow = window.__peRf; delete window.__peRf; __peEx.remove(); exnSel = null;");
+    ok('library: Settings’ rename goes through the same flow', ev('JSON.stringify(window.__peRfArgs)') === '["Lat Pulldown","Cable Pulldown"]', ev('JSON.stringify(window.__peRfArgs)'));
+    snap = ev('JSON.stringify(S)');
+    ev("renderLibrary(); libSetGroup('back'); libFilterRows('lat'); libPick('Lat Pulldown'); libPick('Lat Pulldown'); libFilterRows(''); libSetGroup('all');");
+    ok('library: searching, filtering and opening cards write nothing', ev('JSON.stringify(S)') === snap);
+  } catch (e) {
+    ok('train section', false, e.stack);
+  } finally {
+    ev("live = null; logFilter = 'all'; logOpen = {}; libQuery = ''; libGroup = 'all'; libSel = null; exnSel = null;");
+    ev("if(window.__peDiv){ __peDiv.remove(); delete window.__peDiv; } delete window.__peIn; delete window.__peEx; delete window.__peRfArgs; delete window.__peCf; delete window.__peCfAns; delete window.__peAl;");
+    ev("if(window.__pePw){ plateauWatch = window.__pePw; delete window.__pePw; } if(window.__peTK){ todayKey = window.__peTK; delete window.__peTK; }");
+    ev('if(window.__peSaved){ S = JSON.parse(window.__peSaved); delete window.__peSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

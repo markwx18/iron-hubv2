@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-05-v3">
+<meta name="ironhub-build" content="2026-10-05-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1482,6 +1482,93 @@
   .pw-conf{flex:none; padding:2px 8px; border-radius:999px; border:1px solid var(--line2); font-family:var(--disp); font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);}
   .pw-conf.high{border-color:var(--good); color:var(--good);}
   .pw-conf.medium{border-color:var(--warn); color:var(--warn);}
+  /* Train in the A x C look (2026-10-05) */
+  .plan-hero{display:flex; flex-direction:column; gap:16px; margin-bottom:18px;}
+  .plan-head{display:flex; flex-direction:column; gap:4px;}
+  .plan-name{font-family:var(--disp); font-weight:700; font-size:40px; line-height:.95; text-transform:uppercase; letter-spacing:.02em;}
+  .plan-day{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;}
+  .plan-day b{font-family:var(--disp); font-size:84px; font-weight:700; line-height:.85; font-variant-numeric:tabular-nums;}
+  .plan-day span{font-family:var(--disp); font-size:20px; color:var(--dim); text-transform:uppercase;}
+  .plan-day .str-chip{margin-left:auto; align-self:center;}
+  .plan-tl{display:flex; flex-direction:column; gap:6px;}
+  .plan-tl-bar{display:flex; gap:4px; height:14px;}
+  .plan-tl-seg{border-radius:4px; background:var(--line2); min-width:6px;}
+  .plan-tl-seg.past{background:var(--panel2);}
+  .plan-tl-seg.now{box-shadow:var(--glow-amber, 0 0 12px rgba(242,138,58,.45));}
+  .plan-tl-seg.deload{background:color-mix(in srgb, var(--violet) 45%, transparent);}
+  .plan-tl-lab{display:flex; gap:4px; font-size:11.5px; color:var(--muted);}
+  .plan-tl-lab{flex-wrap:wrap; gap:4px 14px;}
+  .plan-tl-key{display:inline-flex; align-items:center; gap:6px; white-space:nowrap;}
+  .plan-tl-key i{width:10px; height:10px; border-radius:3px; background:var(--line2);}
+  .plan-tl-key.past i{background:var(--panel2); box-shadow:inset 0 0 0 1px var(--line2);}
+  .plan-tl-key.deload i{background:color-mix(in srgb, var(--violet) 45%, transparent);}
+  .plan-tl-key.now{color:var(--text);}
+  .plan-warn{margin:0; font-size:13px; color:var(--amber);}
+  .plan-tiles{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px;}
+  .plan-tile{display:flex; flex-direction:column; gap:3px; padding:10px 6px; border-radius:12px; background:var(--panel); min-width:0;}
+  .plan-tile.today{box-shadow:inset 0 0 0 1.5px var(--amber); background:color-mix(in srgb, var(--amber) 12%, var(--panel));}
+  .plan-tile b{font-family:var(--disp); font-size:20px; font-weight:700;}
+  .plan-tile.rest b{color:var(--dim);}
+  .plan-tile-d{font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);}
+  .plan-tile-n{font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .plan-lifts{display:flex; flex-direction:column;}
+  .plan-lift{display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--panel2);}
+  .plan-lift:first-child{border-top:none;}
+  .plan-lift-i{width:18px; font-family:var(--disp); font-size:18px; font-weight:700; color:var(--dim); flex:none;}
+  .plan-lift-b{flex:1; min-width:0; display:flex; flex-direction:column; font-size:12.5px; color:var(--muted);}
+  .plan-lift-b b{font-size:15px; color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .plan-lift-w{font-family:var(--disp); font-size:22px; font-weight:700; flex:none;}
+  .plan-lift-w small{font-size:13px; color:var(--dim);}
+  .plan-acts{display:flex; gap:8px; flex-wrap:wrap;}
+  .plan-edit{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px;}
+  .plan-edit .lv-stepper{display:flex;}
+  .plan-edit .lv-stepper input{min-width:0; text-align:center; font-family:var(--disp); font-size:22px; font-weight:700;}
+  .plan-rr{display:flex; align-items:center; justify-content:center; min-height:48px; border-radius:12px; background:var(--panel); font-family:var(--disp); font-size:22px; font-weight:700;}
+  .plan-types{display:flex; gap:6px; flex-wrap:wrap;}
+  .lg-hero{display:flex; align-items:flex-end; gap:14px;}
+  .lg-side{margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:6px;}
+  .lg-heat{display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:4px; margin-top:12px;}
+  .lg-col{display:flex; flex-direction:column; gap:4px;}
+  .lg-col i{height:16px; border-radius:4px; background:transparent; box-shadow:inset 0 0 0 1px var(--panel2);}
+  .lg-col i.done{background:var(--good); box-shadow:none;}
+  .lg-col i.today{background:var(--amber); box-shadow:none;}
+  .lg-col i.miss{background:var(--panel2); box-shadow:none;}
+  .lg-col i.future{opacity:.35;}
+  .lg-chips{display:flex; gap:6px; flex-wrap:wrap; margin:14px 0 6px;}
+  .lg-list{display:flex; flex-direction:column;}
+  .lg-row{display:flex; align-items:center; gap:12px; width:100%; padding:12px 0; border:none; border-top:1px solid var(--panel2); background:none; color:var(--text); text-align:left; font:inherit; cursor:pointer;}
+  .lg-list .lg-row:first-child{border-top:none;}
+  .lg-tick{width:4px; align-self:stretch; border-radius:2px; flex:none;}
+  .lg-b{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; font-size:12.5px; color:var(--muted);}
+  .lg-b b{font-size:15px; color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .lg-d{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);}
+  .lg-r{display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex:none;}
+  .lg-open{margin:0 0 10px 16px; padding:10px 12px; border-radius:14px; background:var(--panel); display:flex; flex-direction:column; gap:2px;}
+  .lg-ex{display:flex; gap:10px; padding:5px 0; font-size:13.5px;}
+  .lg-ex span{flex:1; min-width:0;}
+  .lg-ex b{font-family:var(--disp); font-size:15px; color:var(--muted); font-weight:600;}
+  .lg-ex b.pr{color:var(--amber);}
+  .lg-acts{display:flex; gap:8px; margin:6px 0;}
+  .lib-search{margin-bottom:4px;}
+  .lib-list{display:flex; flex-direction:column;}
+  .lib-row{display:flex; align-items:center; gap:10px; width:100%; min-height:56px; padding:9px 0; border:none; border-top:1px solid var(--panel2); background:none; color:var(--text); text-align:left; font:inherit; cursor:pointer;}
+  .lib-list .lib-row:first-child{border-top:none;}
+  .lib-row i{width:9px; height:9px; border-radius:5px; flex:none;}
+  .lib-b{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; font-size:12.5px; color:var(--muted);}
+  .lib-b b{font-size:15px; color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .lib-b em{font-style:normal; font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--violet);}
+  .lib-r{display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex:none; font-size:11.5px; color:var(--dim);}
+  .lib-r b{font-family:var(--disp); font-size:20px; color:var(--text);}
+  .lib-card{display:flex; flex-direction:column; gap:12px; padding:16px; margin:0 0 10px; border-radius:20px; background:var(--panel);}
+  .lib-card-h{display:flex; align-items:center; gap:8px;}
+  .lib-card-h b{flex:1; min-width:0; font-family:var(--disp); font-size:22px; text-transform:uppercase;}
+  .lib-card .str-big b{font-size:64px;}
+  .lib-sws{display:flex; flex-direction:column;}
+  .lib-sw{display:flex; align-items:center; gap:10px; min-height:44px; margin:0; border-top:1px solid var(--panel2); font-family:var(--body); font-size:14px; font-weight:500;
+    text-transform:none; letter-spacing:0; color:var(--text);}
+  .lib-sw span{flex:1;}
+  .lib-sw input{width:22px; height:22px; accent-color:var(--amber);}
+  .lib-rename input{flex:1; min-width:0;}
   /* the recap story (2026-10-05) */
   .recap-ov{position:fixed; inset:0; z-index:400; background:var(--base); color:var(--text); display:flex; flex-direction:column; gap:14px;
     padding:calc(16px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom)); overflow-y:auto;}
@@ -3693,33 +3780,97 @@ function weeklyVolumeCard(){
 }
 
 /* ================= LOG TAB ================= */
+/* ---- the Log (A x C, his pick 2026-10-05): this week, an 8-week strip, filters, then compact rows
+   that open to their sets. Open and filter state are module-scoped, so the 30-second repaint keeps
+   them. Screenshot import and manual entry fold to the bottom with their ids unchanged. ---- */
+const LOG_HEAT_WEEKS = 8, LOG_ROWS = 30;
+let logFilter = 'all', logOpen = {};
+function logPRsOn(l){
+  const names = (l.entries || []).map(function(e){ return e.exercise; });
+  return (S.prHistory || []).filter(function(p){ return p && p.date === l.date && names.indexOf(p.exercise) >= 0; });
+}
+function logHeroHTML(){
+  const t = todayKey(), mon = weekKeyOf(t), have = {};
+  (S.logs || []).forEach(function(l){ if(l && l.date) have[l.date] = 1; });
+  let planned = 0, done = 0;
+  for(let i = 0; i < 7; i++){ const k = mesoAddDays(mon, i); if(scheduledDayFor(k) !== 'REST') planned++; if(have[k]) done++; }
+  let st = {current:0, longest:0};
+  try{ st = streakStats(); }catch(e){}
+  const year = (S.logs || []).filter(function(l){ return l && String(l.date).slice(0, 4) === t.slice(0, 4); }).length;
+  let h = '<div class="lg-hero"><div class="lg-week"><span class="cc-eyebrow">This week</span><div class="plan-day"><b>'+done+'</b><span>of '+planned+'</span></div></div>'+
+    '<div class="lg-side"><span class="str-chip" style="color:var(--good)">Streak '+st.current+' \u00b7 best '+st.longest+'</span><span class="small">'+year+' sessions in '+t.slice(0, 4)+'</span></div></div>';
+  // the strip: a column per week, Monday at the top
+  h += '<div class="lg-heat" aria-label="The last '+LOG_HEAT_WEEKS+' weeks, Monday to Sunday">';
+  for(let wk = LOG_HEAT_WEEKS - 1; wk >= 0; wk--){
+    const m = mesoAddDays(mon, -7 * wk);
+    h += '<div class="lg-col">';
+    for(let i = 0; i < 7; i++){
+      const k = mesoAddDays(m, i);
+      const cls = have[k] ? 'done' : k === t ? 'today' : k > t ? 'future' : scheduledDayFor(k) === 'REST' ? 'rest' : 'miss';
+      h += '<i class="'+cls+'" title="'+esc(fmtDate(k))+'"></i>';
+    }
+    h += '</div>';
+  }
+  return h+'</div><p class="small" style="color:var(--dim)">Monday to Sunday \u00b7 green trained \u00b7 today amber \u00b7 a dark square is a planned day missed</p>';
+}
+function logChipsHTML(){
+  const keys = [];
+  (S.logs || []).forEach(function(l){ if(l && l.day && keys.indexOf(l.day) < 0) keys.push(l.day); });
+  keys.sort();
+  return '<div class="lg-chips" role="group" aria-label="Filter sessions">'+['all', 'pr'].concat(keys).map(function(k){
+    return '<button type="button" class="lv-chip'+(logFilter === k ? ' on' : '')+'" onclick="logSetFilter(\''+esc(k)+'\')">'+(k === 'all' ? 'All' : k === 'pr' ? 'PRs' : esc(k))+'</button>';
+  }).join('')+'</div>';
+}
+function logSetFilter(k){ logFilter = k || 'all'; renderLog(); }
+function logToggle(id){ logOpen[id] = !logOpen[id]; renderLog(); }
+function logRowHTML(l){
+  const sets = (l.entries || []).reduce(function(t, e){ return t + (e.sets || []).length; }, 0);
+  let mins = null;
+  try{ const d = sessionDensity(l); if(d) mins = d.mins; }catch(e){}
+  const prs = logPRsOn(l), meta = sessionMetaFor(l.id), open = !!logOpen[l.id];
+  const bits = [(l.entries || []).length+' lifts', sets+' sets'];
+  if(mins) bits.push(mins+' min');
+  if(l.deload) bits.push('deload');
+  if(l.home) bits.push('home');
+  let h = '<button type="button" class="lg-row" aria-expanded="'+open+'" onclick="logToggle('+l.id+')">'+
+    '<span class="lg-tick" style="background:'+dayColor(l.day)+'"></span>'+
+    '<span class="lg-b"><span class="lg-d">'+esc(fmtDate(l.date))+'</span><b>'+esc(l.day+(l.dayName || dayName(l.day) ? ' \u00b7 '+(l.dayName || dayName(l.day)) : ''))+'</b><span>'+esc(bits.join(' \u00b7 '))+'</span></span>'+
+    '<span class="lg-r">'+(prs.length ? '<span class="str-chip" style="color:var(--amber)">PR \u00d7'+prs.length+'</span>' : '')+
+      (meta && meta.feel ? '<span class="small">'+esc(FEEL_LABELS[meta.feel - 1] || '')+'</span>' : '')+'</span></button>';
+  if(open){
+    const prNames = prs.map(function(p){ return p.exercise; });
+    h += '<div class="lg-open">'+(l.entries || []).map(function(e){
+        return '<div class="lg-ex"><span>'+esc(e.exercise)+'</span><b'+(prNames.indexOf(e.exercise) >= 0 ? ' class="pr"' : '')+'>'+esc(summ(e.sets))+(prNames.indexOf(e.exercise) >= 0 ? ' \u00b7 PR' : '')+'</b></div>';
+      }).join('')+
+      '<div class="lg-acts"><button class="btn ghost sm" onclick="openEditSession('+l.id+')">Edit</button><button class="btn ghost sm" onclick="delLog('+l.id+')">Delete</button></div>'+
+      '<div class="elog-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\');this.querySelector(\'.et-chev\').classList.toggle(\'open\')">\u2699 Engine log <span class="et-chev">\u25be</span></div>'+
+      '<div class="elog-wrap">'+engineLogHTML(l)+'</div></div>';
+  }
+  return h;
+}
 function renderLog(){
   const el = $('#log');
-  let html = '<h2>Screenshot Import</h2><div class="card">'+
+  let past = '<h2>Screenshot Import</h2><div class="card">'+
     '<p class="small">Upload a workout-summary screenshot (Gymverse or similar). The AI reads it, matches exercises to your split, and you confirm before it saves.</p>'+
     '<div class="row" style="margin-top:10px"><div><input type="file" id="shot" accept="image/*"></div>'+
     '<div style="flex:none"><button class="btn sm" onclick="ingestShot()">Read Screenshot</button></div></div>'+
     '<div id="shotOut" style="margin-top:10px"></div></div>';
 
-  html += '<h2>Manual Entry</h2><div class="card">'+
+  past += '<h2>Manual Entry</h2><div class="card">'+
     '<div class="row"><div><label>Date</label><input type="date" id="mDate" value="'+todayKey()+'"></div>'+
     '<div><label>Day</label><select id="mDay">'+Object.keys(S.split).map(k=>'<option value="'+k+'">'+k+' — '+esc(S.split[k].name)+'</option>').join('')+'</select></div>'+
     '<div style="flex:none"><button class="btn sm ghost" onclick="manualForm()">Open Form</button></div></div>'+
     '<div id="mForm" style="margin-top:10px"></div></div>';
 
-  html += '<h2>History ('+S.logs.length+' sessions)</h2>';
-  const sorted = [...S.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
-  if(!sorted.length) html += '<p class="small">No sessions yet. Your first log starts the engine — recommendations and projections all build from here.</p>';
-  sorted.forEach(l=>{
-    html += '<div class="hist" style="border-left-color:'+dayColor(l.day)+'">'+
-      '<button class="del" onclick="openEditSession('+l.id+')">edit</button>'+
-      '<button class="del" style="margin-left:4px" onclick="delLog('+l.id+')">delete</button>'+
-      '<div class="h-date">'+fmtDate(l.date)+(l.deload?' <span class="pill" style="border-color:var(--violet);color:var(--violet);padding:1px 7px">DELOAD</span>':'')+'</div><div class="h-day">'+esc(l.day)+' — '+esc(l.dayName||dayName(l.day))+'</div>'+
-      l.entries.map(e=>'<div class="h-ex"><b>'+esc(e.exercise)+'</b> '+esc(summ(e.sets))+'</div>').join('')+
-      '<div class="elog-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\');this.querySelector(\'.et-chev\').classList.toggle(\'open\')">\u2699 Engine log <span class="et-chev">\u25be</span></div>'+
-      '<div class="elog-wrap">'+engineLogHTML(l)+'</div>'+
-      '</div>';
-  });
+  let html = '';
+  try{ html += logHeroHTML(); }catch(e){}
+  html += logChipsHTML();
+  const all = [...S.logs].sort((a,b)=>b.date.localeCompare(a.date));
+  const shown = all.filter(function(l){ return logFilter === 'all' ? true : logFilter === 'pr' ? logPRsOn(l).length > 0 : l.day === logFilter; }).slice(0, LOG_ROWS);
+  if(!all.length) html += '<p class="small">No sessions yet. Your first log starts the engine — recommendations and projections all build from here.</p>';
+  else if(!shown.length) html += '<p class="small" style="color:var(--dim)">Nothing matches that filter.</p>';
+  html += '<section class="lg-list" aria-label="History, '+all.length+' sessions">'+shown.map(logRowHTML).join('')+'</section>';
+  html += subSection('Log a past session', past, false, {pref:'log.past', cls:'grp', summary:'From a screenshot, or by hand'});
   el.innerHTML = html;
 }
 function delLog(id){
@@ -11389,13 +11540,12 @@ let _exnRows = [];
 function exnName(i){ const r = _exnRows[i]; return r ? r.name : null; }
 function exnPick(i){ const nm = exnName(i); exnSel = (exnSel === nm) ? null : nm; refreshExNames(); }
 function refreshExNames(){ const w = document.getElementById('exnWrap'); if(w) w.innerHTML = exNameEditorHTML(); }
-function exnApply(){
-  const nm = exnSel; if(!nm) return;
-  const el = document.getElementById('exnNew');
-  const nv = el ? String(el.value||'').trim() : '';
+/* The one rename flow: Settings › Exercise names and the Library both go through it, so the checks,
+   the confirmation and the save are the same. Returns 'blocked', 'same', 'cancel' or 'done'. */
+function exRenameFlow(nm, nv){
   const why = exRenameBlocker(nm, nv);
-  if(why){ alert(why); return; }
-  if(nv === nm){ exnSel = null; refreshExNames(); return; }
+  if(why){ alert(why); return 'blocked'; }
+  if(nv === nm) return 'same';
   const usage = exNameUsage();
   const mine = usage.filter(function(u){ return u.name === nm; })[0] || {sessions:0};
   const target = usage.filter(function(u){ return u.name === nv; })[0] || null;
@@ -11403,11 +11553,21 @@ function exnApply(){
   const msg = target
     ? 'Merge "'+nm+'" into "'+nv+'"?\n\n'+sess+', plus its PRs, goals, pain flags and overrides, move across. They become ONE lift with one trend line. This cannot be undone from inside the app.'
     : 'Rename "'+nm+'" to "'+nv+'" everywhere?\n\n'+sess+' move with it, along with its PRs, goals, pain flags and overrides.';
-  if(!confirm(msg)) return;
+  if(!confirm(msg)) return 'cancel';
   exRenameEverywhere(nm, nv);
-  exnSel = nv;
   save();   // a user action: touch + push, or the next background pull reverts the whole migration
-  refreshExNames(); refreshSplitEditor();
+  try{ refreshSplitEditor(); }catch(e){}
+  return 'done';
+}
+function exnApply(){
+  const nm = exnSel; if(!nm) return;
+  const el = document.getElementById('exnNew');
+  const nv = el ? String(el.value||'').trim() : '';
+  const r = exRenameFlow(nm, nv);
+  if(r === 'same'){ exnSel = null; refreshExNames(); return; }
+  if(r !== 'done') return;
+  exnSel = nv;
+  refreshExNames();
 }
 function exnPurge(i){
   const nm = exnName(i); if(!nm) return;
@@ -11999,22 +12159,6 @@ function dualLineChart(actual, ideal){
 }
 
 /* ===================== LIBRARY WITH PER-EXERCISE GRAPHS ===================== */
-let _libExpanded = {};
-function toggleLibDetail(idx, nm){
-  _libExpanded[idx] = !_libExpanded[idx];
-  const panel = document.getElementById('libdetail-'+idx);
-  const chev = document.getElementById('libchev-'+idx);
-  if(!panel) return;
-  if(_libExpanded[idx]){
-    panel.style.display='block';
-    panel.innerHTML = libDetailHTML(nm);
-    if(chev) chev.style.transform='rotate(180deg)';
-  } else {
-    panel.style.display='none';
-    panel.innerHTML='';
-    if(chev) chev.style.transform='';
-  }
-}
 function libDetailHTML(nm){
   const actual = e1rmSeries(nm);
   const ideal = idealSeries(nm, actual);
@@ -12042,30 +12186,107 @@ function libDetailHTML(nm){
   h+='<div style="margin-top:8px"><button class="btn ghost sm" onclick="showExInfo(\''+esc(nm).replace(/'/g,"\\'")+'\')">View form cues \u2192</button></div>';
   return h;
 }
+/* ---- the Library (A x C, his pick 2026-10-05): search and muscle filters, one row per lift with its
+   plateau word, best and flags, and a detail card under the row he taps: the switches (through
+   applyExFlag, the same writes Settings makes), rename (exRenameFlow, the same checks), and the old
+   trend and cues. Typing filters rows in place; nothing repaints under his fingers. ---- */
+const LIB_GROUPS = [['all','All',[]], ['chest','Chest',['Chest']], ['back','Back',['Back']], ['shoulders','Shoulders',['Shoulders']],
+                    ['arms','Arms',['Biceps','Triceps']], ['legs','Legs',['Quads','Hamstrings','Glutes']], ['core','Core',['Abs']]];
+let libQuery = '', libGroup = 'all', libSel = null;
+function libLifts(){
+  const out = {}, order = [];
+  const add = function(src, isBlock){
+    Object.keys(src || {}).forEach(function(dk){
+      ((src[dk] || {}).exercises || []).forEach(function(x){
+        const nm = exName(x); if(!nm) return;
+        if(!out[nm]){ out[nm] = {name:nm, days:[]}; order.push(nm); }
+        if(out[nm].days.indexOf(dk) < 0) out[nm].days.push(dk);
+      });
+    });
+  };
+  add(S.split);
+  try{ add(mesoActiveSplit(), true); }catch(e){}
+  return order.map(function(nm){ return out[nm]; });
+}
+function libMatches(x, groupKey, q){
+  const g = LIB_GROUPS.find(function(z){ return z[0] === groupKey; }) || LIB_GROUPS[0];
+  if(g[2].length && !(musclesFor(x.name).p || []).some(function(m){ return g[2].indexOf(m) >= 0; })) return false;
+  return !q || x.name.toLowerCase().indexOf(q.toLowerCase()) >= 0;
+}
+function libFilterRows(q){
+  libQuery = q || '';
+  let n = 0;
+  [].slice.call(document.querySelectorAll('#library .lib-row')).forEach(function(r){
+    const ok = !libQuery || String(r.getAttribute('data-name') || '').toLowerCase().indexOf(libQuery.toLowerCase()) >= 0;
+    if(ok) n++;
+    r.style.display = ok ? '' : 'none';
+    const d = r.nextElementSibling;
+    if(d && d.classList.contains('lib-card')) d.style.display = ok ? '' : 'none';
+  });
+  const none = document.getElementById('libNone');
+  if(none) none.style.display = n ? 'none' : '';
+}
+function libSetGroup(k){ libGroup = k || 'all'; renderLibrary(); }
+function libPick(nm){ libSel = libSel === nm ? null : nm; renderLibrary(); }
+function libFlag(nm, key){
+  if(!nm) return;
+  if(key === 'maxed') applyExFlag(nm, {maxed: !isMaxed(nm)});
+  else if(key === 'form') applyExFlag(nm, {formFocus: !isFormFocus(nm)});
+  // Strength mode off is stored as 'hyp', never null, or load() would turn it back on (CLAUDE.md).
+  else if(key === 'str') applyExFlag(nm, {repMode: isStrMode(nm) ? 'hyp' : 'str'});
+  else return;
+  save();
+  try{ refreshSplitEditor(); }catch(e){}
+  renderLibrary();
+}
+function libRename(nm){
+  const el = document.getElementById('libRenameIn');
+  const r = exRenameFlow(nm, el ? String(el.value || '').trim() : '');
+  if(r === 'done'){ libSel = String(el.value).trim(); renderLibrary(); }
+}
+function libCardHTML(x, pw){
+  const nm = x.name, best = bestE1RM(nm), pts = e1rmSeries(nm).slice(-12);
+  const L = pw ? PW_LEVELS[pw.lvl] : null;
+  const sw = function(label, on, key){
+    return '<label class="lib-sw"><span>'+label+'</span><input type="checkbox"'+(on ? ' checked' : '')+' onchange="libFlag(this.closest(\'.lib-card\').getAttribute(\'data-name\'),\''+key+'\')"></label>';
+  };
+  let h = '<div class="lib-card" data-name="'+esc(nm)+'">';
+  h += '<div class="lib-card-h"><b>'+esc(nm)+'</b>'+(pw && pw.lvl !== 'green' ? '<span class="str-chip" style="color:'+L.col+'">'+esc(pw.word)+'</span>' : '')+'</div>';
+  h += best > 0 ? '<div class="str-big" style="justify-content:flex-start"><b>'+Math.round(best)+'</b><span>lb best e1RM</span></div>' : '<p class="small">Not logged yet.</p>';
+  if(pts.length >= 2) h += anSpark(pts, ckSparkW(320), 64, 'var(--text)', {area:false});
+  const why = pw && pw.sig && pw.sig.length ? pw.sig[0].txt : '';
+  h += '<p class="small">'+esc((why ? why+'. ' : '')+'+'+incForExercise(nm)+' lb steps.')+'</p>';
+  h += '<div class="lib-sws">'+sw('Strength mode (3\u20136 reps)', isStrMode(nm), 'str')+sw('Form focus', isFormFocus(nm), 'form')+sw('MAXED (no heavier setting)', isMaxed(nm), 'maxed')+'</div>';
+  h += '<div class="lib-rename"><label for="libRenameIn" class="small">Rename everywhere</label><div style="display:flex;gap:8px"><input id="libRenameIn" value="'+esc(nm)+'">'+
+    '<button class="btn ghost sm" onclick="libRename(this.closest(\'.lib-card\').getAttribute(\'data-name\'))">Rename</button></div></div>';
+  h += subSection('Trend and form cues', libDetailHTML(nm), false, {pref:'lib.detail', summary:'actual against ideal pace'});
+  return h+'</div>';
+}
 function renderLibrary(){
   const el=document.getElementById('library'); if(!el) return;
-  let h='<p class="small">Every exercise in your split. Tap one to expand its e1RM trend (actual vs. ideal pace) and form cues.</p>';
-  let idx=0;
-  Object.keys(S.split).forEach(dk=>{
-    const d=S.split[dk]; const list=(d.exercises||[]).map(exName);
-    if(!list.length) return;
-    h+='<div class="lib-day"><div class="lib-dh" style="color:'+(d.hex||'#9A8B7E')+'">'+dk+' \u00b7 '+esc(d.name||'')+'</div>';
-    list.forEach(nm=>{
-      const myIdx=idx++;
-      const sessions=e1rmSeries(nm).length;
-      h+='<div class="lib-ex-wrap">'+
-        '<button class="lib-ex" onclick="toggleLibDetail('+myIdx+',\''+esc(nm).replace(/'/g,"\\'")+'\')">'+
-          '<span>'+esc(nm)+'</span>'+
-          '<span class="lib-meta">'+(sessions?sessions+' logged':'no data')+' <span class="lib-chev" id="libchev-'+myIdx+'">\u25be</span></span>'+
-        '</button>'+
-        '<div class="lib-detail" id="libdetail-'+myIdx+'" style="display:none"></div>'+
-        '</div>';
-    });
-    h+='</div>';
-  });
-  el.innerHTML=h;
+  const pwBy = {};
+  try{ plateauWatch().forEach(function(r){ pwBy[r.lift] = r; }); }catch(e){}
+  const lifts = libLifts();
+  let h = '<div class="field lib-search"><label for="libSearch">Find an exercise</label><input id="libSearch" type="search" placeholder="Search '+lifts.length+' exercises" value="'+esc(libQuery)+'" oninput="libFilterRows(this.value)"></div>';
+  h += '<div class="lg-chips" role="group" aria-label="Filter by muscle">'+LIB_GROUPS.map(function(g){
+    return '<button type="button" class="lv-chip'+(libGroup === g[0] ? ' on' : '')+'" onclick="libSetGroup(\''+g[0]+'\')">'+g[1]+'</button>';
+  }).join('')+'</div>';
+  const shown = lifts.filter(function(x){ return libMatches(x, libGroup, ''); });
+  h += '<section class="lib-list" aria-label="Exercises">'+shown.map(function(x){
+    const pw = pwBy[x.name], L = pw ? PW_LEVELS[pw.lvl] : null, best = bestE1RM(x.name);
+    const flags = [isMaxed(x.name) ? 'MAXED' : '', isStrMode(x.name) ? 'STRENGTH' : '', isFormFocus(x.name) ? 'FORM' : ''].filter(Boolean);
+    const vis = libMatches(x, libGroup, libQuery);
+    return '<button type="button" class="lib-row" data-name="'+esc(x.name)+'"'+(vis ? '' : ' style="display:none"')+' aria-expanded="'+(libSel === x.name)+'" onclick="libPick(this.getAttribute(\'data-name\'))">'+
+      '<i style="background:'+(L ? L.col : 'var(--line2)')+'"></i>'+
+      '<span class="lib-b"><b>'+esc(x.name)+'</b><span>'+esc(((musclesFor(x.name).p || [])[0] || 'Other')+' \u00b7 '+x.days.join(', '))+
+        (flags.length ? ' \u00b7 <em>'+flags.join(' ')+'</em>' : '')+'</span></span>'+
+      '<span class="lib-r"><b>'+(best > 0 ? Math.round(best) : '\u2014')+'</b><span'+(L && pw.lvl !== 'green' ? ' style="color:'+L.col+'"' : '')+'>'+esc(pw ? pw.word : (best > 0 ? 'not watched' : 'no data'))+'</span></span></button>'+
+      (libSel === x.name ? libCardHTML(x, pw) : '');
+  }).join('')+'</section>';
+  if(!shown.length) h += '<p class="small" style="color:var(--dim)">No exercise in your split works that muscle.</p>';
+  else h += '<p id="libNone" class="small" style="color:var(--dim)'+(shown.some(function(x){ return libMatches(x, libGroup, libQuery); }) ? ';display:none' : '')+'">No exercise matches that search.</p>';
+  el.innerHTML = h;
 }
-
 /* ===================== ENGINE LOG (in LOG tab) ===================== */
 function engineLogHTML(log){
   const rows = log.entries.map(entry=>{
@@ -14230,7 +14451,106 @@ function renderMeso(){
   const a = mesoActive();
   if(!a){ el.innerHTML = mesoBuilderHTML(); return; }
   mesoEnsureProposals();
-  el.innerHTML = mesoCurrentCardHTML() + mesoCalendarHTML() + mesoProposalsHTML() + mesoControlsHTML();
+  // The A x C hero first (2026-10-05). The old "now" card folds under it: the hero says what it said.
+  // Its one warning (a strength split waiting for approval) is lifted into the hero, so the fold
+  // never hides it.
+  let hero = '';
+  try{ hero = planHeroHTML(); }catch(e){ hero = ''; }
+  el.innerHTML = hero + (hero ? subSection('This segment in detail', mesoCurrentCardHTML(), false, {pref:'plan.now', cls:'grp', summary:'dates, block week, next deload'}) : mesoCurrentCardHTML()) +
+    mesoCalendarHTML() + mesoProposalsHTML() + mesoControlsHTML();
+}
+/* ---- the Plan hero (A x C, his pick 2026-10-05) ----
+   The segment he is in, as "Day 1 of 5"; a timeline of the blocks around it sized by days; the next
+   five days as tiles; today's lifts at the weights LIVE will give (todayKeyLifts, reads only) with
+   Start; and the segment's length and type, calling the same functions the week overlay does. */
+const PLAN_TILE_DAYS = 5;
+function planBlocks(a){
+  const out = [];
+  (a.weeks || []).forEach(function(x){
+    const b = out[out.length - 1];
+    if(b && b.id === x.blockId) b.end = x.endKey;
+    else out.push({id:x.blockId, type:x.type, name:x.name, start:x.startKey, end:x.endKey});
+  });
+  out.forEach(function(b){ b.days = daysBetween(b.start, b.end) + 1; });
+  return out;
+}
+function planHeroHTML(){
+  const a = mesoActive(), w = mesoCurrentWeek();
+  if(!a || !w) return '';
+  const t = todayKey(), ty = MESO_TYPES[w.type] || MESO_TYPES.custom;
+  const len = Math.max(1, daysBetween(w.startKey, w.endKey) + 1), day = Math.max(1, Math.min(len, daysBetween(w.startKey, t) + 1));
+  const blocks = planBlocks(a), cur = blocks.findIndex(function(b){ return t >= b.start && t <= b.end; });
+  const shown = blocks.slice(Math.max(0, cur - 1), Math.max(0, cur) + 3);
+  let h = '<div class="plan-hero"><div class="plan-head"><span class="cc-eyebrow">Mesocycle \u00b7 since '+esc(homeShortDate(a.weeks[0].startKey))+
+    (w.blockLen > 1 ? ' \u00b7 week '+w.blockWeek+' of '+w.blockLen : '')+'</span>'+
+    '<span class="plan-name" style="color:'+ty.accent+'">'+esc(w.name)+'</span>'+
+    '<div class="plan-day"><b>'+day+'</b><span>of '+len+' days</span>'+(w.repLo > 0 ? '<span class="str-chip" style="color:'+ty.accent+'">'+w.repLo+'\u2013'+w.repHi+' reps</span>' : '')+'</div></div>';
+  // the timeline: blocks around this one, sized by their days
+  h += '<div class="plan-tl" aria-label="Block timeline"><div class="plan-tl-bar">'+shown.map(function(b){
+      const st = b === blocks[cur] ? 'now' : (b.end < t ? 'past' : (b.type === 'deload' ? 'deload' : 'next'));
+      const bt = MESO_TYPES[b.type] || MESO_TYPES.custom;
+      return '<span class="plan-tl-seg '+st+'" style="flex:'+b.days+(st === 'now' ? ';background:'+bt.accent : '')+'"></span>';
+    }).join('')+'</div><div class="plan-tl-lab">'+shown.map(function(b){
+      // A legend, not a label under each segment: a 5-day block beside a 6-week one has no room for its name.
+      const st = b === blocks[cur] ? 'now' : (b.end < t ? 'past' : (b.type === 'deload' ? 'deload' : 'next'));
+      const bt = MESO_TYPES[b.type] || MESO_TYPES.custom;
+      return '<span class="plan-tl-key '+st+'"><i'+(st === 'now' ? ' style="background:'+bt.accent+'"' : '')+'></i>'+esc(b.name)+' \u00b7 '+
+        (b.days % 7 === 0 && b.days >= 14 ? (b.days / 7)+' wk' : b.days+' d')+(st === 'now' ? ' \u00b7 now' : st === 'past' ? ' \u00b7 done' : '')+'</span>';
+    }).join('')+'</div></div>';
+  // a strength split waiting for approval is a warning; it is not left in a fold
+  if(w.type === 'str'){
+    const rec = (a.splits || {})[w.blockId];
+    if(!(rec && rec.status === 'approved')) h += '<p class="plan-warn">\u26a0 The strength split is proposed but not approved, so your normal split is running. Review it below.</p>';
+  }
+  // the next days
+  const tiles = [];
+  for(let i = 0; i < PLAN_TILE_DAYS; i++){
+    const k = mesoAddDays(t, i), dk = scheduledDayFor(k), rest = dk === 'REST';
+    tiles.push('<div class="plan-tile'+(i === 0 ? ' today' : '')+(rest ? ' rest' : '')+'"><span class="plan-tile-d">'+esc(WP_DOW[new Date(k+'T12:00:00').getDay()]+' '+(+k.slice(8)))+'</span>'+
+      '<b>'+esc(rest ? 'Rest' : dk)+'</b><span class="plan-tile-n">'+esc(rest ? 'recover' : (dayName(dk) || ''))+'</span></div>');
+  }
+  h += '<section class="str-sec" aria-label="The next days"><div class="str-sec-h"><span>The next '+PLAN_TILE_DAYS+' days</span></div><div class="plan-tiles">'+tiles.join('')+'</div></section>';
+  // today's lifts, read the way Today reads them
+  const td = dashToday();
+  if(td.rest) h += '<section class="str-sec" aria-label="Today"><div class="str-sec-h"><span>Today \u00b7 rest day</span></div><p class="small">Recover, eat your surplus, sleep.</p></section>';
+  else {
+    let call;
+    try{ const dc = dayCall(t, td.dayKey); call = (dc && dc.conf !== 'none') ? dc.call : undefined; }catch(e){}
+    let lifts = [];
+    try{ lifts = todayKeyLifts(td.dayKey, call, 12); }catch(e){ lifts = []; }
+    const sets = liveSlotSets(td.dayKey);
+    h += '<section class="str-sec" aria-label="Today"><div class="str-sec-h"><span>Today \u00b7 '+esc(td.dayKey+' '+(dayName(td.dayKey) || ''))+'</span>'+
+      '<span class="pw-note">'+lifts.length+' lifts</span></div><div class="plan-lifts">'+lifts.map(function(l, i){
+        return '<div class="plan-lift"><span class="plan-lift-i">'+(i + 1)+'</span><span class="plan-lift-b"><b>'+esc(l.name)+'</b><span>'+(+sets[l.name] || 3)+' \u00d7 '+(l.lo ? l.lo+'\u2013'+l.hi : '')+'</span></span>'+
+          '<span class="plan-lift-w">'+(l.w > 0 ? l.w+'<small> lb</small>' : '\u2014')+'</span></div>';
+      }).join('')+'</div>'+
+      '<div class="plan-acts">'+(live ? '<button class="btn sm" onclick="setMode(\'live\')">Resume session</button>'
+        : td.logged ? '<span class="small" style="color:var(--good)">Logged today \u2713</span>'
+        : '<button class="btn sm" onclick="liveStartSession()">Start '+esc(td.dayKey)+'</button>')+'</div></section>';
+  }
+  // this segment: its length and type, through the week overlay's own calls
+  h += '<section class="str-sec" aria-label="Edit this segment"><div class="str-sec-h"><span>Edit this segment</span></div>'+
+    '<div class="plan-edit"><div class="field"><label for="planLen">Length (days)</label><div class="lv-stepper"><button type="button" class="lv-step" aria-label="One day fewer" onclick="planLenStep(-1)">\u2212</button>'+
+      '<input id="planLen" type="number" inputmode="numeric" min="1" max="60" value="'+(w.days || len)+'" onchange="mesoSetWeekDays('+w.n+',this.value)">'+
+      '<button type="button" class="lv-step" aria-label="One day more" onclick="planLenStep(1)">+</button></div></div>'+
+    '<div class="field"><label>Rep range</label><div class="plan-rr">'+(w.repLo > 0 ? w.repLo+'\u2013'+w.repHi : 'none')+'</div></div></div>'+
+    '<div class="plan-types">'+MESO_TYPE_ORDER.map(function(k){
+      return '<button type="button" class="lv-chip'+(k === w.type ? ' on' : '')+'" onclick="planSetType(\''+k+'\')">'+esc(MESO_TYPES[k].label)+'</button>';
+    }).join('')+'</div>'+
+    '<p class="small" style="color:var(--dim)">Shorter or longer moves every later date; an approved split stays.</p></section>';
+  return h+'</div>';
+}
+function planLenStep(d){
+  const w = mesoCurrentWeek(); if(!w) return;
+  const cur = w.days || (daysBetween(w.startKey, w.endKey) + 1);
+  mesoSetWeekDays(w.n, Math.max(1, Math.min(60, cur + d)));
+}
+/* A chip is easier to mis-tap than the overlay's select, and a type change splits the segment out as
+   its own block, so it asks first. */
+function planSetType(k){
+  const w = mesoCurrentWeek(); if(!w || !MESO_TYPES[k] || k === w.type) return;
+  if(!confirm('Make this segment '+MESO_TYPES[k].label+'? It becomes its own block, and later dates recalculate.')) return;
+  mesoSetWeekType(w.n, k);
 }
 
 /* ---- week edit overlay ---- */

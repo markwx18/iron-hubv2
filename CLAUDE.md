@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3080 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3154 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -254,6 +254,7 @@ so the two orders can no longer disagree.
 | Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()`; jump cautions `e1Spike()` (`SPIKE_PCT`), `atCeiling()` (`STR_CEIL_SETS`) |
 | Per-lift flags | `exSlotsFor()` (split in force, else the permanent split), `isMaxed()`, `incForExercise()`, `slotInc()`, `isFormFocus()`, `isStrMode()`, `toggleRepMode()` |
 | Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
+| Train (A × C) | Plan `planHeroHTML()`, `planBlocks()`, `planLenStep()`, `planSetType()`; Log `logHeroHTML()`, `logChipsHTML()`, `logRowHTML()`, `logPRsOn()` (`logFilter`, `logOpen`); Library `libLifts()`, `libMatches()`, `libFilterRows()`, `libCardHTML()`, `libFlag()`, `libRename()`; `exRenameFlow()` (the one rename flow) |
 | Recap | `recapSlides()`, `recapYear()` / `recapFinal()` / `recapTitle()`, `recapRender()` / `recapOpen()` / `recapGo()` / `recapClose()`, `recapCardHTML()` |
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
@@ -1424,6 +1425,42 @@ proposals are counted as **requests** ("1 request"), never ideas.
   header card stays up) and the 14 days of intake (Bodyweight) in a fold remembered as
   `open.raw.<view>`. The V2 wrappers append cards after the base renderer, so they finish with
   `rawFoldsLast(sec)`, or the "last" fold ends up mid-page.
+
+**Train in A × C** (his pick from the canvas page "A × C · Train, Body, Settings", 2026-10-05). Every
+section id, element id and handler was kept; the old detail moved into folds, it did not go.
+- **Plan** (`renderMeso()`) opens on `planHeroHTML()`:
+  - the segment he is in, "2 of 5 days", with its rep range;
+  - a timeline of the block before, this one and the two after (`planBlocks()` groups segments by
+    `blockId`), each sized by its days. It has a legend rather than a label under each segment,
+    because a 5-day block beside a 6-week one has no room for its name;
+  - the strength split's approval warning, which stays in the hero and is never folded;
+  - the next `PLAN_TILE_DAYS` (5) days from `scheduledDayFor()`, so a block's S1/S2/S3 and then the
+    normal schedule;
+  - today's lifts from `todayKeyLifts()` (reads only), with Start, Resume or Logged;
+  - Edit this segment. The Length stepper (`planLenStep()`) and the type chips (`planSetType()`,
+    which asks first) call the week editor's own `mesoSetWeekDays()` / `mesoSetWeekType()`.
+
+  The old "now" card folds under it (`plan.now`).
+- **Log** (`renderLog()`): this week against the days planned, the streak (`streakStats()`), the
+  year's count, and an 8-week Monday-to-Sunday strip (trained, today, missed, rest, ahead). Then
+  filter chips (All, PRs, each day) and at most `LOG_ROWS` (30) rows. A row is lifts, sets,
+  minutes from set `ts` (`sessionDensity()`), its PRs and his feel. A PR counts only for a lift that
+  session trained (`logPRsOn()`). A row opens to its sets, Edit, Delete and the engine log. `logFilter`
+  and `logOpen` are module-scoped, so the 30-second repaint keeps them. Screenshot import and manual
+  entry fold into "Log a past session" with their ids (`shot`, `mDate`, `mDay`, `mForm`).
+- **Library** (`renderLibrary()`): a search box and muscle chips (`LIB_GROUPS`), then a row per lift
+  in the split and the block in force (`libLifts()`), with its plateau word, best e1RM, days and
+  flags. **Typing filters rows in place** (`libFilterRows()`) and never repaints, so the box keeps
+  focus. The query is module-scoped and survives the repaint. Tapping a row opens its card right under
+  it:
+  - why it is flagged, and the lift's step;
+  - the Strength mode, Form focus and MAXED switches (`libFlag()` → `applyExFlag()` and `save()`;
+    strength off is `'hyp'`);
+  - Rename everywhere;
+  - the old trend and cues in a fold.
+
+  **Rename has one flow** (`exRenameFlow()`), shared with Settings › Exercise names: the same
+  refusals, confirmation and save.
 
 **A folded card can remember that it is folded.** `subSection(title, body, open, opts)` takes
 `opts.pref` to store the open/closed choice per device in `localStorage['ironhub:ui']`
