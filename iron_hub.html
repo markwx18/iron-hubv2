@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-04-v5">
+<meta name="ironhub-build" content="2026-10-04-v6">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1611,6 +1611,73 @@
   .lv-chip.on{background:color-mix(in srgb, var(--warn) 18%, transparent); color:var(--warn);}
   .lv-offer{display:flex; flex-direction:column; gap:6px; margin-top:8px;}
   .lv-offer .btn{align-self:flex-start;}
+
+  /* ===== V4 STAGE 4: the A × C LIVE layout =====
+     Header with the stage and a big clock, a segment per set, the lift as one big number pair, the
+     dock's steppers inside one box (the reps box outlined: the call filled it), muscles filling in. */
+  .lv-head{align-items:center;}
+  .lv-head-t{display:flex; flex-direction:column; min-width:0; flex:1;}
+  .lv-head-s{display:flex; gap:6px; flex-wrap:nowrap; font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;}
+  .lv-head-s span + .sb-fin:not(:empty)::before{content:'\00b7  '; color:var(--dim);}
+  .lv-head .sb-clock{font-family:var(--disp); font-weight:700; font-size:26px; color:var(--amber); margin-left:0; font-variant-numeric:tabular-nums;}
+  .lv-stage{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; padding:4px 9px; border-radius:999px;
+    background:color-mix(in srgb, var(--amber) 14%, transparent); color:var(--amber); white-space:nowrap;}
+  .lv-stage:empty{display:none;}
+  .lv-stage[data-stage="warming-up"]{background:var(--panel2); color:var(--muted);}
+  .lv-stage[data-stage="finishing"]{background:color-mix(in srgb, var(--good) 16%, transparent); color:var(--good);}
+  .lv-prog{display:flex; align-items:center; gap:4px; margin:2px 0 6px;}
+  .lv-prog i{flex:1 1 0; max-width:10px; min-width:3px; height:9px; border-radius:5px; background:var(--panel2);}
+  .lv-prog i.done{background:var(--good);}
+  .lv-prog i.now{background:var(--amber);}
+  .lv-prog i.skip{background:none; box-shadow:inset 0 0 0 1px var(--line2);}
+  .lv-seg-gap{flex:0 0 6px;}
+  .lv-prog-n{margin-left:auto; padding-left:8px; font-family:var(--disp); font-weight:700; font-size:15px; white-space:nowrap;}
+  .lv-prog-n span{color:var(--dim);}
+  .lv-sec{font-family:var(--disp); font-weight:700; font-size:15px; letter-spacing:.05em; text-transform:uppercase; margin:18px 2px 8px; color:var(--text);}
+  .lv4-top{display:flex; flex-direction:column; align-items:center; gap:2px; padding:16px 16px 4px; text-align:center; min-width:0;}
+  .lv4-eye{font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--amber);}
+  .lv4-name{font-family:var(--disp); font-weight:700; font-size:clamp(22px, 7vw, 28px); line-height:1.05; letter-spacing:.03em;
+    text-transform:uppercase; color:var(--text); max-width:100%; overflow-wrap:anywhere;}
+  .lv4-tools{display:flex; gap:10px; justify-content:center;}
+  .lv4-big{display:flex; align-items:baseline; justify-content:center; gap:10px; margin-top:4px; max-width:100%; flex-wrap:wrap;}
+  .lv4-w{font-family:var(--disp); font-weight:700; font-size:clamp(68px, 25vw, 124px); line-height:.86; letter-spacing:-.01em; font-variant-numeric:tabular-nums;}
+  .lv4-r{font-family:var(--disp); font-weight:600; font-size:clamp(30px, 11vw, 48px); color:var(--muted); white-space:nowrap;}
+  .lv4-chips{display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:8px;}
+  .lv4-chip{font-family:var(--disp); font-weight:600; font-size:12.5px; letter-spacing:.04em; text-transform:uppercase; padding:4px 11px;
+    border-radius:999px; box-shadow:inset 0 0 0 1px var(--line2); color:var(--muted);}
+  .lv4-chip.mode{box-shadow:none; background:color-mix(in srgb, var(--amber) 16%, transparent); color:var(--amber);}
+  .lv4-chip.mode.str{background:color-mix(in srgb, var(--violet) 16%, transparent); color:var(--violet);}
+  .lv4-chip.ff{color:var(--cyan);}
+  .lv4-call{display:flex; gap:10px; align-items:flex-start; margin:12px 16px 8px;}
+  .lv4-call-i{flex:none; width:4px; align-self:stretch; border-radius:2px; background:var(--amber);}
+  .lv4-call p{margin:0; font-size:14.5px; line-height:1.45; color:var(--text); min-width:0;}
+  .lv4-tag{font-family:var(--disp); font-weight:700; font-size:15px; letter-spacing:.04em; text-transform:uppercase; color:var(--amber);}
+  .lv4-tag.up{color:var(--good);} .lv4-tag.back{color:var(--bad);}
+  .lv4-call .lv-why{display:block; margin-top:3px; font-size:13px; color:var(--muted);}
+  .lv4 .lv-stepper{gap:0; border:1px solid var(--line2); border-radius:14px; background:var(--base); min-height:58px; overflow:hidden;}
+  .lv4 .lv-stepper.aim{border-color:var(--amber);}
+  .lv4 .lv-stepper .lv3-in{border:none !important; background:none !important; box-shadow:none !important;}
+  .lv4 .lv-step{background:none; border-radius:0; color:var(--muted); width:44px;}
+  .lv4 .lv-step:active{background:var(--panel2);}
+  .lv4 .lv3-eff button::before{content:''; display:inline-block; width:8px; height:8px; border-radius:4px; margin-right:6px; vertical-align:1px;}
+  .lv4 .lv3-eff button[data-e="easy"]::before{background:var(--good);}
+  .lv4 .lv3-eff button[data-e="solid"]::before{background:var(--muted);}
+  .lv4 .lv3-eff button[data-e="grind"]::before{background:var(--amber);}
+  .lv4 .lv3-eff button[data-e="fail"]::before{background:var(--bad);}
+  .lv4-up-v{font-family:var(--disp); font-weight:700; font-size:14px; color:var(--muted); white-space:nowrap; flex:none;}
+  .lv-mus{margin:6px 0 4px;}
+  .lv-mus-r{display:flex; align-items:center; gap:10px; padding:6px 2px;}
+  .lv-mus-n{width:84px; flex:none; font-size:13px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .lv-mus-b{flex:1; display:flex; gap:3px; min-width:0;}
+  .lv-mus-b i{flex:1; height:8px; border-radius:3px; background:var(--panel2); max-width:22px;}
+  .lv-mus-b i.on{background:var(--good);}
+  .lv-mus-c{font-family:var(--disp); font-weight:700; font-size:13px; color:var(--muted); flex:none; width:36px; text-align:right;}
+  .lv-brief .lv-brief-l{display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid var(--line); font-size:14px; min-width:0;}
+  .lv-brief .lv-brief-l b{font-family:var(--disp); font-weight:700; font-size:16px; white-space:nowrap;}
+  .lv-brief .lv-brief-l span{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .lv-brief .lv-brief-call{margin:6px 0 8px;}
+  .lv-prw-line{display:flex; align-items:center; gap:6px; color:var(--amber); margin-top:8px;}
+  .lv-prw-line svg{flex:none;}
 </style>
 
 
@@ -8840,7 +8907,7 @@ function renderLive(){
   try{ invUpdateBadge(); }catch(e){}
   const body = document.getElementById('liveBody');
   if(!live){
-    body.innerHTML = welcomeHTML() + deloadBannerHTML() + fatigueBannerHTML() + liveIdleHTML();
+    body.innerHTML = welcomeHTML() + liveBriefHTML() + deloadBannerHTML() + fatigueBannerHTML() + liveIdleHTML();
     initBodyMap('live');
     liveWakeApply();   // no session: let the screen sleep again
     return;
@@ -8850,15 +8917,30 @@ function renderLive(){
   let h = '';
   const _rd = todayReadiness();
   const _rdChip = _rd ? '<span class="pill" style="font-size:9px;border-color:'+(_rd.tier==='high'?'var(--cyan-dim);color:var(--cyan)':_rd.tier==='low'?'var(--red-dim);color:var(--red)':'var(--line2);color:var(--muted)')+'">'+_rd.tier.toUpperCase()+(live.trimmed?' \u00b7 TRIMMED':'')+'</span>' : '';
-  h += '<div class="sessionbar"><span class="sb-day">'+esc(live.day)+' · '+esc(dayName(live.day)||live.day)+'</span>'+_rdChip+
-       '<span class="sb-prog" id="sbProg"></span><span class="sb-clock" id="sbClock">00:00</span></div>';
   // The finish estimate is worked out once per repaint (it reads the logs); the 1 s tick only
-  // moves it along the clock. And the screen-on switch, per device.
+  // moves it along the clock.
   try{ const fe = liveFinishEstimate(); _liveFinishSecs = fe ? fe.secs : null; }catch(e){ _liveFinishSecs = null; }
-  h += '<div class="lv-subbar"><span class="sb-fin" id="sbFin"></span>'+liveWakeHTML()+'</div>';
+  /* V4 stage 4, the A × C layout (his pick, 2026-10-03). Top to bottom: the header (day, call, finish
+     time, the stage of the session, the clock), a segment per planned set, the call card, warm-ups,
+     the lifts already done, the one he is on (with its dock and rest), the muscles filling in, and
+     what is left under Up next. Every id and handler is the same as before; only the order moved. */
+  const _c = liveEffectiveCall();
+  // The header keeps to the day, the call, the finish time and the clock, so that line never wraps
+  // on a phone; the stage, readiness and lift count sit on the line under the set segments.
+  h += '<div class="sessionbar lv-head"><div class="lv-head-t"><span class="sb-day">'+esc(live.day)+' · '+esc(dayName(live.day)||live.day)+'</span>'+
+       '<span class="lv-head-s">'+(_c ? '<span>call: '+esc(String(DC_LABEL[_c]||_c).replace(/ day$/i, '').toLowerCase())+'</span>' : '')+
+         '<span class="sb-fin" id="sbFin"></span></span></div>'+
+       '<span class="sb-clock" id="sbClock">00:00</span></div>';
+  h += liveProgHTML();
+  h += '<div class="lv-subbar"><span class="lv-stage" id="lvStage"></span>'+_rdChip+'<span class="sb-prog" id="sbProg"></span>'+liveWakeHTML()+'</div>';
   h += liveCallHTML();
   h += warmupCardHTML(live.day);
-  live.exercises.forEach((ex,i)=>{ h += liveExHTML(ex,i); });
+  const _exs = live.exercises, _isCur = function(i){ return i === liveActiveIdx && !_exs[i].done; };
+  _exs.forEach((ex,i)=>{ if(ex.done) h += liveExHTML(ex,i); });
+  _exs.forEach((ex,i)=>{ if(_isCur(i)) h += liveExHTML(ex,i); });
+  h += liveMusclesHTML();
+  const _up = _exs.map(function(ex, i){ return i; }).filter(function(i){ return !_exs[i].done && !_isCur(i); });
+  if(_up.length) h += '<div class="lv-sec">Up next</div>'+_up.map(function(i){ return liveExHTML(_exs[i], i); }).join('');
   h += liveDeltaPanelHTML();
   h += '<div style="display:flex; gap:10px; margin:16px 0 8px">'+
        '<button class="btn ghost" onclick="openLiveAddEx()" style="flex:none">+ Add exercise</button>'+
@@ -8872,6 +8954,76 @@ function renderLive(){
   if(rest.running) mountRestTimer();
   const dbox = document.getElementById('liveDeltaBox');
   if(dbox) dbox.scrollTop = dbox.scrollHeight;
+}
+/* Before he starts (V4 stage 4): what today is, from the same helpers Today uses, so the two screens
+   can never disagree. The call and its reasons only when the call has something to go on (WHOOP or a
+   check-in); the key lifts with the weight LIVE will prescribe; PR watch on the first of them; and the
+   minutes only when his own timed sessions give them. Nothing on a rest day or once today is logged.
+   It reads only: todayKeyLifts() builds through buildOneLiveExercise(), never buildLiveExercises(). */
+function liveBriefHTML(){
+  const dk = currentDayKey();
+  if(!dk || dk === 'REST' || live) return '';
+  try{ if((S.logs || []).some(function(l){ return l.date === todayKey(); })) return ''; }catch(e){}
+  let dc = null;
+  try{ if(!deloadActive()) dc = dayCall(todayKey(), dk); }catch(e){ dc = null; }
+  const call = (dc && dc.conf !== 'none') ? dc.call : undefined;
+  let lifts = [], shape = {lifts:0, sets:0, mins:null}, pw = null;
+  try{ lifts = todayKeyLifts(dk, call, 3); }catch(e){ lifts = []; }
+  try{ shape = todayPlanShape(dk); }catch(e){}
+  try{ if(lifts[0] && lifts[0].w){ const ex0 = buildOneLiveExercise(lifts[0].name, null, {call:call}); pw = livePrWatch(ex0, {w:lifts[0].w}); } }catch(e){ pw = null; }
+  if(!lifts.length && !call) return '';
+  return '<div class="card lv-brief"><div class="k">Before you start · '+esc(dk)+'</div>'+
+    (call ? '<p class="small lv-brief-call"><b>'+esc(DC_LABEL[call])+'</b>'+(dc.why && dc.why.length ? ' · '+esc(dc.why.join(' · ')) : '')+'</p>' : '')+
+    lifts.map(function(l){
+      return '<div class="lv-brief-l"><span>'+esc(l.name)+'</span><b>'+(l.w ? l.w+' × '+l.lo+'–'+l.hi : '')+'</b></div>';
+    }).join('')+
+    (pw ? '<p class="small lv-prw-line">'+SUM_TROPHY+' PR watch · '+esc(pw.txt)+'</p>' : '')+
+    '<p class="small" style="color:var(--muted)">'+shape.lifts+' lifts · '+shape.sets+' sets'+(shape.mins ? ' · about '+shape.mins+' min' : '')+'</p></div>';
+}
+/* One segment per planned set, a gap between lifts: done, the one he is on, still to do, and planned
+   sets a finished lift never got (dimmed, so a short session is visible as one). */
+function liveProgHTML(){
+  const exs = live.exercises; let done = 0, total = 0, segs = '';
+  exs.forEach(function(ex, i){
+    const n = (ex.sets || []).length, planned = Math.max(ex.planned || 3, n);
+    if(i) segs += '<span class="lv-seg-gap"></span>';
+    for(let k = 0; k < planned; k++){
+      const cls = k < n ? 'done' : (ex.done ? 'skip' : (i === liveActiveIdx && k === n ? 'now' : ''));
+      segs += '<i'+(cls ? ' class="'+cls+'"' : '')+'></i>';
+    }
+    total += planned; done += n;
+  });
+  return '<div class="lv-prog" role="img" aria-label="'+done+' of '+total+' sets done">'+segs+
+    '<b class="lv-prog-n">'+done+'<span>/'+total+'</span></b></div>';
+}
+/* Where he is in the session, in a word, for the header. Read each second by updateSessionBar(); it
+   only reads live, so the header can change with no repaint. */
+function liveStage(){
+  if(!live) return '';
+  const exs = live.exercises, cur = exs[liveActiveIdx];
+  if(!exs.some(function(e){ return (e.sets || []).length; })) return 'Warming up';
+  const left = exs.filter(function(e){ return !e.done; });
+  if(left.length <= 1) return 'Finishing';
+  if(cur && !cur.done && cur.advTag === 'Backoff') return 'Back-off';
+  if(cur && !cur.done && cur.repMode === 'str' && (cur.sets || []).length) return 'Top sets';
+  return 'Building';
+}
+/* Each primary muscle in today's lifts: sets done against sets planned, filling in as he goes. */
+function liveMusclesHTML(){
+  const by = {};
+  live.exercises.forEach(function(ex){
+    let m; try{ m = musclesFor(ex.name); }catch(e){ m = {p:[]}; }
+    const n = (ex.sets || []).length, planned = Math.max(ex.planned || 3, n);
+    (m.p || []).forEach(function(g){ const o = by[g] || (by[g] = {g:g, planned:0, done:0}); o.planned += planned; o.done += n; });
+  });
+  const rows = Object.keys(by).map(function(k){ return by[k]; }).sort(function(a, b){ return b.planned - a.planned; }).slice(0, 4);
+  if(!rows.length) return '';
+  return '<section class="lv-mus" aria-label="Muscles so far"><div class="lv-sec">Muscles so far</div>'+rows.map(function(o){
+    let segs = '';
+    for(let k = 0; k < o.planned; k++) segs += '<i'+(k < o.done ? ' class="on"' : '')+'></i>';
+    return '<div class="lv-mus-r"><span class="lv-mus-n">'+esc(o.g)+'</span><span class="lv-mus-b" role="img" aria-label="'+o.done+' of '+o.planned+' sets">'+segs+'</span>'+
+      '<b class="lv-mus-c">'+o.done+'/'+o.planned+'</b></div>';
+  }).join('')+'</section>';
 }
 /* ---- DELTA, live in-session ---- */
 let liveDeltaOpen = false;
@@ -8991,32 +9143,31 @@ function liveExHTML(ex,i){
   const setN = Math.min(ex.sets.length+1, planned);
   const extraSet = ex.sets.length >= planned;
 
-  let h = '<div class="liveex active lv3" id="liveex-'+i+'">';
-  h += '<div class="lv3-head">'+
-       '<div class="lv3-eyebrow"><span style="color:var(--amber)">\u25b8 Current</span><span>Exercise '+(i+1)+' of '+live.exercises.length+'</span></div>'+
-       '<div class="liveex-name" style="font-size:24px">'+esc(ex.name)+
-         '<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+esc(ex.name).replace(/'/g,"\\'")+'\')" title="Form cues">\u24d8</button></div>'+
-       '<div class="liveex-chips">'+
-         '<span class="pill" style="border-color:'+(ex.repMode==='str'?'var(--violet-dim);color:var(--violet)':'var(--line2)')+'">'+(ex.repMode==='str'?'STR \u00b7 3\u20136':'HYP \u00b7 '+ex.lo+'\u2013'+ex.hi)+'</span>'+
-         (ex.formFocus?'<span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">FORM</span>':'')+
+  let h = '<div class="liveex active lv3 lv4" id="liveex-'+i+'">';
+  /* The lift he is on (A × C): where he is, the name, the call as one big number pair (weight × the
+     reps to aim for), and chips for the range and how to load it. */
+  const _gl = adv.w ? gearLine(ex.name, +adv.w) : '';
+  h += '<div class="lv4-top">'+
+       '<span class="lv4-eye">Exercise '+(i+1)+' of '+live.exercises.length+' \u00b7 '+(extraSet ? 'extra set '+(ex.sets.length+1) : 'set '+setN+' of '+planned)+'</span>'+
+       '<div class="lv4-name">'+esc(ex.name)+'</div>'+
+       '<div class="lv4-tools">'+
+         '<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+esc(ex.name).replace(/'/g,"\\'")+'\')" title="Form cues">\u24d8</button>'+
          '<button class="ex-info-btn" onclick="activate1RM('+i+')" title="1RM test mode" style="color:var(--violet);font-size:11px">1RM</button>'+
-         '<button class="ex-info-btn" onclick="openLiveExEdit('+i+')" title="Swap or remove (today only)" style="color:var(--muted);font-size:12px">\u270e</button>'+
-       '</div></div>';
-
-  /* target hero */
-  h += '<div class="lv3-hero">'+
-       '<div class="lv3-hero-cell"><span class="lv3-hero-n">'+(adv.w||'\u2014')+'</span><span class="lv3-hero-l">lb target</span></div>'+
-       '<div class="lv3-hero-x">\u00d7</div>'+
-       '<div class="lv3-hero-cell"><span class="lv3-hero-n">'+adv.lo+'\u2013'+adv.hi+'</span><span class="lv3-hero-l">reps</span></div>'+
-       '<div class="lv3-hero-set"><span class="lv3-set-big">'+(extraSet?'+':'')+'Set '+(extraSet?(ex.sets.length+1):setN)+'</span><span class="lv3-hero-l">of '+planned+(extraSet?' planned':'')+'</span></div>'+
+         '<button class="ex-info-btn" onclick="openLiveExEdit('+i+')" title="Swap or remove (today only)" style="color:var(--muted);font-size:12px">\u270e</button></div>'+
+       '<div class="lv4-big"><span class="lv4-w">'+(adv.w||'\u2014')+'</span><span class="lv4-r">\u00d7 '+adv.aim+'</span></div>'+
+       '<div class="lv4-chips"><span class="lv4-chip mode'+(ex.repMode==='str'?' str':'')+'">'+(ex.repMode==='str'?'Strength \u00b7 3\u20136':'Hypertrophy \u00b7 '+ex.lo+'\u2013'+ex.hi)+'</span>'+
+         (ex.formFocus?'<span class="lv4-chip ff">Form focus</span>':'')+
+         (_gl?'<span class="lv4-chip lv-gear">'+esc(_gl)+'</span>':'')+'</div>'+
        '</div>';
-  if(adv.tag || adv.msg){
-    h += '<div class="lv3-presc">'+(adv.tag?'<b style="color:'+(adv.cls==='up'?'var(--cyan)':adv.cls==='back'?'var(--red)':'var(--amber)')+'">'+esc(adv.tag)+'</b> \u00b7 ':'')+esc(adv.msg)+'</div>';
+  /* The call for this set. It is the app's own (intraAdvice), not DELTA's, so it is not drawn in
+     DELTA's voice: DELTA is the paid agent, and this costs nothing and runs on the phone. */
+  if(adv.tag || adv.msg || adv.why){
+    h += '<div class="lv4-call"><span class="lv4-call-i" aria-hidden="true"></span><p>'+
+      (adv.tag ? '<b class="lv4-tag '+esc(adv.cls||'')+'">'+esc(adv.tag)+'</b> \u00b7 ' : '')+esc(adv.msg||'')+
+      // The call in numbers: what the last set was and what this one should be.
+      (adv.why ? '<span class="lv-why">'+esc(adv.why)+'</span>' : '')+'</p></div>';
   }
-  // The call in numbers: what the last set was and what this one should be.
-  if(adv.why) h += '<div class="lv3-presc lv-why">'+esc(adv.why)+'</div>';
   { const pw = livePrWatch(ex, adv); if(pw) h += '<div class="lv3-presc lv-prw">'+SUM_TROPHY+'<span><b>PR watch</b> \u00b7 '+esc(pw.txt)+'</span></div>'; }
-  { const gl = adv.w ? gearLine(ex.name, +adv.w) : ''; if(gl) h += '<div class="lv3-presc lv-gear" style="color:var(--dim)">'+esc(gl)+'</div>'; }
 
   /* logged sets (tap to edit) + ghost rows for the rest of the plan */
   h += '<div class="liveex-sets">';
@@ -9038,7 +9189,9 @@ function liveExHTML(ex,i){
   h += '<div class="dockrow lv3-inrow">'+
        '<div class="field"><label>Weight (lb)</label><div class="lv-stepper">'+stp('dockW', -1, 'Weight down')+
          '<input id="dockW" class="lv3-in" inputmode="decimal" value="'+(adv.w||'')+'" oninput="liveLogLabel()">'+stp('dockW', 1, 'Weight up')+'</div></div>'+
-       '<div class="field"><label>Reps</label><div class="lv-stepper">'+stp('dockR', -1, 'One rep fewer')+
+       // The reps box is outlined in amber: its number was put there by the call, so it is the one
+       // to check before tapping Log.
+       '<div class="field"><label>Reps</label><div class="lv-stepper aim">'+stp('dockR', -1, 'One rep fewer')+
          '<input id="dockR" class="lv3-in" inputmode="numeric" placeholder="'+adv.lo+'\u2013'+adv.hi+'" value="'+(adv.aim||'')+'" oninput="liveLogLabel()">'+
          stp('dockR', 1, 'One rep more')+'</div></div>'+
        '</div>';
@@ -9149,11 +9302,13 @@ function liveSetEditHTML(i,j,s){
 }
 function liveUpcomingRowHTML(ex,i){
   const planned = ex.planned||3;
-  return '<div class="liveex lv3-row" id="liveex-'+i+'" onclick="focusLiveEx('+i+')">'+
+  // Under the "Up next" heading (V4 stage 4), so the row says only what it is: name, then
+  // "160 \u00b7 3 \u00d7 3-6", with the back-off weight when there is one. Tap to make it the current lift.
+  return '<div class="liveex lv3-row lv4-up" id="liveex-'+i+'" onclick="focusLiveEx('+i+')">'+
     '<div class="lv3-row-in"><span class="lv3-row-n">'+(i+1)+'</span>'+
     '<div class="lv3-row-mid"><b>'+esc(ex.name)+'</b>'+
-    '<span class="small" style="color:var(--dim)">'+(ex.targetW?ex.targetW+' lb'+(ex.backoffW?' \u00d7'+STR_CEIL_SETS+' \u2192 '+ex.backoffW+' lb backoff':'')+' \u00b7 ':'')+planned+' sets \u00b7 '+(ex.repMode==='str'?'3\u20136':ex.lo+'\u2013'+ex.hi)+' reps</span></div>'+
-    '<span class="lv3-row-tag">up next</span></div></div>';
+    (ex.backoffW ? '<span class="small" style="color:var(--dim)">'+STR_CEIL_SETS+' top sets, then '+ex.backoffW+' lb back-off</span>' : '')+'</div>'+
+    '<span class="lv4-up-v">'+(ex.targetW ? ex.targetW+' \u00b7 ' : '')+planned+' \u00d7 '+(ex.repMode==='str'?'3\u20136':ex.lo+'\u2013'+ex.hi)+'</span></div></div>';
 }
 function liveDoneRowHTML(ex,i){
   const summ = ex.sets.map(s=>s.w+'\u00d7'+s.r).join(' \u00b7 ');
@@ -9252,6 +9407,8 @@ function updateSessionBar(){
   if(prog){ const done=live.exercises.filter(e=>e.done).length; prog.textContent=done+' / '+live.exercises.length+' done'; }
   const fin = document.getElementById('sbFin');
   if(fin) fin.textContent = (_liveFinishSecs > 0) ? 'finish about '+homeClock(new Date(Date.now() + _liveFinishSecs * 1000).toISOString()) : '';
+  const stg = document.getElementById('lvStage');
+  if(stg){ const s = liveStage(); stg.textContent = s; stg.setAttribute('data-stage', s.toLowerCase().replace(/[^a-z]+/g, '-')); }
 }
 let _liveFinishSecs = null;
 

@@ -11721,6 +11721,106 @@ setTimeout(async () => {
     ev('if(window.__s4qSaved){ S = JSON.parse(window.__s4qSaved); delete window.__s4qSaved; }');
   }
 
+  console.log('=== V4 STAGE 4: THE A × C LIVE LAYOUT ===');
+  try {
+    w.__s4lSaved = ev('JSON.stringify(S)');
+    ev("MODE = 'live'; liveEditSet = null; painOpenFor = null; liveDockEff = ''; liveDockLever = null; stopRest();");
+    const mk = "live = {date: todayKey(), day: 'D1', startedAt: Date.now() - 15 * 60000, trimmed: false, exercises: [" +
+      "{name: 'Zz Lay Fly', sets: [{w: 100, r: 12}, {w: 100, r: 11}], done: true, planned: 3, lo: 10, hi: 15, targetW: 100, repMode: 'hyp'}," +
+      "{name: 'Barbell Zz Lay Bench', sets: [{w: 160, r: 5, e: 'solid'}], done: false, planned: 3, lo: 3, hi: 6, targetW: 160, backoffW: 145, repMode: 'str'}," +
+      "{name: 'Zz Lay Press', sets: [], done: false, planned: 3, lo: 8, hi: 12, targetW: 60, repMode: 'hyp'}]}; liveActiveIdx = 1; renderLive();";
+    ev(mk);
+    const pos = (sel) => ev("(function(){ var all = [].slice.call(document.querySelectorAll('#liveBody *')); var el = document.querySelector('#liveBody " + sel + "'); return el ? all.indexOf(el) : -1; })()");
+    const order = ['.lv-head', '.lv-prog', '.lv-subbar', '#liveex-0', '#liveex-1', '.lv-mus', '.lv-sec', '#liveex-2'].map(pos);
+    ok('layout: header, set segments, the line under them, done lifts, the current one, muscles, then Up next',
+       order.every(function(p, k){ return p >= 0 && (k === 0 || p > order[k-1]); }), JSON.stringify(order));
+    // Grouped by state, not list order: he skipped ahead, finished the third lift, then came back to
+    // the second. The finished one still goes on top and the current one under it. (In the fixture
+    // above the two orders agree, so this is the case that tells them apart.)
+    ev("live.exercises[2].sets = [{w: 60, r: 10}]; live.exercises[2].done = true; live.exercises[0].done = false; live.exercises[0].sets = []; liveActiveIdx = 1; renderLive();");
+    ok('layout: a lift finished out of order still sits above the one he is on', pos('#liveex-2') < pos('#liveex-1') && pos('#liveex-1') < pos('#liveex-0'),
+       JSON.stringify([pos('#liveex-2'), pos('#liveex-1'), pos('#liveex-0')]));
+    ev(mk);
+    ok('layout: the done lift is a row, the current one has the dock, the next is under Up next',
+       ev("document.getElementById('liveex-0').classList.contains('done')") === true && !!ev("!!document.querySelector('#liveex-1 #dockW')") &&
+       ev("document.getElementById('liveex-2').classList.contains('lv4-up')") === true && ev("document.querySelector('#liveBody .lv-sec:not(.lv-mus .lv-sec)')") !== null);
+    ok('layout: every id the rest of the app and the suite rely on is still there',
+       ['dockW', 'dockR', 'dockEff', 'liveLogBtn', 'restSlot', 'sbClock', 'sbProg', 'sbFin', 'lvStage'].every(id => !!ev("!!document.getElementById('" + id + "')")));
+
+    // --- a segment per planned set ---
+    const segs = ev("[].slice.call(document.querySelectorAll('.lv-prog i')).map(function(i){ return i.className || '-'; }).join(' ')");
+    ok('segments: done, skipped (a finished lift that never got its third set), the one he is on, and to do',
+       segs === 'done done skip done now - - - -', segs);
+    ok('segments: and say so in words', ev("document.querySelector('.lv-prog').getAttribute('aria-label')") === '3 of 9 sets done' &&
+       ev("document.querySelector('.lv-prog-n').textContent") === '3/9');
+
+    // --- the lift he is on ---
+    const adv = ev('intraAdvice(live.exercises[1])');
+    ok('lift: where he is, in words', ev("document.querySelector('.lv4-eye').textContent") === 'Exercise 2 of 3 · set 2 of 3');
+    ok('lift: the call as one big pair, weight and the reps to aim for',
+       ev("document.querySelector('.lv4-w').textContent") === String(adv.w) && ev("document.querySelector('.lv4-r').textContent") === '× ' + adv.aim, JSON.stringify(adv));
+    ok('lift: the range and how to load it as chips', ev("document.querySelector('.lv4-chip.mode').textContent") === 'Strength · 3–6' &&
+       ev("document.querySelector('.lv4-chip.lv-gear').textContent") === ev("gearLine('Barbell Zz Lay Bench', " + adv.w + ")"));
+    ok('lift: the call is the app’s, so it is not put in DELTA’s mouth',
+       ev("document.querySelector('.lv4-call').textContent").indexOf('DELTA') < 0 && !ev("!!document.querySelector('.lv4-call .cc-glyph')") &&
+       ev("document.querySelector('.lv4-call .lv-why').textContent") === adv.why);
+    ok('lift: the reps box is outlined, because the call filled it', ev("document.getElementById('dockR').parentElement.classList.contains('aim')") === true &&
+       ev("document.getElementById('dockW').parentElement.classList.contains('aim')") === false);
+    ev("live.exercises[1].sets.push({w: 160, r: 5}, {w: 145, r: 6}); renderLive();");
+    ok('lift: past the plan it says extra set', /· extra set 4$/.test(ev("document.querySelector('.lv4-eye').textContent")), ev("document.querySelector('.lv4-eye').textContent"));
+    ev("live.exercises[1].sets.splice(1);");
+
+    // --- the stage of the session, in a word ---
+    const stage = () => ev('liveStage()');
+    ok('stage: a strength lift with sets in is top sets', stage() === 'Top sets');
+    ev("live.exercises[1].advTag = 'Backoff';");
+    ok('stage: then back-off', stage() === 'Back-off');
+    ev("live.exercises[1].advTag = ''; liveActiveIdx = 2;");
+    ok('stage: a hypertrophy lift mid-session is building', stage() === 'Building');
+    ev("live.exercises[1].done = true;");
+    ok('stage: the last lift left is finishing', stage() === 'Finishing');
+    ev("live.exercises.forEach(function(e){ e.sets = []; e.done = false; }); liveActiveIdx = 0;");
+    ok('stage: before any set, warming up', stage() === 'Warming up');
+    ev('updateSessionBar();');
+    ok('stage: it sits under the segments, not in the header', ev("!!document.querySelector('.lv-subbar #lvStage')") === true && ev("!!document.querySelector('.lv-head #lvStage')") === false);
+
+    // --- muscles filling in ---
+    ev(mk);
+    const mus = ev("[].slice.call(document.querySelectorAll('.lv-mus-r')).map(function(r){ return r.querySelector('.lv-mus-n').textContent + ':' + r.querySelector('.lv-mus-c').textContent + ':' + r.querySelectorAll('.lv-mus-b i.on').length; })");
+    ok('muscles: each primary muscle, sets done over sets planned', mus.indexOf('Chest:3/9:3') >= 0, JSON.stringify(mus));
+
+    // --- up next ---
+    ok('up next: the lift says its weight, sets and range', ev("document.querySelector('#liveex-2 .lv4-up-v').textContent") === '60 · 3 × 8–12');
+    ok('up next: and tapping it makes it the current lift', ev("document.getElementById('liveex-2').getAttribute('onclick')") === 'focusLiveEx(2)');
+    ev("live.exercises[2].done = true; renderLive();");
+    ok('up next: with nothing left, no heading', ev("[].slice.call(document.querySelectorAll('#liveBody .lv-sec')).some(function(s){ return s.textContent === 'Up next'; })") === false);
+
+    // --- the briefing before he starts ---
+    ev("live = null; S.logs = S.logs.filter(function(l){ return l.date !== todayKey(); }); S.overrideDay = {date: todayKey(), day: 'D1'}; S.coachDayPlan = null;");
+    ev("window.__s4dc = dayCall; dayCall = function(){ return {call: 'easy', conf: 'high', why: ['recovery 41%, under your usual'], checkIn: true}; };");
+    ev('renderLive();');
+    const brief = ev("(document.querySelector('#liveBody .lv-brief')||{}).textContent || ''");
+    const kl = ev("todayKeyLifts('D1', 'easy', 3)");
+    ok('brief: before a session it names the day and the call, with why', /Before you start · D1/.test(brief) && /Easy day · recovery 41%, under your usual/.test(brief), brief.slice(0, 200));
+    ok('brief: the key lifts at the weight LIVE will give, the same helper Today uses',
+       kl.length > 0 && kl.every(function(l){ return brief.indexOf(l.name) >= 0 && (!l.w || brief.indexOf(l.w + ' × ' + l.lo + '–' + l.hi) >= 0); }), JSON.stringify(kl));
+    ev("dayCall = function(){ return {call: 'normal', conf: 'none', why: [], checkIn: false}; }; renderLive();");
+    ok('brief: with nothing to go on, no call is claimed', !/Normal day/.test(ev("(document.querySelector('#liveBody .lv-brief')||{}).textContent || ''")));
+    // A rest day with WHOOP in still has a call to make, so the stub keeps returning one: the rest-day
+    // rule has to hold on its own, not lean on there being nothing to say.
+    ev("dayCall = function(){ return {call: 'recover', conf: 'high', why: ['recovery 30%'], checkIn: true}; };");
+    ev("S.overrideDay = {date: todayKey(), day: 'REST'}; renderLive();");
+    ok('brief: nothing on a rest day', !ev("!!document.querySelector('#liveBody .lv-brief')"));
+    ev("dayCall = window.__s4dc; delete window.__s4dc;");
+    ev("S.overrideDay = {date: todayKey(), day: 'D1'}; S.logs.push(stampRec({id: 's4lay', date: todayKey(), day: 'D1', entries: [{exercise: 'Barbell Bench Press', sets: [{w: 135, r: 5}]}]})); renderLive();");
+    ok('brief: nor once today is logged', !ev("!!document.querySelector('#liveBody .lv-brief')"));
+  } catch (e) {
+    ok('V4 stage 4 layout section', false, e.stack);
+  } finally {
+    ev('live = null; stopRest(); try{ if(window.__s4dc){ dayCall = window.__s4dc; delete window.__s4dc; } }catch(e){}');
+    ev('if(window.__s4lSaved){ S = JSON.parse(window.__s4lSaved); delete window.__s4lSaved; }');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

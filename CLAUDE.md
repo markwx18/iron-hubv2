@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2818 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2845 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -1282,11 +1282,28 @@ every scroll. Every kit chart root still carries `class="ck"`.
 take `color-mix(currentColor)` for their ground, because chips set their colour inline. The small
 title tick stays as the colour cue; every card that has one already states its status in words.
 
-**LIVE was restyled without moving anything** (slice 5). Only CSS changed there: the 3-cell hero
-panel, hairline set rows, the dock on a raised panel with 30px Saira inputs, colour-dotted
-effort buttons, Log set (amber) and Done (outlined). The element order, ids and tap targets are
-exactly as before, which keeps his muscle memory at the rack. `.lv3-in` and `.liveex-name` need
-`!important` only because their old sizes are set inline or with `!important`.
+**LIVE was restyled without moving anything in V3** (slice 5). **V4 stage 4 moved things on purpose,
+at his request** (the A × C LIVE artboard). `renderLive()` now runs in this order:
+1. The header: day, call, finish time, clock. It is one line on a phone; the stage word, readiness
+   and lift count go on the line under the segments.
+2. A segment per planned set (`liveProgHTML()`).
+3. The call card, then warm-ups.
+4. The lifts already done, as rows.
+5. The current lift (`.lv4`):
+   - the eyebrow "Exercise 2 of 5 · set 2 of 3";
+   - a big weight × aim, with chips for the range and plates;
+   - the call line. It is the app's own call, so it is NOT drawn as DELTA: DELTA is the paid agent.
+6. The dock: steppers inside one box per number, the reps box outlined because the call filled it,
+   Log on the left and Done on the right as before.
+7. Rest, then the quick chips.
+8. "Muscles so far" (`liveMusclesHTML()`).
+9. "Up next".
+
+Every id and handler is unchanged (`dockW`, `dockR`, `dockEff`, `liveLogBtn`, `restSlot`, `sbClock`,
+`sbProg`, `sbFin`, `liveex-N`). `liveStage()` gives the header's word and is read on the 1 s tick.
+The idle screen opens with `liveBriefHTML()`, built from Today's own helpers and only reading. It
+shows nothing on a rest day or once today is logged, and claims a call only when the call has data.
+`.lv3-in` still needs `!important` because its old size is set with `!important`.
 
 | Token | Value | Use |
 |---|---|---|
