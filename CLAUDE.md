@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3029 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3056 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -254,6 +254,7 @@ so the two orders can no longer disagree.
 | Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()`; jump cautions `e1Spike()` (`SPIKE_PCT`), `atCeiling()` (`STR_CEIL_SETS`) |
 | Per-lift flags | `exSlotsFor()` (split in force, else the permanent split), `isMaxed()`, `incForExercise()`, `slotInc()`, `isFormFocus()`, `isStrMode()`, `toggleRepMode()` |
 | Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
+| Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
 | Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
@@ -466,6 +467,9 @@ Check the ledger before starting the next.
   - Each read leaves a feed line ("Looked at …"). `pdReadHTML()` shows it under the factors on the
     Strength hero and on the Overload line for `PD_SHOW_DAYS`.
   - It changes nothing: a fix still goes through proposals.
+
+**Week 3 (per-lift specialists) was dropped at Mark's request on 2026-10-05**: he judged it extra cost
+for no reason. Its slot on the ledger went to the agents' weekly question instead.
 
 **Schedule fixes are mode-gated in both directions.** `schedule` (day-of-week map)
 is rejected in cycle mode; `cycleSchedule` is rejected in dow mode. The cycle
@@ -858,6 +862,30 @@ date; V4's removal of date overrides stands.
 - **Density** compares a day only with the same day (set `ts`, first set to last) and needs 4
   timed sessions.
 - **`streakStats()`** has no 60-day cap, and keeps the longest run.
+
+**Meal timing reads his own taps, scored like an experiment** (his choice, 2026-10-05).
+- **The tap:** LIVE opens with a row of "Last ate" chips (`MT_BUCKETS`: under 1h, 1–2h, 2–3h, 3h+;
+  `liveAteHTML()`). After a tap it folds to one chip that reopens. Nothing blocks on it.
+  `live.ate` is saved with the draft and copied to `logRec.ate` as `{b, at}`.
+- **The read:** `mtScore(l)` is each loaded lift's best e1RM over that lift's own line through its
+  last `EXP_BASE_N` clean sessions before that day, clamped like `expTrend()`. Sessions the engine did
+  not shape are left out (`sessionMods`).
+- **When it speaks:** `mealTimingRead()` needs 2 buckets with `MT_MIN` (8) sessions each. It names
+  the best bucket only when the gap is at least the normal spread (the `expEvaluate()` rule), and never
+  calls it proven.
+- **Where it shows:** the card is on Body › Fuel (`mealTimingCardHTML()`). The summary gets a line
+  only once there is a result.
+- **Experiments:** a running `mealTiming` experiment reads its adherence from the tap (2–3h counts as
+  followed).
+
+**The strength radar is `muscleResponse(12, {clean:true})` times 12** (his choice: growth over 12 weeks).
+- The `clean` option is opt-in, and the default the agents read is unchanged.
+- `ckRadar()` draws on `CK_W` with a 0% ring. A group without data is drawn hollow and labelled
+  "no data".
+- `strengthRadarHTML()` names the groups that are flat or down, then the leader.
+- It sits on Progress › Overview, under the year card.
+- On his data (Oct 5), Glutes read +36%, because Hip Thrust Machine is a new lift still gaining fast.
+  That is honest, but worth knowing before trusting the shape.
 
 **The plateau watch is on the device, free, and never stored** (V4 stage 5, 2026-10-04).
 `plateauRisk(nm)` gives each lift green / amber / red, from clean sessions only (`pwCleanHist()`,

@@ -12467,6 +12467,108 @@ setTimeout(async () => {
     ev('if(window.__s6Saved){ S = JSON.parse(window.__s6Saved); delete window.__s6Saved; } delete window.__s6k; localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== MEAL TIMING AND THE STRENGTH RADAR (2026-10-05) ===');
+  try {
+    w.__paSaved = ev('JSON.stringify(S)');
+    ev("S.logs = []; S.experiments = {active: null, history: [], declined: {}, lastEnded: ''}; MODE = 'live'; _liveAteOpen = false;");
+    // --- the chips at the start of LIVE ---
+    ev("live = {date: todayKey(), day: 'D1', startedAt: Date.now(), trimmed: false, exercises: [{name: 'Zz Ate Lift', sets: [], done: false, planned: 3, lo: 8, hi: 12, targetW: 100, repMode: 'hyp'}]}; liveActiveIdx = 0; renderLive();");
+    const ateRow = () => ev("(document.querySelector('#liveBody .lv-ate')||{}).textContent || ''");
+    ok('ate: a session starts with the Last ate chips, under the segments', /^Last ate/.test(ateRow()) && ev("document.querySelectorAll('#liveBody .lv-ate .lv-chip').length") === 4 &&
+       ev("(function(){ var all = [].slice.call(document.querySelectorAll('#liveBody *')); return all.indexOf(document.querySelector('#liveBody .lv-ate')) > all.indexOf(document.querySelector('#liveBody .lv-subbar')); })()") === true, ateRow());
+    ev("liveAteSet('2-3');");
+    ok('ate: a tap records it and folds to one chip', ev('live.ate.b') === '2-3' && ateRow() === 'Ate 2–3h before' && JSON.parse(ev('localStorage.getItem(LIVE_KEY)')).ate.b === '2-3');
+    ev("renderLive();");
+    ok('ate: a repaint keeps it folded', ateRow() === 'Ate 2–3h before');
+    ev("liveAteOpen();");
+    ok('ate: tapping the chip reopens the choices, with his pick marked', /^Last ate/.test(ateRow()) && ev("document.querySelector('#liveBody .lv-ate .lv-chip.on').textContent") === '2–3h');
+    ev("liveAteSet('nonsense');");
+    ok('ate: a bucket that does not exist is ignored', ev('live.ate.b') === '2-3');
+    ev("liveAteSet('lt1'); live.exercises[0].sets = [{w: 100, r: 8}]; live.exercises[0].done = true;");
+    ev('endLiveSession()');
+    const pl = JSON.parse(ev("JSON.stringify(S.logs.find(function(l){ return l.entries.some(function(e){ return e.exercise === 'Zz Ate Lift'; }); }) || null)"));
+    ok('ate: the session’s log carries it, as plain fields', pl && pl.ate && pl.ate.b === 'lt1' && typeof pl.ate.at === 'number' && Object.keys(pl.ate).length === 2, JSON.stringify(pl && pl.ate));
+    ev("live = {date: todayKey(), day: 'D1', startedAt: Date.now(), trimmed: false, exercises: [{name: 'Zz Ate None', sets: [{w: 50, r: 8}], done: true, planned: 1, lo: 8, hi: 12, targetW: 50}]};");
+    ev('endLiveSession()');
+    ok('ate: a session without a tap carries nothing', !JSON.parse(ev("JSON.stringify(S.logs.find(function(l){ return l.entries.some(function(e){ return e.exercise === 'Zz Ate None'; }); }))")).ate);
+    ev("live = null; MODE = 'review';");
+
+    // --- the read: each session against each lift's own trend before it ---
+    ev("S.logs = [];");
+    let na = 0;
+    // A steady lift, two sessions a week; the session's value is its offset from the line.
+    const sess = (ago, w, b, extra) => ev("S.logs.push(stampRec(Object.assign({id: 'ma" + (na++) + "', date: mesoAddDays(todayKey(), -" + ago + "), day: 'D1', entries: [" +
+      "{exercise: 'Zz MT A', sets: [{w: " + w + ", r: 8}]}, {exercise: 'Zz MT B', sets: [{w: " + (w + 50) + ", r: 8}]}]}" + (b ? ", {ate: {b: '" + b + "', at: 1}}" : "") + ", " + JSON.stringify(extra || {}) + ")));");
+    for (let i = 0; i < 8; i++) sess(120 - i * 3, 100 + i, null);
+    sess(90, 114, '2-3');
+    const sc = ev("mtScore(S.logs[S.logs.length - 1])");
+    ok('read: a session above the lift’s own line scores over 1', sc > 1.02 && sc < 1.1, sc);
+    sess(88, 112, '2-3', {call: {call: 'recover'}});
+    ok('read: a session the call shaped is left out', ev("mtScore(S.logs[S.logs.length - 1])") === null);
+    ev("S.logs.pop();");
+    // two buckets with clearly different sessions, fixed offsets
+    const above = [4, 5, 4, 6, 5, 4, 5, 6], below = [-1, 0, -2, -1, 0, -1, -2, 0];
+    let k = 87;
+    for (let i = 0; i < 8; i++){ sess(k, 112 + i + above[i], '2-3'); k -= 2; sess(k, 112 + i + below[i], 'lt1'); k -= 2; }
+    let r = JSON.parse(ev('JSON.stringify(mealTimingRead())'));
+    ok('read: each bucket counts its sessions', r.buckets.find(b => b.k === '2-3').n === 9 && r.buckets.find(b => b.k === 'lt1').n === 8, JSON.stringify(r.buckets));
+    ok('read: two buckets with 8+ each are compared, the better one named, with moderate confidence when it clears the spread',
+       r.ready && r.result && r.result.best === '2-3' && r.result.confidence === 'moderate' && r.result.deltaPct > 0, JSON.stringify(r.result));
+    let card = ev("(function(){ var d = document.createElement('div'); d.innerHTML = mealTimingCardHTML(); return d.textContent; })()");
+    ok('read: the card says it, as a small sample, not proof', /Your sessions run best 2–3h after eating: \+[\d.]+% against the other timings \(9 sessions against 8\), moderate confidence\. A small sample, not proof\./.test(card), card);
+    ok('read: and ECHO’s summary gets one line once it is real', /Meal timing before training \(his taps\): .*best 2–3h/.test(ev('intelSummary()')));
+    ev("S.logs = S.logs.filter(function(l){ return !(l.ate && l.ate.b === 'lt1'); }).slice(0, -1);");
+    r = JSON.parse(ev('JSON.stringify(mealTimingRead())'));
+    ok('read: one bucket alone, or under 8, says nothing yet', !r.ready && r.result === null);
+    card = ev("(function(){ var d = document.createElement('div'); d.innerHTML = mealTimingCardHTML(); return d.textContent; })()");
+    ok('read: and the card shows progress toward 8', /2–3h[+−][\d.]+%/.test(card) && /Under 1h0 of 8/.test(card) && /needs 8 sessions/.test(card), card);
+    ok('read: nor is anything said to the agents', !/Meal timing before training/.test(ev('intelSummary()')));
+    ev("S.logs = S.logs.filter(function(l){ return !l.ate; });");
+    // Noisy sessions: a gap of over half a percent, but smaller than how much the sessions bounce around,
+    // so it is the spread rule (not the half-percent floor) that keeps this from being called.
+    for (let i = 0; i < 8; i++){ sess(60 - i * 4, 112 + i + [6, -4, 5, -3, 6, -4, 5, -3][i], '2-3'); sess(59 - i * 4, 112 + i + [4, -5, 4, -6, 4, -5, 4, -5][i], '3p'); }
+    r = JSON.parse(ev('JSON.stringify(mealTimingRead())'));
+    ok('read: a gap smaller than the sessions’ own spread is "no clear difference"', r.result && r.result.confidence === 'low' && Math.abs(r.result.deltaPct) > 0.5, JSON.stringify(r.result));
+    ok('read: Fuel shows the card', /Meal timing/.test(ev("(function(){ renderFuel(); return document.getElementById('fuel').textContent; })()")));
+    // a running meal-timing test reads its adherence from the tap
+    ok('experiment: a 2–3h tap answers the meal-timing test, another timing counts as not followed, no tap falls back to asking',
+       ev("expAdherence({template: 'mealTiming', id: 'x1'}, {id: 1, ate: {b: '2-3'}})") === true && ev("expAdherence({template: 'mealTiming', id: 'x1'}, {id: 1, ate: {b: 'lt1'}})") === false &&
+       ev("expAdherence({template: 'mealTiming', id: 'x1'}, {id: 987654})") === null);
+
+    // --- the radar ---
+    ev("S.logs = [];");
+    let nr = 0;
+    const lift = (nm, list, extra) => list.forEach((x, i) => ev("S.logs.push(stampRec(Object.assign({id: 'rd" + (nr++) + "', date: mesoAddDays(todayKey(), -" + (10 + 7 * (list.length - 1 - i)) + "), day: 'D1', entries: [{exercise: " + JSON.stringify(nm) + ", sets: [{w: " + x + ", r: 8}]}]}, " + JSON.stringify(extra ? extra(i) : {}) + ")));"));
+    lift('Barbell Bench Press', [150, 152.5, 155, 157.5, 160, 162.5]);
+    lift('Lat Pulldown', [150, 150, 150, 150, 150, 150]);
+    lift('Barbell Back Squat', [300, 297.5, 295, 292.5, 290, 287.5]);
+    lift('Preacher Curl Machine', [60, 60, 60, 70, 60, 60], (i) => (i === 3 ? {call: {call: 'recover'}} : {}));
+    const rd = JSON.parse(ev('JSON.stringify(radarData())'));
+    const mr = JSON.parse(ev('JSON.stringify(muscleResponse(12, {clean: true}).groups)'));
+    ok('radar: each axis is muscleResponse(12, clean) times 12, nothing of its own', rd.every(a => a.v === null ? !(mr[a.label] && mr[a.label].pctPerWeek !== null) : Math.abs(a.v - Math.round(mr[a.label].pctPerWeek * 12 * 10) / 10) < 1e-9) &&
+       rd.find(a => a.label === 'Chest').v > 0 && rd.find(a => a.label === 'Back').v === 0 && rd.find(a => a.label === 'Quads').v < 0, JSON.stringify(rd));
+    ok('radar: a reshaped session does not move it (clean), though the agents’ default read still counts it',
+       rd.find(a => a.label === 'Biceps').v === 0 && ev("muscleResponse(12).groups.Biceps.pctPerWeek") !== 0, JSON.stringify(rd.find(a => a.label === 'Biceps')));
+    const svg = ev("ckRadar(radarData(), 300)");
+    ok('radar: a group without data is drawn hollow and says so', (svg.match(/class="ck-radar-none"/g) || []).length === rd.filter(a => a.v === null).length && rd.some(a => a.v === null) && /no data/.test(svg));
+    ok('radar: a 0% ring is drawn, and every axis is labelled with its number', /ck-radar-zero/.test(svg) && /Chest/.test(svg) && /−[\d.]+%/.test(svg));
+    const words = ev("(function(){ var d = document.createElement('div'); d.innerHTML = strengthRadarHTML(); return d.querySelector('p').textContent; })()");
+    ok('radar: in words, the groups flat or down, then the leader', /^Back, Biceps, Quads and Glutes are flat or down; Chest leads at \+[\d.]+%\. Not enough data: /.test(words), words);
+    ev("renderAnOverview();");
+    ok('radar: it sits on Progress › Overview, under the year card', /Strength by muscle · 12 weeks/.test(ev("document.getElementById('an_over').textContent")) &&
+       ev("document.getElementById('an_over').textContent").indexOf('so far') < ev("document.getElementById('an_over').textContent").indexOf('Strength by muscle'));
+    ev("S.logs = S.logs.filter(function(l){ return l.entries[0].exercise === 'Barbell Bench Press'; });");
+    ok('radar: under three groups with data, it waits and says why', /Needs 3\+ sessions of a lift in the last 12 weeks for at least three muscle groups/.test(ev('strengthRadarHTML()')));
+    const snapA = ev('JSON.stringify(S)');
+    ev("radarData(); strengthRadarHTML(); mealTimingRead(); mealTimingCardHTML();");
+    ok('nothing written: the read and the radar only read', ev('JSON.stringify(S)') === snapA);
+  } catch (e) {
+    ok('meal timing and radar section', false, e.stack);
+  } finally {
+    ev("live = null; MODE = 'review'; _liveAteOpen = false; try{ clearLiveDraft(); }catch(e){}");
+    ev('if(window.__paSaved){ S = JSON.parse(window.__paSaved); delete window.__paSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

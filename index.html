@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-05-v1">
+<meta name="ironhub-build" content="2026-10-05-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1482,6 +1482,16 @@
   .pw-conf{flex:none; padding:2px 8px; border-radius:999px; border:1px solid var(--line2); font-family:var(--disp); font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);}
   .pw-conf.high{border-color:var(--good); color:var(--good);}
   .pw-conf.medium{border-color:var(--warn); color:var(--warn);}
+  /* meal timing: the LIVE chips and the Fuel card (2026-10-05) */
+  .lv-ate{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:10px 0 2px;}
+  .lv-ate-k{font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);}
+  .lv-ate-c{display:flex; flex-wrap:wrap; gap:6px;}
+  .mt-rows{display:flex; flex-direction:column; gap:8px; margin-top:10px;}
+  .mt-row{display:flex; align-items:center; gap:10px; font-size:13px;}
+  .mt-k{width:72px; flex:none; color:var(--muted);}
+  .mt-bar{flex:1; height:6px; border-radius:3px; background:var(--panel2); overflow:hidden;}
+  .mt-bar i{display:block; height:100%; background:var(--amber); border-radius:3px;}
+  .mt-v{width:58px; flex:none; text-align:right; font-variant-numeric:tabular-nums;}
   /* track record on the Hub card, DELTA's plateau read (V4 stage 6) */
   .hub-track{display:flex; flex-direction:column; gap:3px; margin-top:12px; padding:10px 12px; border-radius:var(--r-ctl); background:var(--panel2);}
   .hub-track-k{font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);}
@@ -7601,6 +7611,7 @@ function renderFuel(){
     '<input type="text" id="fLimits" value="'+esc(f.limits||'')+'" placeholder="e.g. lactose, no shellfish">'+
     '<p class="small" style="margin-top:6px;color:var(--dim)">These match food names, so use the word that appears in them (peanut, not nuts).</p>'+
     '<div style="margin-top:10px"><button class="btn sm" onclick="saveFuelPrefs()">Save Preferences</button> <span class="small ok" id="fMsg"></span></div></div>';
+  try{ html += mealTimingCardHTML(); }catch(e){}
   html += '<h2>More</h2>'+
     subSection('Workout Fuel Timing', fuelTimingHTML({bare:true}), false,
       {pref:'fuel.timing', summary:fuelNextLine() || 'Set a workout time to plan around it', cls:'grp'})+
@@ -9079,6 +9090,7 @@ function renderLive(){
        '<span class="sb-clock" id="sbClock">00:00</span></div>';
   h += liveProgHTML();
   h += '<div class="lv-subbar"><span class="lv-stage" id="lvStage"></span>'+_rdChip+'<span class="sb-prog" id="sbProg"></span>'+liveWakeHTML()+'</div>';
+  h += liveAteHTML();
   h += liveCallHTML();
   h += warmupCardHTML(live.day);
   const _exs = live.exercises, _isCur = function(i){ return i === liveActiveIdx && !_exs[i].done; };
@@ -9365,6 +9377,28 @@ function liveExHTML(ex,i){
    quick list). None touches a set already logged, and none applies itself: Short on time trims only
    lifts not yet started and undoes in one tap; Equipment taken is the existing swap sheet; Something
    feels off opens the pain entry, and the recover switch is offered only once a flag is saved. */
+/* ---- meal timing (his choice, 2026-10-05): when he last ate, tapped at the start of a session ----
+   One row of chips until he taps, then a small chip that a tap reopens. Never blocks anything, and
+   skipping it is fine. live.ate -> logRec.ate, the way live.quick is carried. */
+const MT_BUCKETS = [{k:'lt1', label:'Under 1h'}, {k:'1-2', label:'1\u20132h'}, {k:'2-3', label:'2\u20133h'}, {k:'3p', label:'3h+'}];
+let _liveAteOpen = false;   // module-scoped: the 1 s tick and the repaints must not close it under his finger
+function mtLabel(b){ const x = MT_BUCKETS.find(function(m){ return m.k === b; }); return x ? x.label : ''; }
+function liveAteHTML(){
+  if(!live) return '';
+  const a = live.ate && mtLabel(live.ate.b) ? live.ate : null;
+  if(a && !_liveAteOpen)
+    return '<div class="lv-ate"><button type="button" class="lv-chip on" onclick="liveAteOpen()">Ate '+esc(mtLabel(a.b))+' before</button></div>';
+  return '<div class="lv-ate" role="group" aria-label="When you last ate"><span class="lv-ate-k">Last ate</span><div class="lv-ate-c">'+
+    MT_BUCKETS.map(function(m){ return '<button type="button" class="lv-chip'+(a && a.b === m.k ? ' on' : '')+'" onclick="liveAteSet(\''+m.k+'\')">'+m.label+'</button>'; }).join('')+
+    '</div></div>';
+}
+function liveAteSet(b){
+  if(!live || !mtLabel(b)) return;
+  live.ate = {b:b, at:Date.now()};
+  _liveAteOpen = false;
+  saveLiveDraft(); renderLive();
+}
+function liveAteOpen(){ _liveAteOpen = true; renderLive(); }
 function liveQuickOn(k){ return !!(live && (live.quick || []).some(function(q){ return q.k === k; })); }
 function liveQuickHTML(i){
   const short = liveQuickOn('short');
@@ -9666,6 +9700,8 @@ function endLiveSession(){
   // V4 stage 4: the quick adjustments he made, without the undo bookkeeping.
   if(Array.isArray(live.quick) && live.quick.length)
     logRec.quick = live.quick.map(function(q){ return {k:q.k, at:q.at, lifts:(q.lifts || []).slice()}; });
+  // When he last ate before it (meal timing, 2026-10-05). Copied as two plain fields, never the live object.
+  if(live.ate && mtLabel(live.ate.b)) logRec.ate = {b:live.ate.b, at:+live.ate.at || null};
   try{ logRec.scheduled = scheduledDayFor(logRec.date); }catch(e){}
   S.logs.push(stampRec(logRec));
   save();
@@ -14778,7 +14814,10 @@ function liftProfile(name, opts){
 /* Weekly hard sets per muscle group against how that group's lifts are moving, over the last N
    completed weeks. For the agents' volume calls (setCount): more sets where volume is low and
    nothing moves, fewer where volume is high and sessions grind. */
-function muscleResponse(weeks){
+function muscleResponse(weeks, opts){
+  // opts.clean: only sessions that say something about the lift (the strength radar). Default unchanged,
+  // because the agents' set-count calls read this.
+  const clean = !!(opts && opts.clean);
   const n = weeks || 6, r = lastCompletedWeekRange();
   const len = Math.max(1, Math.round((Date.parse(r.end) - Date.parse(r.start)) / 86400000) + 1);
   const vol = {};
@@ -14790,7 +14829,7 @@ function muscleResponse(weeks){
   const trend = {};
   const names = [...new Set((S.logs||[]).flatMap(function(l){ return (l.entries||[]).map(function(e){ return e.exercise; }); }))];
   names.forEach(function(nm){
-    const pts = e1rmSeries(nm).filter(function(p){ return p.date >= since; });
+    const pts = e1rmSeries(nm, clean ? {excludeHome:true, excludeMod:true} : undefined).filter(function(p){ return p.date >= since; });
     if(pts.length < 3) return;
     const reg = linreg(pts); if(!reg) return;
     const pct = pts[0].v > 0 ? reg.slope*7 / pts[0].v * 100 : 0;
@@ -15518,6 +15557,8 @@ function intelSummary(){
       rows.forEach(function(n){ const a = nutTierCal(n.cals), b2 = nutTierPro(n.protein); c[a] = (c[a]||0) + 1; p[b2] = (p[b2]||0) + 1; });
       const fm = function(o){ return Object.keys(o).map(function(k){ return o[k]+' '+NUT_TIER[k].label; }).join(', '); };
       L.push('Intake, last 14 days ('+rows.length+' logged): calories '+fm(c)+' (target '+calTarget()+'); protein '+fm(p)+' (target '+proTarget()+').'); } }catch(e){}
+  try{ const mt = mealTimingRead(); if(mt.result) L.push('Meal timing before training (his taps): '+mt.buckets.filter(function(b){ return b.n; }).map(function(b){ return b.label+' n '+b.n+(b.mean !== null ? ' '+sg((b.mean - 1) * 100, 1)+'% vs trend' : ''); }).join('; ')+
+    '; '+(mt.result.confidence === 'moderate' ? 'best '+mt.result.label+' ('+sg(mt.result.deltaPct, 1)+'%, moderate confidence)' : 'no clear difference yet')+'.'); }catch(e){}
   try{ const fv = fuelVsResults();
     if(fv.ok) L.push('Intake vs results: '+fv.shown.map(function(k){ const g = fv.groups[k];
       return g.label+' cal: '+(g.bwPerWeek === null ? '?' : sg(g.bwPerWeek, 2))+' lb, '+(g.strPctPerWeek === null ? '?' : sg(g.strPctPerWeek, 1))+'% e1RM per week (n '+g.n+')'; }).join('; ')+'.'); }catch(e){}
@@ -16541,6 +16582,72 @@ function expState(){
 }
 function expActive(){ return (S.experiments && S.experiments.active) || null; }
 function expT(x){ return EXP_TEMPLATES[x && x.template] || null; }
+/* ---- meal timing: what the taps say (2026-10-05). On the device, nothing stored. ----
+   A session is scored the way experiments score one: each loaded lift's best e1RM that day over where
+   that lift's OWN line, through its last EXP_BASE_N clean sessions BEFORE that day, says he would be
+   (clamped to +/-10% of his median, as expTrend() is), averaged over the session's lifts. A session the
+   engine did not shape is left out (sessionMods). A bucket speaks only with MT_MIN sessions, and a
+   difference is called only when it is at least the normal spread, the expEvaluate() rule. */
+const MT_MIN = 8;
+function mtTrendBefore(nm, dateKey){
+  const pts = (S.logs||[]).filter(function(l){ return l && l.date < dateKey && !sessionModLift(sessionMods(l), nm); })
+    .map(function(l){ return {date:l.date, v:expBestE1(l, nm)}; }).filter(function(p){ return p.v > 0; })
+    .sort(function(a, b){ return b.date.localeCompare(a.date); }).slice(0, EXP_BASE_N).reverse();
+  if(pts.length < 2) return null;
+  const med = pxMedian(pts.map(function(p){ return p.v; })), reg = linreg(pts);
+  let v = med;
+  if(reg){ const d = (new Date(dateKey).getTime() - reg.x0) / 86400000; v = reg.intercept + reg.slope * d; }
+  return Math.max(med * 0.9, Math.min(med * 1.1, v));
+}
+function mtScore(l){
+  if(!l || sessionMods(l).session) return null;
+  const m = sessionMods(l);
+  const v = expLoadedLifts(l).filter(function(nm){ return !sessionModLift(m, nm); }).map(function(nm){
+    const p = mtTrendBefore(nm, l.date), x = expBestE1(l, nm);
+    return (p > 0 && x > 0) ? x / p : null;
+  }).filter(function(z){ return z !== null; });
+  return v.length ? v.reduce(function(a, b){ return a + b; }, 0) / v.length : null;
+}
+function mealTimingRead(){
+  const by = {};
+  MT_BUCKETS.forEach(function(m){ by[m.k] = []; });
+  (S.logs||[]).forEach(function(l){
+    if(!l || !l.ate || !by[l.ate.b]) return;
+    const sc = mtScore(l);
+    if(sc !== null) by[l.ate.b].push(sc);
+  });
+  const buckets = MT_BUCKETS.map(function(m){ const a = by[m.k]; return {k:m.k, label:m.label, n:a.length, mean: a.length ? expMean(a) : null, sd:expSd(a)}; });
+  const ready = buckets.filter(function(b){ return b.n >= MT_MIN; });
+  const out = {buckets:buckets, ready:ready.length >= 2, result:null};
+  if(!out.ready) return out;
+  // The best bucket against every other ready bucket's sessions pooled.
+  const best = ready.slice().sort(function(a, b){ return b.mean - a.mean; })[0];
+  const rest = [];
+  ready.forEach(function(b){ if(b !== best) rest.push.apply(rest, by[b.k]); });
+  const a = by[best.k], diff = best.mean - expMean(rest), df = a.length + rest.length - 2;
+  const pooled = df > 0 ? Math.sqrt(((a.length-1)*Math.pow(expSd(a), 2) + (rest.length-1)*Math.pow(expSd(rest), 2)) / df) : 0;
+  out.result = {best:best.k, label:best.label, deltaPct:Math.round(diff * 1000) / 10, n:a.length, nRest:rest.length,
+                confidence: (Math.abs(diff) >= pooled && Math.abs(diff) > 0.005) ? 'moderate' : 'low'};
+  return out;
+}
+function mealTimingCardHTML(){
+  const r = mealTimingRead();
+  const pc = function(m){ return m === null ? '' : (m >= 1 ? '+' : '\u2212')+Math.abs(Math.round((m - 1) * 1000) / 10)+'%'; };
+  let h = '<div class="card mt-card"><div class="k">Meal timing</div>';
+  h += '<p class="small">When you last ate before training, from the chips at the start of LIVE, against how the session went (each lift against its own trend).</p>';
+  h += '<div class="mt-rows">'+r.buckets.map(function(b){
+    const w = Math.min(100, b.n / MT_MIN * 100);
+    return '<div class="mt-row"><span class="mt-k">'+esc(b.label)+'</span><span class="mt-bar"><i style="width:'+w.toFixed(0)+'%"></i></span>'+
+      '<span class="mt-v">'+(b.n >= MT_MIN ? esc(pc(b.mean)) : b.n+' of '+MT_MIN)+'</span></div>';
+  }).join('')+'</div>';
+  if(r.result){
+    const x = r.result;
+    h += '<p class="small" style="margin-top:10px">'+(x.confidence === 'moderate'
+      ? 'Your sessions run best '+esc(x.label)+' after eating: '+(x.deltaPct >= 0 ? '+' : '')+x.deltaPct+'% against the other timings ('+x.n+' sessions against '+x.nRest+'), moderate confidence. A small sample, not proof.'
+      : 'No clear difference between the timings yet ('+x.n+' sessions against '+x.nRest+').')+'</p>';
+  } else h += '<p class="small" style="margin-top:10px;color:var(--dim)">Each timing needs '+MT_MIN+' sessions before the app compares them.</p>';
+  return h+'</div>';
+}
 /* ---- per-session measures ----
    Every session -- baseline and test alike -- is scored as value / where that lift's OWN trend
    BEFORE the experiment says he would be that day (1.00 = on his trend). Against the trend, not
@@ -16620,6 +16727,8 @@ function expAdherence(x, l){
     const w = whoopOn(l.date);
     return (w && typeof w.sleepHours === 'number') ? w.sleepHours >= EXP_SLEEP_H : null;
   }
+  // The Ate tap answers the meal-timing test (a real meal 2-3h before) without asking him twice.
+  if(x.template === 'mealTiming' && l.ate && mtLabel(l.ate.b)) return l.ate.b === '2-3';
   const m = sessionMetaFor(l.id);
   return (m && m.exp && m.exp.id === x.id && typeof m.exp.followed === 'boolean') ? m.exp.followed : null;
 }
@@ -17334,6 +17443,59 @@ function renderAnFatigue(){
   el.innerHTML = h;
 }
 
+/* ---------------- STRENGTH RADAR (2026-10-05, his choice: growth over 12 weeks) ----------------
+   One axis per muscle group: the 12-week e1RM change of that group's lifts, from clean sessions, read
+   straight from muscleResponse(12, {clean:true}) (percent a week x 12), so it cannot disagree with what
+   the agents are told about each group. A group without enough data is drawn hollow and says so. */
+const RADAR_GROUPS = ['Chest','Back','Shoulders','Biceps','Triceps','Quads','Hamstrings','Glutes'];
+const RADAR_WEEKS = 12, RADAR_FLAT = 1;
+function radarData(){
+  let mr = null;
+  try{ mr = muscleResponse(RADAR_WEEKS, {clean:true}); }catch(e){ mr = null; }
+  const g = (mr && mr.groups) || {};
+  return RADAR_GROUPS.map(function(k){
+    const x = g[k], p = x && x.pctPerWeek !== null && x.pctPerWeek !== undefined ? x.pctPerWeek : null;
+    return {label:k, v: p === null ? null : Math.round(p * RADAR_WEEKS * 10) / 10, lifts: x ? x.lifts : 0};
+  });
+}
+/* A radar in the chart kit's style: a 0% ring, his shape filled, each axis labelled with its number. */
+function ckRadar(axes){
+  // Wider than tall, so a side label as long as Hamstrings fits inside the drawing at 320px.
+  const W = CK_W, H = 310, cx = W / 2, cy = H / 2, R = 100;
+  const vals = axes.filter(function(a){ return a.v !== null; }).map(function(a){ return a.v; });
+  const lo = Math.min(-5, Math.min.apply(null, vals.concat([0]))), hi = Math.max(5, Math.max.apply(null, vals.concat([0])));
+  const rad = function(v){ return R * (v - lo) / (hi - lo); };
+  const pt = function(i, r){ const a = -Math.PI / 2 + i * 2 * Math.PI / axes.length; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
+  let s = '<svg class="ck ck-radar" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Strength change by muscle over 12 weeks" style="width:100%;max-width:'+W+'px;height:auto;display:block;margin:0 auto">';
+  [hi, (hi + lo) / 2].forEach(function(v){ s += '<polygon points="'+axes.map(function(a, i){ return pt(i, rad(v)).map(function(n){ return n.toFixed(1); }).join(','); }).join(' ')+'" fill="none" stroke="var(--line)" stroke-width="1"/>'; });
+  s += '<polygon class="ck-radar-zero" points="'+axes.map(function(a, i){ return pt(i, rad(0)).map(function(n){ return n.toFixed(1); }).join(','); }).join(' ')+'" fill="none" stroke="var(--line2)" stroke-width="1" stroke-dasharray="3 3"/>';
+  axes.forEach(function(a, i){ const e = pt(i, R); s += '<line x1="'+cx+'" y1="'+cy+'" x2="'+e[0].toFixed(1)+'" y2="'+e[1].toFixed(1)+'" stroke="var(--line)" stroke-width="1"/>'; });
+  const shape = axes.map(function(a, i){ return pt(i, rad(a.v === null ? 0 : a.v)); });
+  s += '<polygon class="ck-radar-shape" points="'+shape.map(function(p){ return p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ')+'" fill="var(--amber)" fill-opacity=".18" stroke="var(--amber)" stroke-width="2" stroke-linejoin="round"/>';
+  axes.forEach(function(a, i){
+    const p = shape[i];
+    s += a.v === null
+      ? '<circle class="ck-radar-none" cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="3.5" fill="var(--panel)" stroke="var(--dim)" stroke-width="1.5"/>'
+      : ckDot(p[0], p[1], 'var(--amber)', 3.5);
+    const l = pt(i, R + 14), anchor = Math.abs(l[0] - cx) < 4 ? 'middle' : (l[0] < cx ? 'end' : 'start');
+    s += ckText(l[0], l[1] - 3, esc(a.label), {anchor:anchor, size:13, fill:'var(--muted)'});
+    s += ckText(l[0], l[1] + 12, a.v === null ? 'no data' : (a.v >= 0 ? '+' : '\u2212')+Math.abs(a.v)+'%', {anchor:anchor, size:13, weight:700, fill: a.v === null ? 'var(--dim)' : 'var(--text)'});
+  });
+  return s+'</svg>';
+}
+function strengthRadarHTML(){
+  const axes = radarData(), have = axes.filter(function(a){ return a.v !== null; });
+  if(have.length < 3) return '<div class="card"><div class="k">Strength by muscle \u00b7 12 weeks</div><p class="small" style="color:var(--dim)">Needs 3+ sessions of a lift in the last 12 weeks for at least three muscle groups.</p></div>';
+  const lead = have.slice().sort(function(a, b){ return b.v - a.v; })[0];
+  const lag = have.filter(function(a){ return a.v <= RADAR_FLAT; }).map(function(a){ return a.label; });
+  const none = axes.filter(function(a){ return a.v === null; }).map(function(a){ return a.label; });
+  const words = (lag.length ? lag.join(', ').replace(/, ([^,]*)$/, ' and $1')+(lag.length === 1 ? ' is' : ' are')+' flat or down; ' : '')+
+    lead.label+' leads at '+(lead.v >= 0 ? '+' : '\u2212')+Math.abs(lead.v)+'%.'+(none.length ? ' Not enough data: '+none.join(', ')+'.' : '');
+  return '<div class="card radar-card"><div class="k">Strength by muscle \u00b7 12 weeks</div>'+ckRadar(axes)+
+    '<p class="small" style="margin-top:6px">'+esc(words)+'</p>'+
+    '<p class="small" style="color:var(--dim);margin-top:4px">The e1RM change of each group\u2019s lifts over 12 weeks, from clean sessions (no deloads, home days or reshaped sessions).</p></div>';
+}
+
 /* ---------------- OVERVIEW (annual review + milestones) ---------------- */
 function renderAnOverview(){
   const el = document.getElementById('an_over'); if(!el) return;
@@ -17374,6 +17536,7 @@ function renderAnOverview(){
     (bigMonth ? '<p class="small" style="margin-top:10px;color:var(--dim)">Biggest month: '+monthName(bigMonth[0])+' ('+bigMonth[1]+' sessions)'+
       (bw.length>=2 ? ' \u00b7 bodyweight '+bw[0].lbs+' \u2192 '+bw[bw.length-1].lbs+' lb' : '')+'</p>' : '')+
     '</div>';
+  try{ h += strengthRadarHTML(); }catch(e){}
   if(gains.length){
     h += '<div class="card"><div class="k">Strength gained this year</div>';
     const maxG = gains[0].gain;
