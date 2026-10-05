@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-05-v4">
+<meta name="ironhub-build" content="2026-10-05-v5">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1569,6 +1569,66 @@
   .lib-sw span{flex:1;}
   .lib-sw input{width:22px; height:22px; accent-color:var(--amber);}
   .lib-rename input{flex:1; min-width:0;}
+  /* Body in the A x C look (2026-10-05) */
+  .bw-hero{display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center;}
+  .bw-big{display:flex; align-items:baseline; gap:8px;}
+  .bw-big b{font-family:var(--disp); font-size:84px; font-weight:700; line-height:.85; font-variant-numeric:tabular-nums;}
+  .bw-big span{font-family:var(--disp); font-size:22px; color:var(--dim); text-transform:uppercase;}
+  .bw-log{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,9.5em) auto; align-items:end; gap:8px; margin:14px 0 2px;}
+  .bw-log .field{margin:0; min-width:0;}
+  .bw-log input{height:48px; min-width:0; width:100%;}
+  .bw-log #wLbs{font-size:18px;}
+  .bw-log .btn{height:48px;}
+  @media (max-width:360px){ .bw-log{grid-template-columns:repeat(2,minmax(0,1fr));} .bw-log .btn{grid-column:1 / -1;} }
+  .bw-tip{margin:0 0 12px; font-size:12px; color:var(--dim); text-align:center;}
+  .bw-verdict{margin:4px 0 14px; font-size:15px; line-height:1.5; text-align:center;}
+  .bw-head2{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px;}
+  .bw-stat{display:flex; flex-direction:column; gap:2px; min-width:0;}
+  .bw-stat b{font-family:var(--disp); font-size:34px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums;}
+  .bw-stat b small{font-size:inherit; color:var(--dim);}
+  .bw-stat span{font-size:12.5px; color:var(--muted); line-height:1.35;}
+  .bw-wk{display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--panel2);}
+  .bw-wk:first-child{border-top:none;}
+  .bw-wk span{flex:1; min-width:0; font-size:14px;}
+  .bw-wk b{font-family:var(--disp); font-size:20px; font-weight:700;}
+  .bw-wk em{font-style:normal; font-size:13px; color:var(--dim); min-width:44px; text-align:right;}
+  .fu-rings{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:16px;}
+  .fu-ring{display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; min-width:0;}
+  .fu-ring-c{position:relative; width:132px; height:132px; max-width:100%;}
+  .fu-ring-c svg{transform:rotate(-90deg); width:100%; height:100%;}
+  .fu-ring-v{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .fu-ring-v b{font-family:var(--disp); font-size:30px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums;}
+  .fu-ring-v span{font-size:11.5px; color:var(--dim);}
+  .fu-ring-l{font-family:var(--disp); font-size:16px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;}
+  .fu-ring-s{font-size:12px; color:var(--muted);}
+  .fu-log-row{display:flex; align-items:flex-end; gap:8px;}
+  .fu-log-row .field{flex:1; min-width:0; margin:0;}
+  #fuel .nut-pills{grid-template-columns:repeat(3,minmax(0,1fr));}
+  #fuel .nut-pill{min-height:52px; border-radius:12px; font-family:var(--disp); font-size:15px; background:none; white-space:normal;}
+  #fuel .nut-pill .nt{font-family:var(--mono);}
+  .rd-hero{display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; margin-bottom:16px;}
+  .rd-ring{position:relative; width:220px; height:220px; max-width:100%;}
+  .rd-ring svg{transform:rotate(-90deg); width:100%; height:100%;}
+  .rd-ring-v{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;}
+  .rd-ring-v b{font-family:var(--disp); font-size:72px; font-weight:700; line-height:.9; font-variant-numeric:tabular-nums;}
+  .rd-ring-v b small{font-size:28px; color:var(--dim);}
+  .rd-word{font-family:var(--disp); font-size:18px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;}
+  .rd-line{margin:0; font-size:14px; color:var(--muted); line-height:1.5;}
+  .rd-line b{color:var(--text);}
+  .rd-tiles{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; width:100%; margin-top:4px; text-align:left;}
+  .rd-tile{display:flex; flex-direction:column; gap:2px; padding:12px; border-radius:16px; background:var(--panel); min-width:0;}
+  .rd-tile b{font-family:var(--disp); font-size:28px; font-weight:700; line-height:1;}
+  .rd-tile b small{font-size:14px; color:var(--dim);}
+  .rd-tile span{font-size:11.5px; color:var(--muted);}
+  .rd-bars{display:flex; align-items:flex-end; gap:4px; height:90px;}
+  .rd-bars i{flex:1; min-width:0; border-radius:4px;}
+  .rd-bars i.none{height:6px; background:var(--panel2);}
+  .rd-bars-d{display:flex; justify-content:space-between; font-size:11px; color:var(--dim);}
+  .rd-ck{display:flex; gap:10px; padding:10px 0; border-top:1px solid var(--panel2); font-size:13.5px;}
+  .rd-ck:first-child{border-top:none;}
+  .rd-ck b{width:48px; flex:none; font-family:var(--disp); font-size:15px; font-weight:700;}
+  .rd-ck span{flex:1; min-width:0; color:var(--muted);}
+  .rd-sec{margin-bottom:16px;}
   /* the recap story (2026-10-05) */
   .recap-ov{position:fixed; inset:0; z-index:400; background:var(--base); color:var(--text); display:flex; flex-direction:column; gap:14px;
     padding:calc(16px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom)); overflow-y:auto;}
@@ -6728,7 +6788,7 @@ function pickNut(btn, kind, mid){
   btn.parentElement.querySelectorAll('.nut-pill').forEach(b=>b.classList.remove('sel'));
   btn.classList.add('sel');
 }
-function toggleNutExact(){ nutExact = !nutExact; renderBulk(); }
+function toggleNutExact(){ nutExact = !nutExact; renderFuel(); }
 function nutLadderHTML(kind, label){
   const sel = nutPick[kind];
   return '<div class="nut-grp"><span class="nut-gl">'+label+'</span><div class="nut-pills">'+
@@ -6768,6 +6828,59 @@ function nutWeekCard(){
     '<div class="card"><p class="small">'+note+'</p></div>';
 }
 
+/* ---- Bodyweight in the A x C look (his pick, 2026-10-05) ----
+   The latest weigh-in big, the pace chip (bulkRate/bulkBand: the one rate and the one set of bands),
+   the weigh-in box, the chart with its marks, the verdict, where it is heading (the fan's range and the
+   forecast record) and the last weekly averages. Intake logging moved to Fuel, with the rest of intake.
+   The projection card folds under it; every weigh-in is the raw fold at the bottom. */
+const BW_BAND_CHIP = {losing:['losing', 'var(--bad)'], flat:['flat', 'var(--warn)'], under:['under the band', 'var(--warn)'],
+                      pocket:['in the band', 'var(--good)'], hot:['over the band', 'var(--warn)']};
+const BW_WEEKS_SHOWN = 4, BW_HEAD_DAYS = 56;
+function bwHeroHTML(w, br){
+  const last = w.length ? w[w.length - 1] : null, t = todayKey();
+  const chip = br ? BW_BAND_CHIP[bulkBand(br.rate)] : null;
+  let h = '<div class="bw-hero"><span class="cc-eyebrow">'+(!last ? 'Bodyweight' : last.date === t ? 'This morning' : 'Last weigh-in \u00b7 '+esc(homeShortDate(last.date)))+'</span>'+
+    '<div class="bw-big"><b>'+(last ? esc(String(last.lbs)) : '\u2014')+'</b><span>lb</span></div>'+
+    (chip ? '<span class="str-chip" style="color:'+chip[1]+'">'+(br.rate >= 0 ? '+' : '')+br.rate.toFixed(2)+' lb/wk \u00b7 '+chip[0]+'</span>'
+          : '<span class="small" style="color:var(--dim)">'+(w.length ? 'A pace needs 3 weeks with a weigh-in.' : 'Log a weigh-in to start.')+'</span>')+'</div>';
+  h += '<div class="bw-log"><div class="field"><label for="wLbs">Log a weigh-in</label><input inputmode="decimal" id="wLbs" placeholder="'+(last ? esc(String(last.lbs)) : '150.5')+'"></div>'+
+    '<div class="field"><label for="wDate">Date</label><input type="date" id="wDate" value="'+t+'"></div>'+
+    '<button class="btn" onclick="addWeight()">Log</button></div>'+
+    '<p class="bw-tip">Weigh first thing in the morning, after the bathroom, before food, so the trend means something.</p>';
+  return h;
+}
+/* One row per Monday week (the weekly averages bulkRate() fits), newest first, with the change from
+   the week before it. */
+function bwWeeklyRows(n){
+  const sm = bodyweightSeriesSmoothed(), out = [];
+  for(let i = sm.length - 1; i >= 0 && out.length < (n || BW_WEEKS_SHOWN); i--){
+    const p = sm[i], q = sm[i - 1];
+    out.push({mon:weekKeyOf(p.date), v:p.v, d: q ? Math.round((p.v - q.v) * 10) / 10 : null});
+  }
+  return out;
+}
+function bwHeadingHTML(){
+  let res = null, B = null;
+  try{ res = bwProjectFor(BW_HEAD_DAYS); }catch(e){ res = null; }
+  try{ B = predRecord().bw7; }catch(e){ B = null; }
+  let a;
+  if(res && res.ok && res.series[10] && res.series[90]){
+    const x = res.series[10][res.series[10].length - 1].v, y = res.series[90][res.series[90].length - 1].v;
+    const lo = Math.round(Math.min(x, y)), hi = Math.round(Math.max(x, y));
+    a = '<div class="bw-stat"><b>'+lo+(hi !== lo ? '<small>\u2013'+hi+'</small>' : '')+'</b><span>lb in '+(BW_HEAD_DAYS / 7)+' weeks at this pace</span></div>';
+  } else a = '<div class="bw-stat"><b>\u2014</b><span>'+esc(res && res.why ? res.why : 'Needs a few weeks of weigh-ins.')+'</span></div>';
+  const b = B && B.n ? '<div class="bw-stat"><b>'+B.hits+'<small>/'+B.n+'</small></b><span>weekly forecasts within '+PRED_BW_TOL+' lb</span></div>'
+                     : '<div class="bw-stat"><b>\u2014</b><span>weekly forecasts scored'+(B && B.pending ? ', '+B.pending+' waiting' : ' so far')+'</span></div>';
+  return '<section class="str-sec" aria-label="Where it\u2019s heading"><div class="str-sec-h"><span>Where it\u2019s heading</span><span class="pw-note">a range, not a promise</span></div>'+
+    '<div class="bw-head2">'+a+b+'</div></section>';
+}
+function bwWeeksHTML(){
+  const rows = bwWeeklyRows(BW_WEEKS_SHOWN);
+  if(!rows.length) return '';
+  return '<section class="str-sec" aria-label="Weekly averages"><div class="str-sec-h"><span>Weekly averages</span></div><div class="bw-wks">'+rows.map(function(r){
+    return '<div class="bw-wk"><span>'+esc(homeRange(r.mon, mesoAddDays(r.mon, 6)))+'</span><b>'+r.v.toFixed(1)+'</b><em>'+(r.d === null ? '' : (r.d >= 0 ? '+' : '')+r.d.toFixed(1))+'</em></div>';
+  }).join('')+'</div></section>';
+}
 function renderBulk(){
   const el = $('#bulk');
   const w = [...S.weights].sort((a,b)=>a.date.localeCompare(b.date));
@@ -6786,55 +6899,25 @@ function renderBulk(){
     else if(band==='pocket') verdict = '<span class="up">Right in the lean-bulk pocket ('+shown+over+', target 0.5–1). Hold this intake.</span>';
     else                     verdict = '<span class="fl">Gaining at '+shown+over+', faster than ~1 lb/week — some of that is likely fat. Trim ~150–200 cal/day if you want it leaner.</span>';
   }
-  let html = '<h2>Bodyweight</h2><div class="stats" style="margin-bottom:12px">'+
-    '<div class="stat"><div class="v">'+(w.length? w[w.length-1].lbs : '—')+'</div><div class="l">current (lb)</div></div>'+
-    '<div class="stat"><div class="v '+(rate===null?'':'')+'">'+(rate===null?'—':(rate>=0?'+':'')+rate.toFixed(2))+'</div><div class="l">lb / week</div></div>'+
-    '<div class="stat"><div class="v">'+(w.length? (w[w.length-1].lbs - w[0].lbs).toFixed(1):'—')+'</div><div class="l">total change</div></div></div>';
-  if(verdict) html += '<div class="card"><p class="small">'+verdict+'</p></div>';
-  html += '<div class="card"><div class="row">'+
-    '<div><label>Date</label><input type="date" id="wDate" value="'+todayKey()+'"></div>'+
-    '<div><label>Weight (lb)</label><input inputmode="decimal" id="wLbs" placeholder="150.5"></div>'+
-    '<div style="flex:none"><button class="btn sm" onclick="addWeight()">Log Weight</button></div></div>'+
-    '<p class="small" style="margin-top:8px">Weigh first thing in the morning, after the bathroom, before food — same conditions every time or the trend means nothing.</p></div>';
+  let html = bwHeroHTML(w, br);
   // Deloads and calorie changes marked on it (V4 stage 5), the events most likely to move the scale.
   let bwMarks = [];
   try{ if(w.length) bwMarks = ckEventMarks(w[0].date, ['deload', 'cal']); }catch(e){ bwMarks = []; }
   if(w.length) html += '<div class="card">'+lineChart(w.map(p=>({date:p.date, v:p.lbs})), '#3da25f', {marks:bwMarks})+'</div>';
-
-  const ct = calTarget(), pt = proTarget();
-  html += '<h2>Daily Intake (from Cal AI)</h2><div class="card"><div class="row">'+
-    '<div><label>Date</label><input type="date" id="nDate" value="'+todayKey()+'"></div>'+
-    '<div style="flex:none;align-self:flex-end"><button class="btn sm ghost" onclick="toggleNutExact()">'+
-      (nutExact?'Use ranges':'Enter exact')+'</button></div></div>';
-  if(nutExact){
-    html += '<div class="row" style="margin-top:10px">'+
-      '<div><label>Calories</label><input inputmode="numeric" id="nCals" placeholder="'+ct+'"></div>'+
-      '<div><label>Protein (g)</label><input inputmode="numeric" id="nProt" placeholder="'+pt+'"></div></div>';
-  } else {
-    html += nutLadderHTML('cal','Calories — target '+ct.toLocaleString())+
-            nutLadderHTML('pro','Protein (g) — target '+pt);
-  }
-  html += '<div style="margin-top:11px"><button class="btn sm" onclick="addNutrition()">Log Intake</button> '+
-    '<span class="small err" id="nMsg"></span></div></div>';
-  html += nutWeekCard();
-  const nut = [...S.nutrition].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
-  html += bwProjectionCardHTML();
-  html += '<div class="card"><p class="small"><b>Protein note:</b> your target is '+pt+'g. Calories drive the scale; protein decides how much of it is muscle — so a day that hits calories and misses protein is not a day that went well.</p></div>';
-  // The day-by-day rows go last, folded; the week card and the projection above already say how it is going.
-  if(nut.length){
-    html += rawFold('bulk', 'Last 14 days of intake', nut.length+' day'+(nut.length===1?'':'s')+' logged',
-      '<div class="card">'+nut.map(n=>'<div class="h-ex"><b>'+fmtDate(n.date)+'</b> — '+
-      (n.est?'~':'')+n.cals+' cal'+nutBadge(nutTierCal(n.cals, ct))+' · '+
-      (n.est?'~':'')+n.protein+'g protein'+nutBadge(nutTierPro(n.protein, pt))+'</div>').join('')+
-      '<p class="small" style="margin-top:8px;color:var(--dim)">~ marks a tapped range — the stored number is that range’s midpoint.</p></div>');
-  }
+  if(verdict) html += '<p class="bw-verdict">'+verdict+'</p>';
+  try{ html += bwHeadingHTML(); }catch(e){}
+  try{ html += bwWeeksHTML(); }catch(e){}
+  html += subSection('Projection chart', bwProjectionCardHTML(), false, {pref:'bulk.proj', cls:'grp', summary:'three paces from your own weeks'});
+  if(w.length) html += rawFold('bulk', 'Weigh-ins', w.length+' logged',
+    '<div class="card">'+w.slice().reverse().map(p=>'<div class="h-ex"><b>'+fmtDate(p.date)+'</b> \u2014 '+esc(String(p.lbs))+' lb</div>').join('')+'</div>');
   el.innerHTML = html;
 }
 function addWeight(){
   const d=$('#wDate').value, v=parseFloat($('#wLbs').value);
   if(!d||!v) return;
   S.weights = S.weights.filter(w=>w.date!==d);
-  S.weights.push(stampRec({date:d, lbs:v})); save(); renderBulk();
+  // Through the section's own renderer, so the sleep fold and the raw fold keep their places.
+  S.weights.push(stampRec({date:d, lbs:v})); save(); REVIEW_RENDER.bulk();
 }
 function addNutrition(){
   const d = $('#nDate').value;
@@ -6852,7 +6935,7 @@ function addNutrition(){
   if(!nutExact) rec.est = true;
   S.nutrition.push(stampRec(rec));
   nutPick = {cal:null, pro:null};
-  save(); renderBulk();
+  save(); renderFuel();
 }
 
 
@@ -7553,7 +7636,12 @@ function fpPref(id, p){ if(!fpFood(id) || ['l','d','h'].indexOf(p) < 0) return; 
 function fpConfirmStock(){ fuelInit(); S.fuel.stockWeek = mesoMondayOf(todayKey()); save(); fpRepaint(); }
 function fpOpenPantry(){
   showReviewTab('fuel');
-  setTimeout(function(){ const el = document.getElementById('fpPantry'); smoothScroll(el, 'start'); }, 60);
+  setTimeout(function(){
+    const el = document.getElementById('fpPantry'); if(!el) return;
+    const sub = el.closest('.sub');
+    if(sub && !sub.classList.contains('open')){ const hd = sub.querySelector('.sub-head'); if(hd) toggleSub(hd); }
+    smoothScroll(el, 'start');
+  }, 60);
 }
 function fpSetEaten(kind, v){
   const e = fpEatenToday();
@@ -7765,15 +7853,66 @@ function fpPantryHTML(){
   h += subSection('Add your own food', fpAddFormHTML(), false, {pref:'fuel.add', summary:'For anything the list is missing', cls:'grp'});
   return h+'</div>';
 }
+/* ---- Fuel in the A x C look (his pick, 2026-10-05) ----
+   Today's calories and protein as rings, from today's logged row against calTarget()/proTarget() and
+   judged by nutTierCal()/nutTierPro(), the only classifiers. Then the tap ladder, moved here from
+   Bodyweight (same ids, same writes), the week, the planner, meal timing and the folds. */
+function fuelRingHTML(kind, n){
+  const t = kind === 'cal' ? calTarget() : proTarget(), v = n ? +(kind === 'cal' ? n.cals : n.protein) || 0 : null;
+  const have = v !== null && (kind === 'cal' ? v > 0 : true), C = 351.9;
+  const tier = have ? (kind === 'cal' ? nutTierCal(v, t) : nutTierPro(v, t)) : null, col = tier ? NUT_TIER[tier].col : 'var(--dim)';
+  const unit = kind === 'cal' ? '' : ' g', est = !!(n && n.est);
+  const sub = !have ? 'not logged yet' : tier === 'over' ? '+'+(v - t).toLocaleString()+' over'
+            : (tier === 'on' || v >= t) ? 'on target' : (t - v).toLocaleString()+unit+' to go';
+  const frac = have ? Math.max(0, Math.min(1, v / t)) : 0;
+  return '<div class="fu-ring" data-kind="'+kind+'"><div class="fu-ring-c"><svg viewBox="0 0 132 132" aria-hidden="true">'+
+      '<circle cx="66" cy="66" r="56" fill="none" stroke="var(--panel)" stroke-width="10"></circle>'+
+      (have ? '<circle cx="66" cy="66" r="56" fill="none" stroke="'+col+'" stroke-width="10" stroke-linecap="round" stroke-dasharray="'+(Math.round(frac * C * 10) / 10)+' '+C+'"></circle>' : '')+
+    '</svg><div class="fu-ring-v"><b>'+(have ? (est ? '~' : '')+v.toLocaleString() : '\u2014')+'</b><span>of '+t.toLocaleString()+unit+'</span></div></div>'+
+    '<span class="fu-ring-l">'+(kind === 'cal' ? 'Calories' : 'Protein')+'</span><span class="fu-ring-s" style="color:'+(have ? col : 'var(--dim)')+'">'+sub+'</span></div>';
+}
+function fuelHeroHTML(){
+  const t = todayKey(), n = (S.nutrition || []).find(function(r){ return r && r.date === t; }) || null;
+  return '<div class="fu-rings" aria-label="Today against your targets">'+fuelRingHTML('cal', n)+fuelRingHTML('pro', n)+'</div>';
+}
+function nutLogHTML(){
+  const ct = calTarget(), pt = proTarget();
+  let h = '<div class="fu-log-row"><div class="field"><label for="nDate">Date</label><input type="date" id="nDate" value="'+todayKey()+'"></div>'+
+    '<button class="btn sm ghost" onclick="toggleNutExact()">'+(nutExact ? 'Use ranges' : 'Enter exact')+'</button></div>';
+  if(nutExact){
+    h += '<div class="row" style="margin-top:10px">'+
+      '<div><label>Calories</label><input inputmode="numeric" id="nCals" placeholder="'+ct+'"></div>'+
+      '<div><label>Protein (g)</label><input inputmode="numeric" id="nProt" placeholder="'+pt+'"></div></div>';
+  } else {
+    h += nutLadderHTML('cal', 'Calories \u2014 target '+ct.toLocaleString())+
+         nutLadderHTML('pro', 'Protein (g) \u2014 target '+pt);
+  }
+  return h+'<div style="margin-top:11px"><button class="btn sm" onclick="addNutrition()">Log Intake</button> <span class="small err" id="nMsg"></span></div>'+
+    '<p class="small" style="margin-top:8px;color:var(--dim)">Calories drive the scale; protein decides how much of it is muscle.</p>';
+}
+function nutHistFold(){
+  const ct = calTarget(), pt = proTarget();
+  const nut = [...S.nutrition].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
+  if(!nut.length) return '';
+  return rawFold('fuel', 'Last 14 days of intake', nut.length+' day'+(nut.length===1?'':'s')+' logged',
+    '<div class="card">'+nut.map(n=>'<div class="h-ex"><b>'+fmtDate(n.date)+'</b> — '+
+    (n.est?'~':'')+n.cals+' cal'+nutBadge(nutTierCal(n.cals, ct))+' · '+
+    (n.est?'~':'')+n.protein+'g protein'+nutBadge(nutTierPro(n.protein, pt))+'</div>').join('')+
+    '<p class="small" style="margin-top:8px;color:var(--dim)">~ marks a tapped range — the stored number is that range’s midpoint.</p></div>');
+}
 function renderFuel(){
   fuelInit();
   const el = $('#fuel');
   const f = S.fuel;
-  let html = '<h2>Fuel Planner</h2><p class="small fp-lede">What to keep in the house, and what to eat to close today’s calories and protein. '+
-    'It runs on your phone with no API calls. Every macro is approximate (~); tap a food to fix it.</p>';
+  let html = '';
+  try{ html += fuelHeroHTML(); }catch(e){}
   html += fpStockCardHTML('fuel');
-  html += '<h2>Close Today’s Gap</h2>'+fpCombinerHTML();
-  html += '<h2>Pantry</h2>'+fpPantryHTML();
+  html += '<section class="str-sec" aria-label="Log today"><div class="str-sec-h"><span>Log today in one tap</span><span class="pw-note">from Cal AI</span></div>'+nutLogHTML()+'</section>';
+  html += nutWeekCard();
+  html += '<h2>Close Today’s Gap</h2><p class="small fp-lede">The Fuel Planner builds plates from what you have. '+
+    'It runs on your phone with no API calls. Every macro is approximate (~); tap a food to fix it.</p>'+fpCombinerHTML();
+  try{ html += mealTimingCardHTML(); }catch(e){}
+  const foods = fpFoods(), ns = foods.filter(function(x){ return x.stocked; }).length, nl = foods.filter(function(x){ return x.pref === 'l'; }).length;
   const targets = '<div class="card">'+
     '<div class="row"><div><label>Daily Calories</label><input inputmode="numeric" id="fCal" value="'+(f.calTarget||3000)+'"></div>'+
     '<div><label>Daily Protein (g)</label><input inputmode="numeric" id="fPro" value="'+(f.proTarget||150)+'"></div></div>'+
@@ -7783,12 +7922,14 @@ function renderFuel(){
     '<input type="text" id="fLimits" value="'+esc(f.limits||'')+'" placeholder="e.g. lactose, no shellfish">'+
     '<p class="small" style="margin-top:6px;color:var(--dim)">These match food names, so use the word that appears in them (peanut, not nuts).</p>'+
     '<div style="margin-top:10px"><button class="btn sm" onclick="saveFuelPrefs()">Save Preferences</button> <span class="small ok" id="fMsg"></span></div></div>';
-  try{ html += mealTimingCardHTML(); }catch(e){}
+  // The Pantry folds once he has stock; with nothing stocked it is where "Start here" points, so it opens.
   html += '<h2>More</h2>'+
+    subSection('Pantry', fpPantryHTML(), !ns, {pref:'fuel.pantry', summary:ns+' stocked \u00b7 '+nl+' liked', cls:'grp'})+
     subSection('Workout Fuel Timing', fuelTimingHTML({bare:true}), false,
       {pref:'fuel.timing', summary:fuelNextLine() || 'Set a workout time to plan around it', cls:'grp'})+
     subSection('Targets & Exclusions', targets, false,
       {pref:'fuel.targets', summary:calTarget().toLocaleString()+' cal · '+proTarget()+'g protein', cls:'grp'});
+  html += nutHistFold();
   el.innerHTML = html;
 }
 function saveFuelPrefs(){
@@ -8440,10 +8581,11 @@ const NAV_MODEL = [
     {id:'an_overload', label:'Overload'},
     {id:'an_fatigue',  label:'Fatigue'}]},
   {id:'body',     label:'Body',     ic:'body', subs:[
-    {id:'bulk',        label:'Bodyweight'},
+    // Short labels (his pick, 2026-10-05): four fit one segmented row at 320px.
+    {id:'bulk',        label:'Weight'},
     {id:'fuel',        label:'Fuel'},
-    {id:'an_dev',      label:'Bulk quality'},
-    {id:'an_recovery', label:'Readiness'}]},
+    {id:'an_dev',      label:'Quality'},
+    {id:'an_recovery', label:'Ready'}]},
   // Coach keeps the internal id 'ops': the agent layer, its tests and the refresh gate all
   // key off it, and a rename would buy nothing but churn.
   {id:'ops',      label:'Hub',      ic:'coach', top:true, subs:[
@@ -15772,6 +15914,9 @@ function recoveryEffectCardHTML(){
     if(!g.n) return '';
     return anBarRow(lab, Math.round(g.hard*100), Math.round(g.hard*100)+'% grind/fail \u00b7 PR on '+Math.round(g.prRate*100)+'% \u00b7 '+g.n+' session'+(g.n===1?'':'s'), col);
   };
+  if(b.below.n && b.normal.n) h += '<div class="bw-head2" style="margin:8px 0 12px">'+
+    '<div class="bw-stat"><b>'+Math.round(b.below.prRate*100)+'<small>%</small></b><span>sessions with a PR on below-usual days</span></div>'+
+    '<div class="bw-stat"><b>'+Math.round(b.normal.prRate*100)+'<small>%</small></b><span>at your usual</span></div></div>';
   h += row('15+ under your usual', b.below, 'var(--bad)')+row('About usual', b.normal, 'var(--muted)')+row('15+ over your usual', b.above, 'var(--good)');
   h += '<p class="small" style="margin-top:10px">'+(wr.calibrated
     ? 'Calibrated from your own sessions (grinding and PR rate together): a low recovery counts '+(wr.weight > 1 ? 'for more' : wr.weight < 1 ? 'for less' : 'at the normal weight')+' in today\u2019s call (\u00d7'+wr.weight+')'+
@@ -16150,12 +16295,17 @@ function renderAnReadiness(){
     'Only sessions with '+AN_RD_MIN_TAGGED+'+ tagged sets count; an untagged set is unknown, not clean.</p></div>';
   // These two stand on their own data (WHOOP history, per-factor answers), so they show even while
   // the tier comparison below is still waiting.
+  // The A x C hero first (2026-10-05): today's ring, the three numbers against his usual, 14 days,
+  // how recovery affects him, recent check-ins. The analysis cards follow.
+  let top = '';
+  try{ top += rdHeroHTML(); }catch(e){}
+  try{ top += recoveryEffectCardHTML(); }catch(e){}
+  try{ top += rdCheckinsHTML(); }catch(e){}
   let _extra = '';
-  try{ _extra += recoveryEffectCardHTML(); }catch(e){}
   try{ _extra += readinessFactorsCardHTML(); }catch(e){}
   if(!r.ok){
     const g0 = r.groups;
-    el.innerHTML = h + _extra + anEmpty('Not enough data yet — '+g0.low.n+' low-readiness and '+g0.rest.n+
+    el.innerHTML = top + h + _extra + anEmpty('Not enough data yet — '+g0.low.n+' low-readiness and '+g0.rest.n+
       ' ok/high session'+(g0.rest.n===1?'':'s')+' on record, and this needs '+r.need+' of each before it can say anything real. '+
       'Lock in the check-in and tag your sets’ effort — it fills in on its own.');
     return;
@@ -16209,7 +16359,86 @@ function renderAnReadiness(){
          'Sessions logged before this comparison existed never recorded which choice you made, so they sit out rather than get guessed at.</p>';
   }
   h += '</div>';
-  el.innerHTML = h + _extra;
+  el.innerHTML = top + h + _extra;
+}
+/* ---- Readiness in the A x C look (his pick, 2026-10-05) ----
+   Today's ring from readinessNow() (WHOOP, else the check-in), against his own usual
+   (recoveryBaseline(), which never includes the day judged). Today's numbers come ONLY from today's
+   dated sections (whoopOn), never the history; the 14-day strip takes its earlier days from the
+   history and today from the same dated section. */
+const RD_BARS_DAYS = 14;
+function rdHeroHTML(){
+  const t = todayKey(), rd = readinessNow(), wt = whoopOn(t), base = recoveryBaseline(t), C = 603.2;
+  const col = rd ? readinessColor(rd.tone) : 'var(--dim)', pct = rd ? Math.max(0, Math.min(100, Math.round(rd.pct))) : 0;
+  let line;
+  if(rd && rd.source === 'WHOOP' && base){
+    const gap = pct - Math.round(base.recovery);
+    line = Math.abs(gap) < 8 ? 'Right around your usual '+Math.round(base.recovery)+'%.' : Math.abs(gap)+(gap < 0 ? ' under' : ' over')+' your usual '+Math.round(base.recovery)+'%.';
+  } else if(rd && rd.source === 'WHOOP') line = 'Your usual needs a week of WHOOP history.';
+  else if(rd) line = 'From your check-in.';
+  else line = 'No reading yet today. WHOOP lands in the morning, or check in when you start a session.';
+  try{
+    const td = dashToday();
+    if(!td.rest){ const dc = dayCall(t, td.dayKey); if(dc && dc.conf !== 'none') line += ' Today\u2019s call: <b>'+esc(DC_LABEL[dc.call].replace(/ day$/, '').toLowerCase())+'</b>.'; }
+  }catch(e){}
+  let h = '<div class="rd-hero"><div class="rd-ring"><svg viewBox="0 0 220 220" aria-hidden="true">'+
+      '<circle cx="110" cy="110" r="96" fill="none" stroke="var(--panel)" stroke-width="14"></circle>'+
+      (rd ? '<circle cx="110" cy="110" r="96" fill="none" stroke="'+col+'" stroke-width="14" stroke-linecap="round" stroke-dasharray="'+(Math.round(pct / 100 * C * 10) / 10)+' '+C+'"></circle>' : '')+
+    '</svg><div class="rd-ring-v"><span class="cc-eyebrow">'+(rd ? (rd.source === 'WHOOP' ? 'Recovery \u00b7 WHOOP' : 'Readiness \u00b7 check-in') : 'Readiness')+'</span>'+
+      '<b>'+(rd ? pct+'<small>%</small>' : '\u2014')+'</b>'+(rd ? '<span class="rd-word" style="color:'+col+'">'+esc(rd.label)+'</span>' : '')+'</div></div>'+
+    '<p class="rd-line">'+line+'</p>';
+  if(wt || base){
+    const tile = function(lab, v, unit, u, dp){
+      const f = function(x){ return dp ? (+x).toFixed(dp) : String(Math.round(+x)); };
+      return '<div class="rd-tile"><span class="cc-eyebrow" style="color:var(--dim)">'+lab+'</span><b>'+(v > 0 ? f(v)+'<small>'+unit+'</small>' : '\u2014')+'</b>'+
+        '<span>'+(u > 0 ? 'usual '+f(u) : 'no usual yet')+'</span></div>';
+    };
+    h += '<div class="rd-tiles">'+tile('HRV', wt && wt.hrv, ' ms', base && base.hrv)+tile('Resting HR', wt && wt.rhr, ' bpm', base && base.rhr)+
+      tile('Sleep', wt && wt.sleepHours, ' h', base && base.sleepHours, 1)+'</div>';
+  }
+  h += '</div>';
+  try{ h += rdBarsHTML(); }catch(e){}
+  return h;
+}
+function rdBarsHTML(){
+  const t = todayKey(), byDate = {};
+  whoopHistRows().forEach(function(r){ if(r && r.date && r.date < t && typeof r.recovery === 'number') byDate[r.date] = r.recovery; });
+  const wt = whoopOn(t);
+  if(wt && typeof wt.recovery === 'number') byDate[t] = wt.recovery;
+  const days = [];
+  for(let i = RD_BARS_DAYS - 1; i >= 0; i--) days.push(mesoAddDays(t, -i));
+  if(!days.some(function(d){ return byDate[d] !== undefined; })) return '';
+  const bars = days.map(function(d){
+    const v = byDate[d];
+    if(v === undefined) return '<i class="none" title="'+esc(fmtDate(d))+': no reading"></i>';
+    const base = recoveryBaseline(d), diff = base ? v - base.recovery : null;
+    const col = diff === null ? 'var(--muted)' : diff >= 0 ? 'var(--good)' : diff > -15 ? 'var(--warn)' : 'var(--bad)';
+    return '<i class="'+(diff === null ? 'nobase' : diff >= 0 ? 'up' : diff > -15 ? 'mid' : 'low')+'" style="height:'+Math.max(4, Math.round(v))+'%;background:color-mix(in srgb, '+col+' 70%, transparent)" title="'+esc(fmtDate(d))+': '+Math.round(v)+'%"></i>';
+  }).join('');
+  return '<section class="str-sec rd-sec" aria-label="Last 14 days"><div class="str-sec-h"><span>Last 14 days</span><span class="pw-note">green at or above your usual</span></div>'+
+    '<div class="rd-bars" aria-label="Recovery, last 14 days">'+bars+'</div><div class="rd-bars-d"><span>'+esc(homeShortDate(days[0]))+'</span><span>Today</span></div></section>';
+}
+const RD_SORE_WORD = {'fresh':'fresh', 'mild':'mildly sore', 'beat up':'beat up'};
+function rdCheckinsHTML(){
+  const t = todayKey(), rows = [];
+  let any = false;
+  for(let i = 0; i < 5; i++){
+    const d = mesoAddDays(t, -i), r = (S.readiness || []).find(function(x){ return x && x.date === d; });
+    const hasW = d === t ? !!(whoopOn(t) || {}).recovery : whoopHistRows().some(function(x){ return x && x.date === d && typeof x.recovery === 'number'; });
+    let txt;
+    if(r && rdComplete(r)){
+      // Energy is his own read only when it differs from what WHOOP pre-filled (CLAUDE.md).
+      const own = !(r.energyPre && r.energy === r.energyPre);
+      txt = 'Sleep '+r.sleep+'h \u00b7 '+(RD_SORE_WORD[r.sore] || r.sore || 'soreness not said')+' \u00b7 energy '+(own ? r.energy : 'from WHOOP')+(r.stress ? ' \u00b7 '+r.stress : '');
+      any = true;
+    } else if(r && r.sleep){ txt = 'Sleep '+r.sleep+'h only'+(hasW ? ' \u00b7 WHOOP' : ''); any = true; }
+    // Today is not over: no check-in yet is not a skip.
+    else if(i === 0){ txt = hasW ? 'No check-in yet \u00b7 WHOOP in' : 'No check-in yet'; if(hasW) any = true; }
+    else { txt = hasW ? 'Skipped \u00b7 WHOOP only' : 'No check-in'; if(hasW) any = true; }
+    rows.push('<div class="rd-ck"><b>'+(i === 0 ? 'Today' : WP_DOW[new Date(d+'T12:00:00').getDay()])+'</b><span>'+esc(txt)+'</span></div>');
+  }
+  if(!any) return '';
+  return '<section class="str-sec rd-sec" aria-label="Check-ins"><div class="str-sec-h"><span>Check-ins</span></div><div>'+rows.join('')+'</div></section>';
 }
 
 /* ---------------- BULK QUALITY ----------------

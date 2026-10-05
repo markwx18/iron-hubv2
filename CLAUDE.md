@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3154 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3206 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -255,6 +255,7 @@ so the two orders can no longer disagree.
 | Per-lift flags | `exSlotsFor()` (split in force, else the permanent split), `isMaxed()`, `incForExercise()`, `slotInc()`, `isFormFocus()`, `isStrMode()`, `toggleRepMode()` |
 | Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
 | Train (A × C) | Plan `planHeroHTML()`, `planBlocks()`, `planLenStep()`, `planSetType()`; Log `logHeroHTML()`, `logChipsHTML()`, `logRowHTML()`, `logPRsOn()` (`logFilter`, `logOpen`); Library `libLifts()`, `libMatches()`, `libFilterRows()`, `libCardHTML()`, `libFlag()`, `libRename()`; `exRenameFlow()` (the one rename flow) |
+| Body (A × C) | Weight `bwHeroHTML()`, `bwWeeklyRows()`, `bwHeadingHTML()`, `bwWeeksHTML()`, `BW_BAND_CHIP`; Fuel `fuelHeroHTML()` / `fuelRingHTML()`, `nutLogHTML()`, `nutHistFold()`; Ready `rdHeroHTML()`, `rdBarsHTML()`, `rdCheckinsHTML()` |
 | Recap | `recapSlides()`, `recapYear()` / `recapFinal()` / `recapTitle()`, `recapRender()` / `recapOpen()` / `recapGo()` / `recapClose()`, `recapCardHTML()` |
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
@@ -1343,9 +1344,9 @@ parts apart with a hairline (no second heading, since each part's first card alr
 it). **Every repaint goes through `navRenderSub()`**, so the refresh tick paints all parts, not
 just the first. `NAV_LEGACY` maps a section to the view that shows it, so
 `showReviewTab('an_pred')` opens Strength, and an old-style call naming a lower part scrolls to it.
-A group with four views or fewer renders its sub-nav as a segmented control (`.seg`). At 320px
-Body's four labels only fit with the tightened track in the ≤360px rule, so re-measure if you
-lengthen a label.
+A group with four views or fewer renders its sub-nav as a segmented control (`.seg`). Body's labels
+are short on purpose (Weight · Fuel · Quality · Ready, his pick, 2026-10-05). The longer ones only
+fit at 320px with the tightened track in the ≤360px rule, so re-measure if you lengthen a label.
 
 **V4 stage 3: the A × C "Ember HUD" layout.** Mark chose it on 2026-10-03 (canvas artifact
 `2FeybZrjfHfTuYCXzeLMGN`, page "A × C"). It keeps the Forge × Ember tokens and fonts; what changed is
@@ -1422,7 +1423,7 @@ proposals are counted as **requests** ("1 request"), never ideas.
   on Overload. Density gets a weekly line (`densityWeekly()`): each session against its own day's
   median pace, shown from `DENSITY_WEEKS_MIN` (3) weeks.
 - **Raw data last.** `rawFold(view, …)` wraps Best Sets (Overview), the PR log rows (Strength; the
-  header card stays up) and the 14 days of intake (Bodyweight) in a fold remembered as
+  header card stays up), the 14 days of intake (Fuel) and every weigh-in (Bodyweight) in a fold remembered as
   `open.raw.<view>`. The V2 wrappers append cards after the base renderer, so they finish with
   `rawFoldsLast(sec)`, or the "last" fold ends up mid-page.
 
@@ -1461,6 +1462,39 @@ section id, element id and handler was kept; the old detail moved into folds, it
 
   **Rename has one flow** (`exRenameFlow()`), shared with Settings › Exercise names: the same
   refusals, confirmation and save.
+
+**Body in A × C** (the same canvas page, 2026-10-05). Ids and handlers kept, with one deliberate move:
+**intake logging moved from Bodyweight to Fuel**, with the rest of intake. The ids (`nDate`, `nCals`,
+`nProt`, `nMsg`), the tap ladder and `addNutrition()` are unchanged. `toggleNutExact()` and
+`addNutrition()` now repaint Fuel.
+- **Weight** (`renderBulk()`), from top to bottom:
+  - the latest weigh-in, big, with a pace chip from `bulkRate(4)` / `bulkBand()` (`BW_BAND_CHIP`);
+  - the weigh-in box (`wLbs`, `wDate`, `addWeight()`). `addWeight()` repaints through
+    `REVIEW_RENDER.bulk`, or the sleep fold vanished until the next repaint;
+  - the chart with its marks, then the verdict;
+  - "Where it's heading": the fan's 8-week p10–p90 (`bwProjectFor(56)`), and the `bw7` record from
+    `predRecord()`;
+  - the last 4 weekly averages (`bwWeeklyRows()`, the same weeks `bulkRate()` fits);
+  - the projection card in a fold, and every weigh-in as the raw fold.
+- **Fuel** (`renderFuel()`): today's calorie and protein rings (`fuelRingHTML()`), from today's
+  `S.nutrition` row only, judged by `nutTierCal()` / `nutTierPro()`. A tapped range shows as `~`. Then:
+  - the ladder (`nutLogHTML()`) and the week card;
+  - Close Today's Gap and meal timing;
+  - the Pantry as a fold, open while nothing is stocked because "Start here" points at it.
+    `fpOpenPantry()` opens it before scrolling;
+  - timing, targets, and the 14 days of intake last (`nutHistFold()`).
+- **Ready** (`renderAnReadiness()`) opens on `rdHeroHTML()`:
+  - the ring is `readinessNow()`, with a line against his usual (`recoveryBaseline()`; within 8 points
+    is "right around", the band `dayCall()` starts at) and today's call, which is left out on a rest day;
+  - tiles for HRV, resting HR and sleep from `whoopOn(today)`. Today's numbers never come from the
+    history;
+  - `rdBarsHTML()`: 14 days, earlier days from the history and today from the dated section. Each bar
+    is coloured against that day's own baseline, and a day with no reading is an empty slot, not a zero;
+  - the recovery card, which now leads with the PR rate on below-usual days against usual;
+  - `rdCheckinsHTML()`: five days. Energy is "from WHOOP" when he left the pre-fill, a sleep stub is
+    "only", and today with no check-in is "not yet", never a skip.
+
+  The analysis cards follow.
 
 **A folded card can remember that it is folded.** `subSection(title, body, open, opts)` takes
 `opts.pref` to store the open/closed choice per device in `localStorage['ironhub:ui']`

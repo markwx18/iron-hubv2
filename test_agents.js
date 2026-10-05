@@ -3445,7 +3445,7 @@ setTimeout(async () => {
 
     // --- wiring ---
     const anSubs2 = ev("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs); }, [])");
-    ok('nav labels the tab Readiness', anSubs2.some(s => s.id === 'an_recovery' && s.label === 'Readiness'),
+    ok('nav labels the tab Ready (short Body labels, 2026-10-05)', anSubs2.some(s => s.id === 'an_recovery' && s.label === 'Ready'),
       JSON.stringify(anSubs2.map(s => s.label)));
     ok('REVIEW_RENDER.an_recovery still wired', typeof ev('REVIEW_RENDER').an_recovery === 'function');
     ok('the old rest-gap recovery engine is gone', ev('typeof anRecoveryFor') === 'undefined');
@@ -3653,7 +3653,7 @@ setTimeout(async () => {
 
     // --- wiring ---
     const anSubs3 = ev("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs); }, [])");
-    ok('nav labels the tab Bulk quality', anSubs3.some(s => s.id === 'an_dev' && s.label === 'Bulk quality'),
+    ok('nav labels the tab Quality (short Body labels, 2026-10-05)', anSubs3.some(s => s.id === 'an_dev' && s.label === 'Quality'),
       JSON.stringify(anSubs3.map(s => s.label)));
     ok('REVIEW_RENDER.an_dev still wired', typeof ev('REVIEW_RENDER').an_dev === 'function');
     ok('the old development renderer is gone', ev('typeof renderAnDev') === 'undefined');
@@ -7568,6 +7568,7 @@ setTimeout(async () => {
   }
 
   console.log('=== INTAKE BUCKETS: TAP A RANGE, TARGETS DRIVE THE VERDICT ===');
+  // The ladder moved from Bodyweight to Fuel on 2026-10-05 (same ids, same writes), so it is read on #fuel.
   try {
     const savedNut = ev('JSON.stringify(S.nutrition)');
     const savedFuel = ev('JSON.stringify(S.fuel)');
@@ -7618,12 +7619,12 @@ setTimeout(async () => {
 
     // --- round trip: tap a range, log it, read the badge back ---
     ev("S.nutrition = []; nutExact = false; nutPick = {cal:null, pro:null};");
-    ev('renderBulk')();
+    ev('renderFuel')();
     ok('the ladder renders as tappable pills',
-       ev("document.querySelectorAll('#bulk .nut-pill').length") === 15,
-       'n=' + ev("document.querySelectorAll('#bulk .nut-pill').length"));
+       ev("document.querySelectorAll('#fuel .nut-pill').length") === 15,
+       'n=' + ev("document.querySelectorAll('#fuel .nut-pill').length"));
     ev(`(function(){
-          var g = document.querySelectorAll('#bulk .nut-grp');
+          var g = document.querySelectorAll('#fuel .nut-grp');
           g[0].querySelectorAll('.nut-pill')[4].click();
           g[1].querySelectorAll('.nut-pill')[6].click();
         })()`);
@@ -7631,7 +7632,7 @@ setTimeout(async () => {
        ev('nutPick.cal') === 3100 && ev('nutPick.pro') === 155,
        'cal=' + ev('nutPick.cal') + ' pro=' + ev('nutPick.pro'));
     ok('only the tapped pill is marked selected in its row',
-       ev("document.querySelectorAll('#bulk .nut-grp')[0].querySelectorAll('.nut-pill.sel').length") === 1);
+       ev("document.querySelectorAll('#fuel .nut-grp')[0].querySelectorAll('.nut-pill.sel').length") === 1);
     ev("document.getElementById('nDate').value = '2026-02-10';");
     ev('addNutrition')();
     const tapped = ev("S.nutrition.find(n=>n.date==='2026-02-10')");
@@ -7643,9 +7644,9 @@ setTimeout(async () => {
 
     // --- the exact-entry escape hatch ---
     ev("nutExact = true;");
-    ev('renderBulk')();
+    ev('renderFuel')();
     ok('exact mode swaps the ladder for number inputs',
-       !!w.document.getElementById('nCals') && !w.document.querySelector('#bulk .nut-pill'));
+       !!w.document.getElementById('nCals') && !w.document.querySelector('#fuel .nut-pill'));
     ev("document.getElementById('nDate').value='2026-02-11';" +
        "document.getElementById('nCals').value='3123'; document.getElementById('nProt').value='161';");
     ev('addNutrition')();
@@ -7659,24 +7660,24 @@ setTimeout(async () => {
     // --- history badges are per-macro and follow the configured target ---
     ev("S.fuel.calTarget = 2600; S.fuel.proTarget = 120;");
     ev("S.nutrition = [{date:'2026-01-05', cals:2700, protein:125}];");
-    ev('renderBulk')();
-    let out = w.document.getElementById('bulk').innerHTML;
+    ev('renderFuel')();
+    let out = w.document.getElementById('fuel').innerHTML;
     ok('a day clearing the configured target shows a hit badge on both macros',
        (out.match(/nut-badge[^>]*var\(--good\)[^>]*>✓/g) || []).length === 2,
        'hits=' + (out.match(/nut-badge[^>]*var\(--good\)[^>]*>✓/g) || []).length);
     ok('the old single below-target label is gone', out.indexOf('below target') === -1);
     // Same day, stricter targets: what read as a hit now reads as a miss on both macros.
     reset();
-    ev('renderBulk')();
-    out = w.document.getElementById('bulk').innerHTML;
+    ev('renderFuel')();
+    out = w.document.getElementById('fuel').innerHTML;
     ok('tightening the target flips the same day from a hit to under on both macros',
        (out.match(/nut-badge[^>]*var\(--warn\)[^>]*>under/g) || []).length === 2,
        'under=' + (out.match(/nut-badge[^>]*var\(--warn\)[^>]*>under/g) || []).length);
     // The two macros must be able to disagree. The old AND-ed check-mark collapsed a day that
     // hit calories and badly missed protein into the same "below target" as missing both.
     ev("S.nutrition = [{date:'2026-01-06', cals:3100, protein:105}];");
-    ev('renderBulk')();
-    out = w.document.getElementById('bulk').innerHTML;
+    ev('renderFuel')();
+    out = w.document.getElementById('fuel').innerHTML;
     ok('calories can read on target while protein reads way under, on the same row',
        /nut-badge[^>]*var\(--good\)[^>]*>✓/.test(out) &&
        /nut-badge[^>]*var\(--bad\)[^>]*>way under/.test(out));
@@ -11484,11 +11485,17 @@ setTimeout(async () => {
        /PR history/.test(ev("document.querySelector('#an_strength').firstElementChild.textContent")) && ev("document.querySelector('#an_strength').firstElementChild.classList.contains('sub')") === false);
 
     // Through the live renderer: renderBulkV2 appends the sleep section after renderBulk's own HTML.
-    ev('REVIEW_RENDER.bulk();');
+    // Since 2026-10-05 Bodyweight's raw fold is its weigh-ins, and the intake rows fold on Fuel.
+    ev("S.weights = (S.weights || []).concat([{date: mesoAddDays(todayKey(), -1), lbs: 161.2}]); REVIEW_RENDER.bulk();");
     const bf = "document.querySelector('#bulk [data-pref=\"open.raw.bulk\"]')";
-    ok('raw: the 14 days of intake fold, after the projection and the protein note',
-       !!ev('!!' + bf) && /3600 cal/.test(ev(bf + ".parentElement.textContent")) &&
+    ok('raw: the weigh-ins fold at the very bottom of Bodyweight, after the sleep section',
+       !!ev('!!' + bf) && /161.2 lb/.test(ev(bf + ".parentElement.querySelector('.sub-body').textContent")) &&
        ev("(function(){ var s = document.querySelector('#bulk'); var f = " + bf + ".parentElement; return f === s.lastElementChild; })()") === true);
+    ev('renderFuel();');
+    const ff = "document.querySelector('#fuel [data-pref=\"open.raw.fuel\"]')";
+    ok('raw: the 14 days of intake fold, last on Fuel',
+       !!ev('!!' + ff) && /3600 cal/.test(ev(ff + ".parentElement.textContent")) &&
+       ev("(function(){ var s = document.querySelector('#fuel'); var f = " + ff + ".parentElement; return f === s.lastElementChild; })()") === true);
   } catch (e) {
     ok('V4 stage 3 raw folds section', false, e.stack);
   } finally {
@@ -12856,6 +12863,175 @@ setTimeout(async () => {
     ev("if(window.__peDiv){ __peDiv.remove(); delete window.__peDiv; } delete window.__peIn; delete window.__peEx; delete window.__peRfArgs; delete window.__peCf; delete window.__peCfAns; delete window.__peAl;");
     ev("if(window.__pePw){ plateauWatch = window.__pePw; delete window.__pePw; } if(window.__peTK){ todayKey = window.__peTK; delete window.__peTK; }");
     ev('if(window.__peSaved){ S = JSON.parse(window.__peSaved); delete window.__peSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== BODY IN A × C: WEIGHT, FUEL, READY (2026-10-05) ===');
+  try {
+    w.__pfSaved = ev('JSON.stringify(S)');
+    w.__pfPref = ev('localStorage.getItem(UI_PREF_KEY)');
+    // A fixed Monday, so the weeks, today's row and the 14-day strip never depend on when the suite runs.
+    ev("window.__pfTK = todayKey; todayKey = function(){ return '2026-10-05'; }; live = null; nutExact = false; nutPick = {cal:null, pro:null}; subOpen = {};");
+    ev("S.deload = null; S.overrideDay = null; S.coachDayPlan = null; S.meso = {template:null, active:null}; S.logs = []; S.prHistory = []; S.readiness = []; S.targetHist = []; S.predictions = [];" +
+       " S.fuel = Object.assign({}, S.fuel || {}, {calTarget: 3900, proTarget: 150, foods: {}}); S.nutrition = [];" +
+       " S.scheduleMode = 'dow'; S.schedule = {0:'REST',1:'D1',2:'D2',3:'REST',4:'D1',5:'D2',6:'D1'};");
+    const q = (sel) => ev("(function(){ var e = document.querySelector(" + JSON.stringify(sel) + "); return e ? e.textContent : null; })()");
+    const qa = (sel, js) => JSON.parse(ev("JSON.stringify([].slice.call(document.querySelectorAll(" + JSON.stringify(sel) + ")).map(function(e){ return " + (js || 'e.textContent') + "; }))"));
+
+    // ---------- Weight ----------
+    // Six weeks of weigh-ins, most days, with fixed wobble so the weekly averages are not the raw values.
+    const wob = [0.6, -0.4, 0.2, -0.7, 0.5, -0.1, 0.3];
+    const ws = [];
+    for (let i = 41; i >= 1; i--) { if (i % 6 === 0) continue; ws.push({date: ev("mesoAddDays('2026-10-05', -" + i + ")"), lbs: Math.round((160 + (41 - i) * 0.045 + wob[i % 7]) * 10) / 10}); }
+    ev('S.weights = ' + JSON.stringify(ws) + '.map(function(x){ return stampRec(x); });');
+    ev('renderBulk();');
+    const br = ev('JSON.stringify(bulkRate(4))') ? JSON.parse(ev('JSON.stringify(bulkRate(4))')) : null;
+    const band = ev('bulkBand(' + br.rate + ')');
+    const chipWord = {losing: 'losing', flat: 'flat', under: 'under the band', pocket: 'in the band', hot: 'over the band'}[band];
+    ok('weight: the hero is the last weigh-in, big, dated when it is not today', q('#bulk .bw-big b') === String(ws[ws.length - 1].lbs) && /Last weigh-in · Oct 4/.test(q('#bulk .bw-hero .cc-eyebrow')), q('#bulk .bw-hero'));
+    ok('weight: the chip is the one rate (bulkRate) and the one band (bulkBand)', q('#bulk .bw-hero .str-chip') === (br.rate >= 0 ? '+' : '') + br.rate.toFixed(2) + ' lb/wk · ' + chipWord, q('#bulk .bw-hero .str-chip') + ' / ' + band);
+    ok('weight: the chip takes the band’s colour', /color:var\(--(warn|good|bad)\)/.test(ev("document.querySelector('#bulk .bw-hero .str-chip').getAttribute('style')")) &&
+       ev("document.querySelector('#bulk .bw-hero .str-chip').getAttribute('style')").indexOf(band === 'pocket' ? '--good' : band === 'losing' ? '--bad' : '--warn') >= 0);
+    ev("S.weights.push(stampRec({date: '2026-10-05', lbs: 162.4})); renderBulk();");
+    ok('weight: a weigh-in today reads "This morning"', q('#bulk .bw-hero .cc-eyebrow') === 'This morning' && q('#bulk .bw-big b') === '162.4');
+    ev("S.weights = S.weights.filter(function(x){ return x.date !== '2026-10-05'; });");
+    const rows = JSON.parse(ev('JSON.stringify(bwWeeklyRows(4))'));
+    const sm = JSON.parse(ev('JSON.stringify(bodyweightSeriesSmoothed())'));
+    ok('weight: weekly averages are the smoothed weeks, newest first, each with its change from the week before',
+       rows.length === 4 && rows[0].v === sm[sm.length - 1].v && rows[1].v === sm[sm.length - 2].v &&
+       rows[0].d === Math.round((sm[sm.length - 1].v - sm[sm.length - 2].v) * 10) / 10 && rows[0].mon === ev("weekKeyOf('" + sm[sm.length - 1].date + "')"), JSON.stringify(rows));
+    ev('renderBulk();');
+    const wk = qa('#bulk .bw-wk', "[e.querySelector('span').textContent, e.querySelector('b').textContent, e.querySelector('em').textContent]");
+    ok('weight: four week rows, labelled Monday to Sunday', wk.length === 4 && wk[0][0] === ev("homeRange('" + rows[0].mon + "', mesoAddDays('" + rows[0].mon + "', 6))") &&
+       wk[0][1] === rows[0].v.toFixed(1) && wk[0][2] === (rows[0].d >= 0 ? '+' : '') + rows[0].d.toFixed(1), JSON.stringify(wk));
+    const fan = JSON.parse(ev("(function(){ var r = bwProjectFor(56); var a = r.series[10], b = r.series[90]; return JSON.stringify([r.ok, Math.round(Math.min(a[a.length-1].v, b[b.length-1].v)), Math.round(Math.max(a[a.length-1].v, b[b.length-1].v))]); })()"));
+    const head = q('#bulk [aria-label="Where it’s heading"] .bw-stat');
+    ok('weight: where it is heading is the fan’s own 8-week range', fan[0] === true && head === fan[1] + (fan[2] !== fan[1] ? '–' + fan[2] : '') + 'lb in 8 weeks at this pace', head + ' vs ' + JSON.stringify(fan));
+    ev("window.__pfPR = predRecord; predRecord = function(){ return {bw7: {n: 8, hits: 6, pending: 1}}; }; renderBulk();");
+    ok('weight: and the forecast record beside it', qa('#bulk [aria-label="Where it’s heading"] .bw-stat')[1] === '6/8weekly forecasts within 0.5 lb');
+    ev("predRecord = function(){ return {bw7: {n: 0, hits: 0, pending: 2}}; }; renderBulk(); predRecord = window.__pfPR; delete window.__pfPR;");
+    ok('weight: with nothing scored yet it says how many are waiting', /2 waiting/.test(qa('#bulk [aria-label="Where it’s heading"] .bw-stat')[1]));
+    ok('weight: the projection card folds under it, still in the page', /Projection chart/.test(q('#bulk')) && /Bulk projection/.test(ev("document.getElementById('bulk').innerHTML")));
+    ok('weight: intake logging is no longer here', !ev("!!document.querySelector('#bulk .nut-pill, #bulk #nDate, #bulk #nCals')"));
+    let snap = ev('JSON.stringify(S)');
+    ev('renderBulk(); bwHeroHTML(S.weights, bulkRate(4)); bwWeeksHTML(); bwHeadingHTML();');
+    ok('weight: rendering writes nothing', ev('JSON.stringify(S)') === snap);
+    ev("REVIEW_RENDER.bulk(); document.getElementById('wLbs').value = '163.1'; document.getElementById('wDate').value = '2026-10-05'; document.querySelector('#bulk .bw-log .btn').click();");
+    ok('weight: Log saves the weigh-in, stamped', ev("(function(){ var r = S.weights.find(function(x){ return x.date === '2026-10-05'; }); return !!r && r.lbs === 163.1 && typeof r.t === 'number'; })()"));
+    ok('weight: and repaints through the section’s renderer, so the sleep fold stays and the raw fold stays last',
+       ev("!!document.querySelector('#bulk .p2-sleep')") && q('#bulk .bw-big b') === '163.1' &&
+       ev("(function(){ var s = document.getElementById('bulk'); var h = s.lastElementChild.querySelector('.sub-head'); return !!h && h.getAttribute('data-pref') === 'open.raw.bulk'; })()"));
+    ev("S.weights = S.weights.filter(function(x){ return x.date !== '2026-10-05'; });");
+    ev("window.__pfW = JSON.stringify(S.weights); S.weights = S.weights.slice(-5); renderBulk();");
+    ok('weight: under 3 weeks of weigh-ins there is no pace chip, and it says why', !ev("!!document.querySelector('#bulk .bw-hero .str-chip')") && /A pace needs 3 weeks/.test(q('#bulk .bw-hero')));
+    ev("S.weights = JSON.parse(window.__pfW); delete window.__pfW;");
+
+    // ---------- Fuel ----------
+    ev("S.nutrition = [{date: '2026-10-04', cals: 4100, protein: 170}, {date: '2026-10-05', cals: 3600, protein: 135, est: true}]; renderFuel();");
+    const ring = (k) => ev("(function(){ var r = document.querySelector('#fuel .fu-ring[data-kind=\"" + k + "\"]'); if(!r) return null; var arcs = r.querySelectorAll('circle'); return {big: r.querySelector('.fu-ring-v b').textContent, of: r.querySelector('.fu-ring-v span').textContent, sub: r.querySelector('.fu-ring-s').textContent, col: r.querySelector('.fu-ring-s').getAttribute('style'), arcs: arcs.length, dash: arcs.length > 1 ? arcs[1].getAttribute('stroke-dasharray') : null}; })()");
+    let rc = ring('cal'), rp = ring('pro');
+    ok('fuel: the calorie ring is today’s row against the target, marked as a range', rc && rc.big === '~' + (3600).toLocaleString() && rc.of === 'of ' + (3900).toLocaleString() && rc.sub === '300 to go', JSON.stringify(rc));
+    ok('fuel: its colour is the classifier’s, not its own', /var\(--warn\)/.test(rc.col) && ev("nutTierCal(3600, 3900)") === 'slight');
+    ok('fuel: the arc is the share of the target eaten', rc.dash === (Math.round(3600 / 3900 * 351.9 * 10) / 10) + ' 351.9', rc.dash);
+    ok('fuel: the protein ring', rp && rp.big === '~135' && rp.of === 'of 150 g' && rp.sub === '15 g to go' && /var\(--warn\)/.test(rp.col), JSON.stringify(rp));
+    ev("S.nutrition[1] = {date: '2026-10-05', cals: 4000, protein: 150}; renderFuel();");
+    rc = ring('cal'); rp = ring('pro');
+    ok('fuel: on target reads on target, in the on-target colour', rc.sub === 'on target' && /var\(--good\)/.test(rc.col) && rp.sub === 'on target' && /var\(--good\)/.test(rp.col) && rc.big === (4000).toLocaleString(), JSON.stringify([rc, rp]));
+    ev("S.nutrition[1] = {date: '2026-10-05', cals: 4400, protein: 190}; renderFuel();");
+    rc = ring('cal');
+    ok('fuel: past the over line it says by how much, and the arc stops full', rc.sub === '+500 over' && /var\(--violet\)/.test(rc.col) && rc.dash === '351.9 351.9', JSON.stringify(rc));
+    ev("S.nutrition = [{date: '2026-10-04', cals: 4100, protein: 170}]; renderFuel();");
+    rc = ring('cal');
+    ok('fuel: yesterday’s row is not today’s: not logged, and no arc', rc.big === '—' && rc.sub === 'not logged yet' && rc.arcs === 1, JSON.stringify(rc));
+    ok('fuel: the rings come first, then the ladder, then the planner', ev("document.getElementById('fuel').firstElementChild.classList.contains('fu-rings')") &&
+       ev("(function(){ var h = document.getElementById('fuel').innerHTML; return h.indexOf('nut-pill') > 0 && h.indexOf('nut-pill') < h.indexOf('Close Today'); })()"));
+    ok('fuel: the tap ladder is here now, all 15 ranges', qa('#fuel .nut-pill').length === 15);
+    ev("(function(){ var g = document.querySelectorAll('#fuel .nut-grp'); g[0].querySelectorAll('.nut-pill')[3].click(); g[1].querySelectorAll('.nut-pill')[5].click(); })(); document.getElementById('nDate').value = '2026-10-05'; addNutrition();");
+    const logged = JSON.parse(ev("JSON.stringify(S.nutrition.find(function(n){ return n.date === '2026-10-05'; }) || null)"));
+    ok('fuel: a tap logs the range midpoint as an estimate', logged && logged.cals === 3800 && logged.protein === 145 && logged.est === true, JSON.stringify(logged));
+    ok('fuel: and the ring repaints with it', ring('cal').big === '~' + (3800).toLocaleString(), JSON.stringify(ring('cal')));
+    ev("toggleNutExact();");
+    ok('fuel: Enter exact swaps the ladder for number boxes, on Fuel', ev("!!document.querySelector('#fuel #nCals')") && qa('#fuel .nut-pill').length === 0);
+    ev("toggleNutExact();");
+    ok('fuel: the 14 days of intake fold last', ev("(function(){ var h = document.getElementById('fuel').lastElementChild.querySelector('.sub-head'); return !!h && h.getAttribute('data-pref') === 'open.raw.fuel'; })()"));
+    // The Pantry folds once he has stock; with nothing stocked "Start here" points at it, so it is open.
+    const pan = () => ev("(function(){ var p = document.getElementById('fpPantry'); var s = p && p.closest('.sub'); return s ? (s.classList.contains('open') ? 'open' : 'closed') + '|' + s.querySelector('.sub-sum').textContent : null; })()");
+    ev("localStorage.removeItem(UI_PREF_KEY); subOpen = {}; S.fuel.foods = {}; renderFuel();");
+    ok('fuel: with nothing stocked the Pantry is open', /^open\|0 stocked/.test(pan()), pan());
+    ev("S.fuel.foods = {wmilk: {s: 1}, bagel: {s: 1, p: 'l'}}; subOpen = {}; renderFuel();");
+    ok('fuel: with stock it folds, and the fold says how much', /^closed\|2 stocked · \d+ liked/.test(pan()), pan());
+    ev("fpOpenPantry();");
+    await new Promise(r => setTimeout(r, 150));
+    ok('fuel: Update stock opens the Pantry fold before scrolling to it', /^open\|/.test(pan()), pan());
+    ev("localStorage.removeItem(UI_PREF_KEY); subOpen = {}; showMainTab('body', 'bulk');");
+    snap = ev('JSON.stringify(S)');
+    ev('renderFuel(); fuelHeroHTML(); nutLogHTML(); nutHistFold();');
+    ok('fuel: rendering writes nothing', ev('JSON.stringify(S)') === snap);
+
+    // ---------- Ready ----------
+    // 30 days of history before today, with fixed wobble: usual recovery 64, HRV 124, resting HR 60, sleep 7.2.
+    const hist = [];
+    const rw = [3, -2, 5, -4, 1, -1, 2, -3, 4, -5];
+    for (let i = 30; i >= 1; i--) {
+      hist.push({date: ev("mesoAddDays('2026-10-05', -" + i + ")"), recovery: 64 + rw[i % 10], hrv: 124 + rw[(i + 3) % 10], rhr: 60 + Math.sign(rw[i % 10]), sleepHours: Math.round((7.2 + rw[(i + 5) % 10] / 20) * 100) / 100, strain: 10});
+    }
+    // three days that the strip must colour: 20 under (Oct 2), 5 under (Oct 3), 10 over (Oct 4); Sep 30 missing
+    const set = (d, v) => { const r = hist.find(x => x.date === d); r.recovery = v; };
+    set('2026-10-02', 44); set('2026-10-03', 59); set('2026-10-04', 74);
+    const histNoGap = hist.filter(x => x.date !== '2026-09-30');
+    ev("S.whoop = {recovery: {date: '2026-10-05', score: 66, hrv: 120, rhr: 61}, sleep: {date: '2026-10-05', hours: 7.6, performance: 88}, history: " + JSON.stringify(histNoGap) + "};");
+    ev("window.__pfDC = dayCall; dayCall = function(){ return {call: 'easy', conf: 'med', parts: []}; };");
+    const base = JSON.parse(ev("JSON.stringify(recoveryBaseline('2026-10-05'))"));
+    ev("renderAnReadiness();");
+    ok('ready: the hero comes first', ev("document.getElementById('an_recovery').firstElementChild.classList.contains('rd-hero')"));
+    ok('ready: the ring is today’s WHOOP recovery, with its band', /66%/.test(q('#an_recovery .rd-ring-v')) && q('#an_recovery .rd-word') === 'moderate' && /Recovery · WHOOP/.test(q('#an_recovery .rd-ring-v')));
+    ok('ready: against his usual (his own 30 days, never today)', q('#an_recovery .rd-line').indexOf('Right around your usual ' + Math.round(base.recovery) + '%.') === 0, q('#an_recovery .rd-line'));
+    ok('ready: and today’s call', /Today’s call: easy\./.test(q('#an_recovery .rd-line')), q('#an_recovery .rd-line'));
+    const tiles = qa('#an_recovery .rd-tile', "[e.querySelector('b').textContent, e.querySelectorAll('span')[1].textContent]");
+    ok('ready: HRV, resting HR and sleep, each beside his usual', JSON.stringify(tiles) === JSON.stringify([['120 ms', 'usual ' + Math.round(base.hrv)], ['61 bpm', 'usual ' + Math.round(base.rhr)], ['7.6 h', 'usual ' + base.sleepHours.toFixed(1)]]), JSON.stringify(tiles));
+    const bars = qa('#an_recovery .rd-bars i', 'e.className');
+    ok('ready: 14 days, coloured against his usual that day: 15+ under, under, at or over', bars.length === 14 && bars[13] === 'up' && bars[12] === 'up' && bars[11] === 'mid' && bars[10] === 'low', JSON.stringify(bars));
+    ok('ready: a day with no reading is an empty slot, not a zero', bars[8] === 'none', JSON.stringify(bars));
+    ok('ready: a bar’s height is the recovery', ev("document.querySelectorAll('#an_recovery .rd-bars i')[10].style.height") === '44%');
+    ev("S.whoop.recovery.score = 30; renderAnReadiness();");
+    ok('ready: a low morning says how far under', q('#an_recovery .rd-line').indexOf((Math.round(base.recovery) - 30) + ' under your usual ' + Math.round(base.recovery) + '%.') === 0 && q('#an_recovery .rd-word') === 'low', q('#an_recovery .rd-line'));
+    ev("S.whoop.recovery.score = 66;");
+    // History is history: a row dated today must not stand in for today's reading.
+    ev("S.whoop = {history: " + JSON.stringify(histNoGap.concat([{date: '2026-10-05', recovery: 99, hrv: 200, rhr: 40, sleepHours: 9}])) + "}; renderAnReadiness();");
+    ok('ready: a history row dated today is not today: no reading, and today’s bar stays empty',
+       /No reading yet today/.test(q('#an_recovery .rd-line')) && !/99/.test(q('#an_recovery .rd-hero')) && qa('#an_recovery .rd-bars i', 'e.className')[13] === 'none');
+    ev("S.whoop = {recovery: {date: '2026-10-05', score: 66, hrv: 120, rhr: 61}, sleep: {date: '2026-10-05', hours: 7.6, performance: 88}, history: " + JSON.stringify(histNoGap) + "};");
+    ev("S.schedule[1] = 'REST'; renderAnReadiness(); S.schedule[1] = 'D1';");
+    ok('ready: a rest day names no call', !/Today’s call/.test(q('#an_recovery .rd-line')));
+    ev("dayCall = window.__pfDC; delete window.__pfDC;");
+    // Check-ins: his own energy only when it differs from what WHOOP pre-filled.
+    ev("S.readiness = [{date: '2026-10-04', sleep: '7-8', sore: 'mild', energy: 'ok', energyPre: 'ok', stress: 'normal', motiv: 'ready', tier: 'ok'}," +
+       " {date: '2026-10-03', sleep: '6-7', sore: 'fresh', energy: 'low', energyPre: 'ok', stress: 'wired', motiv: 'meh', tier: 'low'}," +
+       " {date: '2026-10-02', sleep: '6-7', sore: '', energy: '', partial: true}]; renderAnReadiness();");
+    const ck = qa('#an_recovery .rd-ck', "e.querySelector('span').textContent");
+    ok('ready: today with WHOOP in but no check-in is "not yet", not a skip', ck[0] === 'No check-in yet · WHOOP in', ck[0]);
+    ok('ready: energy left as WHOOP pre-filled it reads "from WHOOP"', ck[1] === 'Sleep 7-8h · mildly sore · energy from WHOOP · normal', ck[1]);
+    ok('ready: energy he changed is his own read', ck[2] === 'Sleep 6-7h · fresh · energy low · wired', ck[2]);
+    ok('ready: a sleep stub is not a check-in', ck[3] === 'Sleep 6-7h only · WHOOP', ck[3]);
+    ok('ready: a past day with WHOOP and nothing else was skipped', ck[4] === 'Skipped · WHOOP only', ck[4]);
+    ev("window.__pfWR = whoopResponse; whoopResponse = function(){ return {n: 16, weight: 1, calibrated: true, effect: 0.1, buckets: {below: {n: 6, hard: 0.2, prRate: 0.38}, normal: {n: 10, hard: 0.1, prRate: 0.7}, above: {n: 0, hard: null, prRate: null}}}; }; renderAnReadiness();");
+    const prs = qa('#an_recovery .bw-head2 .bw-stat', "e.querySelector('b').textContent");
+    ok('ready: the recovery card leads with his PR rate on below-usual days against usual', JSON.stringify(prs) === '["38%","70%"]', JSON.stringify(prs));
+    ev("whoopResponse = window.__pfWR; delete window.__pfWR;");
+    snap = ev('JSON.stringify(S)');
+    ev('renderAnReadiness(); rdHeroHTML(); rdBarsHTML(); rdCheckinsHTML();');
+    ok('ready: rendering writes nothing', ev('JSON.stringify(S)') === snap);
+
+    // ---------- the tabs ----------
+    const body = JSON.parse(ev("JSON.stringify(NAV_MODEL.find(function(g){ return g.id === 'body'; }).subs.map(function(s){ return s.id + ':' + s.label; }))"));
+    ok('tabs: Weight, Fuel, Quality, Ready, on the same sections', JSON.stringify(body) === JSON.stringify(['bulk:Weight', 'fuel:Fuel', 'an_dev:Quality', 'an_recovery:Ready']), JSON.stringify(body));
+  } catch (e) {
+    ok('body section', false, e.stack);
+  } finally {
+    ev("nutExact = false; nutPick = {cal:null, pro:null}; subOpen = {};");
+    ev("if(window.__pfPR){ predRecord = window.__pfPR; delete window.__pfPR; } if(window.__pfDC){ dayCall = window.__pfDC; delete window.__pfDC; } if(window.__pfWR){ whoopResponse = window.__pfWR; delete window.__pfWR; }");
+    ev("if(window.__pfTK){ todayKey = window.__pfTK; delete window.__pfTK; }");
+    ev(w.__pfPref ? 'localStorage.setItem(UI_PREF_KEY, ' + JSON.stringify(w.__pfPref) + ')' : 'localStorage.removeItem(UI_PREF_KEY)'); delete w.__pfPref;
+    ev('if(window.__pfSaved){ S = JSON.parse(window.__pfSaved); delete window.__pfSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
