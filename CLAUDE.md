@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2922 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2969 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -254,7 +254,7 @@ so the two orders can no longer disagree.
 | Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()`; jump cautions `e1Spike()` (`SPIKE_PCT`), `atCeiling()` (`STR_CEIL_SETS`) |
 | Per-lift flags | `exSlotsFor()` (split in force, else the permanent split), `isMaxed()`, `incForExercise()`, `slotInc()`, `isFormFocus()`, `isStrMode()`, `toggleRepMode()` |
 | Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
-| Plateau watch | `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
+| Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
 | Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
@@ -1214,6 +1214,21 @@ survives.
 `ckGrid()`): a recessive grid, 2px round lines, a wash under a single series, the latest point
 ringed in the card colour, and direct labels in ink, never in the series colour. The kit only
 decides how things are drawn; each chart keeps its own scale, so a restyle cannot move a point.
+**Real events are marked through `ckMarks()`** (V4 stage 5), fed by `ckEventMarks(from, kinds)`.
+None of them come from a model:
+- deloads: logged deload sessions, a week apart or less joined into one band;
+- calorie changes: `S.targetHist` changes, plus weeks eating `MK_CAL_SHIFT` (250)+ away from the
+  two before (only weeks with 4+ logged days);
+- high-load weeks: `fatigueIndex()` over `PC_LOAD`;
+- recovery slumps: `MK_REC_RUN` (3)+ days running 15+ under his usual;
+- dips: `liftDips()`.
+
+How they draw:
+- Bands go under the lines and rings over them. A label that would land on another in its row is
+  dropped by priority, and its line is still drawn.
+- `anFanChartSVG()` takes `opts.histDays`, `opts.marks`, `opts.modDates` (a reshaped session is a
+  hollow dot) and `opts.noMeter`. `lineChart()` takes `opts.marks`; the bodyweight chart uses deloads
+  and calorie changes. Called without opts, both draw exactly as before.
 Full-width charts draw on a 380-wide viewBox (`CK_W`). They used to draw on 700, which a phone card
 shrinks to about half, so their 10-unit axis text rendered near 5px. The fan chart scales its
 type with the width it is given. Each `ckArea()` takes its own gradient id; a shared id would
@@ -1233,7 +1248,8 @@ folded into Operations).
 
 **A view can merge sections** (slice 4). A view entry lists them in `show[]`, in reading order.
 Progress is four views over seven sections: Overview = `progress` + `an_over`; Strength =
-`an_strength` + `an_pred` + `road`; Overload; Fatigue. Each section keeps its id and its
+`an_pred` + `an_strength` + `road` (the hero lives in `an_pred`, so it reads first since V4 stage 5);
+Overload; Fatigue. Each section keeps its id and its
 renderer. `showMainTab()` lights every part, orders them with CSS `order`, and sets the later
 parts apart with a hairline (no second heading, since each part's first card already titles
 it). **Every repaint goes through `navRenderSub()`**, so the refresh tick paints all parts, not
@@ -1299,6 +1315,24 @@ proposals are counted as **requests** ("1 request"), never ideas.
     a day can carry two tags);
   - the prediction record's ring. `#an_pred` must still hold exactly three `class="card"`, so no
     extra class goes on that card's root.
+- **Progress › Strength is a hero** (V4 stage 5, the A × C Progress artboard): `strHeroHTML()`,
+  one `class="card"` in a `.str-span` wrapper. The wrapper spans both ≥1240px columns, and
+  `#an_pred` still holds exactly three cards, because it replaced the intro card. From top to bottom:
+  - ‹ lift › (`strStep()`; it shares `anEnsembleEx` with the ensemble card, so both show one lift);
+  - the best e1RM, big, and a status chip (`strStatus()`: the plateau word, or the pace);
+  - the fan chart with 12 weeks of history and the marks;
+  - one line: "Four weeks out, a session most likely reads N". It is a session, not his best: an
+    outlier best sits above the line. On a lift the watch calls slowing or stalled it adds "read it
+    as the high side", because the line is fitted through older gains.
+  - why it stalled or slowed (`strWhyHTML()`), or why the newest dip happened. A dip ring or its
+    chip picks another (`strDip()`; a past dip uses `plateauCauses(…, {asOf:true})`, which leaves
+    out consistency and stale because those describe the lift now);
+  - plateau risk rows (8, then "Show all"; `strPick()`);
+  - the two record numbers.
+
+  `pwShow(nm)` opens a lift the hero covers (`strLifts()` = `anBigLifts(5)`) there, and any other
+  on Overload. Density gets a weekly line (`densityWeekly()`): each session against its own day's
+  median pace, shown from `DENSITY_WEEKS_MIN` (3) weeks.
 - **Raw data last.** `rawFold(view, …)` wraps Best Sets (Overview), the PR log rows (Strength; the
   header card stays up) and the 14 days of intake (Bodyweight) in a fold remembered as
   `open.raw.<view>`. The V2 wrappers append cards after the base renderer, so they finish with

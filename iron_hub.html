@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-04-v7">
+<meta name="ironhub-build" content="2026-10-04-v8">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1482,6 +1482,36 @@
   .pw-conf{flex:none; padding:2px 8px; border-radius:999px; border:1px solid var(--line2); font-family:var(--disp); font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);}
   .pw-conf.high{border-color:var(--good); color:var(--good);}
   .pw-conf.medium{border-color:var(--warn); color:var(--warn);}
+  /* Progress › Strength hero (V4 stage 5, the A × C artboard) */
+  .str-span{column-span:all; -webkit-column-span:all;}
+  .str-hero{display:flex; flex-direction:column; gap:14px;}
+  .str-pick{display:flex; align-items:center; gap:8px;}
+  .str-arrow{width:44px; height:44px; border-radius:22px; border:none; background:var(--panel2); color:var(--muted); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:none;}
+  .str-nm{flex:1; min-width:0; text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .str-big{display:flex; align-items:baseline; justify-content:center; gap:8px; margin-top:-4px;}
+  .str-big b{font-family:var(--disp); font-size:96px; font-weight:700; line-height:.88; font-variant-numeric:tabular-nums;}
+  .str-big span{font-family:var(--disp); font-size:22px; color:var(--dim); text-transform:uppercase;}
+  .str-chip{align-self:center; max-width:100%; padding:4px 12px; border-radius:999px; background:color-mix(in srgb, currentColor 15%, transparent);
+    font-family:var(--disp); font-weight:700; font-size:13px; letter-spacing:.03em; text-transform:uppercase; text-align:center;}
+  .str-say{margin:0; font-size:15px; line-height:1.5; text-align:center;}
+  .str-say span{color:var(--dim);}
+  .str-sec{display:flex; flex-direction:column; gap:12px; padding-top:16px; border-top:1px solid var(--line);}
+  .str-sec-h{display:flex; align-items:baseline; gap:8px; font-family:var(--disp); font-weight:700; font-size:18px; text-transform:uppercase; letter-spacing:.03em;}
+  .str-sec-h .pw-note{margin-left:auto;}
+  .str-dips{display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:12px; color:var(--dim);}
+  .str-dip{min-height:32px; padding:4px 10px; border-radius:10px; border:1px solid var(--line2); background:none; color:var(--muted); font:inherit; font-size:12px; cursor:pointer;}
+  .str-dip.on{border-color:var(--warn); color:var(--warn);}
+  .str-risk-r{display:flex; align-items:center; gap:10px; width:100%; min-height:44px; padding:8px 0; border:none; border-top:1px solid var(--panel2); background:none; color:var(--text); font:inherit; text-align:left; cursor:pointer;}
+  .str-risk-r:first-child{border-top:none;}
+  .str-risk-r i{width:9px; height:9px; border-radius:5px; flex:none;}
+  .str-risk-n{flex:1; min-width:0; font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .str-spark{flex:none;}
+  .str-risk-w{width:74px; text-align:right; font-size:12.5px; color:var(--muted); flex:none;}
+  .str-nums{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding-top:16px; border-top:1px solid var(--line);}
+  .str-nums b{display:block; font-family:var(--disp); font-size:42px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums;}
+  .str-nums b span{color:var(--dim);}
+  .str-nums > div > span{font-size:12.5px; color:var(--muted);}
+  @media(max-width:360px){ .str-big b{font-size:80px;} .str-spark{display:none;} }
   .cc-brief{display:flex; gap:12px; align-items:flex-start;}
   .cc-brief .cc-glyph{width:30px; height:30px; font-size:14px; border-radius:9px;}
   .cc-brief-b{min-width:0; flex:1;}
@@ -4252,6 +4282,59 @@ const CK_FONT = 'Figtree, Segoe UI, system-ui, sans-serif';
 const CK_NUM = 'Saira Condensed, Arial Narrow, sans-serif';
 let _ckSeq = 0;
 function ckD(xy){ return xy.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' '); }
+/* Chart annotations (V4 stage 5): real events drawn on a time-scaled chart, never a model's guess.
+   Each mark is {kind, date, end?, v?, label, go?}:
+     deload  a shaded band under the plot, labelled inside it at the bottom
+     load    a thin warn-coloured bar along the top for a high-load week
+     rec     a thin bad-coloured bar along the top for a run of low recovery
+     cal     a dashed vertical line, labelled at the top (a calorie change)
+     dip     an amber ring on the point, labelled under it; tappable when it carries go
+   Labels that would land on one already placed in the same row are dropped, in priority order, so a
+   busy month stays readable. The bands go under the lines and the rings over them, so the caller
+   gets the three layers apart. Pure: it draws what it is given. */
+const CK_MONO = 'IBM Plex Mono, ui-monospace, monospace';
+const CK_MARK = {
+  dip:    {pri:0, row:'pt',  col:'var(--warn)'},
+  deload: {pri:1, row:'bot', col:'var(--muted)'},
+  cal:    {pri:2, row:'top', col:'var(--good)'},
+  rec:    {pri:3, row:'top', col:'var(--bad)'},
+  load:   {pri:4, row:'top', col:'var(--warn)'}
+};
+const CK_MARK_GAP = 46;
+function ckMarks(marks, px, py, T, B, L, R){
+  const out = {under:'', over:'', labels:'', shown:0};
+  if(!marks || !marks.length) return out;
+  const placed = {top:[], bot:[], pt:[]};
+  const lab = function(row, x, y, txt, col, anchor){
+    if(!txt || placed[row].some(function(p){ return Math.abs(p - x) < CK_MARK_GAP; })) return;
+    placed[row].push(x);
+    out.labels += '<text class="ck-mk" x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'"'+(anchor ? ' text-anchor="'+anchor+'"' : '')+
+      ' font-family="'+CK_MONO+'" font-size="9" letter-spacing=".06em" fill="'+col+'">'+esc(txt)+'</text>';
+  };
+  marks.slice().sort(function(a, b){ return ((CK_MARK[a.kind] || {pri:9}).pri - (CK_MARK[b.kind] || {pri:9}).pri) || String(b.date).localeCompare(String(a.date)); })
+    .forEach(function(m){
+      const k = CK_MARK[m.kind];
+      if(!k) return;
+      const x = px(m.date);
+      if(!(x >= L - 0.5 && x <= R + 0.5)) return;
+      out.shown++;
+      if(m.kind === 'deload' || m.kind === 'load' || m.kind === 'rec'){
+        const x2 = Math.max(x + 4, Math.min(R, px(m.end || m.date) + 4));
+        if(m.kind === 'deload') out.under += '<rect x="'+x.toFixed(1)+'" y="'+T.toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="'+Math.max(0, B - T).toFixed(1)+'" rx="3" fill="var(--panel2)"/>';
+        else out.under += '<rect x="'+x.toFixed(1)+'" y="'+(T - 5).toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="3" rx="1.5" fill="'+k.col+'" opacity=".85"/>';
+        lab(k.row, x + 2, k.row === 'bot' ? B - 5 : T - 9, m.label, k.col);
+      } else if(m.kind === 'cal'){
+        out.under += '<line x1="'+x.toFixed(1)+'" x2="'+x.toFixed(1)+'" y1="'+T.toFixed(1)+'" y2="'+B.toFixed(1)+'" stroke="'+k.col+'" stroke-width="1" stroke-dasharray="2 3" opacity=".75"/>';
+        lab('top', x + 3, T - 9, m.label, k.col);
+      } else if(m.kind === 'dip' && m.v != null){
+        const y = py(m.v);
+        out.over += '<circle class="ck-dip" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="6" fill="none" stroke="'+k.col+'" stroke-width="2"/>';
+        if(m.go) out.over += '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="15" fill="transparent" style="cursor:pointer" onclick="'+m.go+'"><title>Why this dip</title></circle>';
+        lab('pt', x, Math.min(B - 3, y + 19), m.label, k.col, 'middle');
+      }
+    });
+  return out;
+}
 function ckText(x, y, txt, o){
   o = o || {};
   return '<text x="'+(+x).toFixed(1)+'" y="'+(+y).toFixed(1)+'"'+(o.anchor?' text-anchor="'+o.anchor+'"':'')+
@@ -4334,7 +4417,8 @@ function milestoneBarGraphic(cur, milestones){
   svg += '</svg>';
   return '<div class="bar-wrap">'+svg+'</div>';
 }
-function lineChart(pts, color){
+function lineChart(pts, color, opts){
+  opts = opts || {};
   const W=ckW(), H=ckH(W,190), L=36, R=W-14, T=20, B=H-28;
   if(pts.length===1){
     return '<svg class="ck" viewBox="0 0 '+W+' 110" role="img" aria-label="One point so far: '+pts[0].v+' lb" style="width:100%;height:auto">'+
@@ -4349,10 +4433,13 @@ function lineChart(pts, color){
   const d = ckD(xy), last = xy[xy.length-1];
   let svg='<svg class="ck" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Trend from '+pts[0].v+' to '+pts[pts.length-1].v+'" style="width:100%;height:auto">';
   [vmin,(vmin+vmax)/2,vmax].forEach(v=>{ svg += ckGrid(L, R, y(v)) + ckText(L-7, y(v)+4, Math.round(v), {anchor:'end'}); });
+  const mk = ckMarks(opts.marks, k=>x(new Date(k).getTime()), y, T, B, L, R);
+  svg += mk.under;
   svg += ckArea(d, xy[0][0], last[0], B, color) + ckPath(d, color);
   if(xy.length <= CK_DOTS_MAX) xy.slice(0,-1).forEach(p=>{ svg += ckDot(p[0], p[1], color, 3); });
   svg += ckDot(last[0], last[1], color, 5);
   svg += ckText(last[0]-9, last[1]-11, Math.round(pts[pts.length-1].v), {anchor:'end', num:true, size:15, weight:700, fill:'var(--text)'});
+  svg += mk.over + mk.labels;
   svg += ckText(L, H-8, fmtDate(pts[0].date)) + ckText(R, H-8, fmtDate(pts[pts.length-1].date), {anchor:'end'});
   return svg+'</svg>';
 }
@@ -6502,7 +6589,10 @@ function renderBulk(){
     '<div><label>Weight (lb)</label><input inputmode="decimal" id="wLbs" placeholder="150.5"></div>'+
     '<div style="flex:none"><button class="btn sm" onclick="addWeight()">Log Weight</button></div></div>'+
     '<p class="small" style="margin-top:8px">Weigh first thing in the morning, after the bathroom, before food — same conditions every time or the trend means nothing.</p></div>';
-  if(w.length) html += '<div class="card">'+lineChart(w.map(p=>({date:p.date, v:p.lbs})), '#3da25f')+'</div>';
+  // Deloads and calorie changes marked on it (V4 stage 5), the events most likely to move the scale.
+  let bwMarks = [];
+  try{ if(w.length) bwMarks = ckEventMarks(w[0].date, ['deload', 'cal']); }catch(e){ bwMarks = []; }
+  if(w.length) html += '<div class="card">'+lineChart(w.map(p=>({date:p.date, v:p.lbs})), '#3da25f', {marks:bwMarks})+'</div>';
 
   const ct = calTarget(), pt = proTarget();
   html += '<h2>Daily Intake (from Cal AI)</h2><div class="card"><div class="row">'+
@@ -8137,7 +8227,8 @@ const NAV_MODEL = [
   // each keeps its own renderer and its own id, so nothing that draws them had to change.
   {id:'progress', label:'Progress', ic:'progress', subs:[
     {id:'progress',    label:'Overview', show:['progress','an_over']},
-    {id:'strength',    label:'Strength', show:['an_strength','an_pred','road']},
+    // The hero lives in an_pred, so it reads first (V4 stage 5).
+    {id:'strength',    label:'Strength', show:['an_pred','an_strength','road']},
     {id:'an_overload', label:'Overload'},
     {id:'an_fatigue',  label:'Fatigue'}]},
   {id:'body',     label:'Body',     ic:'body', subs:[
@@ -14826,7 +14917,9 @@ function plateauWatch(){
    invents a cause to fill the space. */
 const PC_CONF = {High:3, Medium:2, Low:1};
 const PC_VOL_PCT = 30, PC_LOAD = 1.25, PC_REC_UNDER = 15;
-function plateauCauses(nm, endKey, days){
+function plateauCauses(nm, endKey, days, opts){
+  // opts.asOf: a past dip. Consistency and "stale" read the lift as it is NOW, so they are left out.
+  const asOf = !!(opts && opts.asOf);
   const end = endKey || todayKey(), span = days || 28, start = mesoAddDays(end, -span);
   const out = [];
   const inWin = function(d){ return d > start && d <= end; };
@@ -14889,7 +14982,7 @@ function plateauCauses(nm, endKey, days){
       txt:'this week '+fi.ratio.toFixed(2)+'× your 4-week norm'});
   }catch(e){}
   // Consistency: trained less often than it usually comes round.
-  try{
+  if(!asOf) try{
     const p = liftProfile(nm, {clean:true});
     const n = (S.logs || []).filter(function(l){ return l && inWin(l.date) && !l.deload && (l.entries || []).some(function(e){ return e.exercise === nm; }); }).length;
     if(p && p.everyDays){
@@ -14935,6 +15028,195 @@ function liftDips(nm){
     if(m > 0 && pts[i].v < m * (1 - DIP_PCT)) out.push({date:pts[i].date, v:pts[i].v, base:Math.round(m * 10) / 10, pct:Math.round((1 - pts[i].v / m) * 100)});
   }
   return out;
+}
+/* The real events a trend chart is annotated with, from the given day to today. Nothing here is a model:
+   deloads are logged deload sessions, calorie changes are target changes from S.targetHist plus real
+   shifts in what he ate, a high-load week is fatigueIndex() over PC_LOAD, and a recovery slump is
+   MK_REC_RUN+ days running 15+ under his own usual. */
+const MK_CAL_SHIFT = 250, MK_REC_RUN = 3;
+function ckEventMarks(from, kinds){
+  const want = function(k){ return !kinds || kinds.indexOf(k) >= 0; };
+  const t = todayKey(), out = [];
+  if(want('deload')){
+    let run = null;
+    (S.logs || []).filter(function(l){ return l && l.deload && l.date >= from; }).map(function(l){ return l.date; }).sort().forEach(function(d){
+      if(run && daysBetween(run.end, d) <= 7) run.end = d;
+      else { if(run) out.push(run); run = {kind:'deload', date:d, end:d, label:'DELOAD'}; }
+    });
+    if(run) out.push(run);
+  }
+  if(want('cal')){
+    const cal = [];
+    fuelTargetHistory('cal').forEach(function(r){
+      const d = Math.round(+r.to - +r.from);
+      if(String(r.date) >= from && +r.from > 0 && d) cal.push({kind:'cal', date:String(r.date), label:'TARGET '+(d > 0 ? '+' : '\u2212')+Math.abs(d)});
+    });
+    // What he actually ate: a week averaging MK_CAL_SHIFT+ away from the two weeks before it. Weeks
+    // with fewer than 4 logged days are left out, and one within two weeks of another mark is not drawn.
+    const wk = {};
+    (S.nutrition || []).forEach(function(n){ if(n && n.date && +n.cals > 0){ const k = weekKeyOf(n.date); (wk[k] = wk[k] || []).push(+n.cals); } });
+    const weeks = Object.keys(wk).sort().filter(function(k){ return wk[k].length >= 4; });
+    for(let i = 2; i < weeks.length; i++){
+      if(weeks[i] < from) continue;
+      const d = pxMean(wk[weeks[i]]) - (pxMean(wk[weeks[i-1]]) + pxMean(wk[weeks[i-2]])) / 2;
+      if(Math.abs(d) >= MK_CAL_SHIFT && !cal.some(function(c){ return Math.abs(daysBetween(c.date, weeks[i])) < 14; }))
+        cal.push({kind:'cal', date:weeks[i], label:(d > 0 ? '+' : '\u2212')+Math.round(Math.abs(d) / 50) * 50+' CAL'});
+    }
+    out.push.apply(out, cal);
+  }
+  if(want('load')){
+    for(let k = weekKeyOf(from); k <= t; k = mesoAddDays(k, 7)){
+      const end = mesoAddDays(k, 6) > t ? t : mesoAddDays(k, 6);
+      try{ const fi = fatigueIndex(end); if(fi && fi.ok && fi.ratio > PC_LOAD) out.push({kind:'load', date:k, end:end, label:'HIGH LOAD'}); }catch(e){}
+    }
+  }
+  if(want('rec')){
+    const rows = whoopHistRows().filter(function(r){ return r && r.date >= from && typeof r.recovery === 'number'; })
+      .slice().sort(function(a, b){ return a.date.localeCompare(b.date); });
+    let run = [];
+    const flush = function(){ if(run.length >= MK_REC_RUN) out.push({kind:'rec', date:run[0], end:run[run.length-1], label:'LOW REC'}); run = []; };
+    rows.forEach(function(r){
+      const b = recoveryBaseline(r.date);
+      const low = !!(b && r.recovery <= b.recovery - PC_REC_UNDER);
+      if(low && run.length && daysBetween(run[run.length-1], r.date) === 1) run.push(r.date);
+      else { flush(); if(low) run.push(r.date); }
+    });
+    flush();
+  }
+  return out;
+}
+/* Progress › Strength, the A × C hero (V4 stage 5): one lift, its best, its status, the chart with what
+   happened marked on it, the four-week range in words, why it moved, then every watched lift and the
+   engine's record. It shares anEnsembleEx with the ensemble card below it, so the two always show the
+   same lift. Reads only. */
+let strDipSel = null, strRiskAll = false;
+const STR_HIST_DAYS = 84, STR_RISK_ROWS = 8;
+function strLifts(){ return anBigLifts(5); }
+function strStep(dir){
+  const ls = strLifts();
+  if(!ls.length) return;
+  const i = Math.max(0, ls.indexOf(anEnsembleEx));
+  anEnsembleEx = ls[(i + dir + ls.length) % ls.length];
+  strDipSel = null;
+  renderAnPred();
+}
+function strPick(nm){
+  if(!nm) return;
+  if(strLifts().indexOf(nm) < 0){ pwShow(nm, true); return; }
+  anEnsembleEx = nm;
+  strDipSel = null;
+  showMainTab('progress', 'strength');
+  try{ smoothScroll(document.querySelector('#an_pred .str-hero'), 'start'); }catch(e){}
+}
+function strDip(d){ strDipSel = strDipSel === d ? null : d; renderAnPred(); }
+function strRiskToggle(){ strRiskAll = !strRiskAll; renderAnPred(); }
+function pwSparkSVG(pts, col){
+  if(!pts || pts.length < 2) return '<svg class="str-spark" width="64" height="20" aria-hidden="true"></svg>';
+  const vs = pts.map(function(p){ return p.v; });
+  let lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+  if(hi === lo){ hi += 1; lo -= 1; }
+  const d = pts.map(function(p, i){ return (i ? 'L' : 'M')+(2 + i * 60 / (pts.length - 1)).toFixed(1)+' '+(17 - (p.v - lo) / (hi - lo) * 14).toFixed(1); }).join('');
+  return '<svg class="str-spark" width="64" height="20" viewBox="0 0 64 20" aria-hidden="true"><path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+/* The factors list, shared by the Overload line and the hero. */
+function pwFactorsHTML(c){
+  return c.length ? c.map(function(x, i){
+      return '<div class="pw-f"><span class="pw-f-n">'+(i + 1)+'</span><span class="pw-f-b"><b>'+esc(x.title)+'</b><span>'+esc(x.txt)+'</span></span>'+
+        '<span class="pw-conf '+x.conf.toLowerCase()+'">'+x.conf+'</span></div>';
+    }).join('')
+    : '<p class="small" style="color:var(--dim)">Nothing in recovery, food, volume or how often it was trained stands out.</p>';
+}
+function strStatus(nm, risk, res){
+  if(isMaxed(nm)) return {txt:'At the machine\u2019s top', col:'var(--muted)'};
+  if(risk && risk.lvl !== 'green') return {txt:risk.word+(risk.sig[0] ? ' \u00b7 '+risk.sig[0].txt : ''), col:PW_LEVELS[risk.lvl].col};
+  const pw = risk ? risk.perWeek : (res && res.ok ? Math.round(res.perWeek * 10) / 10 : 0);
+  if(pw > OL_FLAT_BAND) return {txt:'Progressing \u00b7 +'+pw+' lb/wk', col:'var(--good)'};
+  if(pw < -OL_FLAT_BAND) return {txt:'Down \u00b7 '+pw+' lb/wk', col:'var(--warn)'};
+  return {txt:'Holding steady', col:'var(--muted)'};
+}
+function strWhyHTML(nm, risk, dips){
+  let title = '', c = [];
+  const sel = strDipSel ? dips.find(function(d){ return d.date === strDipSel; }) : null;
+  const dipCauses = function(d){ try{ return plateauCauses(nm, d.date, 14, {asOf:true}); }catch(e){ return []; } };
+  if(sel){ title = 'Why the '+homeShortDate(sel.date)+' dip'; c = dipCauses(sel); }
+  else if(risk && risk.lvl !== 'green'){
+    title = risk.word === 'falling' ? 'Why it\u2019s falling' : risk.lvl === 'red' ? 'Why it stalled' : 'Why it\u2019s slowing';
+    try{ c = plateauCauses(nm, todayKey(), pwCauseWindow(risk)); }catch(e){ c = []; }
+  } else if(dips.length){ const d = dips[dips.length-1]; title = 'Why the '+homeShortDate(d.date)+' dip'; c = dipCauses(d); }
+  else return '';
+  let h = '<section class="str-sec str-why" aria-label="'+esc(title)+'"><div class="str-sec-h"><span>'+esc(title)+'</span><span class="pw-note">likely, not proven</span></div>'+pwFactorsHTML(c);
+  if(dips.length) h += '<div class="str-dips"><span>Dips on the chart</span>'+dips.map(function(d){
+      return '<button class="str-dip'+(d.date === strDipSel ? ' on' : '')+'" onclick="strDip(\''+d.date+'\')">'+esc(homeShortDate(d.date))+' \u2212'+d.pct+'%</button>';
+    }).join('')+'</div>';
+  return h+'</section>';
+}
+function strRiskHTML(rows){
+  if(!rows.length) return '';
+  const n = strRiskAll ? rows.length : STR_RISK_ROWS;
+  let h = '<section class="str-sec str-risk" aria-label="Plateau risk"><div class="str-sec-h"><span>Plateau risk</span></div><div>';
+  h += rows.slice(0, n).map(function(r){
+    const L = PW_LEVELS[r.lvl];
+    return '<button class="str-risk-r" data-lift="'+esc(r.lift)+'" onclick="strPick(this.dataset.lift)"><i style="background:'+L.col+'"></i>'+
+      '<span class="str-risk-n">'+esc(r.lift)+'</span>'+pwSparkSVG(r.spark, L.col)+
+      '<span class="str-risk-w"'+(r.lvl !== 'green' ? ' style="color:'+L.col+'"' : '')+'>'+esc(r.word)+'</span></button>';
+  }).join('');
+  h += '</div>';
+  if(rows.length > n || strRiskAll) h += '<button class="btn ghost sm" style="align-self:flex-start" onclick="strRiskToggle()">'+(strRiskAll ? 'Show fewer' : 'Show all '+rows.length)+'</button>';
+  return h+'</section>';
+}
+function strHeroHTML(){
+  const lifts = strLifts();
+  if(!lifts.length) return '';
+  if(!anEnsembleEx || lifts.indexOf(anEnsembleEx) < 0) anEnsembleEx = lifts[0];
+  const nm = anEnsembleEx, t = todayKey(), from = mesoAddDays(t, -STR_HIST_DAYS);
+  let rows = [];
+  try{ rows = plateauWatch(); }catch(e){ rows = []; }
+  const risk = rows.find(function(r){ return r.lift === nm; }) || null;
+  const res = anEnsembleFor(nm, 28);
+  const st = strStatus(nm, risk, res);
+  let dips = [];
+  try{ dips = liftDips(nm).filter(function(d){ return d.date >= from; }); }catch(e){ dips = []; }
+  const arrow = function(dir, lab){
+    return '<button class="str-arrow" aria-label="'+lab+'" onclick="strStep('+dir+')"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+
+      '<path d="'+(dir < 0 ? 'M14.5 6l-6 6 6 6' : 'M9.5 6l6 6-6 6')+'"></path></svg></button>';
+  };
+  let h = '<div class="str-span"><div class="card"><div class="str-hero">'+
+    '<div class="str-pick">'+arrow(-1, 'Previous lift')+'<span class="str-nm">'+esc(nm)+' \u00b7 best e1RM</span>'+arrow(1, 'Next lift')+'</div>'+
+    '<div class="str-big"><b>'+Math.round(bestE1RM(nm))+'</b><span>lb</span></div>'+
+    '<span class="str-chip" style="color:'+st.col+'">'+esc(st.txt)+'</span>';
+  if(res.ok){
+    let marks = [];
+    try{ marks = ckEventMarks(from).concat(dips.map(function(d){ return {kind:'dip', date:d.date, v:d.v, label:'DIP', go:"strDip('"+d.date+"')"}; })); }catch(e){ marks = []; }
+    const mod = {};
+    try{
+      const clean = {};
+      e1rmSeries(nm, {excludeHome:true, excludeMod:true}).forEach(function(p){ clean[p.date] = 1; });
+      e1rmSeries(nm).forEach(function(p){ if(!clean[p.date]) mod[p.date] = 1; });
+    }catch(e){}
+    const cw = ckW();
+    h += anFanChartSVG(res, cw, ckH(cw, 220), {histDays:STR_HIST_DAYS, marks:marks, modDates:mod, noMeter:true});
+    if(isMaxed(nm)) h += '<p class="str-say">At the machine\u2019s top, so there is no weight to forecast. Progress here is reps.</p>';
+    else {
+      const end = function(p){ const a = res.series[p]; return Math.round(a[a.length-1].v); };
+      const conf = res.r2 > 0.7 ? 'high' : res.r2 > 0.4 ? 'medium' : 'low';
+      let held = '';
+      try{ const E = predRecord().e1rm28; if(E.n >= 3) held = '; forecasts like this held '+E.hits+' of '+E.n; }catch(e){}
+      // The line is a session's e1RM around that day, not his best: an outlier best sits above it.
+      // And it is fitted through older gains, so on a lift the watch calls slowing or stalled it is
+      // the high side, and it says so rather than sit "high confidence" beside "stalled".
+      const caveat = risk && risk.lvl !== 'green' ? ' The line is drawn through older gains; with the lift '+(risk.lvl === 'red' ? 'stalled' : 'slowing')+', read it as the high side.' : '';
+      h += '<p class="str-say">Four weeks out, a session most likely reads <b>'+end(50)+'</b>. <span>Range '+end(10)+'\u2013'+end(90)+', '+conf+' confidence'+held+'.'+caveat+'</span></p>';
+    }
+  } else h += '<p class="str-say"><span>'+esc(res.why)+'</span></p>';
+  try{ h += strWhyHTML(nm, risk, dips); }catch(e){}
+  try{ h += strRiskHTML(rows); }catch(e){}
+  try{
+    const R = predRecord(), E = R.e1rm28, T = R.topset;
+    if(E.n || T.n) h += '<div class="str-nums">'+
+      (E.n ? '<div><b>'+E.hits+'<span>/'+E.n+'</span></b><span>4-week ranges held</span></div>' : '')+
+      (T.n ? '<div><b>'+Math.round(T.held / T.n * 100)+'<span>%</span></b><span>prescriptions met</span></div>' : '')+'</div>';
+  }catch(e){}
+  return h+'</div></div></div>';
 }
 /* A lift's watch as it stood BEFORE its newest clean session, by reading the logs up to that day.
    Synchronous and restored in finally, so nothing can see the shortened list: there is no await in
@@ -15148,6 +15430,18 @@ function densityByDay(){
   });
   return out;
 }
+/* Density by week: each timed session against its own day's usual pace (the median of that day's
+   sessions), averaged over the week. Compared within a day only, the same rule as the card. */
+const DENSITY_WEEKS_MIN = 3;
+function densityWeekly(){
+  const by = densityByDay(), med = {}, wk = {};
+  Object.keys(by).forEach(function(dk){ if(by[dk].length >= 2) med[dk] = pxMedian(by[dk].map(function(x){ return x.per10; })); });
+  Object.keys(by).forEach(function(dk){
+    if(!(med[dk] > 0)) return;
+    by[dk].forEach(function(x){ const k = weekKeyOf(x.date); (wk[k] = wk[k] || []).push(x.per10 / med[dk]); });
+  });
+  return Object.keys(wk).sort().map(function(k){ return {date:k, v:Math.round((pxMean(wk[k]) - 1) * 100), n:wk[k].length}; });
+}
 function densityCardHTML(){
   const by = densityByDay(), days = Object.keys(by).sort();
   let h = '<div class="card"><div class="k">Density</div>';
@@ -15159,6 +15453,14 @@ function densityCardHTML(){
     h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line)"><span>'+esc(dk)+' <span class="small">\u00b7 '+last.sets+' sets in '+last.mins+' min</span></span>'+
       '<span class="mono">'+last.per10+' /10 min <span class="small">vs '+(Math.round(prev*10)/10)+'</span></span></div>';
   });
+  let wkly = [];
+  try{ wkly = densityWeekly(); }catch(e){ wkly = []; }
+  if(wkly.length >= DENSITY_WEEKS_MIN){
+    const last = wkly[wkly.length-1];
+    h += '<div class="db-row" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px"><span class="db-k">By week</span><span class="small">This week '+
+      (Math.abs(last.v) < 3 ? 'about your usual pace' : Math.abs(last.v)+'% '+(last.v > 0 ? 'denser' : 'looser')+' than your usual')+' ('+last.n+' session'+(last.n === 1 ? '' : 's')+').</span></div>'+
+      anSpark(wkly.slice(-10).map(function(x){ return {date:x.date, v:x.v}; }), ckSparkW(320), 56, 'var(--cyan)', {area:false});
+  } else if(wkly.length) h += '<p class="small" style="margin-top:8px;color:var(--dim)">The weekly trend shows once '+DENSITY_WEEKS_MIN+' weeks are timed ('+wkly.length+' so far).</p>';
   return h+'<p class="small" style="margin-top:8px;color:var(--dim)">Working sets per 10 minutes, first set to last. Only compared within the same day.</p></div>';
 }
 
@@ -15813,7 +16115,7 @@ function anFanChartSVG(res, w, h, opts){
   // Show a history window roughly the size of the horizon so neither half is crushed, but
   // never fewer than 6 real points \u2014 a projection floating over nothing is exactly what
   // this chart was rebuilt to stop doing.
-  const cutoff = mesoAddDays(todayKey(), -Math.round(horizonDays*0.9));
+  const cutoff = mesoAddDays(todayKey(), -Math.round(opts.histDays || horizonDays*0.9));
   let hist = (res.hist||[]).filter(p=>p.date>=cutoff);
   if(hist.length < 6) hist = (res.hist||[]).slice(-6);
 
@@ -15834,6 +16136,9 @@ function anFanChartSVG(res, w, h, opts){
   const fs = n => n.toFixed(1);
   let s = '<svg class="ck" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Projection: history, then a likely range" style="width:100%;height:auto;display:block">';
   s += ckGrid(L, R, py(hi)) + ckGrid(L, R, py(lo));
+  // Real events behind the line (V4 stage 5): bands first, so the lines and dots draw over them.
+  const mk = ckMarks(opts.marks, px, py, py(hi), h-24, L, R);
+  s += mk.under;
   // shaded p10\u2013p90 envelope
   s += '<polygon points="'+
     res.series[90].map(p=>px(p.date).toFixed(1)+','+py(p.v).toFixed(1)).join(' ')+' '+
@@ -15855,7 +16160,10 @@ function anFanChartSVG(res, w, h, opts){
            '" fill="none" stroke="'+conf.col+'" stroke-width="1.2" stroke-dasharray="5 4" opacity=".55"/>';
     }
     s += ckPath(pathFor(hist), 'var(--muted)', {w:1.8, op:.85});
-    hist.forEach(p=>{ s += ckDot(px(p.date), py(p.v), 'var(--muted)', 2.8); });
+    // A session the engine did not shape (a recover day, a swap, a reset) is drawn hollow.
+    hist.forEach(p=>{ s += (opts.modDates && opts.modDates[p.date])
+      ? '<circle class="ck-mod" cx="'+px(p.date).toFixed(1)+'" cy="'+py(p.v).toFixed(1)+'" r="3" fill="var(--panel)" stroke="var(--muted)" stroke-width="1.6"/>'
+      : ckDot(px(p.date), py(p.v), 'var(--muted)', 2.8); });
     // divider between what happened and what is guessed
     s += '<line x1="'+px(todayKey()).toFixed(1)+'" y1="10" x2="'+px(todayKey()).toFixed(1)+'" y2="'+(h-22)+
          '" stroke="var(--line2)" stroke-width="1" stroke-dasharray="2 3"/>';
@@ -15870,14 +16178,18 @@ function anFanChartSVG(res, w, h, opts){
     if(pc.p===50) s += ckText(px(last.date)-8, py(last.v)-10, '~'+Math.round(last.v), {anchor:'end', num:true, size:fs(15), weight:700, fill:'var(--text)'});
   });
 
-  // confidence meter, on the chart itself
-  const cf = anConfLevel(res.r2);
-  const mx = L+4, my = 12;
-  for(let i=0;i<3;i++){
-    s += '<rect x="'+(mx+i*9)+'" y="'+my+'" width="7" height="6" rx="1" fill="'+
-      (i<cf.n?cf.col:'var(--line2)')+'"'+(i<cf.n?'':' opacity=".7"')+'/>';
+  s += mk.over + mk.labels;
+  // confidence meter, on the chart itself (the Strength hero says it in words instead, and needs the
+  // top row for its labels)
+  if(!opts.noMeter){
+    const cf = anConfLevel(res.r2);
+    const mx = L+4, my = 12;
+    for(let i=0;i<3;i++){
+      s += '<rect x="'+(mx+i*9)+'" y="'+my+'" width="7" height="6" rx="1" fill="'+
+        (i<cf.n?cf.col:'var(--line2)')+'"'+(i<cf.n?'':' opacity=".7"')+'/>';
+    }
+    s += ckText(mx+32, my+6, 'R\u00b2 '+res.r2.toFixed(2)+' \u00b7 '+res.conf, {size:fs(10.5)});
   }
-  s += ckText(mx+32, my+6, 'R\u00b2 '+res.r2.toFixed(2)+' \u00b7 '+res.conf, {size:fs(10.5)});
 
   // x-axis labels: window start, today, horizon end
   if(hist.length) s += ckText(px(hist[0].date), h-6, fmtDate(hist[0].date), {anchor:'start', size:fs(11)});
@@ -16762,8 +17074,8 @@ function renderAnPred(){
   // Deliberately ONE lift's worth of content: whatever the two selectors below say. The tab
   // used to append milestone cards for up to six other lifts underneath, which had nothing
   // to do with the selection and made the dropdown look broken.
-  let h = '<div class="card"><div class="k">Predictions</div>'+
-    '<p class="small">Straight-line projection of your recent e1RM trend, drawn over the real sessions behind it. Useful as a target date, not a promise \u2014 progress is never actually linear.</p></div>';
+  // The A × C hero (V4 stage 5) takes the intro card's place, so the section still holds three cards.
+  let h = strHeroHTML();
   h += anEnsembleCardHTML();
   h += predRecordCardHTML();
   el.innerHTML = h;
@@ -19204,7 +19516,9 @@ function pwChipsHTML(rows){
 /* Which Overload rows have their likely factors open. Module-scoped: the 30-second repaint must not
    close one he opened. */
 let pwOpen = {};
-function pwShow(nm){
+function pwShow(nm, overload){
+  // A lift the Strength hero covers opens there, with its chart and why; any other on Overload.
+  if(nm && !overload){ try{ if(strLifts().indexOf(nm) >= 0){ strPick(nm); return; } }catch(e){} }
   if(nm){ pwOpen = {}; pwOpen[nm] = true; }
   showMainTab('progress', 'an_overload');
   if(nm){
@@ -19236,11 +19550,7 @@ function pwCausesHTML(r){
   let h = '<div class="pw-why">';
   if(r.sig.length > 1) h += '<p class="pw-sigs">'+r.sig.slice(1).map(function(x){ return esc(x.txt); }).join(' · ')+'</p>';
   h += '<div class="pw-why-h"><span>Likely factors</span><span class="pw-note">likely, not proven</span></div>';
-  h += c.length ? c.map(function(x, i){
-      return '<div class="pw-f"><span class="pw-f-n">'+(i + 1)+'</span><span class="pw-f-b"><b>'+esc(x.title)+'</b><span>'+esc(x.txt)+'</span></span>'+
-        '<span class="pw-conf '+x.conf.toLowerCase()+'">'+x.conf+'</span></div>';
-    }).join('')
-    : '<p class="small" style="color:var(--dim)">Nothing in recovery, food, volume or how often it was trained stands out.</p>';
+  h += pwFactorsHTML(c);
   return h+'</div>';
 }
 /* The watch's notifications (V4 stage 5). Each is worked out when read and carries the day or the lift

@@ -123,8 +123,9 @@ setTimeout(async () => {
   // --- merged views: Progress is four views over seven sections ---
   ev("setMode('review'); showMainTab('progress','strength');");
   const onIds = ev("Array.prototype.filter.call(document.querySelectorAll('#reviewMode main section'), function(s){ return s.classList.contains('on'); }).map(function(s){ return s.id + ':' + s.style.order; })");
-  ok('Strength shows PR history, Predictions and Road, in that order',
-     JSON.stringify(onIds.slice().sort()) === JSON.stringify(['an_pred:1', 'an_strength:0', 'road:2']), JSON.stringify(onIds));
+  // V4 stage 5 moved the hero (in an_pred) to the top, on purpose; it was PR history first before.
+  ok('Strength shows the hero (Predictions), PR history and Road, in that order',
+     JSON.stringify(onIds.slice().sort()) === JSON.stringify(['an_pred:0', 'an_strength:1', 'road:2']), JSON.stringify(onIds));
   ok('...each set apart as its own part',
      ['an_strength', 'an_pred', 'road'].every(id => ev("document.getElementById('" + id + "').classList.contains('stacked')")));
   ok('Progress offers four views, not seven', ev("navMain('progress').subs.length") === 4);
@@ -150,7 +151,7 @@ setTimeout(async () => {
      "REVIEW_RENDER.road = function(){ __mvPaint.push('road'); }; activeMainTab = 'progress'; navMemory.progress = 'strength'; MODE = 'review';");
   ev('rerenderActive(true);');
   ok('the refresh tick repaints every part of a merged view',
-     JSON.stringify(ev('__mvPaint')) === JSON.stringify(['an_strength', 'an_pred', 'road']), JSON.stringify(ev('__mvPaint')));
+     JSON.stringify(ev('__mvPaint')) === JSON.stringify(['an_pred', 'an_strength', 'road']), JSON.stringify(ev('__mvPaint')));
   ev("REVIEW_RENDER.an_strength = __mvReal.a; REVIEW_RENDER.an_pred = __mvReal.b; REVIEW_RENDER.road = __mvReal.c;");
   // four views or fewer read as a segmented control
   ev("showMainTab('body','fuel');");
@@ -12114,6 +12115,164 @@ setTimeout(async () => {
        " dashToday = window.__s5k.dashToday; dayCall = window.__s5k.dayCall; todayKeyLifts = window.__s5k.todayKeyLifts; bestE1RM = window.__s5k.bestE1RM; nextPrForecast = window.__s5k.nextPrForecast;" +
        " deloadForecast = window.__s5k.deloadForecast; deloadActive = window.__s5k.deloadActive; pwRising = window.__s5k.pwRising; }catch(e){} live = null; notifOpen = false; pwOpen = {};");
     ev('if(window.__s5Saved){ S = JSON.parse(window.__s5Saved); delete window.__s5Saved; } delete window.__s5k;');
+  }
+
+  console.log('=== V4 STAGE 5: PROGRESS IN A × C (STRENGTH HERO, CHART MARKS, DENSITY BY WEEK) ===');
+  try {
+    w.__s5bSaved = ev('JSON.stringify(S)');
+    ev("S.logs = []; S.weights = []; S.nutrition = []; S.readiness = []; S.whoop = null; S.targetHist = []; S.predictions = [];");
+    ev("window.__s5bk = {fatigueIndex: fatigueIndex, pwBlockAt: pwBlockAt, isMaxed: isMaxed};");
+    ev("pwBlockAt = function(){ return ''; }; fatigueIndex = function(){ return {ok: false}; }; anEnsembleEx = null; strDipSel = null; strRiskAll = false;");
+    let n5 = 0;
+    const s5Log = (nm, ago, sets, extra) => ev("S.logs.push(stampRec(Object.assign({id: 's5b-" + (n5++) + "', date: mesoAddDays(todayKey(), -" + ago + "), day: 'D1', entries: [{exercise: " +
+      JSON.stringify(nm) + ", sets: " + JSON.stringify(sets.map(x => ({w: x[0], r: x[1]}))) + "}]}, " + JSON.stringify(extra || {}) + ")));");
+    const series = (nm, list, extra) => list.forEach((x, i) => s5Log(nm, 1 + 7 * (list.length - 1 - i), x[1].map(r => [x[0], r]), extra ? extra(i, x) : null));
+    const T = (n) => ev("mesoAddDays(todayKey(), " + n + ")");
+
+    // --- the chart kit's marks, on their own ---
+    const lin = "function(k){ return 10 + daysBetween(mesoAddDays(todayKey(), -60), k) * 5; }";
+    const mk = (marks) => JSON.parse(ev("JSON.stringify(ckMarks(" + marks + ", " + lin + ", function(v){ return 200 - v; }, 20, 180, 10, 310))"));
+    let m = mk("[{kind: 'deload', date: mesoAddDays(todayKey(), -50), end: mesoAddDays(todayKey(), -48), label: 'DELOAD'}]");
+    ok('marks: a deload is a band under the plot, labelled at the bottom', /<rect[^>]*height="160\.0"[^>]*fill="var\(--panel2\)"/.test(m.under) && />DELOAD</.test(m.labels) && / y="175\.0"/.test(m.labels), JSON.stringify(m));
+    m = mk("[{kind: 'cal', date: mesoAddDays(todayKey(), -30), label: '+300 CAL'}]");
+    ok('marks: a calorie change is a dashed line, labelled at the top', /<line x1="160\.0"[^>]*stroke-dasharray="2 3"/.test(m.under) && />\+300 CAL</.test(m.labels) && / y="11\.0"/.test(m.labels), JSON.stringify(m));
+    m = mk("[{kind: 'dip', date: mesoAddDays(todayKey(), -20), v: 100, label: 'DIP', go: \"strDip('x')\"}]");
+    ok('marks: a dip is a ring on the point, over the line, and tappable', /class="ck-dip" cx="210\.0" cy="100\.0"/.test(m.over) && /onclick="strDip\('x'\)"/.test(m.over) && />DIP</.test(m.labels), JSON.stringify(m));
+    m = mk("[{kind: 'cal', date: mesoAddDays(todayKey(), -30), label: 'A'}, {kind: 'cal', date: mesoAddDays(todayKey(), -28), label: 'B'}, {kind: 'cal', date: mesoAddDays(todayKey(), -10), label: 'C'}]");
+    ok('marks: a label that would land on another in its row is dropped, the line still drawn', (m.under.match(/<line /g) || []).length === 3 &&
+       />C</.test(m.labels) && (/>A</.test(m.labels) !== />B</.test(m.labels)), m.labels);
+    m = mk("[{kind: 'cal', date: mesoAddDays(todayKey(), -90), label: 'OLD'}, {kind: 'rec', date: mesoAddDays(todayKey(), -12), end: mesoAddDays(todayKey(), -10), label: 'LOW REC'}]");
+    ok('marks: one off the plot is not drawn; a recovery slump is a bar along the top', m.shown === 1 && !/OLD/.test(m.labels) && /<rect[^>]*height="3"[^>]*fill="var\(--bad\)"/.test(m.under), JSON.stringify(m));
+    ok('marks: none given, nothing drawn', JSON.stringify(mk('[]')) === JSON.stringify({under: '', over: '', labels: '', shown: 0}));
+
+    // --- the events behind them ---
+    ev("S.logs = [];");
+    s5Log('Zz E', 40, [[50, 8]], {deload: true}); s5Log('Zz E', 37, [[50, 8]], {deload: true}); s5Log('Zz E', 20, [[50, 8]], {deload: true});
+    let ev5 = JSON.parse(ev("JSON.stringify(ckEventMarks(mesoAddDays(todayKey(), -60), ['deload']))"));
+    ok('events: deload sessions within a week are one band; a later one is its own', ev5.length === 2 && ev5[0].date === T(-40) && ev5[0].end === T(-37) && ev5[1].date === T(-20), JSON.stringify(ev5));
+    ev("S.targetHist = [{id: 'g1', kind: 'cal', from: 3700, to: 3900, date: mesoAddDays(todayKey(), -5), by: 'test', t: 1}];");
+    ev5 = JSON.parse(ev("JSON.stringify(ckEventMarks(mesoAddDays(todayKey(), -60), ['cal']))"));
+    ok('events: a target change is marked with its size', ev5.length === 1 && ev5[0].label === 'TARGET +200' && ev5[0].date === T(-5), JSON.stringify(ev5));
+    ev("S.targetHist = []; S.nutrition = [];" +
+       "var wk0 = weekKeyOf(mesoAddDays(todayKey(), -28));" +
+       "[[0, 3000], [7, 3000], [14, 3420]].forEach(function(p){ for(var d = 0; d < 5; d++) S.nutrition.push({date: mesoAddDays(wk0, p[0] + d), cals: p[1]}); });" +
+       "for(var d = 0; d < 3; d++) S.nutrition.push({date: mesoAddDays(wk0, -14 + d), cals: 5000});");
+    ev5 = JSON.parse(ev("JSON.stringify(ckEventMarks(mesoAddDays(todayKey(), -60), ['cal']))"));
+    ok('events: a week eating 400+ over the two before it is marked, rounded to 50', ev5.length === 1 && ev5[0].label === '+400 CAL' && ev5[0].date === ev("mesoAddDays(weekKeyOf(mesoAddDays(todayKey(), -28)), 14)"), JSON.stringify(ev5));
+    ok('events: a week with only three logged days is not judged', !ev5.some(x => /5000|\+1/.test(x.label)));
+    ev("S.targetHist = [{id: 'g1', kind: 'cal', from: 3500, to: 3700, date: mesoAddDays(weekKeyOf(mesoAddDays(todayKey(), -28)), 10), by: 'test', t: 1}];");
+    ev5 = JSON.parse(ev("JSON.stringify(ckEventMarks(mesoAddDays(todayKey(), -60), ['cal']))"));
+    ok('events: a shift within two weeks of a target change is the same event, marked once', ev5.length === 1 && /^TARGET/.test(ev5[0].label), JSON.stringify(ev5));
+    ev("S.targetHist = []; S.nutrition = [];");
+    ev("fatigueIndex = function(e){ return e === mesoAddDays(weekKeyOf(mesoAddDays(todayKey(), -21)), 6) ? {ok: true, ratio: 1.4} : {ok: true, ratio: 1.0}; };");
+    ev5 = JSON.parse(ev("JSON.stringify(ckEventMarks(mesoAddDays(todayKey(), -35), ['load']))"));
+    ok('events: a week over the load line is a high-load band, Monday to Sunday', ev5.length === 1 && ev5[0].label === 'HIGH LOAD' &&
+       ev5[0].date === ev("weekKeyOf(mesoAddDays(todayKey(), -21))") && ev5[0].end === ev("mesoAddDays(weekKeyOf(mesoAddDays(todayKey(), -21)), 6)"), JSON.stringify(ev5));
+    ev("fatigueIndex = function(){ return {ok: false}; };");
+    const whoopRun = (lows) => ev("S.whoop = {history: []}; for(var i = 20; i <= 60; i++) S.whoop.history.push({date: mesoAddDays(todayKey(), -i), recovery: 70});" +
+      JSON.stringify(lows) + ".forEach(function(a){ S.whoop.history.push({date: mesoAddDays(todayKey(), -a), recovery: 40}); });");
+    whoopRun([5, 4, 3]);
+    ev5 = JSON.parse(ev("JSON.stringify(ckEventMarks(mesoAddDays(todayKey(), -30), ['rec']))"));
+    ok('events: three days running 15+ under his usual is a recovery slump', ev5.length === 1 && ev5[0].label === 'LOW REC' && ev5[0].date === T(-5) && ev5[0].end === T(-3), JSON.stringify(ev5));
+    whoopRun([5, 4, 2]);
+    ok('events: two in a row with a gap is not', JSON.parse(ev("JSON.stringify(ckEventMarks(mesoAddDays(todayKey(), -30), ['rec']))")).length === 0);
+    ev("S.whoop = null;");
+
+    // --- the fan chart and the line chart take them ---
+    ev("S.logs = []; S.split = {D1: {name: 'Zz', exercises: ['Zz H Bench', 'Zz H Row']}};");
+    series('Zz H Bench', [[100, [8]], [105, [8]], [107.5, [8]], [110, [8]], [112.5, [8]], [115, [8]], [117.5, [8]], [120, [8]], [122.5, [8]], [125, [8]], [127.5, [8]], [130, [8]], [132.5, [8]]]);
+    s5Log('Zz H Bench', 52, [[100, 8]], {call: {call: 'recover'}});
+    const fanOpts = "{histDays: 84, marks: [{kind: 'cal', date: mesoAddDays(todayKey(), -30), label: '+300 CAL'}], modDates: (function(){ var o = {}; o[mesoAddDays(todayKey(), -52)] = 1; return o; })(), noMeter: true}";
+    const fanPlain = ev("anFanChartSVG(anEnsembleFor('Zz H Bench', 28), 380, 220)");
+    const fanMarked = ev("anFanChartSVG(anEnsembleFor('Zz H Bench', 28), 380, 220, " + fanOpts + ")");
+    ok('fan: by default it is as before, with its confidence meter and no marks', /R\u00b2 /.test(fanPlain) && !/ck-mk|ck-mod/.test(fanPlain));
+    ok('fan: given marks, it draws them, and a reshaped session as a hollow dot', />\+300 CAL</.test(fanMarked) && (fanMarked.match(/class="ck-mod"/g) || []).length === 1);
+    ok('fan: the hero version leaves the meter out (it says confidence in words)', !/R\u00b2 /.test(fanMarked));
+    ok('fan: a longer history shows earlier sessions', ev("(function(){ var a = anFanChartSVG(anEnsembleFor('Zz H Bench', 28), 380, 220).match(/<circle/g).length, b = anFanChartSVG(anEnsembleFor('Zz H Bench', 28), 380, 220, {histDays: 84}).match(/<circle/g).length; return b > a; })()") === true);
+    ok('line chart: marks when given, none by default', /ck-mk/.test(ev("lineChart([{date: mesoAddDays(todayKey(), -40), v: 160}, {date: todayKey(), v: 162}], 'var(--good)', {marks: [{kind: 'cal', date: mesoAddDays(todayKey(), -20), label: '+300 CAL'}]})")) &&
+       !/ck-mk/.test(ev("lineChart([{date: mesoAddDays(todayKey(), -40), v: 160}, {date: todayKey(), v: 162}], 'var(--good)')")));
+    ev("S.weights = [{date: mesoAddDays(todayKey(), -30), lbs: 160}, {date: mesoAddDays(todayKey(), -10), lbs: 161}];" +
+       "S.targetHist = [{id: 'g1', kind: 'cal', from: 3700, to: 3900, date: mesoAddDays(todayKey(), -20), by: 'test', t: 1}]; renderBulk();");
+    ok('bodyweight: its chart marks the calorie change', /TARGET \+200/.test(ev("document.getElementById('bulk').innerHTML")));
+    ev("S.weights = []; S.targetHist = [];");
+
+    // --- the hero ---
+    series('Zz H Row', [[90, [10, 9, 8]], [95, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]]]);
+    series('Zz H Dip', [[100, [10]], [102.5, [10]], [105, [10]], [96, [10]], [107.5, [10]], [110, [10]], [112.5, [10]], [103, [10]], [115, [10]]]);
+    ev("anEnsembleEx = 'Zz H Bench'; setMode('review'); showMainTab('progress', 'strength');");
+    const order = ev("Array.prototype.filter.call(document.querySelectorAll('#reviewMode main section'), function(s){ return s.classList.contains('on'); }).map(function(s){ return s.id + ':' + s.style.order; }).sort().join(',')");
+    ok('hero: Strength reads the hero first, then PR history and Road', order === 'an_pred:0,an_strength:1,road:2', order);
+    const hero = () => ev("(document.querySelector('#an_pred .str-hero')||{}).textContent || ''");
+    ok('hero: the lift, its best e1RM, big', ev("document.querySelector('#an_pred .str-nm').textContent") === 'Zz H Bench \u00b7 best e1RM' &&
+       ev("document.querySelector('#an_pred .str-big b').textContent") === String(Math.round(ev("bestE1RM('Zz H Bench')"))));
+    ok('hero: a lift on track says it is progressing, with its pace', /^Progressing \u00b7 \+[\d.]+ lb\/wk$/.test(ev("document.querySelector('#an_pred .str-chip').textContent")), ev("document.querySelector('#an_pred .str-chip').textContent"));
+    ok('hero: the four-week range in words, a session rather than his best', /Four weeks out, a session most likely reads \d+\. Range \d+\u2013\d+, (high|medium|low) confidence\./.test(hero()) && !/high side/.test(hero()), hero().slice(0, 400));
+    ok('hero: it holds exactly three cards in the section, as before', (ev("document.getElementById('an_pred').innerHTML").match(/class="card"/g) || []).length === 3);
+    ok('hero: the ensemble card below shows the same lift', ev("document.querySelector('#an_pred select').value") === 'Zz H Bench');
+    ev("strStep(1);");
+    const after = ev('anEnsembleEx');
+    ev("for(var i = 0; i < strLifts().length - 1; i++) strStep(1);");
+    ok('hero: the arrows step through the lifts and wrap round', after !== 'Zz H Bench' && ev('anEnsembleEx') === 'Zz H Bench', after + ' -> ' + ev('anEnsembleEx'));
+    ev("strPick('Zz H Row');");
+    ok('hero: a stalled lift says so, with the reason', /^stalled \u00b7 5 sessions at 100, reps flat$/.test(ev("document.querySelector('#an_pred .str-chip').textContent")), ev("document.querySelector('#an_pred .str-chip').textContent"));
+    ok('hero: and its range is read as the high side', /drawn through older gains; with the lift stalled, read it as the high side\./.test(hero()), hero().slice(0, 500));
+    ok('hero: why it stalled, as likely factors', ev("document.querySelector('#an_pred .str-why .str-sec-h').textContent") === 'Why it stalledlikely, not proven');
+    ev("strPick('Zz H Dip');");
+    const dipD = T(-36), dipLast = T(-8);
+    const whyTitle = () => ev("document.querySelector('#an_pred .str-why .str-sec-h span').textContent");
+    ok('hero: a lift on track with dips on the chart explains the newest, and each ring opens its own',
+       whyTitle() === 'Why the ' + ev("homeShortDate('" + dipLast + "')") + ' dip' &&
+       ev("!!document.querySelector('#an_pred circle[onclick=\"strDip(\\'" + dipD + "\\')\"]')") === true, hero().slice(0, 600));
+    ev("strDip('" + dipD + "');");
+    ok('hero: choosing the older dip explains that one', whyTitle() === 'Why the ' + ev("homeShortDate('" + dipD + "')") + ' dip', whyTitle());
+    ok('hero: a dip chosen is marked; choosing it again clears it', ev("document.querySelector('#an_pred .str-dip.on') && document.querySelector('#an_pred .str-dip.on').textContent").indexOf('\u2212') > 0 && ev('strDipSel') === dipD);
+    ev("strDip('" + dipD + "');");
+    ok('hero: (cleared)', ev('strDipSel') === null);
+    ok('hero: a past dip leaves out what only describes the lift now', JSON.parse(ev("JSON.stringify(plateauCauses('Zz H Row', mesoAddDays(todayKey(), -8), 14, {asOf: true}).map(function(c){ return c.k; }))")).indexOf('stale') < 0 &&
+       JSON.parse(ev("JSON.stringify(plateauCauses('Zz H Row', todayKey(), 28).map(function(c){ return c.k; }))")).indexOf('stale') >= 0);
+    ev("isMaxed = function(n){ return n === 'Zz H Bench'; }; strPick('Zz H Bench');");
+    ok('hero: a MAXED machine: no weight forecast, and says why', ev("document.querySelector('#an_pred .str-chip').textContent") === 'At the machine\u2019s top' && /no weight to forecast/.test(hero()));
+    ev("isMaxed = window.__s5bk.isMaxed;");
+    // the plateau risk list: capped, then all
+    ev("S.split.D1.exercises = ['Zz H Bench', 'Zz H Row', 'Zz H Dip'];" +
+       "for(var k = 0; k < 8; k++){ for(var j = 0; j < 4; j++) S.logs.push(stampRec({id: 'rl' + k + j, date: mesoAddDays(todayKey(), -(1 + 7 * j)), day: 'D1', entries: [{exercise: 'Zz R' + k, sets: [{w: 50 + (3 - j) * 2.5, r: 8}]}]})); S.split.D1.exercises.push('Zz R' + k); }");
+    ev("strRiskAll = false; renderAnPred();");
+    const rowsN = () => ev("document.querySelectorAll('#an_pred .str-risk-r').length");
+    ok('risk: the list shows eight, worst first', rowsN() === 8 && ev("document.querySelector('#an_pred .str-risk-r').getAttribute('data-lift')") === 'Zz H Row');
+    ev("strRiskToggle();");
+    ok('risk: and all of them on request', rowsN() === 11 && /Show fewer/.test(ev("document.querySelector('#an_pred .str-risk').textContent")));
+    ev("strRiskToggle();");
+    ok('risk: each row has the lift\u2019s spark and word', ev("document.querySelector('#an_pred .str-risk-r .str-spark path') !== null") === true && ev("document.querySelector('#an_pred .str-risk-r .str-risk-w').textContent") === 'stalled');
+    ev("strPick('Zz R3');");
+    ok('risk: a lift with too few sessions for the hero opens on Overload instead', ev('activeMainTab') === 'progress' && ev('activeReviewTab') === 'an_overload' && ev('pwOpen["Zz R3"]') === true);
+    ev("pwShow('Zz H Row');");
+    ok('chips: a lift the hero covers opens there', ev('activeReviewTab') === 'strength' && ev('anEnsembleEx') === 'Zz H Row');
+    // the record, as two numbers
+    ev("S.logs.forEach(function(l){ (l.entries || []).forEach(function(e){ if(e.exercise === 'Zz H Bench'){ l.plan = {}; l.plan['Zz H Bench'] = {w: e.sets[0].w, lo: 8, hi: 12, n: 1}; } }); }); renderAnPred();");
+    ok('nums: prescriptions met, as a percentage', /\d+%prescriptions met/.test(ev("(document.querySelector('#an_pred .str-nums')||{}).textContent || ''")), ev("(document.querySelector('#an_pred .str-nums')||{}).textContent || ''"));
+    const snap = ev('JSON.stringify(S)');
+    ev("renderAnPred(); strStep(1); strStep(-1); strRiskToggle(); strRiskToggle(); ckEventMarks(mesoAddDays(todayKey(), -84));");
+    ok('nothing written: the hero and its marks only read', ev('JSON.stringify(S)') === snap);
+
+    // --- density by week ---
+    ev("S.logs = [];" +
+       "var M = weekKeyOf(todayKey());" +
+       "var dsess = function(id, date, day, mins){ var b = Date.parse(date + 'T18:00:00'), sets = []; for(var i = 0; i < 4; i++) sets.push({w: 100, r: 8, ts: b + Math.round(i * mins / 3 * 60000)});" +
+       "  S.logs.push(stampRec({id: id, date: date, day: day, entries: [{exercise: 'Zz Dn', sets: sets}]})); };" +
+       "dsess('d1a', mesoAddDays(M, -14), 'D1', 20); dsess('d1b', mesoAddDays(M, -7), 'D1', 16); dsess('d1c', M, 'D1', 20);" +
+       "dsess('d2a', mesoAddDays(M, -13), 'D2', 20); dsess('d2b', mesoAddDays(M, -6), 'D2', 20);");
+    let dw = JSON.parse(ev('JSON.stringify(densityWeekly())'));
+    ok('density: each session against its own day\u2019s usual pace, by week', dw.map(x => x.v).join(',') === '0,13,0' && dw[1].n === 2, JSON.stringify(dw));
+    ok('density: and the card says where this week sits', /This week about your usual pace \(1 session\)\./.test(ev('densityCardHTML()')), ev('densityCardHTML()').slice(-500));
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 'd1c'; }); dsess('d1c', weekKeyOf(todayKey()), 'D1', 25);");
+    ok('density: a slower week reads as looser', /This week 20% looser than your usual/.test(ev('densityCardHTML()')), ev('densityCardHTML()').slice(-400));
+    ev("S.logs = S.logs.filter(function(l){ return l.date >= mesoAddDays(weekKeyOf(todayKey()), -7); });");
+    ok('density: under three weeks it waits, and says so', /The weekly trend shows once 3 weeks are timed/.test(ev('densityCardHTML()')), ev('densityCardHTML()').slice(-300));
+  } catch (e) {
+    ok('V4 stage 5 Progress section', false, e.stack);
+  } finally {
+    ev("try{ fatigueIndex = window.__s5bk.fatigueIndex; pwBlockAt = window.__s5bk.pwBlockAt; isMaxed = window.__s5bk.isMaxed; }catch(e){} anEnsembleEx = null; strDipSel = null; strRiskAll = false; pwOpen = {};");
+    ev('if(window.__s5bSaved){ S = JSON.parse(window.__s5bSaved); delete window.__s5bSaved; } delete window.__s5bk;');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
