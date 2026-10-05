@@ -13262,6 +13262,129 @@ setTimeout(async () => {
     ev('if(window.__qaSaved){ S = JSON.parse(window.__qaSaved); delete window.__qaSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== FAMILY PANTRY CHECK (2026-10-05) ===');
+  try {
+    w.__fmSaved = ev('JSON.stringify(S)');
+    ev("window.__fmTK = todayKey; todayKey = function(){ return '2026-10-05'; }; fuelInit();");
+    ev("S.fuel.foods = {chkbr: {s: 1}, bagel: {p: 'l'}, wmilk: {p: 'h'}, rotchk: {p: 'd'}, uzzM: {p: 'l'}};" +
+       " S.fuel.custom = [{id: 'uzzM', n: 'Mom’s <b>pancakes</b>', cat: 'grain', sv: '2', cal: 300, p: 8, c: 50, f: 6, tags: []}]; S.fuel.stockWeek = '2026-09-28';");
+    // --- the link ---
+    ok('link: text survives the trip, accents and all', JSON.stringify(ev("famDec(famEnc({a: 'Mom’s café ✔'}))")) === JSON.stringify({a: 'Mom’s café ✔'}) && /^[A-Za-z0-9_-]+$/.test(ev("famEnc({a: 'x?/+='})")));
+    ok('link: garbage decodes to nothing, not an error', ev("famDec('%%%') === null && famDec('') === null"));
+    const link = ev('famShareLink()');
+    const share = JSON.parse(ev("JSON.stringify(famValid(famDec(" + JSON.stringify(link) + ".split('#family=')[1]), 'p'))"));
+    const ids = share.f.map(x => x.join(':')).sort();
+    ok('share: his liked foods and anything stocked go out, with what is stocked ticked', JSON.stringify(ids) === JSON.stringify(['bagel:0', 'chkbr:1', 'uzzM:0']), JSON.stringify(ids));
+    ok('share: a food he hid or said no to does not go out', !share.f.some(x => x[0] === 'wmilk' || x[0] === 'rotchk'));
+    ok('share: his own foods carry their name, the built-in ones only an id', share.c.uzzM && share.c.uzzM[0] === 'Mom’s <b>pancakes</b>' && !share.c.bagel && Object.keys(share.c).length === 1, JSON.stringify(share.c));
+    ok('share: the link is the app’s own address with the list in its #fragment', link.indexOf('https://example.com/#family=') === 0);
+    // --- validation: everything in a link is untrusted ---
+    const VF = (o, k) => JSON.parse(ev('JSON.stringify(famValid(' + JSON.stringify(o) + ', ' + JSON.stringify(k) + '))'));
+    ok('valid: wrong version, wrong kind or no list is refused', VF({v: 2, k: 'p', f: [['bagel', 1]]}, 'p') === null && VF({v: 1, k: 'r', f: [['bagel', 1]]}, 'p') === null && VF({v: 1, k: 'p', f: 'bagel'}, 'p') === null && VF(null, 'p') === null);
+    const vv = VF({v: 1, k: 'r', from: ' Mom\u0007  \n <script> who has a very long name indeed ', at: 'not a date', f: [['bagel', 1], ['bagel', 0], ['a"b', 1], ['<x>', 1], ['chkbr', 2], ['wmilk', '1'], ['eggs1', 0]],
+                   c: {uzzM: ['  Pancakes\n ', 'grain'], uzzX: ['x', 'weapons'], 'bad id': ['y', 'meat']}}, 'r');
+    ok('valid: only well-formed ids with 0 or 1 survive, once each', JSON.stringify(vv.f) === JSON.stringify([['bagel', 1], ['eggs1', 0]]), JSON.stringify(vv.f));
+    ok('valid: names are cleaned and clipped, and a category not on the list is dropped', vv.from.length <= 30 && !/[\u0000-\u001f]/.test(vv.from) && vv.c.uzzM[0] === 'Pancakes' && !vv.c.uzzX && !vv.c['bad id'] && vv.at === null, JSON.stringify(vv));
+    ok('valid: an oversized list is refused', VF({v: 1, k: 'p', f: Array.from({length: 301}, (_, i) => ['f' + i, 1])}, 'p') === null);
+    ok('valid: a list with nothing usable is refused', VF({v: 1, k: 'p', f: [['<x>', 1]]}, 'p') === null);
+    // --- sending: share sheet, else clipboard, else the link on screen ---
+    ev("window.__fmShared = null; Object.defineProperty(navigator, 'share', {configurable: true, value: function(o){ window.__fmShared = o; return Promise.resolve(); }});");
+    ev("var __m = document.body.appendChild(document.createElement('p')); __m.id = 'famShareMsg';");
+    ok('send: with a share sheet, the link goes to it', ev('famShare()') === 'share' && ev('window.__fmShared.url') === link.replace(/#family=.*/, '') + ev("window.__fmShared.url.slice(window.__fmShared.url.indexOf('#'))") && /#family=/.test(ev('window.__fmShared.url')));
+    ev("delete navigator.share; window.__fmClip = null; Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: function(t){ window.__fmClip = t; return Promise.resolve(); }}});");
+    ok('send: without one, the link is copied', ev('famShare()') === 'copy' && /#family=/.test(ev('window.__fmClip')));
+    ev("delete navigator.clipboard;");
+    ok('send: with neither, the link is shown to copy by hand', ev('famShare()') === 'show' && /#family=/.test(ev("document.querySelector('#famShareMsg input').value")));
+    ev("S.fuel.foods = {}; S.fuel.custom = [];");
+    ok('send: with nothing liked or stocked there is no list, and it says so', ev('famShare()') === null && /Like or stock a few foods first/.test(ev("document.getElementById('famShareMsg').textContent")));
+    ev("document.getElementById('famShareMsg').remove();");
+    ev("S.fuel.foods = {chkbr: {s: 1}, bagel: {p: 'l'}, wmilk: {p: 'h'}, rotchk: {p: 'd'}, uzzM: {p: 'l'}};" +
+       " S.fuel.custom = [{id: 'uzzM', n: 'Mom’s <b>pancakes</b>', cat: 'grain', sv: '2', cal: 300, p: 8, c: 50, f: 6, tags: []}];");
+    ok('fuel: the card is on Fuel, with both buttons', (ev('renderFuel()'), /Family pantry check/.test(ev("document.getElementById('fuel').textContent"))) &&
+       ev("Array.prototype.map.call(document.querySelectorAll('#fuel .fam-card .btn'), function(b){ return b.getAttribute('onclick'); }).join()") === 'famShare(),famPaste()');
+    // --- their page ---
+    ev("window.__fmHash = location.hash; location.hash = '#family=' + " + JSON.stringify(link.split('#family=')[1]) + ";");
+    ev("window.__fmDiv = document.body.appendChild(document.createElement('div')); localStorage.removeItem(FAM_NAME_KEY); famFamilyPage(window.__fmDiv);");
+    const items = () => JSON.parse(ev("JSON.stringify(Array.prototype.map.call(__fmDiv.querySelectorAll('.fam-item'), function(b){ return b.getAttribute('data-id') + ':' + b.classList.contains('on') + ':' + b.querySelector('span').textContent; }))"));
+    ok('family: a row per food, grouped, with what is stocked already ticked', JSON.stringify(items()) === JSON.stringify(['chkbr:true:Chicken breast', 'bagel:false:' + ev("FOOD_DB.find(function(r){ return r[0] === 'bagel'; })[1]"), 'uzzM:false:Mom’s <b>pancakes</b>']) &&
+       ev("Array.prototype.map.call(__fmDiv.querySelectorAll('.fam-grp h2'), function(h){ return h.textContent; }).join()") === 'Meat & fish,Carbs & bread', JSON.stringify(items()));
+    ok('family: his own food’s name is text, never markup', ev("!__fmDiv.querySelector('.fam-item b b, .fam-item span b')"));
+    ev("famTick(__fmDiv.querySelector('[data-id=\"chkbr\"]')); famTick(__fmDiv.querySelector('[data-id=\"bagel\"]'));");
+    ok('family: a tap flips a food in place', JSON.stringify(items().map(x => x.split(':').slice(0, 2).join(':'))) === '["chkbr:false","bagel:true","uzzM:false"]' &&
+       ev("__fmDiv.querySelector('[data-id=\"bagel\"] b').textContent") === 'In the house');
+    ev("document.getElementById('famName').value = 'Mom'; window.__fmShared = null; Object.defineProperty(navigator, 'share', {configurable: true, value: function(o){ window.__fmShared = o; return Promise.resolve(); }});");
+    ok('family: Send it back hands the reply link to the share sheet', ev('famSend()') === 'share' && /#famreply=/.test(ev('window.__fmShared.url')) && ev('window.__fmShared.text') === 'Pantry update from Mom:');
+    const reply = JSON.parse(ev("JSON.stringify(famValid(famDec(window.__fmShared.url.split('#famreply=')[1]), 'r'))"));
+    ok('family: the reply carries who, when, the ticks and when the list was sent', reply.from === 'Mom' && reply.sent === share.at && !!reply.at &&
+       JSON.stringify(reply.f) === JSON.stringify([['chkbr', 0], ['bagel', 1], ['uzzM', 0]]), JSON.stringify(reply));
+    ok('family: their name is remembered on their phone for next time', ev('localStorage.getItem(FAM_NAME_KEY)') === 'Mom');
+    ev("delete navigator.share; localStorage.removeItem(FAM_NAME_KEY); location.hash = '#family=garbage'; famFamilyPage(__fmDiv);");
+    ok('family: a broken link says so', /did not come through whole/.test(ev('__fmDiv.textContent')) && ev("__fmDiv.querySelectorAll('.fam-item').length") === 0);
+    // --- coming back ---
+    const rlink = ev('window.__fmShared.url');
+    ev("famFromText('Pantry update from Mom: ' + " + JSON.stringify(rlink) + " + ' thanks!');");
+    ok('review: a reply pasted with words around it opens the review', ev("!!document.getElementById('famOverlay')"));
+    const sheet = () => ev("(document.getElementById('famOverlay') || {}).textContent || ''");
+    ok('review: it names who sent it and what would change in HIS list', /Mom updated the pantry/.test(sheet()) && /In the house now.*Bagel/i.test(sheet()) && /Run out\s*Chicken breast/.test(sheet()), sheet());
+    ev("window.__fmT = S.meta.changedAt; S.meta.changedAt = 1; Array.prototype.find.call(document.querySelectorAll('#famOverlay .btn'), function(b){ return b.textContent === 'Apply'; }).click();");
+    ok('apply: the stock changes, saved as his change, and the sheet closes', ev("fpFood('bagel').stocked") === true && ev("fpFood('chkbr').stocked") === false && ev('S.meta.changedAt') > 1 && !ev("!!document.getElementById('famOverlay')"));
+    ok('apply: it counts as this week’s stock check', ev('S.fuel.stockWeek') === '2026-10-05');
+    ev("S.meta.changedAt = Math.max(S.meta.changedAt, window.__fmT || 0); delete window.__fmT;");
+    ev("famFromText(" + JSON.stringify(rlink) + ");");
+    ok('review: nothing to change says so, with only Close', /Nothing changed from what you have/.test(sheet()) && ev("Array.prototype.map.call(document.querySelectorAll('#famOverlay .btn'), function(b){ return b.textContent; }).join()") === 'Close');
+    ev("famClose();");
+    // a doctored reply: a hidden food and a food he said no to, ticked in
+    const evil = ev("famBase() + '#famreply=' + famEnc({v: 1, k: 'r', from: '<img src=x onerror=window.__fmPwn=1>', at: new Date().toISOString(), f: [['wmilk', 1], ['rotchk', 1], ['nosuchfood', 1], ['bagel', 0]]})");
+    ev("famFromText(" + JSON.stringify(evil) + ");");
+    ok('review: a food he hid or said no to is never stocked, and an unknown one is ignored', !/whole milk|Rotisserie|nosuchfood/i.test(sheet()) && /Run out\s*Plain bagel/.test(sheet()), sheet());
+    ok('review: the sender’s name is text, never markup', !ev("!!document.querySelector('#famOverlay img')") && ev('window.__fmPwn') === undefined);
+    ev("Array.prototype.find.call(document.querySelectorAll('#famOverlay .btn'), function(b){ return b.textContent === 'Ignore'; }).click();");
+    ok('review: Ignore changes nothing', ev("fpFood('bagel').stocked") === true && ev("fpFood('wmilk').pref") === 'h' && !ev("!!document.getElementById('famOverlay')"));
+    const old = ev("famBase() + '#famreply=' + famEnc({v: 1, k: 'r', from: 'Dad', at: new Date(Date.now() - 20 * 86400000).toISOString(), f: [['bagel', 0]]})");
+    ev("famFromText(" + JSON.stringify(old) + ");");
+    ok('review: an old update says it is old', /a while ago, so check it still holds/.test(sheet()));
+    ev("famClose(); window.__fmAl = 0; window.__fmAlK = window.alert; window.alert = function(){ window.__fmAl++; };");
+    ok('review: text with no update in it is refused, and says so', ev("famFromText('hello there')") === false && ev('window.__fmAl') === 1 && !ev("!!document.getElementById('famOverlay')"));
+    // --- where a link lands ---
+    ev("localStorage.setItem(LS_KEY, JSON.stringify(Object.assign({}, S, {logs: [{id: 1, date: '2026-10-01', day: 'D1', entries: []}]})));");
+    ev("location.hash = '#family=abc';"); const r1 = ev('famRoute()');
+    ev("location.hash = '#famreply=abc';"); const r2 = ev('famRoute()');
+    ev("window.__fmLS = localStorage.getItem(LS_KEY); localStorage.removeItem(LS_KEY);"); const r3 = ev('famRoute()');
+    ev("localStorage.setItem(LS_KEY, window.__fmLS); delete window.__fmLS; location.hash = '';"); const r4 = ev('famRoute()');
+    ok('route: a family link is their page; a reply opens the app where his data is, else the copy page', r1 === 'family' && r2 === 'reply' && r3 === 'reply-copy' && r4 === '', [r1, r2, r3, r4].join());
+    ev("location.hash = '#famreply=' + " + JSON.stringify(rlink.split('#famreply=')[1]) + "; famReviewFromHash();");
+    ok('route: a reply link opens the review and clears itself, so a reload does not show it again', !!ev("!!document.getElementById('famOverlay')") && ev('location.hash') === '');
+    ev("famClose(); location.hash = '#famreply=broken'; famReviewFromHash();");
+    ok('route: a broken reply link says so', ev('window.__fmAl') === 2 && !ev("!!document.getElementById('famOverlay')"));
+    ev("window.alert = window.__fmAlK; delete window.__fmAlK;");
+    ev("location.hash = '#famreply=' + " + JSON.stringify(rlink.split('#famreply=')[1]) + "; famCopyPage(__fmDiv);");
+    ok('copy page: where his app is not, it says who it is from, what they have, and offers Copy', /From Mom\./.test(ev('__fmDiv.textContent')) && /In the house: Plain bagel/.test(ev('__fmDiv.textContent')) &&
+       ev("__fmDiv.querySelector('.fam-foot .btn').getAttribute('onclick')") === 'famCopyReply()');
+    ev("__fmDiv.remove(); delete window.__fmDiv; location.hash = window.__fmHash || ''; delete window.__fmHash;");
+    // --- a real load of each link, in a fresh browser: the family page never starts the app ---
+    const famLoad = (hash) => new Promise((resolve) => {
+      const d = new JSDOM(html, {runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.com/' + hash,
+        beforeParse(w2){ w2.fetch = () => Promise.reject(new Error('network disabled in test')); w2.alert = () => {}; w2.confirm = () => true;
+          w2.matchMedia = () => ({matches: false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}}); w2.Element.prototype.scrollIntoView = function(){}; }});
+      setTimeout(() => resolve(d), 400);
+    });
+    const d1 = await famLoad('#family=' + link.split('#family=')[1]);
+    ok('boot: a family link opens only the tick-list', d1.window.document.querySelectorAll('.fam-item').length === 3 && !d1.window.document.querySelector('#home') && d1.window.document.body.className === 'fam-body');
+    ok('boot: and the app never started on their phone: no state written, no session, no sync', d1.window.localStorage.getItem('ironhub:v1') === null && d1.window.eval('typeof appBoot') === 'function' &&
+       d1.window.eval('live') === null && !d1.window.document.querySelector('.cc-wheel'));
+    d1.window.close();
+    const d2 = await famLoad('#famreply=' + rlink.split('#famreply=')[1]);
+    ok('boot: a reply link in a browser without his app offers the copy page', /Pantry update/.test(d2.window.document.querySelector('.fam h1').textContent) && !!d2.window.document.querySelector('.fam-foot .btn'));
+    d2.window.close();
+  } catch (e) {
+    ok('family pantry section', false, e.stack);
+  } finally {
+    ev("try{ famClose(); }catch(e){} try{ delete navigator.share; delete navigator.clipboard; }catch(e){} if(window.__fmAlK){ window.alert = window.__fmAlK; delete window.__fmAlK; }");
+    ev("if(window.__fmDiv){ __fmDiv.remove(); delete window.__fmDiv; } if(window.__fmHash !== undefined){ location.hash = window.__fmHash || ''; delete window.__fmHash; } localStorage.removeItem(FAM_NAME_KEY);");
+    ev("if(window.__fmTK){ todayKey = window.__fmTK; delete window.__fmTK; }");
+    ev('if(window.__fmSaved){ S = JSON.parse(window.__fmSaved); delete window.__fmSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

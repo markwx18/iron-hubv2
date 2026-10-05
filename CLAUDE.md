@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3282 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3322 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -290,6 +290,7 @@ so the two orders can no longer disagree.
 | Readiness | `todayReadiness()`, `rdComplete()`, `readinessNow()`, `anReadinessOutcome()`, `anReadinessTrim()`, `renderAnReadiness()` |
 | Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
 | Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()`, `fuelFoodAllowed()`; targets change only through `fuelTargetSet()`, which logs `S.targetHist` (`fuelTargetHistory()`) |
+| Family pantry check | `famShareLink()` / `famShare()` / `famOut()`, `famFamilyPage()` / `famTick()` / `famSend()`, `famValid()`, `famDiff()`, `famShowReview()` / `famApply()`, `famRoute()` / `famReviewFromHash()` / `famCopyPage()` / `famPaste()`; the boot is `appBoot()` |
 | Fuel planner | `FOOD_DB`, `fpFoods()`, `fpPool()`, `fpCombos()` / `fpBuild()`, `fpStockDue()`, `fpCheckFood()`, `fpSetStock()` / `fpSetPref()` / `fpTidy()`; ECHO: `fpToolDefs()`, `fpProposeToolDef()`, `fpPlannerText()` |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
 | Nav shell | `renderSidenav()`, `navDrawerSet()` (`navDrawerOpen`), `navCollapseToggle()`, `showMainTab()` (`_navEnter`, `navEnterAnim()`), `smoothScroll()` |
@@ -735,6 +736,31 @@ from what he has stocked and likes. Cal AI has no sync path, so it never reads l
 - **The Monday stock check** (`fpStockDue()`, Monday-anchored like Plan) shows on Fuel and on
   Today. Stock never resets. Confirming, or changing stock in the Pantry, closes it for the week;
   unticking a chip inside the prompt does not.
+
+**The family pantry check: someone at home ticks what is in the house** (his choices, 2026-10-05). It is
+stock only, sent back by a reply link, and he reviews it before it applies.
+- **No server, no accounts.** The whole list travels in the link's `#fragment`, which a browser never
+  sends to a server (`famEnc()` / `famDec()`, base64url JSON).
+- **His side:** Fuel's card → `famShare()` → `famShareLink()`. It sends what he likes plus anything
+  stocked; his own foods carry their name, since the family's page has no `S`. It goes to the share sheet,
+  else the clipboard, else a link on screen (`famOut()`).
+- **Their page:** `#family=` opens `famFamilyPage()`, a tick-list of its own. **The boot never runs there.**
+  The boot block is `appBoot()`, and the dispatcher at the bottom of the file calls it only when the link
+  is not a family link. So nothing on their phone syncs, runs an agent, loads a session or writes
+  `ironhub:v1`, and the suite loads that link in a fresh jsdom to prove it. Their name is remembered in
+  `FAM_NAME_KEY`. Send it back builds `#famreply=` (`famReplyLink()`).
+- **Coming back:** `famRoute()` decides where a reply lands.
+  - In a browser holding his app (`famHasState()`: saved state with logs), the app boots, then
+    `famReviewFromHash()` opens the review and clears the hash.
+  - Anywhere else, `famCopyPage()` offers the link to copy. This is the iPhone case: Safari keeps separate
+    storage from the home-screen app. He then taps **Paste family update** on Fuel (`famPaste()` →
+    `famFromText()`).
+- **Everything in a link is untrusted.** `famValid()` keeps only well-formed ids (`FAM_ID`) with 0 or 1,
+  once each, at most `FAM_MAX_ITEMS`; names are cleaned and clipped, and categories are from `FP_CAT_KEYS`.
+  `famDiff()` compares against his list as it is now. It ignores foods he does not have, and never stocks
+  one he said no to or hid, because `fpSetStock()` would clear that "no".
+- **Apply** (`famApply()`) is his tap, and it `save()`s. It counts as this week's stock check, the same as
+  changing stock in the Pantry. A reply `FAM_OLD_DAYS` (14) or more old says so.
 
 **Today's call sets the plan automatically, inside hard bounds.** `dayCall(date, dayKey)` returns
 push / normal / easy / recover. WHOOP carries about half of it when today's data is in:

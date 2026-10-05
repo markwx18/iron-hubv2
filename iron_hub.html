@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-05-v7">
+<meta name="ironhub-build" content="2026-10-05-v8">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1629,6 +1629,31 @@
   .rd-ck b{width:48px; flex:none; font-family:var(--disp); font-size:15px; font-weight:700;}
   .rd-ck span{flex:1; min-width:0; color:var(--muted);}
   .rd-sec{margin-bottom:16px;}
+  /* the family pantry check (2026-10-05) */
+  .fam-acts{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  body.fam-body{padding:0; margin:0;}
+  .fam{max-width:560px; margin:0 auto; padding:calc(20px + env(safe-area-inset-top)) 16px calc(110px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:14px;}
+  .fam h1{margin:0; font-family:var(--disp); font-size:40px; line-height:1; text-transform:uppercase; letter-spacing:.02em;}
+  .fam-lede{margin:0; font-size:15px; line-height:1.5; color:var(--muted);}
+  .fam-name{display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em;}
+  .fam-name input{height:48px; font-size:17px; text-transform:none; letter-spacing:0;}
+  .fam-grp{display:flex; flex-direction:column; gap:6px;}
+  .fam-grp h2{margin:8px 0 2px; font-family:var(--disp); font-size:18px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted);}
+  .fam-item{display:flex; align-items:center; gap:10px; width:100%; min-height:54px; padding:10px 14px; border-radius:14px; border:1px solid var(--line2); background:var(--panel); color:var(--text); font:inherit; font-size:16px; text-align:left; cursor:pointer;}
+  .fam-item span{flex:1; min-width:0;}
+  .fam-item b{flex:none; font-size:12px; font-weight:600; color:var(--dim);}
+  .fam-item.on{border-color:var(--good); background:color-mix(in srgb, var(--good) 14%, var(--panel));}
+  .fam-item.on b{color:var(--good);}
+  .fam-foot{position:fixed; left:0; right:0; bottom:0; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); background:var(--base); border-top:1px solid var(--panel2); display:flex; flex-direction:column; gap:6px; align-items:stretch;}
+  .fam-foot .btn{min-height:52px; font-size:17px;}
+  .fam-foot p{margin:0; text-align:center;}
+  .fam-link{width:100%; font-size:12px;}
+  .fam-ov{position:fixed; inset:0; z-index:420; background:color-mix(in srgb, var(--base) 70%, transparent); display:flex; align-items:flex-end; justify-content:center;}
+  .fam-sheet{width:100%; max-width:560px; max-height:85vh; overflow-y:auto; background:var(--panel); border-radius:var(--r-card) var(--r-card) 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:10px;}
+  .fam-sheet h2{margin:0; font-family:var(--disp); font-size:26px; text-transform:uppercase;}
+  .fam-diff{display:flex; flex-direction:column; gap:4px; font-size:15px;}
+  .fam-diff > b{font-family:var(--disp); font-size:14px; text-transform:uppercase; letter-spacing:.05em;}
+  .fam-sheet .fam-acts .btn{flex:1;}
   /* questions from the agents (2026-10-05) */
   .qa-card{display:flex; flex-direction:column; gap:10px;}
   .qa-h{display:flex; align-items:center; gap:10px;}
@@ -7963,7 +7988,7 @@ function renderFuel(){
     '<p class="small" style="margin-top:6px;color:var(--dim)">These match food names, so use the word that appears in them (peanut, not nuts).</p>'+
     '<div style="margin-top:10px"><button class="btn sm" onclick="saveFuelPrefs()">Save Preferences</button> <span class="small ok" id="fMsg"></span></div></div>';
   // The Pantry folds once he has stock; with nothing stocked it is where "Start here" points, so it opens.
-  html += '<h2>More</h2>'+
+  html += '<h2>More</h2>'+famCardHTML()+
     subSection('Pantry', fpPantryHTML(), !ns, {pref:'fuel.pantry', summary:ns+' stocked \u00b7 '+nl+' liked', cls:'grp'})+
     subSection('Workout Fuel Timing', fuelTimingHTML({bare:true}), false,
       {pref:'fuel.timing', summary:fuelNextLine() || 'Set a workout time to plan around it', cls:'grp'})+
@@ -8052,6 +8077,245 @@ function fpCombosText(r, opts){
     }).join(' + ')+
       ' = ~'+c.cal+' cal, '+c.p+'g protein, '+(c.closes ? 'a full meal' : 'light by '+c.shortC+' cal / '+c.shortP+'g');
   }).join('\n');
+}
+
+/* ============================================================
+   FAMILY PANTRY CHECK (his choices, 2026-10-05). He texts someone at home a link; they tick what is in
+   the house on a page of its own and send a link back; he sees what changed and taps Apply. Stock only:
+   his likes, no-gos and targets stay his. No server and no accounts: the whole list travels in the link's
+   #fragment, which a browser never sends anywhere. Their page never starts the app (see the boot at the
+   bottom of the file), so nothing on their phone syncs, runs an agent or holds his data.
+   Everything that comes back in a link is untrusted: famValid() keeps only well-formed ids and 0/1, and
+   an update can only ever set stock on a food already in his list.
+   ============================================================ */
+const FAM_NAME_KEY = 'ironhub:famname', FAM_MAX_ITEMS = 300, FAM_OLD_DAYS = 14;
+const FAM_ID = /^[A-Za-z0-9_-]{1,40}$/;
+function famEnc(o){
+  return btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function famDec(t){
+  try{
+    let b = String(t || '').replace(/-/g, '+').replace(/_/g, '/');
+    while(b.length % 4) b += '=';
+    return JSON.parse(decodeURIComponent(escape(atob(b))));
+  }catch(e){ return null; }
+}
+function famStamp(v){ return typeof v === 'string' && isFinite(Date.parse(v)) ? v : null; }
+/* kind 'p' is his list going out, 'r' a reply coming back. */
+function famValid(o, kind){
+  if(!o || typeof o !== 'object' || o.v !== 1 || o.k !== kind || !Array.isArray(o.f) || o.f.length > FAM_MAX_ITEMS) return null;
+  const f = [], seen = {};
+  o.f.forEach(function(x){
+    if(Array.isArray(x) && typeof x[0] === 'string' && FAM_ID.test(x[0]) && (x[1] === 0 || x[1] === 1) && !seen[x[0]]){ seen[x[0]] = 1; f.push([x[0], x[1]]); }
+  });
+  if(!f.length) return null;
+  const c = {};
+  if(o.c && typeof o.c === 'object' && !Array.isArray(o.c)) Object.keys(o.c).slice(0, FAM_MAX_ITEMS).forEach(function(k){
+    const v = o.c[k];
+    if(FAM_ID.test(k) && Array.isArray(v) && typeof v[0] === 'string' && FP_CAT_KEYS.indexOf(v[1]) >= 0)
+      c[k] = [v[0].replace(/[\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60), v[1]];
+  });
+  const out = {v:1, k:kind, f:f, c:c, at:famStamp(o.at)};
+  if(kind === 'r'){
+    out.from = typeof o.from === 'string' ? o.from.replace(/[\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 30) : '';
+    out.sent = famStamp(o.sent);
+  }
+  return out;
+}
+function famBase(){ return location.href.split('#')[0]; }
+/* What goes out: what he likes plus anything already stocked, so they can tick it in or out. A food he
+   said no to or hid goes only if it is somehow still stocked (they can then untick it). */
+function famShareLink(){
+  const foods = fpFoods().filter(function(f){ return f.stocked || (f.pref === 'l'); });
+  if(!foods.length) return null;
+  const c = {};
+  foods.forEach(function(f){ if(f.custom) c[f.id] = [String(f.n).slice(0, 60), f.cat]; });
+  return famBase()+'#family='+famEnc({v:1, k:'p', at:new Date().toISOString(), f:foods.map(function(f){ return [f.id, f.stocked ? 1 : 0]; }), c:c});
+}
+/* Share sheet where there is one (iOS, Android), else the clipboard, else the link on screen. */
+function famOut(url, title, text, msgEl){
+  const say = function(t){ if(msgEl) msgEl.innerHTML = t; };
+  try{
+    if(navigator.share){ navigator.share({title:title, text:text, url:url}).catch(function(){}); return 'share'; }
+  }catch(e){}
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){ say('Link copied. Paste it into a text.'); },
+        function(){ say('Copy this link and text it: <input class="fam-link" readonly value="'+esc(url)+'" onclick="this.select()">'); });
+      return 'copy';
+    }
+  }catch(e){}
+  say('Copy this link and text it: <input class="fam-link" readonly value="'+esc(url)+'" onclick="this.select()">');
+  return 'show';
+}
+function famShare(){
+  const msg = document.getElementById('famShareMsg');
+  const url = famShareLink();
+  if(!url){ if(msg) msg.textContent = 'Like or stock a few foods first, so there is a list to check.'; return null; }
+  return famOut(url, 'Pantry check', 'Can you tick what we have in the house?', msg);
+}
+function famCardHTML(){
+  return '<div class="card fam-card"><div class="k">Family pantry check</div>'+
+    '<p class="small" style="margin-top:4px;line-height:1.5">Text someone at home a link. They tick what is in the house and send it back. '+
+    'You see what changed and tap Apply. Only stock changes; your likes and targets stay yours.</p>'+
+    '<div class="fam-acts"><button class="btn sm" onclick="famShare()">Share with family</button>'+
+    '<button class="btn sm ghost" onclick="famPaste()">Paste family update</button></div>'+
+    '<p class="small" id="famShareMsg" style="margin-top:8px;color:var(--muted)"></p></div>';
+}
+/* ---- coming back ---- */
+function famItemName(o, id){
+  const r = FOOD_DB.find(function(x){ return x[0] === id; });
+  if(r) return {n:r[1], cat:r[2]};
+  const c = o && o.c && o.c[id];
+  return c ? {n:c[0], cat:c[1]} : null;
+}
+/* What the reply would change in HIS list, now: only foods he has, only where the stock differs. */
+function famDiff(r){
+  const add = [], remove = [];
+  (r && r.f || []).forEach(function(x){
+    const fd = fpFood(x[0]);
+    if(!fd) return;
+    // Never stock a food he said no to or hid: fpSetStock() would clear his "no" with it.
+    if(x[1] === 1 && !fd.stocked && fd.pref !== 'd' && fd.pref !== 'h') add.push({id:fd.id, n:fd.n});
+    if(x[1] === 0 && fd.stocked) remove.push({id:fd.id, n:fd.n});
+  });
+  return {add:add, remove:remove};
+}
+let _famPending = null;
+function famReviewHTML(r){
+  const d = famDiff(r), age = r.at ? daysBetween(dateKeyOf(new Date(r.at)), todayKey()) : null;
+  const list = function(a){ return a.map(function(x){ return esc(x.n); }).join(', '); };
+  const none = !d.add.length && !d.remove.length;
+  return '<div class="fam-sheet" role="dialog" aria-label="Pantry update"><span class="cc-eyebrow">Pantry update</span>'+
+    '<h2>'+(r.from ? esc(r.from)+' updated the pantry' : 'A pantry update')+'</h2>'+
+    (r.at ? '<p class="small" style="margin:0;color:'+(age >= FAM_OLD_DAYS ? 'var(--warn)' : 'var(--dim)')+'">Sent '+esc(agTimeAgo(r.at))+(age >= FAM_OLD_DAYS ? '. That is a while ago, so check it still holds.' : '')+'</p>' : '')+
+    (d.add.length ? '<div class="fam-diff"><b style="color:var(--good)">In the house now</b><span>'+list(d.add)+'</span></div>' : '')+
+    (d.remove.length ? '<div class="fam-diff"><b style="color:var(--bad)">Run out</b><span>'+list(d.remove)+'</span></div>' : '')+
+    (none ? '<p class="small" style="margin:0">Nothing changed from what you have.</p>' : '')+
+    '<div class="fam-acts">'+(none ? '<button class="btn" onclick="famClose()">Close</button>'
+      : '<button class="btn" onclick="famApply()">Apply</button><button class="btn ghost" onclick="famClose()">Ignore</button>')+'</div></div>';
+}
+function famShowReview(r){
+  _famPending = r;
+  let ov = document.getElementById('famOverlay');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'famOverlay'; ov.className = 'fam-ov'; document.body.appendChild(ov); }
+  ov.innerHTML = famReviewHTML(r);
+}
+function famClose(){ _famPending = null; const ov = document.getElementById('famOverlay'); if(ov) ov.remove(); }
+/* His tap. Worked out again against his list as it is now, and saved as his change. Setting stock counts as
+   this week's stock check, the same as changing it in the Pantry. */
+function famApply(){
+  const r = _famPending; if(!r) return;
+  const d = famDiff(r);
+  d.add.forEach(function(x){ fpSetStock(x.id, true); });
+  d.remove.forEach(function(x){ fpSetStock(x.id, false); });
+  save();
+  famClose();
+  fpRepaint();
+}
+function famFromText(t){
+  const m = String(t || '').match(/#famreply=([A-Za-z0-9_-]+)/);
+  const r = m ? famValid(famDec(m[1]), 'r') : null;
+  if(r){ famShowReview(r); return true; }
+  alert('That is not a pantry update link. Ask for the link their page sent back.');
+  return false;
+}
+function famPaste(){
+  const ask = function(){ const t = prompt('Paste the update link from your family:'); if(t) famFromText(t); };
+  try{
+    if(navigator.clipboard && navigator.clipboard.readText){ navigator.clipboard.readText().then(function(t){ if(t) famFromText(t); else ask(); }, ask); return; }
+  }catch(e){}
+  ask();
+}
+function famHashPayload(kind){ const m = location.hash.match(new RegExp('^#'+kind+'=([A-Za-z0-9_-]+)')); return m ? m[1] : ''; }
+/* Does this browser hold his app? Safari on an iPhone keeps separate storage from the home-screen app,
+   so a reply tapped in Messages may land where his data is not. */
+function famHasState(){
+  try{ const d = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); return !!(d && Array.isArray(d.logs) && d.logs.length); }catch(e){ return false; }
+}
+function famRoute(){
+  if(/^#family=/.test(location.hash)) return 'family';
+  if(/^#famreply=/.test(location.hash)) return famHasState() ? 'reply' : 'reply-copy';
+  return '';
+}
+function famClearHash(){ try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){} }
+function famReviewFromHash(){
+  const r = famValid(famDec(famHashPayload('famreply')), 'r');
+  famClearHash();
+  if(r) famShowReview(r);
+  else alert('That pantry update link did not come through whole. Ask them to send it again.');
+}
+/* ---- their page: a tick-list of its own, never the app ---- */
+let _famShare = null, _famTick = {};
+function famFamilyPage(root){
+  root = root || document.body;
+  const o = famValid(famDec(famHashPayload('family')), 'p');
+  try{ document.title = 'Pantry check'; }catch(e){}
+  if(root === document.body) document.body.className = 'fam-body';
+  if(!o){ root.innerHTML = '<main class="fam"><h1>Pantry check</h1><p class="fam-lede">This link did not come through whole. Ask for a new one.</p></main>'; return; }
+  _famShare = o; _famTick = {};
+  o.f.forEach(function(x){ _famTick[x[0]] = x[1] === 1; });
+  let name = '';
+  try{ name = localStorage.getItem(FAM_NAME_KEY) || ''; }catch(e){}
+  const groups = FP_CATS.map(function(c){
+    return [c, o.f.filter(function(x){ const it = famItemName(o, x[0]); return it && it.cat === c[0]; })];
+  }).filter(function(g){ return g[1].length; });
+  root.innerHTML = '<main class="fam"><span class="cc-eyebrow">Iron Hub</span><h1>Pantry check</h1>'+
+    '<p class="fam-lede">Tap what is in the house right now. Tap again if it has run out. Then send it back.</p>'+
+    '<label class="fam-name">Your name<input id="famName" maxlength="30" value="'+esc(name)+'" placeholder="Who is checking?"></label>'+
+    groups.map(function(g){
+      return '<section class="fam-grp"><h2>'+esc(g[0][1])+'</h2>'+g[1].map(function(x){
+        const it = famItemName(o, x[0]), on = _famTick[x[0]];
+        return '<button type="button" class="fam-item'+(on ? ' on' : '')+'" aria-pressed="'+on+'" data-id="'+esc(x[0])+'" onclick="famTick(this)">'+
+          '<span>'+esc(it.n)+'</span><b>'+(on ? 'In the house' : 'Not here')+'</b></button>';
+      }).join('')+'</section>';
+    }).join('')+
+    '<div class="fam-foot"><button type="button" class="btn" onclick="famSend()">Send it back</button><p class="small" id="famMsg"></p></div></main>';
+}
+/* In place, so a name being typed is never repainted away. */
+function famTick(btn){
+  const id = btn.getAttribute('data-id');
+  if(!_famShare || !(id in _famTick)) return;
+  const on = _famTick[id] = !_famTick[id];
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.querySelector('b').textContent = on ? 'In the house' : 'Not here';
+}
+function famReplyLink(name){
+  const o = _famShare;
+  return famBase()+'#famreply='+famEnc({v:1, k:'r', from:String(name || '').slice(0, 30), at:new Date().toISOString(), sent:o.at,
+    f:o.f.map(function(x){ return [x[0], _famTick[x[0]] ? 1 : 0]; }), c:o.c});
+}
+function famSend(){
+  if(!_famShare) return null;
+  const el = document.getElementById('famName'), name = el ? String(el.value || '').trim() : '';
+  try{ if(name) localStorage.setItem(FAM_NAME_KEY, name); }catch(e){}
+  return famOut(famReplyLink(name), 'Pantry update', 'Pantry update'+(name ? ' from '+name : '')+':', document.getElementById('famMsg'));
+}
+/* A reply opened where his app is not (Safari on his iPhone): say what it is and offer it to copy. */
+function famCopyPage(root){
+  root = root || document.body;
+  const r = famValid(famDec(famHashPayload('famreply')), 'r');
+  try{ document.title = 'Pantry update'; }catch(e){}
+  if(root === document.body) document.body.className = 'fam-body';
+  if(!r){ root.innerHTML = '<main class="fam"><h1>Pantry update</h1><p class="fam-lede">This link did not come through whole. Ask them to send it again.</p></main>'; return; }
+  const have = r.f.filter(function(x){ return x[1] === 1; }).map(function(x){ const it = famItemName(r, x[0]); return it ? it.n : null; }).filter(Boolean);
+  root.innerHTML = '<main class="fam"><span class="cc-eyebrow">Iron Hub</span><h1>Pantry update</h1>'+
+    '<p class="fam-lede">'+(r.from ? 'From '+esc(r.from)+'. ' : '')+'This browser does not hold your Iron Hub, so the update cannot apply here. '+
+    'Copy it, open Iron Hub, go to Body \u203a Fuel and tap <b>Paste family update</b>.</p>'+
+    (have.length ? '<p class="small" style="color:var(--muted)">In the house: '+esc(have.join(', '))+'</p>' : '')+
+    '<div class="fam-foot"><button type="button" class="btn" onclick="famCopyReply()">Copy update</button><p class="small" id="famMsg"></p></div></main>';
+}
+function famCopyReply(){
+  const msg = document.getElementById('famMsg'), url = location.href;
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){ if(msg) msg.textContent = 'Copied. Now open Iron Hub \u203a Fuel \u203a Paste family update.'; },
+        function(){ if(msg) msg.innerHTML = '<input class="fam-link" readonly value="'+esc(url)+'" onclick="this.select()">'; });
+      return;
+    }
+  }catch(e){}
+  if(msg) msg.innerHTML = '<input class="fam-link" readonly value="'+esc(url)+'" onclick="this.select()">';
 }
 
 /* ================= SETTINGS TAB ================= */
@@ -22077,6 +22341,7 @@ function startLiveRefresh(){
 }
 
 /* ===================== BOOT ===================== */
+function appBoot(){
 try{ if(pruneRemovedKeys()) save(false); }catch(e){}
 setAccent();
 setupPWA();
@@ -22123,6 +22388,18 @@ _bootPull.then(()=>{
   try{ setInterval(whoopMaybeKick, 15*60*1000); }catch(e){}
 });
 try{ startLiveRefresh(); }catch(e){}
+}
+/* The family pantry check: a family link opens its own page and never starts the app, so nothing on
+   their phone syncs, runs an agent or holds his data. A reply link starts the app as usual where his data
+   is, then shows the update for review; in a browser without it, it offers the update to copy. */
+(function(){
+  let route = '';
+  try{ route = famRoute(); }catch(e){ route = ''; }
+  if(route === 'family'){ try{ famFamilyPage(); }catch(e){} return; }
+  if(route === 'reply-copy'){ try{ famCopyPage(); }catch(e){} return; }
+  appBoot();
+  if(route === 'reply'){ try{ famReviewFromHash(); }catch(e){} }
+})();
 </script>
 </body>
 </html>
