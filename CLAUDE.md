@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3056 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3080 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -254,6 +254,7 @@ so the two orders can no longer disagree.
 | Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()`; jump cautions `e1Spike()` (`SPIKE_PCT`), `atCeiling()` (`STR_CEIL_SETS`) |
 | Per-lift flags | `exSlotsFor()` (split in force, else the permanent split), `isMaxed()`, `incForExercise()`, `slotInc()`, `isFormFocus()`, `isStrMode()`, `toggleRepMode()` |
 | Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
+| Recap | `recapSlides()`, `recapYear()` / `recapFinal()` / `recapTitle()`, `recapRender()` / `recapOpen()` / `recapGo()` / `recapClose()`, `recapCardHTML()` |
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
 | Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
@@ -877,6 +878,23 @@ date; V4's removal of date overrides stands.
   only once there is a result.
 - **Experiments:** a running `mealTiming` experiment reads its adherence from the tap (2–3h counts as
   followed).
+
+**The recap is built on demand and never stored** (his choice, 2026-10-05).
+- **When:** "2026 so far" any time. From Dec 31 it becomes "Your 2026", which stays through Jan 14
+  (`recapYear()`, `RECAP_JAN_GRACE`).
+- **The slides** (`recapSlides()`), each one of the app's own helpers read for the year:
+  - sessions, sets, pounds moved and the best streak (`streakStats()`), with training time "since late
+    September" because set `ts` starts Sep 24;
+  - strength gained (the most pounds first, the biggest jump by percent);
+  - PRs from `S.prHistory`;
+  - bodyweight from the year's first weigh-in to its last;
+  - the radar;
+  - the agents (`agTrackText()`);
+  - habits: the most trained day, and the muscles with the most and fewest sets.
+- **Where:** the card is first in Progress › Overview's year review (`recapCardHTML()`, titled
+  "Recap" so it does not repeat the year card). The story is `#recapOverlay`: Next and Back, a swipe,
+  Escape and the arrow keys.
+- **The Dec 31 notice:** one notification, id `recap:<year>`, for `RECAP_NOTIFY_DAYS`.
 
 **The strength radar is `muscleResponse(12, {clean:true})` times 12** (his choice: growth over 12 weeks).
 - The `clean` option is opt-in, and the default the agents read is unchanged.

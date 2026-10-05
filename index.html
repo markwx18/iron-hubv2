@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-05-v2">
+<meta name="ironhub-build" content="2026-10-05-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1482,6 +1482,27 @@
   .pw-conf{flex:none; padding:2px 8px; border-radius:999px; border:1px solid var(--line2); font-family:var(--disp); font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);}
   .pw-conf.high{border-color:var(--good); color:var(--good);}
   .pw-conf.medium{border-color:var(--warn); color:var(--warn);}
+  /* the recap story (2026-10-05) */
+  .recap-ov{position:fixed; inset:0; z-index:400; background:var(--base); color:var(--text); display:flex; flex-direction:column; gap:14px;
+    padding:calc(16px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom)); overflow-y:auto;}
+  .recap-top{display:flex; align-items:center; gap:10px;}
+  .recap-dots{flex:1; display:flex; gap:4px;}
+  .recap-dots i{flex:1; height:3px; border-radius:2px; background:var(--panel2);}
+  .recap-dots i.on{background:var(--amber);} .recap-dots i.past{background:var(--muted);}
+  .recap-x{width:40px; height:40px; border-radius:20px; border:none; background:var(--panel); color:var(--muted); font-size:22px; cursor:pointer; flex:none;}
+  .recap-h{font-family:var(--disp); font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:13px; color:var(--amber);}
+  .recap-slide{flex:1; display:flex; flex-direction:column; justify-content:center; gap:16px; max-width:520px; width:100%; margin:0 auto;}
+  .recap-k{font-family:var(--disp); font-weight:700; font-size:26px; text-transform:uppercase; letter-spacing:.02em;}
+  .recap-big{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;}
+  .recap-big b{font-family:var(--disp); font-size:88px; font-weight:700; line-height:.9; font-variant-numeric:tabular-nums;}
+  .recap-big span{font-size:16px; color:var(--muted);}
+  .recap-rows{display:flex; flex-direction:column; border-top:1px solid var(--line);}
+  .recap-row{display:flex; align-items:baseline; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px; color:var(--muted);}
+  .recap-row b{font-family:var(--disp); font-size:20px; color:var(--text); flex:none; min-width:0; font-variant-numeric:tabular-nums;}
+  .recap-note{margin:0; font-size:14px; line-height:1.5; color:var(--muted);}
+  .recap-nav{display:flex; align-items:center; gap:12px; max-width:520px; width:100%; margin:0 auto;}
+  .recap-nav span{flex:1; text-align:center; font-size:12px; color:var(--dim);}
+  .recap-card .btn{align-self:flex-start;}
   /* meal timing: the LIVE chips and the Fuel card (2026-10-05) */
   .lv-ate{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:10px 0 2px;}
   .lv-ate-k{font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);}
@@ -17496,6 +17517,140 @@ function strengthRadarHTML(){
     '<p class="small" style="color:var(--dim);margin-top:4px">The e1RM change of each group\u2019s lifts over 12 weeks, from clean sessions (no deloads, home days or reshaped sessions).</p></div>';
 }
 
+/* ---------------- THE RECAP (his choice, 2026-10-05) ----------------
+   "2026 so far" any time, and "Your 2026" from Dec 31 (through Jan 14, so the finished year is still
+   there once January starts). A swipeable story built on demand from the logs; nothing is stored. Each
+   slide is one of the app's own helpers read for the year, so the recap cannot disagree with the screen
+   a number came from. Set timing only exists from Sep 24, and the slide using it says so. */
+const RECAP_TIMED_SINCE = 'Sep 24', RECAP_JAN_GRACE = '01-14', RECAP_NOTIFY_DAYS = 7;
+let recapIdx = 0, _recapX = null;
+function recapYear(){ const t = todayKey(); return t.slice(5) <= RECAP_JAN_GRACE ? String(+t.slice(0, 4) - 1) : t.slice(0, 4); }
+function recapFinal(){ return todayKey() >= recapYear()+'-12-31'; }
+function recapTitle(){ return recapFinal() ? 'Your '+recapYear() : recapYear()+' so far'; }
+function recapSlides(){
+  const y = recapYear(), logs = (S.logs||[]).filter(function(l){ return l && String(l.date).slice(0, 4) === y; });
+  const out = [];
+  if(!logs.length) return out;
+  // 1. the year in numbers
+  let sets = 0, vol = 0, mins = 0, timed = 0;
+  const ex = {};
+  logs.forEach(function(l){
+    (l.entries||[]).forEach(function(e){ ex[e.exercise] = 1; sets += (e.sets||[]).length; (e.sets||[]).forEach(function(st){ vol += (+st.w||0) * (+st.r||0); }); });
+    const d = sessionDensity(l); if(d){ mins += d.mins; timed++; }
+  });
+  let streak = 0;
+  try{ streak = streakStats().longest; }catch(e){ streak = 0; }
+  out.push({k:'numbers', kicker:'The year in numbers', big:String(logs.length), unit:'sessions',
+    rows:[[sets.toLocaleString(), 'sets'], [vol >= 1e6 ? (vol / 1e6).toFixed(1)+'M' : Math.round(vol / 1000)+'k', 'lb moved'],
+          [String(Object.keys(ex).length), 'exercises'], [String(streak), 'training days in a row, your best streak']],
+    note: timed ? (Math.round(mins / 6) / 10)+' hours under the bar across '+timed+' timed sessions, since late September (set timing started '+RECAP_TIMED_SINCE+').' : ''});
+  // 2. strength gained: the year's best e1RM against the first one logged this year
+  const gains = anBigLifts(4).map(function(nm){
+    const pts = e1rmSeries(nm).filter(function(p){ return p.date.slice(0, 4) === y; });
+    if(pts.length < 2) return null;
+    const first = pts[0].v, best = Math.max.apply(null, pts.map(function(p){ return p.v; }));
+    return {nm:nm, first:first, best:best, gain:best - first, pct: first > 0 ? (best - first) / first * 100 : 0};
+  }).filter(function(g){ return g && g.gain > 0.5; }).sort(function(a, b){ return b.gain - a.gain; });
+  if(gains.length){
+    const jump = gains.slice().sort(function(a, b){ return b.pct - a.pct; })[0];
+    out.push({k:'strength', kicker:'Strength gained', big:'+'+Math.round(gains[0].gain), unit:'lb e1RM on '+gains[0].nm,
+      rows:gains.slice(0, 5).map(function(g){ return [Math.round(g.first)+' \u2192 '+Math.round(g.best), g.nm]; }),
+      note:'Biggest jump: '+jump.nm+', +'+Math.round(jump.pct)+'%.'});
+  }
+  // 3. PRs, from the PR log
+  const prs = (S.prHistory||[]).filter(function(p){ return p && String(p.date).slice(0, 4) === y; });
+  if(prs.length){
+    const best = prs.slice().sort(function(a, b){ return (+b.gain||0) - (+a.gain||0); })[0];
+    out.push({k:'prs', kicker:'PRs', big:String(prs.length), unit:'new bests',
+      rows:[[best.weight+' \u00d7 '+best.reps, best.exercise]],
+      note:'The biggest: +'+best.gain+' lb e1RM on '+best.exercise+', '+fmtDate(best.date)+'.'});
+  }
+  // 4. bodyweight: first weigh-in of the year to the last, and the pace now against the band
+  const bw = (S.weights||[]).filter(function(w){ return w && String(w.date).slice(0, 4) === y && +w.lbs > 0; }).sort(function(a, b){ return a.date.localeCompare(b.date); });
+  if(bw.length >= 2){
+    const d = Math.round((bw[bw.length-1].lbs - bw[0].lbs) * 10) / 10;
+    let pace = '';
+    try{ const br = bulkRate(4); if(br && isFinite(br.rate)) pace = 'Pace now '+(br.rate >= 0 ? '+' : '')+br.rate.toFixed(2)+' lb/wk, '+(HOME_BAND_WORD[bulkBand(br.rate)] || bulkBand(br.rate))+'.'; }catch(e){}
+    out.push({k:'bw', kicker:'Bodyweight', big:(d >= 0 ? '+' : '\u2212')+Math.abs(d), unit:'lb this year',
+      rows:[[String(bw[0].lbs), fmtDate(bw[0].date)], [String(bw[bw.length-1].lbs), fmtDate(bw[bw.length-1].date)]], note:pace});
+  }
+  // 5. the radar's shape
+  try{
+    const ax = radarData();
+    if(ax.filter(function(a){ return a.v !== null; }).length >= 3){
+      const lead = ax.filter(function(a){ return a.v !== null; }).sort(function(a, b){ return b.v - a.v; })[0];
+      out.push({k:'radar', kicker:'Where it grew, last 12 weeks', svg:ckRadar(ax), note:lead.label+' led at '+(lead.v >= 0 ? '+' : '\u2212')+Math.abs(lead.v)+'%.'});
+    }
+  }catch(e){}
+  // 6. the agents: how the changes he approved turned out
+  try{
+    const lines = AG_ORDER.concat('zulu').map(function(id){ const t = agTrackText(id); return t ? [AGENTS[id].name, t] : null; }).filter(Boolean);
+    const approved = agState().proposals.filter(function(p){ return p && p.status === 'approved' && p.fix && String(p.closed || p.created).slice(0, 4) === y; }).length;
+    if(lines.length) out.push({k:'agents', kicker:'Your agents', big:String(approved), unit:'changes you approved', rows:lines,
+      note:'Scored by the app from your logs since each change.'});
+  }catch(e){}
+  // 7. habits: the day he trained most, and his most and least trained muscles by sets
+  const byDay = {};
+  logs.forEach(function(l){ if(l.day) byDay[l.day] = (byDay[l.day] || 0) + 1; });
+  const top = Object.keys(byDay).sort(function(a, b){ return byDay[b] - byDay[a] || a.localeCompare(b); })[0];
+  let vg = null;
+  try{ vg = weeklyVolumeByGroup(y+'-01-01', todayKey()); }catch(e){ vg = null; }
+  if(top){
+    const rows = [];
+    if(vg){
+      const gs = MUSCLE_GROUPS.filter(function(g){ return vg[g] > 0; }).sort(function(a, b){ return vg[b] - vg[a]; });
+      if(gs.length >= 2){ rows.push([gs[0], 'most sets ('+Math.round(vg[gs[0]])+')']); rows.push([gs[gs.length-1], 'fewest sets ('+Math.round(vg[gs[gs.length-1]])+')']); }
+    }
+    out.push({k:'habits', kicker:'Habits', big:top, unit:'your most trained day, '+byDay[top]+' sessions'+(dayName(top) ? ' ('+dayName(top)+')' : ''), rows:rows});
+  }
+  return out;
+}
+function recapSlideHTML(sl){
+  let h = '<div class="recap-k">'+esc(sl.kicker)+'</div>';
+  if(sl.big) h += '<div class="recap-big"><b>'+esc(sl.big)+'</b><span>'+esc(sl.unit || '')+'</span></div>';
+  if(sl.svg) h += '<div class="recap-svg">'+sl.svg+'</div>';
+  if(sl.rows && sl.rows.length) h += '<div class="recap-rows">'+sl.rows.map(function(r){ return '<div class="recap-row"><b>'+esc(r[0])+'</b><span>'+esc(r[1])+'</span></div>'; }).join('')+'</div>';
+  if(sl.note) h += '<p class="recap-note">'+esc(sl.note)+'</p>';
+  return h;
+}
+function recapRender(){
+  let ov = document.getElementById('recapOverlay');
+  const slides = recapSlides();
+  if(!slides.length){ if(ov) ov.remove(); return; }
+  if(!ov){ ov = document.createElement('div'); ov.id = 'recapOverlay'; ov.className = 'recap-ov'; document.body.appendChild(ov); }
+  recapIdx = Math.max(0, Math.min(slides.length - 1, recapIdx));
+  ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', recapTitle());
+  ov.innerHTML = '<div class="recap-top"><div class="recap-dots" aria-hidden="true">'+slides.map(function(x, i){ return '<i class="'+(i === recapIdx ? 'on' : (i < recapIdx ? 'past' : ''))+'"></i>'; }).join('')+'</div>'+
+    '<button class="recap-x" aria-label="Close" onclick="recapClose()">\u00d7</button></div>'+
+    '<div class="recap-h">'+esc(recapTitle())+'</div>'+
+    '<div class="recap-slide" ontouchstart="_recapX = event.touches[0].clientX" ontouchend="recapSwipe(event)">'+recapSlideHTML(slides[recapIdx])+'</div>'+
+    '<div class="recap-nav"><button class="btn ghost sm" onclick="recapGo(-1)"'+(recapIdx ? '' : ' disabled')+'>Back</button>'+
+    '<span>'+(recapIdx + 1)+' / '+slides.length+'</span>'+
+    (recapIdx < slides.length - 1 ? '<button class="btn sm" onclick="recapGo(1)">Next</button>' : '<button class="btn sm" onclick="recapClose()">Done</button>')+'</div>';
+}
+function recapOpen(){ recapIdx = 0; recapRender(); }
+function recapGo(d){ recapIdx += d; recapRender(); }
+function recapSwipe(e){
+  if(_recapX === null || !e.changedTouches || !e.changedTouches[0]) return;
+  const dx = e.changedTouches[0].clientX - _recapX; _recapX = null;
+  if(Math.abs(dx) > 40) recapGo(dx < 0 ? 1 : -1);
+}
+function recapClose(){ const ov = document.getElementById('recapOverlay'); if(ov) ov.remove(); }
+document.addEventListener('keydown', function(e){
+  if(!document.getElementById('recapOverlay')) return;
+  if(e.key === 'Escape') recapClose();
+  else if(e.key === 'ArrowRight') recapGo(1);
+  else if(e.key === 'ArrowLeft') recapGo(-1);
+});
+function recapCardHTML(){
+  const n = recapSlides().length;
+  if(!n) return '';
+  // Titled Recap, not the year: the year-review card right under it already says 2026 so far.
+  return '<div class="card recap-card"><div class="k">Recap</div>'+
+    '<p class="small">'+esc(recapTitle())+', in '+n+' slides: the numbers, strength, PRs, bodyweight, where it grew, your agents and your habits.</p>'+
+    '<button class="btn sm" style="margin-top:10px" onclick="recapOpen()">Open the recap</button></div>';
+}
+
 /* ---------------- OVERVIEW (annual review + milestones) ---------------- */
 function renderAnOverview(){
   const el = document.getElementById('an_over'); if(!el) return;
@@ -17526,7 +17681,9 @@ function renderAnOverview(){
   });
   prs.sort((a,b)=>b.date.localeCompare(a.date));
 
-  let h = '<div class="card"><div class="k">'+year+' so far</div>'+
+  let h = '';
+  try{ h += recapCardHTML(); }catch(e){}
+  h += '<div class="card"><div class="k">'+year+' so far</div>'+
     '<div class="an-stats">'+
     '<div class="an-stat"><span class="an-stat-n">'+logs.length+'</span><span class="an-stat-l">sessions</span></div>'+
     '<div class="an-stat"><span class="an-stat-n">'+sets+'</span><span class="an-stat-l">sets</span></div>'+
@@ -20168,6 +20325,9 @@ function notifItems(){
               body:(f.findings&&f.findings[0])||'Open the Investigate tab for detail.',
               when:null, go:"showReviewTab('invest')"});
   });
+  // The finished year's recap, from Dec 31 for a week (2026-10-05). One id per year, so dismissing it sticks.
+  try{ if(recapFinal() && todayKey() <= mesoAddDays(recapYear()+'-12-31', RECAP_NOTIFY_DAYS) && recapSlides().length)
+    out.push({id:'recap:'+recapYear(), tone:'var(--amber)', title:'Your '+recapYear()+' recap is ready', body:'The year in seven slides: the numbers, strength, PRs, bodyweight, where it grew, your agents and your habits.', when:null, go:'recapOpen()'}); }catch(e){}
   // V4 stage 5: what the plateau watch and the forecasts found. Worked out here, never stored.
   try{ pwNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   const wr = waterReminder();

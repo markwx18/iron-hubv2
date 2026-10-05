@@ -12569,6 +12569,89 @@ setTimeout(async () => {
     ev('if(window.__paSaved){ S = JSON.parse(window.__paSaved); delete window.__paSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== THE 2026 RECAP (2026-10-05) ===');
+  try {
+    w.__pbSaved = ev('JSON.stringify(S)');
+    // A fixed day, so the year and the Dec 31 switch never depend on when the suite runs.
+    ev("window.__pbTK = todayKey; todayKey = function(){ return '2026-10-05'; };");
+    ev("S.logs = []; S.weights = []; S.prHistory = []; agState().proposals = []; S.split = Object.assign({}, S.split, {D1: Object.assign({}, S.split.D1 || {}, {name: 'Push'}), D2: Object.assign({}, S.split.D2 || {}, {name: 'Pull'})});");
+    let nb = 0;
+    const L = (date, day, entries, extra) => ev("S.logs.push(stampRec(Object.assign({id: 'rc" + (nb++) + "', date: '" + date + "', day: '" + day + "', entries: " + JSON.stringify(entries) + "}, " + JSON.stringify(extra || {}) + ")));");
+    // last year's session must not count
+    L('2025-12-20', 'D1', [{exercise: 'Barbell Bench Press', sets: [{w: 500, r: 5}]}]);
+    // Bench gains the most pounds and Row the most percent, so "biggest first" and "biggest jump" differ.
+    const bench = [200, 205, 210, 220, 230], row = [100, 100, 110, 115, 120];
+    bench.forEach((wt, i) => L('2026-0' + (3 + i) + '-02', 'D1', [{exercise: 'Barbell Bench Press', sets: [{w: wt, r: 8}, {w: wt, r: 6}]}]));
+    row.forEach((wt, i) => L('2026-0' + (3 + i) + '-03', 'D2', [{exercise: 'Barbell Row', sets: [{w: wt, r: 10}]}]));
+    // one timed session (set ts), since late September
+    const base = Date.parse('2026-09-30T18:00:00');
+    L('2026-09-30', 'D1', [{exercise: 'Barbell Bench Press', sets: [0, 6, 12, 18].map(m => ({w: 155, r: 8, ts: base + m * 60000}))}]);
+    ev("S.prHistory = [{exercise: 'Barbell Bench Press', weight: 150, reps: 8, e1rm: 190, prev: 180, gain: 10, date: '2026-06-02'}," +
+       " {exercise: 'Barbell Row', weight: 120, reps: 10, e1rm: 160, prev: 156, gain: 4, date: '2026-07-03'}, {exercise: 'Barbell Row', weight: 90, reps: 10, e1rm: 120, prev: 100, gain: 20, date: '2025-11-01'}];");
+    ev("S.weights = [{date: '2025-12-30', lbs: 140}, {date: '2026-03-01', lbs: 150}, {date: '2026-06-01', lbs: 155.5}, {date: '2026-10-01', lbs: 160.2}];");
+    const SL = () => JSON.parse(ev('JSON.stringify(recapSlides().map(function(x){ var y = Object.assign({}, x); if(y.svg) y.svg = "svg"; return y; }))'));
+    let sl = SL();
+    const by = (k) => sl.find(x => x.k === k);
+    const n = by('numbers');
+    ok('recap: this year only, the sessions, sets, pounds and exercises', n && n.big === '11' && n.rows[0][0] === '19' && n.rows[2][0] === '2' && n.rows[1][0] === Math.round(ev("(function(){ var v = 0; S.logs.forEach(function(l){ if(l.date.slice(0,4) !== '2026') return; l.entries.forEach(function(e){ e.sets.forEach(function(s){ v += s.w * s.r; }); }); }); return v; })()") / 1000) + 'k', JSON.stringify(n));
+    ok('recap: the best streak is the app’s own', n.rows[3][0] === String(ev('streakStats().longest')));
+    ok('recap: training time is labelled as only since late September', /hours under the bar across 1 timed sessions?, since late September \(set timing started Sep 24\)\./.test(n.note), n.note);
+    const st = by('strength');
+    ok('recap: strength gained, the year’s best against its first, the most pounds first, the biggest jump by percent',
+       st && st.unit === 'lb e1RM on Barbell Bench Press' && st.rows[0][1] === 'Barbell Bench Press' && st.rows.length === 2 && /Biggest jump: Barbell Row, \+20%\./.test(st.note), JSON.stringify(st));
+    const pr = by('prs');
+    ok('recap: PRs from the PR log, this year only, the biggest by its gain', pr && pr.big === '2' && pr.rows[0][1] === 'Barbell Bench Press' && /The biggest: \+10 lb e1RM on Barbell Bench Press/.test(pr.note), JSON.stringify(pr));
+    const bw = by('bw');
+    ok('recap: bodyweight from the year’s first weigh-in to its last', bw && bw.big === '+10.2' && bw.rows[0][0] === '150' && bw.rows[1][0] === '160.2', JSON.stringify(bw));
+    ok('recap: the radar slide waits for three groups with data', !by('radar'));
+    ev("window.__rdK = radarData; radarData = function(){ return RADAR_GROUPS.map(function(g, i){ return {label: g, v: i < 2 ? 3 : null, lifts: i < 2 ? 1 : 0}; }); };");
+    ok('recap: two groups with data are not enough for the radar slide', !SL().some(x => x.k === 'radar'));
+    ev("radarData = function(){ return RADAR_GROUPS.map(function(g, i){ return {label: g, v: i < 3 ? 3 + i : null, lifts: i < 3 ? 1 : 0}; }); };");
+    ok('recap: three are, and the slide names the leader', (function(){ const r = SL().find(x => x.k === 'radar'); return !!r && r.note === 'Shoulders led at +5%.' && r.svg === 'svg'; })());
+    ev("radarData = window.__rdK; delete window.__rdK;");
+    const hb = by('habits');
+    ok('recap: his most trained day, with its name', hb && hb.big === 'D1' && /your most trained day, 6 sessions \(Push\)/.test(hb.unit), JSON.stringify(hb));
+    ok('recap: no agents slide with nothing approved', !by('agents'));
+    ev("agState().proposals = [{id: 'pr1', agent: 'delta', title: 't', fix: {type: 'liftReset', payload: {name: 'Barbell Bench Press', w: 150, days: 7}}, status: 'approved', created: '2026-05-20', closed: '2026-05-20'}];");
+    sl = SL();
+    ok('recap: the agents slide reads the track records', by('agents') && by('agents').big === '1' && by('agents').rows[0][0] === 'DELTA' && by('agents').rows[0][1] === ev("agTrackText('delta')"), JSON.stringify(by('agents')));
+    // --- the card and the story ---
+    ev("renderAnOverview();");
+    ok('card: it opens the year review on Progress › Overview, with the slide count', /2026 so far/.test(ev("document.querySelector('#an_over .recap-card').textContent")) &&
+       new RegExp('in ' + sl.length + ' slides').test(ev("document.querySelector('#an_over .recap-card').textContent")) && ev("document.querySelector('#an_over .card').classList.contains('recap-card')") === true);
+    ev("recapOpen();");
+    ok('story: it opens on the first slide, a dot per slide', !!ev("!!document.getElementById('recapOverlay')") && ev("document.querySelectorAll('#recapOverlay .recap-dots i').length") === sl.length &&
+       /^The year in numbers/.test(ev("document.querySelector('#recapOverlay .recap-slide').textContent")) && ev("document.querySelector('#recapOverlay .recap-nav button').disabled") === true);
+    ev("recapGo(1);");
+    ok('story: Next moves on', /^Strength gained/.test(ev("document.querySelector('#recapOverlay .recap-slide').textContent")));
+    ev("recapSwipe({changedTouches: [{clientX: 300}]}); _recapX = 300; recapSwipe({changedTouches: [{clientX: 100}]});");
+    ok('story: a swipe left moves on, and a swipe with no start does nothing', /^PRs/.test(ev("document.querySelector('#recapOverlay .recap-slide').textContent")));
+    ev("recapGo(99);");
+    ok('story: the last slide ends with Done', ev("document.querySelector('#recapOverlay .recap-nav .btn:not(.ghost)').textContent") === 'Done');
+    ev("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}));");
+    ok('story: Escape closes it', !ev("!!document.getElementById('recapOverlay')"));
+    // --- Dec 31 ---
+    ok('dates: in October it is the year so far, and nothing is announced', ev('recapTitle()') === '2026 so far' && !JSON.parse(ev("JSON.stringify(notifItems().map(function(i){ return i.id; }))")).some(id => /^recap:/.test(id)));
+    ev("todayKey = function(){ return '2026-12-31'; };");
+    ok('dates: on Dec 31 it is the whole year, with one notification', ev('recapTitle()') === 'Your 2026' && JSON.parse(ev("JSON.stringify(notifItems().map(function(i){ return i.id; }))")).indexOf('recap:2026') >= 0);
+    ev("todayKey = function(){ return '2027-01-05'; };");
+    ok('dates: early January still shows the finished year, still announced for the first week', ev('recapYear()') === '2026' && ev('recapTitle()') === 'Your 2026' &&
+       JSON.parse(ev("JSON.stringify(notifItems().map(function(i){ return i.id; }))")).indexOf('recap:2026') >= 0);
+    ev("todayKey = function(){ return '2027-01-12'; };");
+    ok('dates: after its week the notice goes, the recap stays', ev('recapTitle()') === 'Your 2026' && !JSON.parse(ev("JSON.stringify(notifItems().map(function(i){ return i.id; }))")).some(id => /^recap:/.test(id)));
+    ev("todayKey = function(){ return '2027-01-20'; };");
+    ok('dates: from mid-January it is the new year so far, with nothing to show yet', ev('recapTitle()') === '2027 so far' && ev('recapSlides().length') === 0 && ev('recapCardHTML()') === '');
+    ev("todayKey = function(){ return '2026-10-05'; };");
+    const snapB = ev('JSON.stringify(S)');
+    ev("recapSlides(); recapCardHTML(); recapOpen(); recapGo(1); recapClose();");
+    ok('nothing written: the recap only reads', ev('JSON.stringify(S)') === snapB);
+  } catch (e) {
+    ok('recap section', false, e.stack);
+  } finally {
+    ev("try{ recapClose(); }catch(e){} if(window.__pbTK){ todayKey = window.__pbTK; delete window.__pbTK; }");
+    ev('if(window.__pbSaved){ S = JSON.parse(window.__pbSaved); delete window.__pbSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
