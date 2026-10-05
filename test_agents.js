@@ -11255,14 +11255,23 @@ setTimeout(async () => {
        ev("document.querySelector('#home .cc-t3').getAttribute('aria-label')"));
     ok('strip: and Today never says "ideas"', !/\bideas?\b/i.test(homeHtml.replace(/<[^>]+>/g, ' ')));
 
-    // --- plateau watch chips, straight from the Overload status ---
-    ev("window.__s3ol = olSignals; olSignals = function(){ return [{lift: 'S3 Dips', verdict: 'stalling'}, {lift: 'S3 Press <b>', verdict: 'on-track'}, {lift: 'S3 Row', verdict: 'attention'}]; };");
+    // --- plateau watch chips. Since V4 stage 5 they read plateauWatch(), not the Overload verdict
+    // (updated on purpose): his main lifts with their status, then one chip for the rest. ---
+    ev("window.__s3pw = plateauWatch; window.__s3pl = predLifts;" +
+       "plateauWatch = function(){ return [{lift: 'S3 Row', lvl: 'red', word: 'stalled', sig: []}, {lift: 'S3 Curl', lvl: 'red', word: 'stalled', sig: []}," +
+       " {lift: 'S3 Dips', lvl: 'amber', word: 'slowing', sig: []}, {lift: 'S3 Fly', lvl: 'amber', word: 'slowing', sig: []}, {lift: 'S3 Press <b>', lvl: 'green', word: 'on track', sig: []}]; };" +
+       "predLifts = function(){ return ['S3 Press <b>', 'S3 Row', 'S3 Dips', 'S3 Gone']; };");
     const ph = ev('homePlateauHTML()');
-    ev("olSignals = window.__s3ol; delete window.__s3ol;");
-    ok('plateau: a stalling lift is named as stalling', /S3 Dips<\/span><span class="cc-chip-v"[^>]*>stalling</.test(ph), ph.slice(0, 300));
-    ok('plateau: needs attention is named too', /S3 Row<\/span><span class="cc-chip-v"[^>]*>needs attention</.test(ph));
-    ok('plateau: an on-track lift carries no verdict word, only its dot', /S3 Press &lt;b&gt;<\/span><\/button>/.test(ph), ph);
-    ok('plateau: nothing to watch, no section', ev("(function(){ var k = olSignals; olSignals = function(){ return []; }; var h = homePlateauHTML(); olSignals = k; return h; })()") === '');
+    ev("plateauWatch = window.__s3pw; predLifts = window.__s3pl; delete window.__s3pw; delete window.__s3pl;");
+    ok('plateau: a slowing lift is named as slowing', /S3 Dips<\/span><span class="cc-chip-v"[^>]*>slowing</.test(ph), ph.slice(0, 300));
+    ok('plateau: a stalled one is named too', /S3 Row<\/span><span class="cc-chip-v"[^>]*>stalled</.test(ph));
+    ok('plateau: an on-track lift carries no word, only its dot', /S3 Press &lt;b&gt;<\/span><\/button>/.test(ph), ph);
+    ok('plateau: his main lifts first, in their order; a main lift the watch does not cover is skipped',
+       ph.indexOf('S3 Press') < ph.indexOf('S3 Row') && ph.indexOf('S3 Row') < ph.indexOf('S3 Dips') && ph.indexOf('S3 Gone') < 0);
+    ok('plateau: the others not on track fold into one chip', /\+ 1 stalled \u00b7 1 slowing/.test(ph) && ph.indexOf('S3 Curl') < 0 && ph.indexOf('S3 Fly') < 0, ph);
+    ok('plateau: a lift name travels in data-lift, never spliced into the onclick',
+       /data-lift="S3 Press &lt;b&gt;" onclick="pwShow\(this\.dataset\.lift\)"/.test(ph));
+    ok('plateau: nothing to watch, no section', ev("(function(){ var k = plateauWatch; plateauWatch = function(){ return []; }; var h = homePlateauHTML(); plateauWatch = k; return h; })()") === '');
 
     // --- plan shape and the bodyweight tile ---
     ev("window.__s3dens = densityByDay; densityByDay = function(){ return {D1: [{mins: 61}, {mins: 48}, {mins: 55}]}; };");
@@ -11819,6 +11828,292 @@ setTimeout(async () => {
   } finally {
     ev('live = null; stopRest(); try{ if(window.__s4dc){ dayCall = window.__s4dc; delete window.__s4dc; } }catch(e){}');
     ev('if(window.__s4lSaved){ S = JSON.parse(window.__s4lSaved); delete window.__s4lSaved; }');
+  }
+
+  console.log('=== V4 STAGE 5: PLATEAU WATCH, LIKELY FACTORS, NOTIFICATIONS ===');
+  try {
+    w.__s5Saved = ev('JSON.stringify(S)');
+    // A clean slate: only the fixture's logs, and no WHOOP, weigh-ins, food or target history, so each
+    // signal and factor below is the only thing that can fire.
+    ev("S.logs = []; S.weights = []; S.nutrition = []; S.readiness = []; S.whoop = null; S.targetHist = []; S.notifCleared = [];");
+    ev("window.__s5k = {pwBlockAt: pwBlockAt, isMaxed: isMaxed, invActiveFlags: invActiveFlags, weeklyVolumeByGroup: weeklyVolumeByGroup, fatigueIndex: fatigueIndex," +
+       " dashToday: dashToday, dayCall: dayCall, todayKeyLifts: todayKeyLifts, bestE1RM: bestE1RM, nextPrForecast: nextPrForecast, deloadForecast: deloadForecast," +
+       " deloadActive: deloadActive, pwRising: pwRising, split: JSON.stringify(S.split)};");
+    ev("pwBlockAt = function(){ return ''; }; fatigueIndex = function(){ return {ok: false}; };");
+    let s5n = 0;
+    // One session of one lift, `ago` days back; sets are [w, r, effort lever?].
+    const s5Log = (nm, ago, sets, extra) => ev("S.logs.push(stampRec(Object.assign({id: 's5-" + (s5n++) + "', date: mesoAddDays(todayKey(), -" + ago + "), day: 'D1', entries: [{exercise: " +
+      JSON.stringify(nm) + ", sets: " + JSON.stringify(sets.map(x => { const o = {w: x[0], r: x[1]}; if (x[2] !== undefined) o.ef = x[2]; return o; })) + "}]}, " + JSON.stringify(extra || {}) + ")));");
+    // A lift's sessions a week apart, oldest first, the newest yesterday. Each item: [w, [reps...], lever?].
+    const series = (nm, list, extra, newest) => list.forEach((x, i) => s5Log(nm, (newest || 1) + 7 * (list.length - 1 - i), x[1].map(r => [x[0], r, x[2]]), extra ? extra(i, x) : null));
+    const R = (nm) => JSON.parse(ev("JSON.stringify(plateauRisk(" + JSON.stringify(nm) + ", {topsets: predTopsets(), flags: {}}))") || 'null');
+    const T = (n) => ev("mesoAddDays(todayKey(), " + n + ")");
+    const flat = [[90, [10, 9, 8]], [95, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]]];
+
+    // --- the signals, one at a time ---
+    series('Zz PW Stall', flat);
+    let r = R('Zz PW Stall');
+    ok('watch: five sessions at one weight with the reps flat is stalled, red', r && r.lvl === 'red' && r.word === 'stalled' && r.sig[0].k === 'stalled', JSON.stringify(r));
+    ok('watch: and says so in numbers', r && r.sig[0].txt === '5 sessions at 100, reps flat', r && r.sig[0].txt);
+    series('Zz PW Flat3', flat.slice(0, 5));
+    r = R('Zz PW Flat3');
+    ok('watch: three sessions flat is an early sign, amber', r && r.lvl === 'amber' && r.word === 'slowing' && r.sig[0].k === 'flat3', JSON.stringify(r));
+    series('Zz PW Reps', [[100, [8, 8, 8]], [100, [9, 8, 8]], [100, [10, 9, 8]], [100, [11, 10, 9]]]);
+    r = R('Zz PW Reps');
+    ok('watch: reps climbing at one weight is double progression, not a stall', r && r.lvl === 'green' && !r.sig.length, JSON.stringify(r));
+    series('Zz PW Fall', [[100, [10]], [100, [9]], [95, [10]], [95, [9]], [92.5, [9]], [90, [9]]]);
+    r = R('Zz PW Fall');
+    ok('watch: six sessions trending down, the newest under the ones before it, is falling', r && r.lvl === 'red' && r.word === 'falling' &&
+       /^e1RM down [\d.]+%\/wk over the last 6 sessions$/.test(r.sig[0].txt), JSON.stringify(r));
+    series('Zz PW Rebound', [[100, [10]], [100, [9]], [95, [10]], [95, [9]], [92.5, [9]], [100, [10]]]);
+    r = R('Zz PW Rebound');
+    ok('watch: a newest session back above the ones before it is not falling, even with the six-session slope down',
+       r && r.lvl === 'green' && ev("pwPctPerWeek(e1rmSeries('Zz PW Rebound').slice(-6))") < -0.5, JSON.stringify(r));
+    const slowList = [[100, [8]], [105, [8]], [110, [8]], [115, [8]], [117.5, [8]], [117.5, [9]], [120, [8]], [120, [9]]];
+    series('Zz PW Slow', slowList);
+    r = R('Zz PW Slow');
+    ok('watch: the last four sessions gaining under half what the four before did is slowing', r && r.lvl === 'amber' && r.sig.length === 1 && r.sig[0].k === 'slowing' &&
+       /^gaining [\d.]+ lb\/wk over the last 4 sessions, down from [\d.]+$/.test(r.sig[0].txt), JSON.stringify(r));
+    ev("pwBlockAt = function(k){ return k > mesoAddDays(todayKey(), -26) ? 'str' : 'hyp'; };");
+    r = R('Zz PW Slow');
+    ok('watch: across a change of block (a new rep range) the slope comparison waits', r && r.lvl === 'green', JSON.stringify(r));
+    ev("pwBlockAt = function(){ return ''; };");
+    series('Zz PW Harder', [[100, [8], 75], [100, [9], 75], [100, [10], 75], [100, [11], 55], [100, [12], 55], [100, [13], 55]]);
+    r = R('Zz PW Harder');
+    ok('watch: top sets feeling harder at the same weight is an early sign (the lever runs the other way to RPE)',
+       r && r.lvl === 'amber' && r.sig[0].k === 'effort' && r.sig[0].txt === 'top sets feel harder at the same weight: about RPE 7 then, 8 now', JSON.stringify(r));
+    series('Zz PW Easier', [[100, [8], 55], [100, [9], 55], [100, [10], 55], [100, [11], 75], [100, [12], 75], [100, [13], 75]]);
+    r = R('Zz PW Easier');
+    ok('watch: feeling easier is not a sign of anything', r && r.lvl === 'green', JSON.stringify(r));
+    const missList = [[100, [8]], [102.5, [8]], [105, [8]], [107.5, [8]], [110, [8]], [112.5, [8]], [115, [8]], [117.5, [8]]];
+    series('Zz PW Miss', missList, (i, x) => ({plan: {'Zz PW Miss': {w: x[0] + (i >= 4 ? 5 : 0), lo: 8, hi: 12, n: 1}}}));
+    r = R('Zz PW Miss');
+    ok('watch: the prescription held less often than it used to is an early sign', r && r.lvl === 'amber' && r.sig[0].k === 'misses' &&
+       r.sig[0].txt === 'held the prescription 0 of the last 4, 4 of the 4 before', JSON.stringify(r));
+    series('Zz PW Two', [[100, [8], 75], [100, [9], 75], [100, [10], 75], [100, [11], 55], [100, [12], 55], [100, [13], 55]], (i) => ({plan: {'Zz PW Two': {w: i >= 3 ? 105 : 100, lo: 8, hi: 12, n: 1}}}));
+    r = R('Zz PW Two');
+    ok('watch: two early signs together are red, worded as stalling rather than stalled', r && r.lvl === 'red' && r.word === 'stalling' && r.sig.length === 2, JSON.stringify(r));
+    ev("isMaxed = function(n){ return n === 'Zz PW Stall'; };");
+    r = R('Zz PW Stall');
+    ok('watch: a MAXED machine sitting at its top weight is amber at most, and says why', r && r.lvl === 'amber' && r.word === 'at the top', JSON.stringify(r));
+    ev("isMaxed = window.__s5k.isMaxed;");
+
+    // --- clean sessions only ---
+    series('Zz PW Clean', flat, (i) => (i >= 5 ? {call: {call: 'recover'}} : null));
+    r = R('Zz PW Clean');
+    ok('clean: two kept recover days do not count toward a stall', r && r.lvl === 'amber' && r.flatRun === 3, JSON.stringify(r));
+    ok('clean: liftProfile() by default still reads every session (the agents’ summary does not move)',
+       ev("liftProfile('Zz PW Clean').flatRun") === 5 && ev("liftProfile('Zz PW Clean', {clean: true}).flatRun") === 3);
+
+    // --- which lifts the watch covers ---
+    series('Zz PW Old', flat.slice(0, 5), null, 40);
+    series('Zz PW BW', [[0.5, [10]], [0.5, [10]], [0.5, [11]], [0.5, [11]], [0.5, [12]]]);
+    series('Zz PW NotSplit', flat.slice(0, 5));
+    ev("S.split = {D1: {name: 'Zz', exercises: ['Zz PW Stall', 'Zz PW Reps', 'Zz PW Flat3', 'Zz PW Old', 'Zz PW BW']}};");
+    const pl = JSON.parse(ev('JSON.stringify(pwLifts())'));
+    ok('lifts: the split’s lifts are watched', pl.indexOf('Zz PW Stall') >= 0 && pl.indexOf('Zz PW Reps') >= 0, JSON.stringify(pl));
+    ok('lifts: one not trained in 4 weeks is not', pl.indexOf('Zz PW Old') < 0);
+    ok('lifts: nor a bodyweight one logged at 0.5 lb, nor one outside the split', pl.indexOf('Zz PW BW') < 0 && pl.indexOf('Zz PW NotSplit') < 0);
+    ev("invActiveFlags = function(){ return [{key: 'lift:Zz PW Reps', severity: 'orange', title: 'Zz PW Reps declining', status: 'active'}]; };");
+    let pw = JSON.parse(ev('JSON.stringify(plateauWatch())'));
+    const pwOf = (nm) => pw.find(x => x.lift === nm);
+    ok('flag: an open Investigation flag makes an on-track lift amber, and names it', pwOf('Zz PW Reps') && pwOf('Zz PW Reps').lvl === 'amber' &&
+       pwOf('Zz PW Reps').word === 'flagged' && pwOf('Zz PW Reps').sig[0].txt === 'Investigation flag open: Zz PW Reps declining', JSON.stringify(pwOf('Zz PW Reps')));
+    ev("invActiveFlags = function(){ return [{key: 'lift:Zz PW Reps', severity: 'yellow', title: 'x', status: 'active'}]; };");
+    pw = JSON.parse(ev('JSON.stringify(plateauWatch())'));
+    ok('flag: a yellow flag is not a floor', pwOf('Zz PW Reps') && pwOf('Zz PW Reps').lvl === 'green');
+    ok('watch: worst first', pw.map(x => x.lvl).join(',') === 'red,amber,green', pw.map(x => x.lift + ':' + x.lvl).join(','));
+    ev("invActiveFlags = window.__s5k.invActiveFlags;");
+
+    // --- dips ---
+    series('Zz PW Dip', [[100, [10]], [100, [10]], [100, [11]], [92, [10]], [97, [10]]]);
+    s5Log('Zz PW Dip', 3, [[80, 10]], {call: {call: 'recover'}});
+    const dips = JSON.parse(ev("JSON.stringify(liftDips('Zz PW Dip'))"));
+    ok('dips: a session 8% under the median of the three before it is a dip', dips.length === 1 && dips[0].pct === 8 && dips[0].date === T(-8), JSON.stringify(dips));
+    ok('dips: a kept recover day at 80 lb is not one', !dips.some(d => d.v < 110));
+
+    // --- rising: moved up a level at the newest session ---
+    series('Zz PW Rise', flat.slice(0, 6));
+    const riseRows = "[plateauRisk('Zz PW Rise', {topsets: predTopsets(), flags: {}}), plateauRisk('Zz PW Stall', {topsets: predTopsets(), flags: {}})]";
+    const logsBefore = ev("window.__s5L = S.logs; S.logs.length");
+    const rising = JSON.parse(ev("JSON.stringify(pwRising(" + riseRows + "))"));
+    ok('rising: a lift its newest session moved from amber to red is rising', rising.length === 1 && rising[0].lift === 'Zz PW Rise' && rising[0].from === 'amber' && rising[0].to === 'red' &&
+       rising[0].date === T(-1), JSON.stringify(rising));
+    ok('rising: a lift that was already red is not announced again', !rising.some(x => x.lift === 'Zz PW Stall'));
+    ok('rising: the logs are the same array afterwards', ev("S.logs === window.__s5L && S.logs.length") === logsBefore);
+    ev("try{ pwAsOf(todayKey(), function(){ throw new Error('x'); }); }catch(e){}");
+    ok('rising: and are put back even when the read throws', ev("S.logs === window.__s5L") === true);
+    ev("delete window.__s5L;");
+
+    // --- likely factors ---
+    ev("S.logs = []; S.split = {D1: {name: 'Zz', exercises: ['Zz PW Cause']}};");
+    series('Zz PW Cause', [[100, [8]], [102.5, [8]], [105, [8]], [107.5, [8]], [110, [8]]]);
+    const C = (nm, days) => JSON.parse(ev("JSON.stringify(plateauCauses(" + JSON.stringify(nm) + ", todayKey(), " + (days || 28) + "))"));
+    ok('factors: with nothing going on, none is invented', C('Zz PW Cause').length === 0);
+    ok('factors: and the card says nothing stands out', /Nothing in recovery, food, volume or how often it was trained stands out/.test(
+       ev("pwCausesHTML({lift: 'Zz PW Cause', lvl: 'amber', word: 'slowing', sig: [{k: 'flat3', txt: 'x'}]})")));
+    ev("S.whoop = {history: []};" +
+       "for(var i = 30; i <= 45; i++) S.whoop.history.push({date: mesoAddDays(todayKey(), -i), recovery: 70});" +
+       "[45, 45, 70, 45, 70, 45].forEach(function(v, i){ S.whoop.history.push({date: mesoAddDays(todayKey(), -(i + 1)), recovery: v}); });");
+    let c = C('Zz PW Cause');
+    ok('factors: four of six WHOOP days 15+ under his usual is a High recovery factor', c.length === 1 && c[0].k === 'recovery' && c[0].conf === 'High' &&
+       c[0].txt === '4 of 6 days 15+ under your usual (70%)', JSON.stringify(c));
+    ev("S.whoop.history.forEach(function(r){ if(r.recovery === 45) r.recovery = 60; }); S.whoop.history[S.whoop.history.length - 1].recovery = 50;");
+    ok('factors: one low day is not a slump', C('Zz PW Cause').length === 0, JSON.stringify(C('Zz PW Cause')));
+    ev("S.whoop = null;");
+    ev("S.weights = [35, 28, 21, 14, 7].map(function(d){ return {date: mesoAddDays(todayKey(), -d), lbs: 160}; });");
+    c = C('Zz PW Cause');
+    ok('factors: a flat scale on a lean bulk is a High food factor, led by the scale', c.length === 1 && c[0].k === 'food' && c[0].conf === 'High' &&
+       c[0].title === 'Bodyweight under the band' && /^scale \+0\.0 lb\/wk, flat/.test(c[0].txt), JSON.stringify(c));
+    ev("S.weights = [35, 28, 21, 14, 7].map(function(d, i){ return {date: mesoAddDays(todayKey(), -d), lbs: 160 + i * 0.75}; });");
+    ev("S.nutrition = [1, 2, 3, 4].map(function(d){ return {date: mesoAddDays(todayKey(), -d), cals: calTarget() - 600, protein: 150}; });");
+    ok('factors: days under today’s target do not count while the target on those days is unknown', C('Zz PW Cause').length === 0, JSON.stringify(C('Zz PW Cause')));
+    ev("S.targetHist = [{id: 'g1', kind: 'cal', from: 3000, to: calTarget(), date: mesoAddDays(todayKey(), -20), by: 'test', t: 1}];");
+    c = C('Zz PW Cause');
+    ok('factors: once it is known, four days well under target is a food factor', c.length === 1 && c[0].title === 'Under-eating' && c[0].conf === 'Medium' &&
+       c[0].txt === '4 days well under target', JSON.stringify(c));
+    ok('factors: the target in force on a day comes from the history', ev("calTargetOn(mesoAddDays(todayKey(), -25))") === 3000 && ev("calTargetOn(todayKey())") === ev('calTarget()'));
+    ev("S.targetHist = []; S.nutrition = [];");
+    ok('factors: with no history, the target is today’s', ev("calTargetOn('2026-01-01')") === ev('calTarget()'));
+    ev("S.logs = []; S.split = {D1: {name: 'Zz', exercises: ['Zz PW Curl']}};");
+    series('Zz PW Curl', [[30, [8]], [32.5, [8]], [35, [8]], [37.5, [8]], [40, [8]]]);
+    ev("weeklyVolumeByGroup = function(a, b){ return b === todayKey() ? {Biceps: 20} : {Biceps: 24}; };");
+    c = C('Zz PW Curl');
+    ok('factors: sets for the lift’s muscles well up on the weeks before is a volume factor', c.length === 1 && c[0].title === 'Volume spike' && c[0].conf === 'High' &&
+       c[0].txt === 'biceps sets up 67% on the 4 weeks before (10/wk)', JSON.stringify(c));
+    ev("weeklyVolumeByGroup = function(a, b){ return b === todayKey() ? {Biceps: 7} : {Biceps: 24}; };");
+    c = C('Zz PW Curl');
+    ok('factors: and well down is one too', c.length === 1 && c[0].title === 'Volume dropped' && c[0].conf === 'Medium', JSON.stringify(c));
+    ev("weeklyVolumeByGroup = window.__s5k.weeklyVolumeByGroup; fatigueIndex = function(){ return {ok: true, ratio: 1.6}; };");
+    c = C('Zz PW Curl');
+    ok('factors: load well over his norm is a factor', c.length === 1 && c[0].k === 'load' && c[0].conf === 'High' && c[0].txt === 'this week 1.60× your 4-week norm', JSON.stringify(c));
+    ev("fatigueIndex = function(){ return {ok: false}; };");
+    ev("S.logs = [];");
+    [64, 57, 50, 43, 36].forEach((d, i) => s5Log('Zz PW Gap', d, [[100 + i * 2.5, 8]]));
+    s5Log('Zz PW Gap', 1, [[112.5, 8]]);
+    c = C('Zz PW Gap');
+    ok('factors: trained once in four weeks against a usual week is a consistency factor', c.length === 1 && c[0].k === 'consistency' && c[0].conf === 'High' &&
+       c[0].txt === 'once in 4 weeks, usually every 7 days', JSON.stringify(c));
+    ev("S.logs = [];");
+    series('Zz PW Stale', flat.slice(0, 5));
+    c = C('Zz PW Stale');
+    ok('factors: a lift flat with nothing else to explain it may have gone stale, said with Low confidence', c.length === 1 && c[0].k === 'stale' && c[0].conf === 'Low' &&
+       c[0].txt === 'recovery, food and volume look normal; 3 sessions at 100', JSON.stringify(c));
+    ev("fatigueIndex = function(){ return {ok: true, ratio: 1.3}; };");
+    c = C('Zz PW Stale');
+    ok('factors: stale is only by elimination: with real evidence elsewhere it is not offered', !c.some(x => x.k === 'stale') && c.some(x => x.k === 'load'), JSON.stringify(c));
+    ev("S.weights = [35, 28, 21, 14, 7].map(function(d){ return {date: mesoAddDays(todayKey(), -d), lbs: 160}; }); fatigueIndex = function(){ return {ok: true, ratio: 1.6}; };" +
+       "S.whoop = {history: []}; for(var i = 30; i <= 45; i++) S.whoop.history.push({date: mesoAddDays(todayKey(), -i), recovery: 70});" +
+       "[45, 45, 70, 45, 70, 45].forEach(function(v, i){ S.whoop.history.push({date: mesoAddDays(todayKey(), -(i + 1)), recovery: v}); });" +
+       "weeklyVolumeByGroup = function(a, b){ return b === todayKey() ? {Biceps: 7} : {Biceps: 24}; };");
+    series('Zz PW Curl B', [[30, [8]], [32.5, [8]], [35, [8]], [37.5, [8]], [40, [8]]]);
+    c = C('Zz PW Curl B');
+    ok('factors: at most three, High before Medium (the Medium volume factor is the one left out)', c.length === 3 && c.every((x, i) => i === 0 || ({High: 3, Medium: 2, Low: 1})[c[i - 1].conf] >= ({High: 3, Medium: 2, Low: 1})[x.conf]) &&
+       !c.some(x => x.k === 'volume'), JSON.stringify(c.map(x => x.k + ':' + x.conf)));
+    ev("weeklyVolumeByGroup = window.__s5k.weeklyVolumeByGroup; fatigueIndex = function(){ return {ok: false}; }; S.whoop = null; S.weights = [];");
+    ok('window: a stall is read from a week before it began, between 3 and 8 weeks',
+       ev("pwCauseWindow({flatRun: 3, flatSince: mesoAddDays(todayKey(), -40)})") === 47 && ev("pwCauseWindow({flatRun: 3, flatSince: mesoAddDays(todayKey(), -5)})") === 21 &&
+       ev("pwCauseWindow({flatRun: 4, flatSince: mesoAddDays(todayKey(), -90)})") === 56 && ev("pwCauseWindow({flatRun: 2, flatSince: null})") === 28);
+
+    // --- notifications ---
+    const N = (pre) => JSON.parse(ev("JSON.stringify(pwNotifItems())")).filter(i => i.id.indexOf(pre) === 0);
+    ev("pwRising = function(){ return [{lift: \"Zz O'Brien Row\", from: 'amber', to: 'red', word: 'stalled', date: mesoAddDays(todayKey(), -1), why: '5 sessions at 180, reps flat'}]; };");
+    let n = N('plateau:');
+    ok('notify: a lift that moved up a level gets its own notice, keyed by lift, level and day', n.length === 1 && n[0].id === "plateau:Zz O'Brien Row:red:" + T(-1) &&
+       n[0].title === 'Plateau watch — Zz O\'Brien Row stalled' && /^Moved to stalled after .*: 5 sessions at 180, reps flat\. Tap for the likely factors\.$/.test(n[0].body), JSON.stringify(n));
+    ev("live = null; notifOpen = true; renderNotif();");
+    const oc = ev("(function(){ var b = [].slice.call(document.querySelectorAll('#notifPanel .notif-item')).find(function(x){ return /pwShow/.test(x.getAttribute('onclick') || ''); }); return b ? b.getAttribute('onclick') : ''; })()");
+    ok('notify: its tap opens that lift, the name safely quoted', oc === 'notifToggle();pwShow("Zz O\'Brien Row")', oc);
+    ev("notifOpen = false; renderNotif(); pwRising = function(){ return []; };");
+    ev("dashToday = function(){ return {dayKey: 'D1', rest: false, logged: false, name: 'Zz'}; }; dayCall = function(){ return {call: 'normal', conf: 'none', why: []}; };" +
+       "deloadActive = function(){ return false; };" +
+       "todayKeyLifts = function(){ return [{name: 'Zz PR A', w: 100, lo: 8, hi: 12}, {name: 'Zz PR B', w: 100, lo: 8, hi: 12}]; };" +
+       "bestE1RM = function(n){ return n === 'Zz PR A' ? 130 : 200; };");
+    n = N('pr:');
+    ok('notify: a PR in reach today, at the weight LIVE will give, within the range', n.length === 1 && n[0].id === 'pr:' + T(0) &&
+       n[0].body === 'Zz PR A: 100 × 10 beats your best (e1RM 130).', JSON.stringify(n));
+    ok('notify: and LIVE’s PR watch asks the same question', ev("livePrWatch({name: 'Zz PR A', hi: 12, targetW: 100}).r") === ev("prWatchAt('Zz PR A', 100, 12).r"));
+    ev("bestE1RM = function(){ return 141; };");
+    ok('notify: one rep past the top of the range (LIVE’s PR watch would show it) is not "in reach"', ev("prWatchAt('Zz PR A', 100, 12).r") === 13 && N('pr:').length === 0);
+    ev("bestE1RM = function(n){ return n === 'Zz PR A' ? 130 : 200; }; dashToday = function(){ return {dayKey: 'D1', rest: false, logged: true}; };");
+    ok('notify: not once today is logged', N('pr:').length === 0);
+    ev("dashToday = function(){ return {dayKey: 'D1', rest: false, logged: false}; }; live = {date: todayKey(), day: 'D1', exercises: []};");
+    ok('notify: nor during a session (LIVE shows its own)', N('pr:').length === 0);
+    ev("live = null; nextPrForecast = function(){ return {lift: 'Zz PR A', from: mesoAddDays(todayKey(), 3), to: mesoAddDays(todayKey(), 10), pr: 180.8, conf: 'steady trend'}; };");
+    n = N('prf:');
+    ok('notify: a PR likely this week, as a range', n.length === 1 && /^Zz PR A e1RM past 181, likely .* \(steady trend\)\. A range, not a promise\.$/.test(n[0].body), JSON.stringify(n));
+    ev("nextPrForecast = function(){ return {lift: 'Zz PR A', from: mesoAddDays(todayKey(), 9), to: mesoAddDays(todayKey(), 12), pr: 180.8, conf: 'x'}; };");
+    ok('notify: not when the window opens later than a week', N('prf:').length === 0);
+    ev("nextPrForecast = function(){ return null; }; deloadForecast = function(){ return {weeks: 0, text: 'Due now — the signals say take it this week.', planned: null}; };");
+    n = N('deload');
+    ok('notify: a deload the forecast calls due now', n.length === 1 && n[0].title === 'A deload looks due' && /^Due now/.test(n[0].body), JSON.stringify(n));
+    ev("deloadForecast = function(){ return {weeks: 2, text: 'x', planned: {start: mesoAddDays(todayKey(), 2), weeksAway: 1}}; };");
+    n = N('deload');
+    ok('notify: a planned deload two days out', n.length === 1 && n[0].id === 'deloadplan:' + T(2) && n[0].title === 'Planned deload in 2 days', JSON.stringify(n));
+    ev("deloadForecast = function(){ return {weeks: 2, text: 'x', planned: {start: mesoAddDays(todayKey(), 3), weeksAway: 1}}; };");
+    ok('notify: not three days out', N('deload').length === 0);
+    ev("deloadActive = function(){ return true; }; deloadForecast = function(){ return {weeks: 0, text: 'x', planned: null}; };");
+    ok('notify: nor during a deload', N('deload').length === 0);
+    ev("deloadActive = function(){ return false; }; deloadForecast = function(){ return null; };");
+    ev("agState().autoRun = true; agState().lastRun = mesoAddDays(todayKey(), -2); agState().log = [];");
+    n = withHourAt(10, () => N('skip:'));
+    ok('notify: a night the cycle never ran says so, and why', n.length === 1 && n[0].id === 'skip:' + T(-1) &&
+       /it only runs while the app is open after 9 PM, and it wasn’t\. It runs again tonight, or use Run cycle now in the Hub\.$/.test(n[0].body), JSON.stringify(n));
+    ev("agState().log = [{agent: 'zulu', text: 'Tonight’s cycle is paused: the monthly cap is reached.', at: new Date(mesoAddDays(todayKey(), -1) + 'T21:05:00').toISOString()}];");
+    n = withHourAt(10, () => N('skip:'));
+    ok('notify: paused at the cap is named as the reason', n.length === 1 && /it was paused at the monthly API cap\./.test(n[0].body), JSON.stringify(n));
+    ok('notify: after 9 PM tonight’s run is still to come, so nothing', withHourAt(22, () => N('skip:')).length === 0);
+    ev("agState().lastRun = mesoAddDays(todayKey(), -1);");
+    ok('notify: nor when last night ran', withHourAt(10, () => N('skip:')).length === 0);
+    ev("agState().lastRun = mesoAddDays(todayKey(), -2); agState().autoRun = false;");
+    ok('notify: nor with auto-run off', withHourAt(10, () => N('skip:')).length === 0);
+    ev("agState().autoRun = true; nextPrForecast = function(){ return {lift: 'Zz PR A', from: mesoAddDays(todayKey(), 3), to: mesoAddDays(todayKey(), 10), pr: 180.8, conf: 'x'}; };");
+    withHourAt(10, () => ev("notifDismiss('pr:' + todayKey())"));
+    const vis = JSON.parse(withHourAt(10, () => ev("JSON.stringify(notifVisible().map(function(i){ return i.id; }))")));
+    ok('notify: dismissing one leaves the others', vis.indexOf('pr:' + T(0)) < 0 && vis.some(i => i.indexOf('prf:') === 0) && vis.some(i => i.indexOf('skip:') === 0), JSON.stringify(vis));
+    ['dashToday', 'dayCall', 'todayKeyLifts', 'bestE1RM', 'nextPrForecast', 'deloadForecast', 'deloadActive', 'pwRising'].forEach(k => ev(k + " = window.__s5k." + k + ";"));
+
+    // --- where it shows: Overload rows, the Hub, and nothing written ---
+    ev("S.logs = []; S.notifCleared = [];");
+    series('Zz PW Stall', flat);
+    series('Zz PW Reps', [[100, [8, 8, 8]], [100, [9, 8, 8]], [100, [10, 9, 8]], [100, [11, 10, 9]]]);
+    ev("S.split = {D1: {name: 'Zz', exercises: ['Zz PW Stall', 'Zz PW Reps']}}; pwOpen = {};");
+    const before = ev('JSON.stringify(S)');
+    ev("renderAnOverload();");
+    ok('overload: a watched lift’s row carries the watch’s word', ev("(document.querySelector('#an_overload .pw-line[data-lift=\"Zz PW Stall\"] .pw-w')||{}).textContent") === 'stalled');
+    ok('overload: an on-track lift gets no watch line, only its row', ev("!!document.querySelector('#an_overload .pw-line[data-lift=\"Zz PW Reps\"]')") === false &&
+       [].concat(JSON.parse(ev("JSON.stringify([].slice.call(document.querySelectorAll('#an_overload .ol-nm')).map(function(x){ return x.textContent; }))"))).indexOf('Zz PW Reps') >= 0);
+    const olv = JSON.parse(ev("JSON.stringify(olSignals().map(function(x){ return [x.lift, x.verdict, x.watch]; }))"));
+    const olOf = (nm) => olv.find(x => x[0] === nm) || [];
+    ok('overload: a lift the watch calls stalled is at least "stalling", never "on track" beside it', olOf('Zz PW Stall')[1] === 'stalling' && olOf('Zz PW Stall')[2] === 'red', JSON.stringify(olv));
+    ok('overload: an on-track lift keeps its verdict', olOf('Zz PW Reps')[1] === 'on-track', JSON.stringify(olv));
+    ev("isMaxed = function(n){ return n === 'Zz PW Stall'; };");
+    ok('overload: a MAXED machine keeps its carve-out', JSON.parse(ev("JSON.stringify(olSignals().find(function(x){ return x.lift === 'Zz PW Stall'; }).verdict)")) === 'on-track');
+    ev("isMaxed = window.__s5k.isMaxed;");
+    ev("pwToggle('Zz PW Stall');");
+    ok('overload: tapping opens the likely factors, worded as likely', /Likely factors/.test(ev("(document.querySelector('#an_overload .pw-why')||{}).textContent")) &&
+       /likely, not proven/.test(ev("(document.querySelector('#an_overload .pw-why')||{}).textContent")));
+    ev("renderAnOverload();");
+    ok('overload: and a repaint keeps it open', !!ev("!!document.querySelector('#an_overload .pw-why')"));
+    ev("pwShow('Zz PW Reps');");
+    ok('overload: a chip opens its lift alone', JSON.stringify(JSON.parse(ev('JSON.stringify(pwOpen)'))) === '{"Zz PW Reps":true}' && ev('activeMainTab') === 'progress');
+    ev("renderOps();");
+    ok('hub: DELTA’s lifts as the watch reads them', /DELTA is watching/.test(ev("(document.querySelector('#ops .hub-pw')||{}).textContent")) &&
+       ev("document.querySelectorAll('#ops .hub-pw + .cc-chips .cc-chip').length") >= 1);
+    const sig1 = ev('opsSignature()');
+    ev("S.logs.push({id: 's5-sig', date: todayKey(), day: 'D1', entries: []});");
+    ok('hub: a new session repaints it', ev('opsSignature()') !== sig1);
+    ev("S.logs.pop();");
+    ev("plateauWatch(); pwRising(); pwNotifItems(); homePlateauHTML(); pwToggle('Zz PW Stall'); renderAnOverload();");
+    ok('nothing written: the watch, its factors and its notices only read', ev('JSON.stringify(S)') === before);
+  } catch (e) {
+    ok('V4 stage 5 watch section', false, e.stack);
+  } finally {
+    ev("if(window.__s5k){ ['pwBlockAt','isMaxed','invActiveFlags','weeklyVolumeByGroup','fatigueIndex','dashToday','dayCall','todayKeyLifts','bestE1RM','nextPrForecast','deloadForecast','deloadActive','pwRising'].forEach(function(k){ window[k] = window.__s5k[k]; }); }");
+    ev("try{ pwBlockAt = window.__s5k.pwBlockAt; isMaxed = window.__s5k.isMaxed; invActiveFlags = window.__s5k.invActiveFlags; weeklyVolumeByGroup = window.__s5k.weeklyVolumeByGroup; fatigueIndex = window.__s5k.fatigueIndex;" +
+       " dashToday = window.__s5k.dashToday; dayCall = window.__s5k.dayCall; todayKeyLifts = window.__s5k.todayKeyLifts; bestE1RM = window.__s5k.bestE1RM; nextPrForecast = window.__s5k.nextPrForecast;" +
+       " deloadForecast = window.__s5k.deloadForecast; deloadActive = window.__s5k.deloadActive; pwRising = window.__s5k.pwRising; }catch(e){} live = null; notifOpen = false; pwOpen = {};");
+    ev('if(window.__s5Saved){ S = JSON.parse(window.__s5Saved); delete window.__s5Saved; } delete window.__s5k;');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

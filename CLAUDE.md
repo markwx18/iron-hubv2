@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2845 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 2922 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -254,6 +254,7 @@ so the two orders can no longer disagree.
 | Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()`; jump cautions `e1Spike()` (`SPIKE_PCT`), `atCeiling()` (`STR_CEIL_SETS`) |
 | Per-lift flags | `exSlotsFor()` (split in force, else the permanent split), `isMaxed()`, `incForExercise()`, `slotInc()`, `isFormFocus()`, `isStrMode()`, `toggleRepMode()` |
 | Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
+| Plateau watch | `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
 | Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
@@ -818,6 +819,52 @@ date; V4's removal of date overrides stands.
   timed sessions.
 - **`streakStats()`** has no 60-day cap, and keeps the longest run.
 
+**The plateau watch is on the device, free, and never stored** (V4 stage 5, 2026-10-04).
+`plateauRisk(nm)` gives each lift green / amber / red, from clean sessions only (`pwCleanHist()`,
+`e1rmSeries(…, {excludeHome, excludeMod})`).
+- **Red:** stalled (`stalled3` for `PW_STALL_RED` (4)+ sessions), falling (the last 6 down more than
+  `PW_FALL_PCT`%/wk AND the newest under the 3 before it), or two amber signs ("stalling").
+- **Amber:** three sessions flat, slowing, effort creeping, or more misses. Slowing means the last 4
+  sessions gain under half of the 4 before, and it waits across a change of block, because a new rep
+  range is a different e1RM ruler. Effort creeping means the lever going DOWN at the same weight: 0 is a
+  failed rep, 90 easy, so the lever runs the opposite way to RPE.
+- **Sessions, not weeks:** he trains most lifts once an 8-day cycle, so four weeks is three points.
+- **The lifts watched (`pwLifts()`):** in the split, trained in the last `PW_STALE_DAYS` (28), and
+  loaded.
+- **What lowers or raises it:** a MAXED lift goes no higher than amber ("at the top"). An open
+  red/orange Investigation flag makes it at least amber.
+- **The Overload verdict takes the watch as a floor**, not the other way round. Its 0.3 lb/wk band
+  called Row Machine falling at -0.02%/wk, and its 10-session trend read Lat Pulldown "on track"
+  beside "stalled, 5 sessions at 165". A watched lift that is not green is at least "stalling" in
+  `olSignals()`.
+- **On his real data (2026-10-04):** 27 lifts watched, 9 red (all real stalls of 4-12 sessions),
+  5 amber.
+
+Around it:
+- **Likely factors:** `plateauCauses(nm, endKey, days)` returns at most 3: recovery, food, volume,
+  load, consistency, and "stale stimulus" only by elimination. Each has High / Medium / Low, and all are
+  worded "likely, not proven". It never invents one.
+  - Food leads with the scale (`bulkRate(weeks, endKey)`). It counts days under target only where the
+    target that day is known (`calTargetOn()`, from `S.targetHist`, which starts 2026-10-03), so
+    September is not judged against today's higher target.
+  - A stall is read from a week before it began (`pwCauseWindow()`, 21-56 days).
+- **Dips:** `liftDips()` mirrors `e1Spike()`: a clean session `DIP_PCT` (6%) under the median of the
+  3 before it.
+- **"Rising":** `pwRising()` compares each lift with itself before its newest session, by
+  `pwAsOf()`, which shortens `S.logs` synchronously and restores it in `finally`. That is what stops
+  a lift stalled since August re-announcing itself.
+- **Notifications** (`pwNotifItems()`, worked out when read; each id carries the lift or the day):
+  - plateau rising;
+  - PR in reach today (`prWatchAt()`, shared with LIVE's PR watch, within the range);
+  - PR likely this week;
+  - deload due now, or planned within 2 days;
+  - last night's cycle never ran (it names the cap if that paused it). It runs nothing itself.
+- **Where it shows:**
+  - Today's and the Hub's chips (`pwChipsHTML()`): his main lifts, then one chip for the rest. The
+    name travels in `data-lift`, never in an onclick string.
+  - On Overload, a line under each non-green row that opens its factors. The open state is
+    module-scoped (`pwOpen`).
+
 **A jump earned on grinders repeats once** (`grind-hold`, in both `recommend()` and
 `classifyDecision()`). At the ceiling with grind or fail top sets, the weight repeats. It goes up
 anyway if the session before was already that repeat (same weight, also at the ceiling), or a lift
@@ -1237,7 +1284,8 @@ proposals are counted as **requests** ("1 request"), never ideas.
   - whether it fed the cycle;
   - its chat, directly beneath.
 
-  Below that: run bar, brief, pending, experiments, this week, the feed (agent glyphs), the folded
+  Below that: the plateau watch row ("DELTA is watching", `pwChipsHTML()`), run bar, brief, pending,
+  experiments, this week, the feed (agent glyphs), the folded
   letter, then the spend ring (`hubSpendHTML()`, `spendMonth()` against `spendCap()`) above the spend
   card. `opsSignature()` includes the month's spend. **Set cap** opens the spend card's fold before
   focusing its input, or the focus lands on a hidden input and does nothing. `SPEND_WARN_FRAC` is the

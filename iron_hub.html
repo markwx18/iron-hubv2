@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-04-v6">
+<meta name="ironhub-build" content="2026-10-04-v7">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1460,6 +1460,28 @@
   .cc-chip i{width:8px; height:8px; border-radius:4px; flex:none;}
   .cc-chip-n{min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .cc-chip-v{font-size:12px; white-space:nowrap;}
+  .cc-chip.pw-more{background:none; border:1px solid var(--line2); color:var(--muted); font-weight:500;}
+  .hub-pw{margin-top:18px;}
+  .hub-pw + .cc-chips{margin-top:8px;}
+  /* plateau watch line under an Overload row, and its likely factors (V4 stage 5) */
+  .pw-line{display:flex; align-items:center; gap:8px; width:100%; min-height:36px; margin:0 0 6px; padding:6px 0 6px 26px; border:none; background:none;
+    color:var(--text); font:inherit; font-size:12.5px; text-align:left; cursor:pointer;}
+  .pw-line.calm{cursor:default;}
+  .pw-line i{width:8px; height:8px; border-radius:4px; flex:none;}
+  .pw-w{font-family:var(--disp); font-weight:700; text-transform:uppercase; letter-spacing:.04em; font-size:12.5px; white-space:nowrap;}
+  .pw-s{flex:1; min-width:0; color:var(--muted); line-height:1.35;}
+  .pw-c{flex:none; width:18px; text-align:center; color:var(--dim); font-size:15px;}
+  .pw-why{margin:0 0 10px 26px; padding:10px 12px; border-radius:var(--r-ctl); background:var(--panel2); display:flex; flex-direction:column; gap:10px;}
+  .pw-sigs{margin:0; font-size:12px; color:var(--muted); line-height:1.45;}
+  .pw-why-h{display:flex; align-items:baseline; gap:8px; font-family:var(--disp); font-weight:700; text-transform:uppercase; letter-spacing:.04em; font-size:13px;}
+  .pw-note{margin-left:auto; font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; color:var(--dim); font-weight:500;}
+  .pw-f{display:flex; align-items:center; gap:10px;}
+  .pw-f-n{font-family:var(--disp); font-weight:700; font-size:24px; line-height:1; width:16px; color:var(--dim); flex:none;}
+  .pw-f-b{flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; font-size:12.5px; color:var(--muted); line-height:1.4;}
+  .pw-f-b b{font-size:13.5px; color:var(--text); font-weight:600;}
+  .pw-conf{flex:none; padding:2px 8px; border-radius:999px; border:1px solid var(--line2); font-family:var(--disp); font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);}
+  .pw-conf.high{border-color:var(--good); color:var(--good);}
+  .pw-conf.medium{border-color:var(--warn); color:var(--warn);}
   .cc-brief{display:flex; gap:12px; align-items:flex-start;}
   .cc-brief .cc-glyph{width:30px; height:30px; font-size:14px; border-radius:9px;}
   .cc-brief-b{min-width:0; flex:1;}
@@ -4101,8 +4123,9 @@ function bodyweightSeriesSmoothed(){
    Investigation already treated as truth -- so this moves renderBulk() up onto the accurate
    method rather than dragging the accurate ones down to it.
    Returns null when there genuinely is not enough history to say. */
-function bulkRate(weeks){
-  const sm = bodyweightSeriesSmoothed();
+function bulkRate(weeks, endKey){
+  // endKey reads the rate as it stood on a past day (the plateau watch's likely causes). Default: now.
+  const sm = endKey ? bodyweightSeriesSmoothed().filter(p=>p.date<=endKey) : bodyweightSeriesSmoothed();
   if(sm.length < 3) return null;
   const win = sm.slice(-Math.max(2, weeks||4));
   const reg = linreg(win);
@@ -8712,16 +8735,23 @@ function liveLogLabel(){
 }
 /* PR watch: the fewest reps at the called weight that would beat his best e1RM, shown only when it
    is within one rep of the top of the range -- a target he could actually hit tonight. */
-function livePrWatch(ex, adv){
-  if(!ex || ex._1rm || ex._deload || isBodyweight(ex.name)) return null;
-  const w = +((adv && adv.w) || ex.targetW) || 0, best = bestE1RM(ex.name), hi = +ex.hi || 0;
-  if(!(w > 0) || !(best > 0) || !(hi > 0)) return null;
+/* The fewest reps at a weight that beat his best e1RM, up to one past the top of the range. LIVE's
+   PR watch and the "PR in reach today" notification both ask this, so they cannot disagree. */
+function prWatchAt(nm, w, hi){
+  const best = bestE1RM(nm);
+  if(isBodyweight(nm) || !(w > 0) || !(best > 0) || !(hi > 0)) return null;
   for(let r = 1; r <= hi + 1; r++){
     const e1 = epley(w, r);
-    if(e1 > best + 0.05) return {w:w, r:r, e1:Math.round(e1), best:Math.round(best),
-      txt:w+' × '+r+' tonight beats your best (e1RM '+Math.round(e1)+', now '+Math.round(best)+')'};
+    if(e1 > best + 0.05) return {w:w, r:r, e1:Math.round(e1), best:Math.round(best)};
   }
   return null;
+}
+function livePrWatch(ex, adv){
+  if(!ex || ex._1rm || ex._deload || isBodyweight(ex.name)) return null;
+  const p = prWatchAt(ex.name, +((adv && adv.w) || ex.targetW) || 0, +ex.hi || 0);
+  if(!p) return null;
+  p.txt = p.w+' × '+p.r+' tonight beats your best (e1RM '+p.e1+', now '+p.best+')';
+  return p;
 }
 /* When he will likely be done: the sets still planned, times his own median gap between sets on this
    day type (set ts, first set to the next). Gaps over 15 minutes are a break, not a set, and are left
@@ -14580,8 +14610,11 @@ function callTier(c){ return c === 'push' ? 'high' : (c === 'easy' || c === 'rec
 /* Per-lift patterns, for the agents' summary and the investigation: how often a jump sticks, how
    many sessions a jump takes, where the effort is heading, and the e1RM trend. Gym, non-deload
    history only (historyFor). null until there are 3 sessions. */
-function liftProfile(name){
-  const hist = historyFor(name).slice().reverse();   // oldest first
+function liftProfile(name, opts){
+  // {clean:true} reads only the sessions that say something about the lift (the plateau watch).
+  // The default is unchanged, so the agents' summary does not move.
+  const clean = !!(opts && opts.clean);
+  const hist = (clean ? pwCleanHist(name) : historyFor(name)).slice().reverse();   // oldest first
   if(hist.length < 3) return null;
   const top = function(h){ return Math.max(0, ...h.sets.map(function(st){ return +st.w || 0; })); };
   let jumps = 0, stuck = 0, judged = 0, lastJump = 0;
@@ -14598,7 +14631,7 @@ function liftProfile(name){
     return v.length ? Math.round(v.reduce(function(a, b){ return a + b; }, 0)/v.length) : null; };
   const n = hist.length, last3 = hist.slice(-3), prev3 = hist.slice(-6, -3);
   let slope = null;
-  try{ const pts = e1rmSeries(name).slice(-8); const reg = pts.length >= 3 ? linreg(pts) : null; if(reg) slope = Math.round(reg.slope*7*10)/10; }catch(e){}
+  try{ const pts = e1rmSeries(name, clean ? {excludeHome:true, excludeMod:true} : undefined).slice(-8); const reg = pts.length >= 3 ? linreg(pts) : null; if(reg) slope = Math.round(reg.slope*7*10)/10; }catch(e){}
   const tw = last3.map(top);
   const flat3 = tw.length === 3 && tw[0] === tw[1] && tw[1] === tw[2];
   /* Same weight is not the same as stuck. Adding reps at one weight is double progression doing
@@ -14623,7 +14656,8 @@ function liftProfile(name){
   return {name:name, sessions:n, jumps:jumps, stickRate: judged ? Math.round(stuck/judged*100)/100 : null,
           sessionsPerJump: gaps.length ? pxMedian(gaps) : null, effortNow:eff(last3), effortBefore: prev3.length ? eff(prev3) : null,
           e1rmPerWeek:slope, flat3:flat3, stalled3:stalled3, topW:tw[tw.length-1], lastReps:atTop(hist[n-1]).reps,
-          lastDate:hist[n-1].date, flatRun:flatRun, flatSince:flatSince, everyDays: dgap.length ? pxMedian(dgap) : null};
+          lastDate:hist[n-1].date, flatRun:flatRun, flatSince:flatSince, everyDays: dgap.length ? pxMedian(dgap) : null,
+          topWBefore: prev3.length ? Math.max(...prev3.map(top)) : null};
 }
 /* Weekly hard sets per muscle group against how that group's lifts are moving, over the last N
    completed weeks. For the agents' volume calls (setCount): more sets where volume is low and
@@ -14653,6 +14687,281 @@ function muscleResponse(weeks){
               pctPerWeek: t.length ? Math.round(t.reduce(function(a, b){ return a + b; }, 0)/t.length*100)/100 : null};
   });
   return {weeks:n, groups:out};
+}
+
+/* ============================================================
+   PLATEAU WATCH (V4 stage 5). On the device, $0, worked out when it is read and never stored.
+   It asks whether a lift is slowing BEFORE it stalls, for the lifts in his program, from clean
+   sessions only: a deload, a HOME day or anything sessionModLift() calls shaped says nothing about
+   whether the lift itself is moving.
+     red    stalled (flat weight and flat reps for PW_STALL_RED+ sessions), falling, or two amber signs
+     amber  one early sign: three sessions flat, the gain slowing, effort creeping, more misses
+     green  none of those
+   An open Investigation flag on the lift makes it at least amber: the app has already said so.
+   The Overload tab's own verdict is NOT a floor. It reads direction with a fixed 0.3 lb/wk band, so
+   on his data (2026-10-04) it called Row Machine falling at -0.02%/wk; this watch judges in percent
+   of the lift's level, so a 450-lb leg press and a 20-lb raise are read alike.
+   Counted in sessions, not calendar weeks: he trains most lifts once an 8-day cycle, so four weeks
+   holds three or four sessions, too few to fit a slope to.
+   ============================================================ */
+const PW_MIN = 4, PW_STALL_RED = 4, PW_EFF_CREEP = 8, PW_FALL_PCT = 0.5, PW_CLIMB_PCT = 0.5, PW_STALE_DAYS = 28;
+const PW_LEVELS = {
+  red:   {n:2, col:'var(--bad)',  word:'stalled'},
+  amber: {n:1, col:'var(--warn)', word:'slowing'},
+  green: {n:0, col:'var(--good)', word:'on track'}
+};
+/* This lift's sessions that say something about the lift: newest first, the shape historyFor() returns. */
+function pwCleanHist(nm){
+  const out = [];
+  (S.logs || []).slice().sort(function(a, b){ return b.date.localeCompare(a.date); }).forEach(function(l){
+    if(!l || l.deload || l.home) return;
+    const e = (l.entries || []).find(function(x){ return x.exercise === nm; });
+    if(!e || !(e.sets || []).length) return;
+    if(sessionModLift(sessionMods(l), nm)) return;
+    out.push({date:l.date, sets:e.sets, deload:false, home:false});
+  });
+  return out;
+}
+/* The lifts the watch covers: in the split in force or the permanent one, trained in the last
+   PW_STALE_DAYS, and loaded (a bodyweight lift logged at 0.5 lb has no weight to stall on). A lift
+   still in the split but swapped out every session for a month is not watched either. */
+function pwLifts(){
+  const set = {};
+  const add = function(src){ Object.keys(src || {}).forEach(function(dk){ ((src[dk] || {}).exercises || []).forEach(function(x){ const n = exName(x); if(n) set[n] = 1; }); }); };
+  add(S.split);
+  try{ add(activeSplitObj()); }catch(e){}
+  return Object.keys(set).filter(function(n){
+    if(isBodyweight(n)) return false;
+    const h = historyFor(n)[0];
+    return !!h && h.date > mesoAddDays(todayKey(), -PW_STALE_DAYS) && Math.max(0, ...h.sets.map(function(st){ return +st.w || 0; })) > 1;
+  });
+}
+/* Percent of the lift's level per week, so a 450-lb leg press and a 20-lb raise are judged alike. */
+function pwPctPerWeek(pts){
+  if(!pts || pts.length < 3) return null;
+  const reg = linreg(pts); if(!reg) return null;
+  const m = pxMedian(pts.map(function(p){ return p.v; }));
+  return m > 0 ? reg.slope * 7 / m * 100 : null;
+}
+/* The block a session sat in. A change of block changes the rep range, and an e1RM read from 5s
+   and one read from 12s are not the same ruler, so the slope comparison waits rather than call
+   that "slowing". */
+function pwBlockAt(k){ try{ const w = mesoWeekAt(k); return w ? w.type : ''; }catch(e){ return ''; } }
+function plateauRisk(nm, ctx){
+  const pts = e1rmSeries(nm, {excludeHome:true, excludeMod:true});
+  if(pts.length < PW_MIN) return null;
+  const p = liftProfile(nm, {clean:true});
+  if(!p || !(p.topW > 1)) return null;
+  const maxed = isMaxed(nm), sig = [];
+  const fmtW = function(v){ return String(Math.round(v * 10) / 10); };
+  // Stalled, or three sessions flat: liftProfile()'s own rule (flat weight AND no rep gain).
+  if(p.stalled3){
+    if(p.flatRun >= PW_STALL_RED) sig.push({k:'stalled', lvl:'red', txt:p.flatRun+' sessions at '+fmtW(p.topW)+', reps flat'});
+    else sig.push({k:'flat3', lvl:'amber', txt:p.flatRun+' sessions at '+fmtW(p.topW)+', reps flat'});
+  }
+  // Falling: the last six clean sessions trend down, and the newest is under the ones before it.
+  const last6 = pts.slice(-6), fall = pwPctPerWeek(last6);
+  if(last6.length >= 5 && fall !== null && fall < -PW_FALL_PCT &&
+     last6[last6.length-1].v < pxMedian(last6.slice(-4, -1).map(function(x){ return x.v; })))
+    sig.push({k:'falling', lvl:'red', txt:'e1RM down '+Math.abs(Math.round(fall * 10) / 10)+'%/wk over the last '+last6.length+' sessions'});
+  // Slowing: the last four sessions gained under half what the four before did, and those were
+  // really climbing. Like with like only.
+  const rec = pts.slice(-4), ear = pts.slice(-8, -4);
+  if(rec.length === 4 && ear.length >= 3){
+    const blocks = function(a){ return a.map(function(x){ return pwBlockAt(x.date); }).sort().join(','); };
+    const sameBlock = blocks(rec).split(',').every(function(b){ return blocks(ear).split(',').indexOf(b) >= 0; });
+    const r = pwPctPerWeek(rec), e = pwPctPerWeek(ear);
+    if(sameBlock && r !== null && e !== null && e >= PW_CLIMB_PCT && r < e / 2 && !sig.some(function(s){ return s.k === 'falling' || s.k === 'stalled'; })){
+      const lb = function(a){ const g = linreg(a); return g ? Math.round(g.slope * 7 * 10) / 10 : 0; };
+      sig.push({k:'slowing', lvl:'amber', txt:'gaining '+lb(rec)+' lb/wk over the last 4 sessions, down from '+lb(ear)});
+    }
+  }
+  // Effort creeping: the top weight feels harder at the same or a lighter load. The lever runs the
+  // other way to RPE (0 is a failed rep, 90 easy), so harder is the lever going DOWN.
+  if(p.effortNow !== null && p.effortBefore !== null && p.effortBefore - p.effortNow >= PW_EFF_CREEP &&
+     p.topWBefore !== null && p.topW <= p.topWBefore)
+    sig.push({k:'effort', lvl:'amber', txt:'top sets feel harder at the same weight: about RPE '+effRpe(p.effortBefore)+' then, '+effRpe(p.effortNow)+' now'});
+  // More misses: the prescription held fewer times than it used to, or not at all lately.
+  const ts = ((ctx && ctx.topsets) || predTopsets()).filter(function(x){ return x.name === nm && !x.interrupted; });
+  const held = function(a){ return a.filter(function(x){ return x.held; }).length; };
+  const r4 = ts.slice(-4), e4 = ts.slice(-8, -4);
+  if(r4.length === 4 && e4.length >= 3 && held(e4) * 4 / e4.length - held(r4) >= 2)
+    sig.push({k:'misses', lvl:'amber', txt:'held the prescription '+held(r4)+' of the last 4, '+held(e4)+' of the '+e4.length+' before'});
+  else if(ts.length >= 3 && held(ts.slice(-3)) === 0)
+    sig.push({k:'misses', lvl:'amber', txt:'missed the prescription the last 3 times'});
+  let lvl = sig.some(function(s){ return s.lvl === 'red'; }) || sig.filter(function(s){ return s.lvl === 'amber'; }).length >= 2 ? 'red'
+          : sig.length ? 'amber' : 'green';
+  const has = function(k){ return sig.some(function(s){ return s.k === k; }); };
+  // Red from two early signs is not yet a stall, so it says "stalling".
+  let word = lvl === 'red' ? (has('falling') ? 'falling' : has('stalled') ? 'stalled' : 'stalling') : PW_LEVELS[lvl].word;
+  // No heavier setting exists, so a MAXED lift sitting at the top is the machine, not him.
+  if(maxed && lvl === 'red'){ lvl = 'amber'; word = 'at the top'; }
+  // An open Investigation flag is a floor: the app has already said this lift needs a look.
+  const fl = ctx && ctx.flags ? ctx.flags[nm] : null;
+  if(fl && (fl.severity === 'red' || fl.severity === 'orange')){
+    sig.push({k:'flag', lvl:'amber', txt:'Investigation flag open: '+fl.title});
+    if(lvl === 'green'){ lvl = 'amber'; word = 'flagged'; }
+  }
+  const trend = pwPctPerWeek(pts.slice(-8));
+  const reg8 = pts.length >= 3 ? linreg(pts.slice(-8)) : null;
+  return {lift:nm, lvl:lvl, word:word, sig:sig, maxed:maxed, sessions:pts.length, best:Math.max.apply(null, pts.map(function(x){ return x.v; })),
+          perWeek: reg8 ? Math.round(reg8.slope * 7 * 10) / 10 : 0, pctPerWeek: trend === null ? null : Math.round(trend * 100) / 100,
+          spark:pts.slice(-8), lastDate:pts[pts.length-1].date, flatRun:p.flatRun, flatSince:p.flatSince, topW:p.topW, everyDays:p.everyDays};
+}
+/* Every watched lift, worst first, compounds before accessories within a level. */
+function plateauWatch(){
+  const ctx = {topsets:[], flags:{}};
+  try{ ctx.topsets = predTopsets(); }catch(e){}
+  try{ invActiveFlags().forEach(function(f){ if(f && /^lift:/.test(f.key || '')) ctx.flags[f.key.slice(5)] = f; }); }catch(e){}
+  const out = [];
+  pwLifts().forEach(function(nm){ try{ const r = plateauRisk(nm, ctx); if(r) out.push(r); }catch(e){} });
+  const comp = function(n){ try{ return mesoIsCompound(n) ? 0 : 1; }catch(e){ return 1; } };
+  return out.sort(function(a, b){ return PW_LEVELS[b.lvl].n - PW_LEVELS[a.lvl].n || comp(a.lift) - comp(b.lift) || a.lift.localeCompare(b.lift); });
+}
+
+/* ---- likely causes ----
+   What else was going on in the window before a stall or a dip, ranked, each with a confidence
+   label. Worded as likely factors, never causes: the app can see that recovery was low while a lift
+   stalled, not that one made the other. With no evidence it says nothing stands out; it never
+   invents a cause to fill the space. */
+const PC_CONF = {High:3, Medium:2, Low:1};
+const PC_VOL_PCT = 30, PC_LOAD = 1.25, PC_REC_UNDER = 15;
+function plateauCauses(nm, endKey, days){
+  const end = endKey || todayKey(), span = days || 28, start = mesoAddDays(end, -span);
+  const out = [];
+  const inWin = function(d){ return d > start && d <= end; };
+  // Recovery: WHOOP days well under his usual over the last four weeks of the window, judged against
+  // the 30 days before them, so a slump cannot drag its own baseline down. Low check-ins when WHOOP
+  // has nothing.
+  try{
+    const rStart = mesoAddDays(end, -Math.min(span, 28));
+    const base = recoveryBaseline(rStart);
+    const rows = whoopHistRows().filter(function(r){ return r && r.date > rStart && r.date <= end && typeof r.recovery === 'number'; });
+    if(base && rows.length >= 4){
+      const under = rows.filter(function(r){ return r.recovery <= base.recovery - PC_REC_UNDER; }).length, f = under / rows.length;
+      const conf = under >= 3 && f >= 0.5 ? 'High' : under >= 2 && f >= 0.33 ? 'Medium' : under >= 2 ? 'Low' : null;
+      if(conf) out.push({k:'recovery', title:'Recovery slump', conf:conf, score:f,
+        txt:under+' of '+rows.length+' days 15+ under your usual ('+Math.round(base.recovery)+'%)'});
+    } else {
+      const rd = (S.readiness || []).filter(function(r){ return r && inWin(r.date) && rdComplete(r); });
+      const low = rd.filter(function(r){ return r.tier === 'low'; }).length, f = rd.length ? low / rd.length : 0;
+      const conf = low >= 3 && f >= 0.5 ? 'Medium' : low >= 2 ? 'Low' : null;
+      if(conf) out.push({k:'recovery', title:'Low readiness', conf:conf, score:f, txt:low+' of '+rd.length+' check-ins low'});
+    }
+  }catch(e){}
+  // Food: the scale is the outcome, so it leads. A lean bulk under the 0.5-1.0 band is not getting
+  // enough. Days well under target count only where the target in force that day is KNOWN (the
+  // target history starts 2026-10-03): judging a September day against today's higher target would
+  // call days on target "well under".
+  try{
+    const br = bulkRate(4, end);
+    const band = br && isFinite(br.rate) ? bulkBand(br.rate) : null;
+    const scaleLow = band === 'losing' || band === 'flat' || band === 'under';
+    const known = fuelTargetHistory('cal').length ? fuelTargetHistory('cal')[0].date : null;
+    const nut = (S.nutrition || []).filter(function(n){ return n && inWin(n.date) && +n.cals > 0; });
+    const way = known ? nut.filter(function(n){ return n.date >= known && nutTierCal(+n.cals, calTargetOn(n.date)) === 'way'; }).length : 0;
+    const conf = (band === 'losing' || band === 'flat') ? 'High' : scaleLow && way >= 3 ? 'High' : scaleLow || way >= 3 ? 'Medium' : way >= 2 ? 'Low' : null;
+    if(conf){
+      const bits = [];
+      if(scaleLow) bits.push('scale '+(br.rate >= 0 ? '+' : '')+br.rate.toFixed(1)+' lb/wk, '+(band === 'under' ? 'under the 0.5–1.0 band' : band === 'flat' ? 'flat' : 'losing'));
+      if(way >= 2) bits.push(way+' days well under target');
+      else if(nut.length >= 5) bits.push('eating about '+Math.round(pxMean(nut.map(function(n){ return +n.cals; })) / 10) * 10+' a day');
+      out.push({k:'food', title:way >= 2 ? 'Under-eating' : 'Bodyweight under the band', conf:conf, score:(scaleLow ? 1 : 0) + way / 10, txt:bits.join('; ')});
+    }
+  }catch(e){}
+  // Volume: sets for this lift's muscles in the last two weeks against the four before; and load.
+  try{
+    const groups = (musclesFor(nm).p || []);
+    if(groups.length){
+      const a = weeklyVolumeByGroup(mesoAddDays(end, -13), end), b = weeklyVolumeByGroup(mesoAddDays(end, -41), mesoAddDays(end, -14));
+      let best = null;
+      groups.forEach(function(g){
+        const now = (a[g] || 0) / 2, before = (b[g] || 0) / 4;
+        if(before < 3) return;
+        const pct = Math.round((now - before) / before * 100);
+        if(Math.abs(pct) >= PC_VOL_PCT && (!best || Math.abs(pct) > Math.abs(best.pct))) best = {g:g, pct:pct, now:now};
+      });
+      if(best) out.push({k:'volume', title:best.pct > 0 ? 'Volume spike' : 'Volume dropped', conf:Math.abs(best.pct) >= 50 ? 'High' : 'Medium',
+        score:Math.abs(best.pct) / 100, txt:best.g.toLowerCase()+' sets '+(best.pct > 0 ? 'up ' : 'down ')+Math.abs(best.pct)+'% on the 4 weeks before ('+(Math.round(best.now * 10) / 10)+'/wk)'});
+    }
+    const fi = fatigueIndex(end);
+    if(fi && fi.ok && fi.ratio > PC_LOAD) out.push({k:'load', title:'Load over your norm', conf:fi.ratio > 1.5 ? 'High' : 'Medium', score:fi.ratio - 1,
+      txt:'this week '+fi.ratio.toFixed(2)+'× your 4-week norm'});
+  }catch(e){}
+  // Consistency: trained less often than it usually comes round.
+  try{
+    const p = liftProfile(nm, {clean:true});
+    const n = (S.logs || []).filter(function(l){ return l && inWin(l.date) && !l.deload && (l.entries || []).some(function(e){ return e.exercise === nm; }); }).length;
+    if(p && p.everyDays){
+      const expect = Math.floor(span / p.everyDays);
+      if(expect >= 2 && n <= expect / 2)
+        out.push({k:'consistency', title:'Trained less often', conf:n <= expect / 3 ? 'High' : 'Medium', score:1 - n / expect,
+          txt:(n === 0 ? 'not trained' : n === 1 ? 'once' : n === 2 ? 'twice' : n+' times')+' in '+Math.round(span / 7)+' weeks, usually every '+p.everyDays+' days'});
+    }
+    // Stale stimulus: by elimination only. Nothing else has real evidence, and it has sat at one
+    // weight for a while.
+    if(p && p.flatRun >= 3 && !out.some(function(c){ return PC_CONF[c.conf] >= 2; }))
+      out.push({k:'stale', title:'Stimulus may have gone stale', conf:p.flatRun >= 5 ? 'Medium' : 'Low', score:p.flatRun / 10,
+        txt:'recovery, food and volume look normal; '+p.flatRun+' sessions at '+(Math.round(p.topW * 10) / 10)});
+  }catch(e){}
+  return out.sort(function(a, b){ return PC_CONF[b.conf] - PC_CONF[a.conf] || b.score - a.score; }).slice(0, 3);
+}
+/* The window to look for causes in. A lift that has sat flat is read from a week before it stopped
+   moving, so a stall that began in August is not explained by last week; otherwise four weeks. */
+function pwCauseWindow(r){
+  if(r && r.flatRun >= 3 && r.flatSince){
+    const d = daysBetween(r.flatSince, todayKey()) + 7;
+    return Math.max(21, Math.min(56, d));
+  }
+  return 28;
+}
+/* The calorie target in force on a day, from the target history. Before the first recorded change it
+   is that change's starting value; with no history at all, today's target. */
+function calTargetOn(k){
+  const rows = fuelTargetHistory('cal');
+  if(!rows.length) return calTarget();
+  let t = +rows[0].from || calTarget();
+  rows.forEach(function(r){ if(String(r.date) <= k && +r.to > 0) t = +r.to; });
+  return t;
+}
+/* A dip: a clean session whose e1RM fell DIP_PCT+ under the median of the three before it. The
+   mirror of e1Spike(). Its likely causes are read over the two weeks before it. */
+const DIP_PCT = 0.06;
+function liftDips(nm){
+  const pts = e1rmSeries(nm, {excludeHome:true, excludeMod:true}), out = [];
+  for(let i = 2; i < pts.length; i++){
+    const prior = pts.slice(Math.max(0, i - 3), i).map(function(x){ return x.v; });
+    const m = pxMedian(prior);
+    if(m > 0 && pts[i].v < m * (1 - DIP_PCT)) out.push({date:pts[i].date, v:pts[i].v, base:Math.round(m * 10) / 10, pct:Math.round((1 - pts[i].v / m) * 100)});
+  }
+  return out;
+}
+/* A lift's watch as it stood BEFORE its newest clean session, by reading the logs up to that day.
+   Synchronous and restored in finally, so nothing can see the shortened list: there is no await in
+   here for a sync to land in. */
+function pwAsOf(dateKey, fn){
+  const keep = S.logs;
+  try{ S.logs = (keep || []).filter(function(l){ return l && l.date < dateKey; }); return fn(); }
+  finally{ S.logs = keep; }
+}
+/* Lifts whose newest session moved them up a level (green to amber, amber to red), in the last
+   PW_RISE_DAYS. Worked out when read, never stored: that is what "plateau risk rising" means, and
+   it is what keeps a lift stalled since August from re-announcing itself every day. */
+const PW_RISE_DAYS = 7;
+function pwRising(rows){
+  const out = [], t = todayKey();
+  (rows || plateauWatch()).forEach(function(r){
+    if(r.lvl === 'green' || r.lastDate <= mesoAddDays(t, -PW_RISE_DAYS)) return;
+    let before = null;
+    try{ before = pwAsOf(r.lastDate, function(){
+      const ctx = {topsets:predTopsets(), flags:{}};
+      try{ invActiveFlags().forEach(function(f){ if(f && /^lift:/.test(f.key || '')) ctx.flags[f.key.slice(5)] = f; }); }catch(e){}
+      return plateauRisk(r.lift, ctx);
+    }); }catch(e){ before = null; }
+    const was = before ? before.lvl : 'green';
+    if(PW_LEVELS[r.lvl].n > PW_LEVELS[was].n) out.push({lift:r.lift, from:was, to:r.lvl, word:r.word, date:r.lastDate, why:(r.sig[0] || {}).txt || ''});
+  });
+  return out;
 }
 
 /* ---- forecasts and insights (V3 intelligence, push 3) ---- */
@@ -16514,6 +16823,8 @@ function olSignals(){
   const flags = invActiveFlags();
   const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
   const hypBlock = !!(mw && mw.type==='hyp');
+  const pwBy = {};
+  try{ plateauWatch().forEach(function(r){ pwBy[r.lift] = r; }); }catch(e){}
   const rows = anBigLifts(OL_MIN_SESSIONS).map(nm=>{
     const pts = e1rmSeries(nm);
     const recent = pts.slice(-10);
@@ -16533,6 +16844,14 @@ function olSignals(){
       lastDate: pts.length ? pts[pts.length-1].date : null
     };
     s.verdict = olBaselineVerdict(s);
+    // The plateau watch reads the last few clean sessions, and a ten-session trend can still be climbing
+    // on old gains while the lift has sat at one weight for five. On 2026-10-04 Lat Pulldown read
+    // "+2.4 lb/wk, on track" right beside "stalled, 5 sessions at 165". A lift the watch calls slowing or
+    // stalled is at least "stalling" here, so the row cannot point both ways. A MAXED lift keeps its
+    // carve-out: flat at the machine's top is the machine.
+    const pr = pwBy[nm];
+    if(s.verdict === 'on-track' && pr && pr.lvl !== 'green' && !maxed) s.verdict = 'stalling';
+    s.watch = pr ? pr.lvl : null;
     return s;
   });
   // worst first — the point of a consolidated view is that problems surface without scrolling
@@ -16590,7 +16909,7 @@ function olAgentContext(){
       (s.flag?', investigation flag ['+s.flag.severity+'] '+s.flag.title:'')+
       ', app verdict='+s.verdict).join('\n')+'\n';
 }
-function olRowHTML(s, note){
+function olRowHTML(s, note, pw){
   const v = OL_VERDICTS[(note && note.verdict) || s.verdict];
   const bits = [
     (s.perWeek>=0?'+':'')+s.perWeek.toFixed(2)+' lb/wk',
@@ -16607,6 +16926,7 @@ function olRowHTML(s, note){
     '<span class="ol-sig">'+esc(bits.join(' · '))+'</span></span>'+
     '<span class="ol-verdict" style="color:'+v.col+';border-color:'+v.col+'">'+v.label+'</span></div>';
   if(note && note.tip) h += '<div class="ol-tip">'+esc(note.tip)+'</div>';
+  if(pw && pw.lvl !== 'green') h += pwLineHTML(pw);
   return h;
 }
 function renderAnOverload(){
@@ -16620,8 +16940,11 @@ function renderAnOverload(){
   const notes = {};
   if(rep && fresh) rep.lifts.forEach(r=>{ notes[r.lift] = r; });
   let h = '<div class="card"><div class="k">Overload status</div>'+
-    '<p class="small">Every lift with '+OL_MIN_SESSIONS+'+ logged sessions, worst first. Direction and the numbers behind it are computed live from your e1RM trend, the MAXED flag, active investigation flags and your grind/fail tags — the agents refresh the verdict and the tips on their nightly cycle.</p></div>';
-  h += '<div class="card">' + sigs.map(s=>olRowHTML(s, notes[s.lift])).join('') + '</div>';
+    '<p class="small">Every lift with '+OL_MIN_SESSIONS+'+ logged sessions, worst first. Direction and the numbers behind it are computed live from your e1RM trend, the MAXED flag, active investigation flags and your grind/fail tags — the agents refresh the verdict and the tips on their nightly cycle.</p>'+
+    '<p class="small" style="margin-top:6px">The plateau watch line under a lift you still train reads only clean sessions (no deloads, home days or reshaped sessions) and looks for slowing before a stall. Tap it for the likely factors.</p></div>';
+  const pwBy = {};
+  try{ plateauWatch().forEach(function(r){ pwBy[r.lift] = r; }); }catch(e){}
+  h += '<div class="card">' + sigs.map(s=>olRowHTML(s, notes[s.lift], pwBy[s.lift])).join('') + '</div>';
   const stamp = rep && rep.day ? fmtDate(rep.day) : null;
   h += '<div class="card"><p class="small" style="color:var(--dim);margin:0">'+
     (!rep ? 'The agents haven’t written a review of these lifts yet — the readings above are computed live, so they’re current regardless. Tips appear after the next cycle.'
@@ -16970,6 +17293,8 @@ function opsSignature(){
     _agRunning?1:0, _agBriefRunning?1:0, a.autoRun?1:0,
     agActiveChat, agChatTall?1:0, agThinkingFor||'', agChatErr?agChatErr.id:'',
     JSON.stringify(S.experiments||null).length, (S.sessionMeta||[]).length, JSON.stringify(S.weekPlan||null).length, _wpRunning?1:0,
+    // a new session can move the plateau watch row
+    (S.logs||[]).length,
     // the Hub's spend ring: this month's total (both devices) against the cap
     (function(){ try{ return spendMonth().toFixed(2)+'/'+spendCap(); }catch(e){ return ''; } })(),
     Math.floor(Date.now()/300000)
@@ -18849,14 +19174,134 @@ function homeAgentsHTML(){
 }
 function homePlateauHTML(){
   let rows = [];
-  try{ rows = olSignals() || []; }catch(e){ rows = []; }
+  try{ rows = plateauWatch(); }catch(e){ rows = []; }
   if(!rows.length) return '';
-  return '<div class="cc-head"><span class="dash-sec">Plateau watch</span></div><div class="cc-chips">'+
-    rows.slice(0, 6).map(function(r){
-      const v = OL_VERDICTS[r.verdict] || OL_VERDICTS['on-track'];
-      return '<button class="cc-chip" onclick="showMainTab(\'progress\',\'an_overload\')"><i style="background:'+v.col+'"></i>'+
-        '<span class="cc-chip-n">'+esc(r.lift)+'</span>'+(r.verdict !== 'on-track' ? '<span class="cc-chip-v" style="color:'+v.col+'">'+esc(v.label.toLowerCase())+'</span>' : '')+'</button>';
-    }).join('')+'</div>';
+  return '<div class="cc-head"><span class="dash-sec">Plateau watch</span></div>'+pwChipsHTML(rows);
+}
+/* The plateau watch as chips (Today, the Hub): his main lifts with their status, then one chip for the
+   others that are not on track. A lift opens on Progress › Overload with its likely factors. The name
+   travels in data-lift, so no lift name is ever spliced into an onclick string. */
+function pwChipsHTML(rows){
+  if(!rows || !rows.length) return '';
+  const by = {};
+  rows.forEach(function(r){ by[r.lift] = r; });
+  let main = [];
+  try{ main = predLifts().filter(function(n){ return by[n]; }).map(function(n){ return by[n]; }); }catch(e){ main = []; }
+  if(!main.length) main = rows.slice(0, 6);
+  const rest = rows.filter(function(r){ return main.indexOf(r) < 0 && r.lvl !== 'green'; });
+  let h = main.map(function(r){
+    const L = PW_LEVELS[r.lvl];
+    return '<button class="cc-chip" data-lift="'+esc(r.lift)+'" onclick="pwShow(this.dataset.lift)"><i style="background:'+L.col+'"></i>'+
+      '<span class="cc-chip-n">'+esc(r.lift)+'</span>'+(r.lvl !== 'green' ? '<span class="cc-chip-v" style="color:'+L.col+'">'+esc(r.word)+'</span>' : '')+'</button>';
+  }).join('');
+  if(rest.length){
+    const red = rest.filter(function(r){ return r.lvl === 'red'; }).length, amb = rest.length - red;
+    h += '<button class="cc-chip pw-more" onclick="pwShow(null)"><span class="cc-chip-n">+ '+
+      [red ? red+' stalled' : '', amb ? amb+' slowing' : ''].filter(Boolean).join(' · ')+'</span></button>';
+  }
+  return '<div class="cc-chips">'+h+'</div>';
+}
+/* Which Overload rows have their likely factors open. Module-scoped: the 30-second repaint must not
+   close one he opened. */
+let pwOpen = {};
+function pwShow(nm){
+  if(nm){ pwOpen = {}; pwOpen[nm] = true; }
+  showMainTab('progress', 'an_overload');
+  if(nm){
+    try{
+      const el = [].slice.call(document.querySelectorAll('#an_overload .pw-line')).find(function(x){ return x.getAttribute('data-lift') === nm; });
+      if(el) smoothScroll(el);
+    }catch(e){}
+  }
+}
+function pwToggle(nm){
+  if(!nm) return;
+  pwOpen[nm] = !pwOpen[nm];
+  try{ renderAnOverload(); }catch(e){}
+}
+function pwLineHTML(r){
+  const L = PW_LEVELS[r.lvl], green = r.lvl === 'green', open = !green && !!pwOpen[r.lift];
+  const lead = r.sig.length ? r.sig[0].txt : 'no early signs of slowing';
+  let h = '<button class="pw-line'+(green ? ' calm' : '')+'" data-lift="'+esc(r.lift)+'"'+
+    (green ? ' disabled' : ' aria-expanded="'+open+'" onclick="pwToggle(this.dataset.lift)"')+'>'+
+    '<i style="background:'+L.col+'"></i><span class="pw-w" style="color:'+L.col+'">'+esc(r.word)+'</span>'+
+    '<span class="pw-s">'+esc(lead)+'</span>'+(green ? '' : '<span class="pw-c" aria-hidden="true">'+(open ? '\u2212' : '+')+'</span>')+'</button>';
+  if(open) h += pwCausesHTML(r);
+  return h;
+}
+/* The likely factors for one watched lift. Worded as likely, never as causes. */
+function pwCausesHTML(r){
+  let c = [];
+  try{ c = plateauCauses(r.lift, todayKey(), pwCauseWindow(r)); }catch(e){ c = []; }
+  let h = '<div class="pw-why">';
+  if(r.sig.length > 1) h += '<p class="pw-sigs">'+r.sig.slice(1).map(function(x){ return esc(x.txt); }).join(' · ')+'</p>';
+  h += '<div class="pw-why-h"><span>Likely factors</span><span class="pw-note">likely, not proven</span></div>';
+  h += c.length ? c.map(function(x, i){
+      return '<div class="pw-f"><span class="pw-f-n">'+(i + 1)+'</span><span class="pw-f-b"><b>'+esc(x.title)+'</b><span>'+esc(x.txt)+'</span></span>'+
+        '<span class="pw-conf '+x.conf.toLowerCase()+'">'+x.conf+'</span></div>';
+    }).join('')
+    : '<p class="small" style="color:var(--dim)">Nothing in recovery, food, volume or how often it was trained stands out.</p>';
+  return h+'</div>';
+}
+/* The watch's notifications (V4 stage 5). Each is worked out when read and carries the day or the lift
+   in its id, so dismissing one leaves the rest, and a new event gets a new id. */
+function pwNotifItems(){
+  const out = [], t = todayKey();
+  // A lift the watch moved up a level at its newest session: "plateau risk rising".
+  try{
+    pwRising().forEach(function(r){
+      out.push({id:'plateau:'+r.lift+':'+r.to+':'+r.date, tone:PW_LEVELS[r.to].col, title:'Plateau watch \u2014 '+r.lift+' '+r.word,
+        body:'Moved to '+r.word+' after '+fmtDate(r.date)+(r.why ? ': '+r.why : '')+'. Tap for the likely factors.',
+        when:null, go:'pwShow('+esc(JSON.stringify(r.lift))+')'});
+    });
+  }catch(e){}
+  // A PR in reach today: a training day not yet logged, at the weight LIVE will give, within the range.
+  // LIVE's own PR watch also counts one rep past the top; a notification asks for less, so it does not
+  // fire for every lift on a day the plan steps up.
+  try{
+    const td = dashToday();
+    if(!live && !td.rest && !td.logged && td.dayKey && !deloadActive()){
+      let call;
+      try{ const dc = dayCall(t, td.dayKey); call = (dc && dc.conf !== 'none') ? dc.call : undefined; }catch(e){}
+      const hits = todayKeyLifts(td.dayKey, call, 12).map(function(l){
+        const p = l.w > 0 ? prWatchAt(l.name, l.w, +l.hi || 0) : null;
+        return p && p.r <= (+l.hi || 0) ? {name:l.name, w:l.w, r:Math.max(p.r, +l.lo || 0), best:p.best} : null;
+      }).filter(Boolean);
+      if(hits.length) out.push({id:'pr:'+t, tone:'var(--amber)', title:'PR in reach today',
+        body:hits.slice(0, 2).map(function(x){ return x.name+': '+x.w+' \u00d7 '+x.r+' beats your best (e1RM '+x.best+')'; }).join('; ')+
+             (hits.length > 2 ? '; +'+(hits.length - 2)+' more' : '')+'.', when:null, go:"setMode('live')"});
+    }
+  }catch(e){}
+  // A PR likely this week, from the same forecast as Today's "What to expect".
+  try{
+    const pr = nextPrForecast();
+    if(pr && pr.from <= mesoAddDays(t, 7)) out.push({id:'prf:'+pr.lift+':'+weekKeyOf(pr.from), tone:'var(--amber)', title:'PR likely this week',
+      body:pr.lift+' e1RM past '+Math.round(pr.pr)+', likely '+homeRange(pr.from, pr.to)+' ('+pr.conf+'). A range, not a promise.',
+      when:null, go:"showMainTab('progress','strength')"});
+  }catch(e){}
+  // A deload due: the forecast says now, or the planned one starts within two days.
+  try{
+    const f = deloadActive() ? null : deloadForecast();
+    if(f && f.weeks === 0) out.push({id:'deload:'+weekKeyOf(t), tone:'var(--warn)', title:'A deload looks due', body:f.text, when:null, go:"showMainTab('progress','an_fatigue')"});
+    else if(f && f.planned){
+      const d = daysBetween(t, f.planned.start);
+      if(d >= 0 && d <= 2) out.push({id:'deloadplan:'+f.planned.start, tone:'var(--violet)',
+        title:'Planned deload '+(d === 0 ? 'starts today' : d === 1 ? 'starts tomorrow' : 'in 2 days'),
+        body:'Your block deload starts '+fmtDate(f.planned.start)+'. LIVE gives the lighter week on its own.', when:null, go:"showMainTab('train','meso')"});
+    }
+  }catch(e){}
+  // Last night's cycle never ran. Says why, and runs nothing itself.
+  try{
+    const a = agState(), y = mesoAddDays(t, -1);
+    if(a.autoRun && a.lastRun && a.lastRun < y && new Date().getHours() < 21){
+      const paused = (a.log || []).some(function(l){ return l && /cycle is paused/i.test(l.text || '') && l.at && dateKeyOf(new Date(l.at)) === y; });
+      out.push({id:'skip:'+y, tone:'var(--warn)', title:'Last night\u2019s check didn\u2019t run',
+        body:'The agents\u2019 9 PM cycle didn\u2019t run on '+fmtDate(y)+': '+
+          (paused ? 'it was paused at the monthly API cap.' : 'it only runs while the app is open after 9 PM, and it wasn\u2019t.')+
+          ' It runs again tonight, or use Run cycle now in the Hub.', when:null, go:"showMainTab('ops')"});
+    }
+  }catch(e){}
+  return out;
 }
 function renderHome(){
   const el = document.getElementById('home');
@@ -19005,6 +19450,8 @@ function notifItems(){
               body:(f.findings&&f.findings[0])||'Open the Investigate tab for detail.',
               when:null, go:"showReviewTab('invest')"});
   });
+  // V4 stage 5: what the plateau watch and the forecasts found. Worked out here, never stored.
+  try{ pwNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   const wr = waterReminder();
   if(wr) out.push({id:'water:'+todayKey(), tone:'var(--cyan)', title:'Water', body:wr, when:null});
   // Spend at 80% of the monthly cap, and again (a new id) when it is reached.
@@ -19327,6 +19774,8 @@ function renderOps(){
     '<span class="hub-status '+hs.tone+'"><i></i>'+esc(hs.txt)+'</span></div>';
   // the map, then the selected agent's report with its chat directly beneath
   h += hubMapHTML(agActiveChat)+hubAgentHTML(agActiveChat)+agChatHTML();
+  // DELTA's lifts, as the plateau watch reads them (V4 stage 5). On the device and free.
+  try{ const pw = plateauWatch(); if(pw.length) h += '<div class="cc-head hub-pw"><span class="dash-sec">DELTA is watching</span><span class="cc-note">worked out on this device, free</span></div>'+pwChipsHTML(pw); }catch(e){}
   h += '<div class="ag-bar" style="margin-top:16px">'+
     '<button class="btn sm" onclick="agRunAll(true)"'+(_agRunning?' disabled':'')+'>'+(_agRunning?'Running\u2026':'Run cycle now')+'</button>'+
     '<label class="ag-when" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
