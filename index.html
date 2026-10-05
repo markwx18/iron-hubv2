@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-05-v5">
+<meta name="ironhub-build" content="2026-10-05-v6">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1629,6 +1629,20 @@
   .rd-ck b{width:48px; flex:none; font-family:var(--disp); font-size:15px; font-weight:700;}
   .rd-ck span{flex:1; min-width:0; color:var(--muted);}
   .rd-sec{margin-bottom:16px;}
+  /* Settings in the A x C look (2026-10-05) */
+  .set-head{display:flex; flex-direction:column; gap:2px; margin-bottom:14px;}
+  .set-glance{display:flex; flex-direction:column; margin-bottom:18px; border-radius:var(--r-card); background:var(--panel); padding:4px 14px;}
+  .set-row{display:flex; align-items:center; gap:12px; width:100%; min-height:58px; padding:10px 0; border:none; border-top:1px solid var(--panel2); background:none; color:var(--text); text-align:left; font:inherit; cursor:pointer;}
+  .set-glance .set-row:first-child{border-top:none;}
+  .set-row > i{width:10px; height:10px; border-radius:5px; flex:none;}
+  .set-row .set-b{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;}
+  .set-row .set-b b{font-family:var(--disp); font-size:17px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;}
+  .set-row .set-b span{font-size:13px; color:var(--muted); line-height:1.35;}
+  .set-row .chev{color:var(--dim); flex:none;}
+  #settings > .sub.grp > .sub-head{min-height:64px;}
+  .set-gear{font-size:13.5px; color:var(--muted); line-height:1.5;}
+  .set-foot{display:flex; gap:8px; flex-wrap:wrap; margin-top:18px;}
+  .set-foot .btn{flex:1; min-width:140px;}
   /* the recap story (2026-10-05) */
   .recap-ov{position:fixed; inset:0; z-index:400; background:var(--base); color:var(--text); display:flex; flex-direction:column; gap:14px;
     padding:calc(16px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom)); overflow-y:auto;}
@@ -8026,11 +8040,16 @@ function settingsSummaries(){
   const bad = t => '<b class="sum-bad">'+t+'</b>';
   const out = {};
   const rr = S.settings.repLow+'\u2013'+S.settings.repHigh+' reps';
+  let blk = false;
+  try{ blk = !!mesoActiveStrBlockId(); }catch(e){}
   out.training = (scheduleMode()==='cycle' ? 'Rotating cycle' : 'Weekly schedule')+' \u00b7 '+rr+
-    (deloadActive() ? ' \u00b7 deload active' : '');
+    (deloadActive() ? ' \u00b7 deload active' : blk ? ' \u00b7 strength block now' : '');
   const days = Object.keys(S.split||{}).length;
   const exs = Object.values(S.split||{}).reduce((n,d)=>n+((d.exercises||[]).length),0);
-  out.exercises = days+' days \u00b7 '+exs+' exercises';
+  const maxed = {};
+  Object.values(S.split||{}).forEach(function(d){ (d.exercises||[]).forEach(function(x){ if(x && typeof x === 'object' && x.maxed) maxed[exName(x)] = 1; }); });
+  const nm = Object.keys(maxed).length;
+  out.exercises = days+' days \u00b7 '+exs+' exercises'+(nm ? ' \u00b7 '+nm+' MAXED' : '');
   const parts = [];
   parts.push(syncReady() ? 'Sync on' : bad('Sync not connected'));
   parts.push(S.settings.apiKey ? 'API key set' : 'No API key');
@@ -8043,8 +8062,62 @@ function settingsSummaries(){
   const gn = gdocNote(), gc = gdocCfg();
   if(gc && gn && gn.ok === false) parts.push(bad('Schedule doc not updating'));
   out.connections = parts.join(' \u00b7 ');
-  out.app = 'Build '+esc(appBuild())+(_updRemote ? ' \u00b7 <b class="sum-new">update ready</b>' : '');
+  const ex = +uiPref()['app.lastExport'] || 0;
+  out.app = 'Build '+esc(appBuild())+(_updRemote ? ' \u00b7 <b class="sum-new">update ready</b>' : '')+
+    ' \u00b7 '+(ex ? 'backup '+agTimeAgo(new Date(ex).toISOString()) : 'no backup from this device yet');
   return out;
+}
+/* ---- Settings in the A x C look (his pick, 2026-10-05) ----
+   "Connections at a glance" first: sync, the WHOOP relay, the API key with this month's spend, and
+   the schedule doc, each a dot and a plain line from the same sources settingsSummaries() reads, so a
+   failure shows before any group is opened. A row opens the Connections group. Export and Check for
+   update sit at the bottom. The four groups are unchanged inside. */
+const SET_TONE = {good:'var(--good)', warn:'var(--warn)', bad:'var(--bad)', off:'var(--dim)'};
+function setGlance(){
+  const rows = [];
+  // Sync: whether this device holds a token and a gist, and when it last synced.
+  if(syncReady()){
+    const ls = S.meta && S.meta.lastSync;
+    rows.push({k:'sync', t:'Sync', tone:'good', line:'Gist \u00b7 '+(ls ? 'synced '+agTimeAgo(new Date(ls).toISOString()) : 'connected, not synced yet')});
+  } else rows.push({k:'sync', t:'Sync', tone:'bad', line:'Not connected on this device'});
+  // WHOOP relay: the relay's own note about its last run outranks this device's verdict (as in the summary).
+  const rf = syncReady() ? whoopRelayFault(0) : null, rn = syncReady() ? whoopRelayNote() : null;
+  if(!syncReady()) rows.push({k:'relay', t:'WHOOP relay', tone:'off', line:'Needs sync on this device'});
+  else if(rf) rows.push({k:'relay', t:'WHOOP relay', tone:'bad', line:rf.reauth ? 'WHOOP needs re-authorizing' : 'The last run failed'});
+  else if(rn && !rn.ok) rows.push({k:'relay', t:'WHOOP relay', tone:'bad', line:rn.kind === 'run' ? 'Runs are failing' : 'Can\u2019t run from this device'});
+  else if(rn && rn.ok) rows.push({k:'relay', t:'WHOOP relay', tone:'good', line:'This device can trigger a run'+(rn.at ? ' \u00b7 checked '+agTimeAgo(new Date(rn.at).toISOString()) : '')});
+  else rows.push({k:'relay', t:'WHOOP relay', tone:'warn', line:'Not tested from this device yet'});
+  // API key: per device, with the month's spend against the cap (both devices).
+  if(S.settings.apiKey){
+    let spent = 0; try{ spent = spendMonth(); }catch(e){ spent = 0; }
+    const cap = spendCap(), frac = cap > 0 ? spent / cap : 0;
+    rows.push({k:'api', t:'API key', tone: frac >= 1 ? 'bad' : frac >= SPEND_WARN_FRAC ? 'warn' : 'good',
+      line:'Set on this device \u00b7 $'+spent.toFixed(2)+' of $'+cap+(frac >= 1 ? ', cap reached' : '')});
+  } else rows.push({k:'api', t:'API key', tone:'warn', line:'Not set on this device, so agents and chat can\u2019t run here'});
+  // Schedule doc: per device (its URL and secret never sync).
+  const gc = gdocCfg(), gn = gdocNote();
+  if(!gc) rows.push({k:'gdoc', t:'Schedule doc', tone:'off', line:'Not set up on this device'});
+  else if(gn && gn.ok === false) rows.push({k:'gdoc', t:'Schedule doc', tone:'bad', line:'Not updating'+(gn.msg ? ': '+String(gn.msg).slice(0, 60) : '')});
+  else rows.push({k:'gdoc', t:'Schedule doc', tone:'good', line:gn && gn.ok ? 'Writing this week' : 'Set up, not written yet'});
+  return rows;
+}
+function setGlanceHTML(){
+  return '<section class="set-glance" aria-label="Connections at a glance">'+setGlance().map(function(r){
+    return '<button type="button" class="set-row" data-k="'+r.k+'" onclick="setOpenGroup(\'connections\')"><i style="background:'+SET_TONE[r.tone]+'"></i>'+
+      '<span class="set-b"><b>'+esc(r.t)+'</b><span'+(r.tone === 'bad' ? ' style="color:var(--bad)"' : '')+'>'+esc(r.line)+'</span></span><span class="chev">\u203a</span></button>';
+  }).join('')+'</section>';
+}
+/* Opens one of the four groups (remembered, like a tap on its head would be) and brings it into view. */
+function setOpenGroup(key){
+  const hd = document.querySelector('#settings > .sub.grp > .sub-head[data-pref="open.settings.'+key+'"]');
+  if(!hd) return;
+  if(!hd.parentElement.classList.contains('open')) toggleSub(hd);
+  smoothScroll(hd, 'start');
+}
+function setGearHTML(){
+  const plates = GEAR_PLATES.slice().sort(function(a, b){ return a - b; });
+  return '<h2>Gear</h2><div class="card"><p class="set-gear">'+GEAR_BAR+' lb bars \u00b7 plate pairs '+plates.join(', ')+' (no 1.25s) \u00b7 dumbbells '+GEAR_DB_STEP+'\u2013'+GEAR_DB_MAX+' by '+GEAR_DB_STEP+' \u00b7 EZ bars fixed</p>'+
+    '<p class="small" style="margin-top:6px;color:var(--dim)">Live works out plates from this. A weight these plates cannot make is named with both neighbours, never rounded.</p></div>';
 }
 function renderSettings(){
   const el = $('#settings');
@@ -8066,6 +8139,7 @@ function renderSettings(){
     '</select></div></div>';
   if(scheduleMode()==='cycle'){
     html += cycleScheduleEditorHTML();
+    html += '<p class="small" style="margin-top:8px;color:var(--dim)">Changing the cycle start date moves what today is. It changes only here, never by an agent.</p>';
   } else {
     for(let i=1;i<=6;i++){ html += scheduleRow(i, dayNames[i]); }
     html += scheduleRow(0, dayNames[0]);
@@ -8091,6 +8165,7 @@ function renderSettings(){
     '<div><label>Low</label><input inputmode="numeric" id="repLow" value="'+S.settings.repLow+'"></div>'+
     '<div><label>High (triggers weight increase)</label><input inputmode="numeric" id="repHigh" value="'+S.settings.repHigh+'"></div>'+
     '<div style="flex:none"><button class="btn sm" onclick="saveSettings()">Save</button></div></div></div>';
+  html += setGearHTML();
   training = html; html = '';
 
   html += '<h2>Exercise &amp; Split Editor</h2><div class="card">'+
@@ -8197,8 +8272,12 @@ function renderSettings(){
     '<p class="small" style="margin-top:8px">Export regularly — localStorage can be wiped by browser cleanup. The JSON file is your backup.</p></div>';
   app += html;
   // Folded by default and remembered per device: eleven sections on one page was the complaint.
-  el.innerHTML = grp('Training', 'training', training) + grp('Exercises', 'exercises', exercises) +
-    grp('Connections', 'connections', conn) + grp('App & data', 'app', app);
+  el.innerHTML = '<div class="set-head"><span class="cc-eyebrow">This device</span><h2 class="hub-title">Settings</h2></div>'+
+    setGlanceHTML()+
+    grp('Training', 'training', training) + grp('Exercises', 'exercises', exercises) +
+    grp('Connections', 'connections', conn) + grp('App & data', 'app', app)+
+    '<div class="set-foot"><button class="btn ghost" onclick="exportData()">Export backup</button>'+
+    '<button class="btn ghost" onclick="checkForUpdate(true).then(renderSettings)">Check for update</button></div>';
 }
 /* Rendered as its own card rather than folded into Cloud Sync: it is a different endpoint with
    a different credential, and the WHOOP relay lesson was that a failure hidden under somebody
@@ -8490,6 +8569,7 @@ function exportData(){
   a.href = URL.createObjectURL(blob);
   a.download = 'ironhub_backup_'+todayKey()+'.json';
   a.click();
+  try{ uiPrefSet('app.lastExport', Date.now()); }catch(e){}
 }
 function importData(inp){
   const f = inp.files[0]; if(!f) return;

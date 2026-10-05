@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3206 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3235 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -256,6 +256,7 @@ so the two orders can no longer disagree.
 | Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
 | Train (A × C) | Plan `planHeroHTML()`, `planBlocks()`, `planLenStep()`, `planSetType()`; Log `logHeroHTML()`, `logChipsHTML()`, `logRowHTML()`, `logPRsOn()` (`logFilter`, `logOpen`); Library `libLifts()`, `libMatches()`, `libFilterRows()`, `libCardHTML()`, `libFlag()`, `libRename()`; `exRenameFlow()` (the one rename flow) |
 | Body (A × C) | Weight `bwHeroHTML()`, `bwWeeklyRows()`, `bwHeadingHTML()`, `bwWeeksHTML()`, `BW_BAND_CHIP`; Fuel `fuelHeroHTML()` / `fuelRingHTML()`, `nutLogHTML()`, `nutHistFold()`; Ready `rdHeroHTML()`, `rdBarsHTML()`, `rdCheckinsHTML()` |
+| Settings (A × C) | `setGlance()` / `setGlanceHTML()` (`SET_TONE`), `setOpenGroup()`, `setGearHTML()`, `settingsSummaries()` |
 | Recap | `recapSlides()`, `recapYear()` / `recapFinal()` / `recapTitle()`, `recapRender()` / `recapOpen()` / `recapGo()` / `recapClose()`, `recapCardHTML()` |
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
@@ -1495,6 +1496,25 @@ section id, element id and handler was kept; the old detail moved into folds, it
     "only", and today with no check-in is "not yet", never a skip.
 
   The analysis cards follow.
+
+**Settings in A × C** (the same canvas page, 2026-10-05). The four groups and everything inside them are
+unchanged, and the suite still checks they are the only `#settings > .sub.grp`. Around them:
+- **"Connections at a glance" comes first** (`setGlance()` / `setGlanceHTML()`). It has four rows: sync,
+  the WHOOP relay, the API key with this month's spend against the cap, and the schedule doc. Each is a
+  dot and a plain line, from the same sources `settingsSummaries()` reads:
+  - the relay's own note (`whoopRelayFault()`) outranks this device's verdict;
+  - a triggered run that failed is "Runs are failing", never blamed on this device;
+  - spend turns amber at `SPEND_WARN_FRAC`;
+  - a doc that is not writing says why.
+
+  A failure is red while every group is still folded: the same rule as the folded summaries, one level
+  higher. A row opens the Connections group (`setOpenGroup()`, which never closes an open one).
+- **The summaries say a little more.** Training names a strength block in force (a deload outranks it).
+  Exercises counts MAXED lifts, not slots. App & data says when this device last exported, kept in
+  `uiPref('app.lastExport')`, never in `S`.
+- **Training states his gear** (`setGearHTML()`, from `GEAR_PLATES` / `GEAR_BAR` / `GEAR_DB_*`). In
+  cycle mode it says, beside the anchor date, that moving it moves what today is.
+- **Export backup and Check for update** sit at the bottom (`.set-foot`).
 
 **A folded card can remember that it is folded.** `subSection(title, body, open, opts)` takes
 `opts.pref` to store the open/closed choice per device in `localStorage['ironhub:ui']`

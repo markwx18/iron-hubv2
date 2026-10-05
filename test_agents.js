@@ -13034,6 +13034,89 @@ setTimeout(async () => {
     ev('if(window.__pfSaved){ S = JSON.parse(window.__pfSaved); delete window.__pfSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== SETTINGS IN A × C: CONNECTIONS AT A GLANCE (2026-10-05) ===');
+  try {
+    w.__pgSaved = ev('JSON.stringify(S)');
+    w.__pgPref = ev('localStorage.getItem(UI_PREF_KEY)');
+    w.__pgRelay = ev('localStorage.getItem(WHOOP_RELAY_KEY)');
+    w.__pgDoc = ev('localStorage.getItem(GDOC_NOTE_KEY)');
+    ev("localStorage.removeItem(UI_PREF_KEY); localStorage.removeItem(WHOOP_RELAY_KEY); localStorage.removeItem(GDOC_NOTE_KEY); subOpen = {};");
+    ev("S.settings.ghToken = ''; S.settings.gistId = ''; S.settings.apiKey = ''; S.settings.gdocUrl = ''; S.settings.gdocSecret = ''; S.settings.spendCap = 20; S.whoop = {};");
+    const glance = () => JSON.parse(ev("JSON.stringify(setGlance().map(function(r){ return r.k + '|' + r.tone + '|' + r.line; }))"));
+    let g = glance();
+    ok('glance: four rows, in order: sync, WHOOP relay, API key, schedule doc', g.length === 4 && g.map(x => x.split('|')[0]).join() === 'sync,relay,api,gdoc', JSON.stringify(g));
+    ok('glance: a device with nothing connected says so, row by row', g[0] === 'sync|bad|Not connected on this device' && g[1] === 'relay|off|Needs sync on this device' &&
+       g[2] === 'api|warn|Not set on this device, so agents and chat can’t run here' && g[3] === 'gdoc|off|Not set up on this device', JSON.stringify(g));
+    ev("S.settings.ghToken = 't'; S.settings.gistId = 'gist0000000000'; S.meta.lastSync = Date.now() - 120000;");
+    ok('glance: sync names when it last synced', glance()[0] === 'sync|good|Gist · synced 2m ago', glance()[0]);
+    ok('glance: a relay never tested from this device says so', glance()[1] === 'relay|warn|Not tested from this device yet', glance()[1]);
+    ev("whoopRelaySet(true, 204, '');");
+    ok('glance: a relay this device can run is green', /^relay\|good\|This device can trigger a run · checked just now$/.test(glance()[1]), glance()[1]);
+    ev("whoopRelaySet(false, 403, 'Must have admin rights to Repository.');");
+    ok('glance: one it cannot run is red, in words', glance()[1] === 'relay|bad|Can’t run from this device', glance()[1]);
+    ev("whoopRelaySet(false, 0, '', '', 'run');");
+    ok('glance: a run that was triggered and failed is not blamed on this device', glance()[1] === 'relay|bad|Runs are failing', glance()[1]);
+    ev("whoopRelaySet(true, 204, ''); S.whoop = {relayError: {at: new Date().toISOString(), kind: 'auth', message: 'invalid_request', reauth: true}};");
+    ok('glance: the relay’s own note outranks this device’s green', glance()[1] === 'relay|bad|WHOOP needs re-authorizing', glance()[1]);
+    ev("S.whoop = {relayError: {at: new Date().toISOString(), kind: 'whoop', message: 'x', reauth: false}};");
+    ok('glance: a failed run that needs no re-auth', glance()[1] === 'relay|bad|The last run failed', glance()[1]);
+    ev("S.whoop = {}; S.settings.apiKey = 'k'; window.__pgSM = spendMonth; spendMonth = function(){ return 5; };");
+    ok('glance: the API key with this month’s spend against the cap', glance()[2] === 'api|good|Set on this device · $5.00 of $20', glance()[2]);
+    ev("spendMonth = function(){ return 16; };");
+    ok('glance: at 80% of the cap it turns amber', glance()[2] === 'api|warn|Set on this device · $16.00 of $20', glance()[2]);
+    ev("spendMonth = function(){ return 21.5; };");
+    ok('glance: at the cap it is red and says so', glance()[2] === 'api|bad|Set on this device · $21.50 of $20, cap reached', glance()[2]);
+    ev("spendMonth = window.__pgSM; delete window.__pgSM;");
+    ev("S.settings.gdocUrl = 'https://script.google.com/z/exec'; S.settings.gdocSecret = 's';");
+    ok('glance: a schedule doc set up but not written yet', glance()[3] === 'gdoc|good|Set up, not written yet', glance()[3]);
+    ev("gdocNoteSet({ok: false, sig: '', msg: 'bad secret'});");
+    ok('glance: one that is not updating is red, with why', glance()[3] === 'gdoc|bad|Not updating: bad secret', glance()[3]);
+    ev("gdocNoteSet({ok: true, msg: ''});");
+    ok('glance: and one that is writing', glance()[3] === 'gdoc|good|Writing this week', glance()[3]);
+    // --- on the page ---
+    ev("gdocNoteSet({ok: false, sig: '', msg: 'bad secret'}); renderSettings();");
+    ok('page: the glance comes first, above the four groups', ev("document.querySelector('#settings .set-glance') === document.querySelector('#settings > .set-glance')") &&
+       ev("(function(){ var s = document.getElementById('settings'); var gl = s.querySelector('.set-glance'), g1 = s.querySelector(':scope > .sub.grp'); return !!(gl.compareDocumentPosition(g1) & Node.DOCUMENT_POSITION_FOLLOWING); })()"));
+    ok('page: a failure shows red while every group is still folded', ev("document.querySelectorAll('#settings > .sub.grp.open').length") === 0 &&
+       ev("document.querySelector('#settings .set-row[data-k=\"gdoc\"] i').getAttribute('style')") === 'background:var(--bad)' &&
+       /Not updating: bad secret/.test(ev("document.querySelector('#settings .set-row[data-k=\"gdoc\"]').textContent")));
+    ev("document.querySelector('#settings .set-row[data-k=\"relay\"]').click();");
+    const grpState = () => JSON.parse(ev("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#settings > .sub.grp'), function(x){ return x.classList.contains('open'); }))"));
+    ok('page: a row opens the Connections group and only that one, remembered', JSON.stringify(grpState()) === '[false,false,true,false]' && ev("uiPref()['open.settings.connections']") === true, JSON.stringify(grpState()));
+    ev("setOpenGroup('connections');");
+    ok('page: tapping again keeps it open rather than closing it', JSON.stringify(grpState()) === '[false,false,true,false]');
+    ok('page: Export backup and Check for update sit at the bottom', JSON.stringify(JSON.parse(ev("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#settings .set-foot .btn'), function(b){ return b.textContent + '|' + b.getAttribute('onclick'); }))"))) ===
+       JSON.stringify(['Export backup|exportData()', 'Check for update|checkForUpdate(true).then(renderSettings)']) && ev("document.getElementById('settings').lastElementChild.classList.contains('set-foot')"));
+    ok('page: the gear he gave is stated in Training', /45 lb bars · plate pairs 2\.5, 5, 10, 25, 35, 45 \(no 1\.25s\) · dumbbells 5–120 by 5 · EZ bars fixed/.test(ev("document.querySelectorAll('#settings > .sub.grp')[0].textContent")));
+    ev("S.scheduleMode = 'cycle'; renderSettings();");
+    ok('page: in cycle mode, what moving the start date does is said where it is moved', /moves what today is\. It changes only here, never by an agent\./.test(ev("document.querySelectorAll('#settings > .sub.grp')[0].textContent")));
+    ev("S.scheduleMode = 'dow'; renderSettings();");
+    ok('page: and not in weekly mode', !/moves what today is/.test(ev("document.querySelectorAll('#settings > .sub.grp')[0].textContent")));
+    // --- the summaries ---
+    ev("window.__pgBlk = mesoActiveStrBlockId; mesoActiveStrBlockId = function(){ return 'b1'; }; window.__pgDA = deloadActive; deloadActive = function(){ return false; };");
+    ok('summary: a strength block in force is named on Training', /strength block now$/.test(ev('settingsSummaries().training')), ev('settingsSummaries().training'));
+    ev("deloadActive = function(){ return true; };");
+    ok('summary: a deload outranks it', /deload active$/.test(ev('settingsSummaries().training')) && !/strength block/.test(ev('settingsSummaries().training')));
+    ev("mesoActiveStrBlockId = window.__pgBlk; deloadActive = window.__pgDA; delete window.__pgBlk; delete window.__pgDA;");
+    ev("S.split = {D1: {name: 'a', exercises: [{name: 'Leg Press', maxed: true}, {name: 'Pec Deck', maxed: false}, 'Curl']}, D2: {name: 'b', exercises: [{name: 'Leg Press', maxed: true}, {name: 'Cable Row', maxed: true}]}};");
+    ok('summary: MAXED is counted per lift, not per slot', ev('settingsSummaries().exercises') === '2 days · 5 exercises · 2 MAXED', ev('settingsSummaries().exercises'));
+    ok('summary: a device with no export says so', /no backup from this device yet$/.test(ev('settingsSummaries().app')), ev('settingsSummaries().app'));
+    ev("window.__pgCO = URL.createObjectURL; URL.createObjectURL = function(){ return 'blob:x'; }; window.__pgAC = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function(){}; exportData(); URL.createObjectURL = window.__pgCO; HTMLAnchorElement.prototype.click = window.__pgAC; delete window.__pgCO; delete window.__pgAC;");
+    ok('summary: an export is remembered on this device, never in S', /backup just now$/.test(ev('settingsSummaries().app')) && typeof ev("uiPref()['app.lastExport']") === 'number' && ev("JSON.stringify(S).indexOf('lastExport')") < 0, ev('settingsSummaries().app'));
+    const snap = ev('JSON.stringify(S)');
+    ev("renderSettings(); setGlance(); setGlanceHTML(); settingsSummaries();");
+    ok('page: rendering writes nothing', ev('JSON.stringify(S)') === snap);
+  } catch (e) {
+    ok('settings section', false, e.stack);
+  } finally {
+    ev("if(window.__pgSM){ spendMonth = window.__pgSM; delete window.__pgSM; } if(window.__pgBlk){ mesoActiveStrBlockId = window.__pgBlk; delete window.__pgBlk; } if(window.__pgDA){ deloadActive = window.__pgDA; delete window.__pgDA; }");
+    const back = (key, v) => ev(v ? 'localStorage.setItem(' + key + ', ' + JSON.stringify(v) + ')' : 'localStorage.removeItem(' + key + ')');
+    back('UI_PREF_KEY', w.__pgPref); back('WHOOP_RELAY_KEY', w.__pgRelay); back('GDOC_NOTE_KEY', w.__pgDoc);
+    delete w.__pgPref; delete w.__pgRelay; delete w.__pgDoc;
+    ev("subOpen = {};");
+    ev('if(window.__pgSaved){ S = JSON.parse(window.__pgSaved); delete window.__pgSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
