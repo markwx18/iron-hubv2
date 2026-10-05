@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 2969 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3029 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -268,6 +268,7 @@ so the two orders can no longer disagree.
 | Backup | `exportPayload()` / `importApply()`, `DEVICE_SECRETS` (a backup file carries no credentials; import keeps this device's) |
 | After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
+| Track records & diagnosis | `agOutcome()`, `agTrack()` / `agTrackText()` / `agTrackLine()`, `hubTrackHTML()`; `pdTargets()`, `pdContextLine()` / `pdSpecLine()`, `agValidateDiagnosis()`, `pdReadHTML()`, `S.agents.diagnoses` |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()` (the Hub: `hubFed()`, `hubStatus()`, `hubMapHTML()`, `hubAgentHTML()`, `hubSpendHTML()`), `coachValidateAction()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network; the cap: `spendLedgerSync()` (`S.spend`), `spendMonth()`, `spendBlock()`, `spendPreflight()`, `spendManualOk()`, `spendCap()` |
@@ -426,6 +427,45 @@ informational, so it does not go through the proposal queue — but `olValidateR
 discards any row whose direction contradicts the computed trend, or whose verdict
 inverts the computed one, and the tab renders live-computed signals underneath
 regardless. A bad night costs the tab its commentary, never its content.
+
+**V4 stage 6 adds the paid pieces one at a time, a week apart on the spend ledger** (Mark's plan,
+2026-10-04). On the ledger, the baseline before it was about $9 a month. The order:
+- week 1: track records (free) and plateau diagnosis (about $0.20 a month);
+- week 2: cross-review, ZULU's half. A held request goes to the feed with **Show anyway** (his
+  choice).
+- week 3: per-lift specialists, the only addition that is a new request.
+
+Check the ledger before starting the next.
+- **Track records are scored when read, never stored** (`agOutcome(p)`, the way `predResolve()` works;
+  a stored verdict would lose to an older snapshot). Only approved proposals with a fix are scored.
+  Each outcome can also be `pending` (too soon) or `nodata`.
+  - `liftReset`: held or missed. He hit the reset weight for the bottom of the range in the next 2
+    sessions.
+  - `cal`: the 4-week pace moved toward the band, away from it, or not at all
+    (`bulkRate(4, endKey)`).
+  - `swapEx` / `addEx`: the new lift's first 4 sessions climbing, flat or down.
+  - `setCount`: the trend after against before: better, worse or the same.
+  - `deload`: back to level in the first 2 sessions after the week, or not yet.
+  - `experiment`: its own result.
+  - Anything else is just "applied". Retired kinds (`bpFreq`) are left out.
+
+  `agTrackLine(id)` puts the agent's own record in its prompt; ZULU gets everyone's.
+  `hubTrackHTML()` shows it on the Hub card, with how many requests he approved. Changes made from
+  ZULU's chat cards never become proposals, so they are not scored, and ZULU's card says so.
+- **Plateau diagnosis rides DELTA's existing nightly call**, like the debrief. No new request.
+  - `pdTargets()` picks at most `PD_MAX` (2) lifts a night: a lift that just moved up a level
+    (`pwRising()`) first, then the worst not read in `PD_QUIET_DAYS` (21). A lift that got worse
+    since its last read is due again.
+  - `pdContextLine()` and `pdSpecLine()` add the section and the `"diagnosis"` key only when there
+    are targets, so a quiet night's prompt is byte-identical (the suite checks this; it is the cost
+    guard).
+  - The lifts asked about are taken before the await (`_pdFor`). `agValidateDiagnosis()` keeps only
+    those, strings only and clipped, with factor keys from `PD_FACTORS`.
+  - It is stored in `S.agents.diagnoses[lift]`, merged per lift newer-wins in `applyPulled()`, and
+    capped at `PD_KEEP`.
+  - Each read leaves a feed line ("Looked at …"). `pdReadHTML()` shows it under the factors on the
+    Strength hero and on the Overload line for `PD_SHOW_DAYS`.
+  - It changes nothing: a fix still goes through proposals.
 
 **Schedule fixes are mode-gated in both directions.** `schedule` (day-of-week map)
 is rejected in cycle mode; `cycleSchedule` is rejected in dow mode. The cycle
@@ -1217,8 +1257,9 @@ decides how things are drawn; each chart keeps its own scale, so a restyle canno
 **Real events are marked through `ckMarks()`** (V4 stage 5), fed by `ckEventMarks(from, kinds)`.
 None of them come from a model:
 - deloads: logged deload sessions, a week apart or less joined into one band;
-- calorie changes: `S.targetHist` changes, plus weeks eating `MK_CAL_SHIFT` (250)+ away from the
-  two before (only weeks with 4+ logged days);
+- calorie changes: `S.targetHist` changes (a one-day dashed line), plus weeks eating `MK_CAL_SHIFT`
+  (250)+ away from the two before, drawn as a faint band from that Monday to Sunday (his choice,
+  2026-10-04; only weeks with 4+ logged days);
 - high-load weeks: `fatigueIndex()` over `PC_LOAD`;
 - recovery slumps: `MK_REC_RUN` (3)+ days running 15+ under his usual;
 - dips: `liftDips()`.

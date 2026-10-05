@@ -12275,6 +12275,198 @@ setTimeout(async () => {
     ev('if(window.__s5bSaved){ S = JSON.parse(window.__s5bSaved); delete window.__s5bSaved; } delete window.__s5bk;');
   }
 
+  console.log('=== V4 STAGE 6: TRACK RECORDS, PLATEAU DIAGNOSIS, CALORIE BANDS ===');
+  try {
+    w.__s6Saved = ev('JSON.stringify(S)');
+    ev("S.logs = []; S.weights = []; S.nutrition = []; S.whoop = null; S.targetHist = []; S.experiments = {active: null, history: [], declined: {}, lastEnded: ''};" +
+       "agState().proposals = []; agState().log = []; agState().diagnoses = {}; agState().lastRun = ''; S.settings.apiKey = 'sk-test';");
+    ev("window.__s6k = {plateauWatch: plateauWatch, pwRising: pwRising, plateauCauses: plateauCauses};");
+    let n6 = 0;
+    const L6 = (nm, ago, sets, extra) => ev("S.logs.push(stampRec(Object.assign({id: 's6-" + (n6++) + "', date: mesoAddDays(todayKey(), -" + ago + "), day: 'D1', entries: [{exercise: " +
+      JSON.stringify(nm) + ", sets: " + JSON.stringify(sets.map(x => ({w: x[0], r: x[1]}))) + "}]}, " + JSON.stringify(extra || {}) + ")));");
+    const prop = (agent, type, payload, ago, status) => "{id: 'p" + (n6++) + "', agent: '" + agent + "', title: 't', fix: {type: '" + type + "', payload: " + JSON.stringify(payload) +
+      "}, status: '" + (status || 'approved') + "', created: mesoAddDays(todayKey(), -" + ago + "), closed: mesoAddDays(todayKey(), -" + ago + ")}";
+    const O = (agent, type, payload, ago) => ev("agOutcome(" + prop(agent, type, payload, ago) + ").state");
+    const lo = ev("exRepMode('Zz T Reset').lo");
+
+    // --- resets ---
+    L6('Zz T Reset', 33, [[100, lo + 1]]); L6('Zz T Reset', 26, [[100, lo - 1]]);
+    ok('outcome: a reset he then lifted for the bottom of the range held', O('delta', 'liftReset', {name: 'Zz T Reset', w: 100, days: 7}, 40) === 'held');
+    ok('outcome: one he lifted short of the range in both of the next two sessions missed', O('delta', 'liftReset', {name: 'Zz T Reset', w: 105, days: 7}, 40) === 'missed');
+    ok('outcome: with one session in and a second still to come, too soon', O('delta', 'liftReset', {name: 'Zz T Reset', w: 105, days: 7}, 27) === 'pending');
+    ok('outcome: settled with no session at all, no data', O('delta', 'liftReset', {name: 'Zz T Nobody', w: 50, days: 7}, 40) === 'nodata');
+    L6('Zz T Short', 33, [[100, lo - 1]]); L6('Zz T Short', 26, [[100, lo - 2]]);
+    ok('outcome: the reset weight short of the bottom of the range is a miss, not a hold', O('delta', 'liftReset', {name: 'Zz T Short', w: 100, days: 7}, 40) === 'missed');
+    L6('Zz T Late', 33, [[100, lo - 1]]); L6('Zz T Late', 26, [[100, lo + 1]]);
+    ok('outcome: holding it on the second session still counts', O('delta', 'liftReset', {name: 'Zz T Late', w: 100, days: 7}, 40) === 'held');
+
+    // --- calories: the scale's pace after against before, by distance from the band ---
+    const wts = (from, to, step, startLbs) => ev("for(var d = " + from + "; d >= " + to + "; d -= 7) S.weights.push({date: mesoAddDays(todayKey(), -d), lbs: " + startLbs + " + (" + from + " - d) / 7 * " + step + "});");
+    wts(75, 47, 0, 160); wts(40, 19, 0.75, 160);
+    ok('outcome: a calorie change followed by the scale moving into the band moved it toward', O('echo', 'cal', {delta: 200}, 47) === 'toward');
+    ev("S.weights = [];"); wts(75, 47, 0.75, 160); wts(40, 19, 0, 163);
+    ok('outcome: one followed by the scale stalling moved it away', O('echo', 'cal', {delta: 200}, 47) === 'away');
+    ev("S.weights = [];"); wts(75, 19, 0, 160);
+    ok('outcome: flat before and after is no change', O('echo', 'cal', {delta: 200}, 47) === 'same');
+    ev("S.weights = [];"); wts(75, 47, 0.75, 160); wts(40, 19, 1.6, 163.75);
+    ok('outcome: a scale that went from in the band to well over it moved away, though it moved faster', O('echo', 'cal', {delta: 200}, 47) === 'away');
+    ok('outcome: under four weeks since, too soon', O('echo', 'cal', {delta: 200}, 10) === 'pending');
+    ev("S.weights = [];");
+    ok('outcome: settled with no weigh-ins, no data', O('echo', 'cal', {delta: 200}, 47) === 'nodata');
+
+    // --- swaps: the new lift over its first four sessions ---
+    [36, 29, 22, 15].forEach((d, i) => L6('Zz T Up', d, [[50 + i * 5, 8]]));
+    [36, 29, 22, 15].forEach((d, i) => L6('Zz T Flat', d, [[50, [8, 9, 9, 8][i]]]));
+    [36, 29, 22, 15].forEach((d, i) => L6('Zz T Down', d, [[60 - i * 3, 8]]));
+    ok('outcome: a swap whose new lift climbed', O('delta', 'swapEx', {from: 'x', to: 'Zz T Up'}, 40) === 'climbing');
+    ok('outcome: one that sat flat', O('delta', 'swapEx', {from: 'x', to: 'Zz T Flat'}, 40) === 'flat');
+    ok('outcome: one that went down', O('delta', 'swapEx', {from: 'x', to: 'Zz T Down'}, 40) === 'down');
+    [36, 29, 22, 15].forEach((d, i) => L6('Zz T Drift', d, [[[60, 60, 60, 60.5][i], 8]]));
+    ok('outcome: a quarter of a percent a week is flat, by the watch\u2019s own line', O('delta', 'swapEx', {from: 'x', to: 'Zz T Drift'}, 40) === 'flat');
+    ok('outcome: an added lift is read the same way', O('delta', 'addEx', {name: 'Zz T Up', day: 'D1'}, 40) === 'climbing');
+    ok('outcome: two sessions in, too soon', O('delta', 'swapEx', {from: 'x', to: 'Zz T Up'}, 25) === 'pending');
+
+    // --- set counts: the lift's trend after against before ---
+    [63, 56, 49, 42].forEach(d => L6('Zz T Sets', d, [[100, 8]]));
+    [35, 28, 21, 14].forEach((d, i) => L6('Zz T Sets', d, [[100 + (i + 1) * 5, 8]]));
+    ok('outcome: a set change followed by the lift moving faster is better', O('delta', 'setCount', {exercise: 'Zz T Sets', day: 'D1', sets: 4}, 42) === 'better');
+    [63, 56, 49, 42].forEach((d, i) => L6('Zz T Sets2', d, [[100 + i * 5, 8]]));
+    [35, 28, 21, 14].forEach(d => L6('Zz T Sets2', d, [[115, 8]]));
+    ok('outcome: and moving slower is worse', O('delta', 'setCount', {exercise: 'Zz T Sets2', day: 'D1', sets: 4}, 42) === 'worse');
+    ok('outcome: under four weeks since, too soon', O('delta', 'setCount', {exercise: 'Zz T Sets', day: 'D1', sets: 4}, 20) === 'pending');
+
+    // --- deloads: back to level in the first two sessions after the week ---
+    ev("window.__s6L = S.logs; S.logs = [];");
+    L6('Zz T DL', 40, [[200, 5]]); L6('Zz T DL', 33, [[200, 5]]);
+    L6('Zz T DL', 20, [[196, 5]]);
+    L6('Zz T DL', 27, [[150, 5]]); L6('Zz T DL', 26, [[150, 5]]);
+    ok('outcome: a deload followed by sessions within 3% of before is back to level (the light week itself is not counted)', O('delta', 'deload', {}, 30) === 'back');
+    ev("S.logs = S.logs.filter(function(l){ return !(l.entries[0].exercise === 'Zz T DL' && l.date === mesoAddDays(todayKey(), -20)); });");
+    L6('Zz T DL', 20, [[180, 5]]);
+    ok('outcome: and well under is not back yet', O('delta', 'deload', {}, 30) === 'notyet');
+    ok('outcome: with no session since the week, too soon', O('delta', 'deload', {}, 3) === 'pending');
+    ev("S.logs = window.__s6L; delete window.__s6L;");
+
+    // --- experiments read their own result ---
+    ev("S.experiments.history = [{template: 'restMain', startedAt: mesoAddDays(todayKey(), -30), status: 'done', result: {direction: 'better'}}," +
+       " {template: 'repRange', startedAt: mesoAddDays(todayKey(), -60), status: 'done', result: {direction: 'unclear'}}];" +
+       "S.experiments.active = {template: 'sleep', startedAt: mesoAddDays(todayKey(), -5), status: 'running'};");
+    ok('outcome: an experiment reads its own result', O('delta', 'experiment', {template: 'restMain'}, 30) === 'better' && O('delta', 'experiment', {template: 'repRange'}, 60) === 'unclear');
+    ok('outcome: one still running is too soon; one not found is no data', O('delta', 'experiment', {template: 'sleep'}, 5) === 'pending' && O('delta', 'experiment', {template: 'restMain'}, 31) === 'nodata');
+    ok('outcome: a schedule change is applied, not scored', O('charlie', 'schedule', {map: {}}, 30) === 'applied');
+    ok('outcome: only approved changes are scored', ev("agOutcome(" + prop('delta', 'liftReset', {name: 'Zz T Reset', w: 100}, 40, 'rejected') + ")") === null);
+
+    // --- the line each agent gets ---
+    ev("agState().proposals = [" + [prop('delta', 'liftReset', {name: 'Zz T Reset', w: 100, days: 7}, 40), prop('delta', 'liftReset', {name: 'Zz T Reset', w: 105, days: 7}, 40),
+        prop('delta', 'swapEx', {from: 'x', to: 'Zz T Up'}, 40), prop('delta', 'bpFreq', {daysPerWeek: 1}, 40), prop('delta', 'liftReset', {name: 'Zz T Reset', w: 90}, 40, 'rejected'),
+        prop('echo', 'cal', {delta: 200}, 10)].join(',') + "];");
+    ok('track: per kind, in words', ev("agTrackText('delta')") === 'resets 1 held, 1 missed; swaps 1 climbing', ev("agTrackText('delta')"));
+    ok('track: a kind the app no longer has is left out', ev("agTrackText('delta')").indexOf('bpFreq') < 0 && ev("agTrackText('echo')") === 'calorie changes 1 too soon');
+    ok('track: a specialist is handed only its own record', /YOUR TRACK RECORD/.test(ev("agTrackLine('delta')")) && ev("agTrackLine('delta')").indexOf('calorie') < 0 &&
+       ev("agBaseContext('echo')").indexOf('resets 1 held') < 0 && ev("agBaseContext('echo')").indexOf('calorie changes 1 too soon') >= 0);
+    ok('track: ZULU is handed everyone’s, named', /DELTA: resets 1 held, 1 missed; swaps 1 climbing/.test(ev("agTrackLine('zulu')")) && /ECHO: calorie changes 1 too soon/.test(ev("agTrackLine('zulu')")));
+    ok('track: an agent with nothing approved gets no line at all', ev("agTrackLine('charlie')") === '');
+    const card = ev("hubTrackHTML('delta')");
+    ok('track: the Hub card shows it, and how many requests he approved', /resets 1 held, 1 missed; swaps 1 climbing\./.test(card) && /4 of 5 requests approved/.test(card), card);
+    ev("agActiveChat = 'delta'; renderOps();");
+    ok('track: the Hub\u2019s DELTA card really carries it', /resets 1 held, 1 missed; swaps 1 climbing\./.test(ev("(document.querySelector('#ops .hub-track')||{}).textContent || ''")));
+    ok('track: ZULU\u2019s card says chat-card changes are not scored', /not scored/.test(ev("hubTrackHTML('zulu')")) && !/not scored/.test(card));
+
+    // --- diagnosis: which lifts, and only on a night with some ---
+    const row = (lift, lvl, ago) => "{lift: '" + lift + "', lvl: '" + lvl + "', word: '" + (lvl === 'red' ? 'stalled' : 'slowing') + "', sig: [{k: 'flat3', txt: '3 sessions at 100, reps flat'}], lastDate: mesoAddDays(todayKey(), -" + (ago || 20) + "), flatRun: 3, flatSince: mesoAddDays(todayKey(), -30), spark: []}";
+    ev("pwRising = function(rows){ return (rows || []).filter(function(r){ return r.lift === 'Zz PD Rise'; }).map(function(r){ return {lift: r.lift}; }); };");
+    ev("plateauWatch = function(){ return [" + [row('Zz PD A', 'red'), row('Zz PD B', 'red'), row('Zz PD C', 'amber'), row('Zz PD Rise', 'amber'), "{lift: 'Zz PD Ok', lvl: 'green', word: 'on track', sig: []}"].join(',') + "]; };");
+    let pt = JSON.parse(ev("JSON.stringify(pdTargets().map(function(r){ return r.lift; }))"));
+    ok('targets: a lift that just got worse first, then the worst, two a night', JSON.stringify(pt) === '["Zz PD Rise","Zz PD A"]', JSON.stringify(pt));
+    ev("agState().diagnoses = {'Zz PD Rise': {lift: 'Zz PD Rise', lvl: 'amber', read: 'x', at: new Date(Date.now() - 5 * 86400000).toISOString(), day: mesoAddDays(todayKey(), -5)}," +
+       " 'Zz PD A': {lift: 'Zz PD A', lvl: 'amber', read: 'y', at: new Date(Date.now() - 5 * 86400000).toISOString(), day: mesoAddDays(todayKey(), -5)}," +
+       " 'Zz PD B': {lift: 'Zz PD B', lvl: 'red', read: 'z', at: new Date(Date.now() - 30 * 86400000).toISOString(), day: mesoAddDays(todayKey(), -30)}};");
+    pt = JSON.parse(ev("JSON.stringify(pdTargets().map(function(r){ return r.lift; }))"));
+    ok('targets: one read five days ago at the same level waits; one that got worse since, or read a month ago, is due', JSON.stringify(pt) === '["Zz PD A","Zz PD B"]', JSON.stringify(pt));
+    ev("agState().diagnoses = {};");
+    const ctxOn = ev("agBaseContext('delta')"), specOn = ev("agJsonSpec('delta')");
+    ok('prompt: with lifts to diagnose, DELTA is handed them and asked for a "diagnosis" key', /PLATEAU WATCH, DIAGNOSE THESE/.test(ctxOn) && /- Zz PD Rise: slowing \(3 sessions at 100, reps flat\)/.test(ctxOn) && /"diagnosis"/.test(specOn));
+    ok('prompt: and nobody else is', !/DIAGNOSE THESE/.test(ev("agBaseContext('echo')")) && !/"diagnosis"/.test(ev("agJsonSpec('echo')")) && !/DIAGNOSE THESE/.test(ev("agBaseContext('zulu')")));
+    ev("plateauWatch = function(){ return [" + "{lift: 'Zz PD Ok', lvl: 'green', word: 'on track', sig: []}" + "]; };");
+    const ctxOff = ev("agBaseContext('delta')"), specOff = ev("agJsonSpec('delta')");
+    ev("window.__pdc = pdContextLine; window.__pds = pdSpecLine; pdContextLine = function(){ return 'X'; }; pdSpecLine = function(){ return 'X'; };");
+    const ctxBare = ev("agBaseContext('delta')"), specBare = ev("agJsonSpec('delta')");
+    ev("pdContextLine = window.__pdc; pdSpecLine = window.__pds;");
+    ok('prompt: a night with nothing to diagnose is byte-identical to the prompt without the feature (no cost)',
+       ctxOff === ctxBare.replace(/X$/, '') && specOff === specBare.replace(/X$/, '') && ctxBare.slice(-1) === 'X' && !/DIAGNOSE/.test(ctxOff));
+
+    // --- the validator ---
+    const asked = "[{lift: 'Zz PD A', lvl: 'red'}, {lift: 'Zz PD Rise', lvl: 'amber'}]";
+    const V = (raw) => JSON.parse(ev("JSON.stringify(agValidateDiagnosis(" + raw + ", " + asked + "))"));
+    let v = V("[{lift: 'zz pd a', read: 'Back sets fell 37%.', agree: ['volume', 'bogus', 'volume', 7], try: 'Add a set to Cable Row.'}]");
+    ok('validate: a read on an asked lift is kept, under the app’s spelling, with unknown and repeated factors dropped',
+       v.length === 1 && v[0].lift === 'Zz PD A' && v[0].lvl === 'red' && JSON.stringify(v[0].agree) === '["volume"]' && v[0].try === 'Add a set to Cable Row.' && v[0].day === ev('todayKey()'), JSON.stringify(v));
+    ok('validate: a lift it was not asked about is dropped', V("[{lift: 'Barbell Bench Press', read: 'x'}]").length === 0);
+    ok('validate: a read that is not a string is dropped', V("[{lift: 'Zz PD A', read: {a: 1}}, {lift: 'Zz PD Rise', read: 5}]").length === 0);
+    ok('validate: long reads are clipped', V("[{lift: 'Zz PD A', read: '" + 'word '.repeat(90) + "'}]")[0].read.length <= ev('PD_READ_MAX'));
+    ok('validate: one entry per lift, at most two', V("[{lift: 'Zz PD A', read: 'a'}, {lift: 'Zz PD A', read: 'b'}, {lift: 'Zz PD Rise', read: 'c'}]").map(x => x.read).join('') === 'ac');
+    ok('validate: anything that is not a list is nothing', V("{lift: 'Zz PD A', read: 'a'}").length === 0 && ev("agValidateDiagnosis([{lift: 'Zz PD A', read: 'a'}], null).length") === 0);
+
+    // --- a real cycle: stored in the live S after a mid-reply sync, with a feed line ---
+    ev("plateauWatch = function(){ return [" + row('Zz PD A', 'red') + "]; };");
+    stubAgents({delta: {summary: 'd', proposals: [], overload: null,
+      diagnosis: [{lift: 'Zz PD A', read: 'Three flat sessions while back volume fell; recovery is fine.', agree: ['volume'], try: 'One more set on it for two weeks.'}]}});
+    ev("window.__cc6 = callClaudeWithData; callClaudeWithData = async function(m, sys, a, b, c){ var r = await window.__cc6(m, sys, a, b, c);" +
+       " if(/You are DELTA/.test(sys)){ window.__d6sys = sys; S = JSON.parse(JSON.stringify(S)); plateauWatch = function(){ return []; }; } return r; };");
+    await ev('agRunAll(true)');
+    ev("callClaudeWithData = window.__cc6;");
+    const dg = JSON.parse(ev("JSON.stringify(agState().diagnoses || {})"));
+    ok('cycle: DELTA’s read is stored against the lift asked about, in the live S after a mid-reply swap',
+       dg['Zz PD A'] && /back volume fell/.test(dg['Zz PD A'].read) && dg['Zz PD A'].lvl === 'red', JSON.stringify(dg));
+    ok('cycle: DELTA was really asked (the prompt carried the lift)', /- Zz PD A: stalled/.test(String(ev('window.__d6sys'))));
+    ok('cycle: and it leaves a feed line, a monitoring event that actually happened', ev("agState().log.some(function(l){ return l.agent === 'delta' && /^Looked at Zz PD A: Three flat sessions/.test(l.text); })"));
+    stubAgents({delta: {summary: 'd', proposals: [], overload: null, diagnosis: [{lift: 'Somebody Else', read: 'x'}]}});
+    ev("plateauWatch = function(){ return [" + row('Zz PD B', 'red') + "]; }; agState().lastRun = '';");
+    await ev('agRunAll(true)');
+    ok('cycle: a reply about the wrong lift is not shown, and the feed says so', !ev("agState().diagnoses['Somebody Else']") && ev("agState().log.some(function(l){ return /did not pass the check/.test(l.text) && /flagged lifts/.test(l.text); })"));
+    unstubAgents();
+
+    // --- a pull keeps both devices' reads ---
+    ev("agState().diagnoses = {'Zz PD A': {lift: 'Zz PD A', lvl: 'red', read: 'local newer', at: '2099-01-01T00:00:00.000Z', day: todayKey()}, 'Zz PD L': {lift: 'Zz PD L', lvl: 'amber', read: 'local only', at: '2026-01-01T00:00:00.000Z', day: todayKey()}};");
+    const snap6 = ev('JSON.parse(JSON.stringify(S))');
+    snap6.agents.diagnoses = {'Zz PD A': {lift: 'Zz PD A', lvl: 'red', read: 'remote older', at: '2020-01-01T00:00:00.000Z', day: '2020-01-01'}, 'Zz PD R': {lift: 'Zz PD R', lvl: 'red', read: 'remote only', at: '2026-01-02T00:00:00.000Z', day: '2026-01-02'}};
+    w.__snap6 = snap6;
+    ev('applyPulled(window.__snap6, Date.now())');
+    const md = JSON.parse(ev("JSON.stringify(agState().diagnoses)"));
+    ok('sync: reads on different lifts from two devices both survive a pull', md['Zz PD L'] && md['Zz PD R'] && md['Zz PD L'].read === 'local only' && md['Zz PD R'].read === 'remote only', JSON.stringify(md));
+    ok('sync: on the same lift the newer read wins', md['Zz PD A'].read === 'local newer');
+
+    // --- where it shows ---
+    ev("plateauWatch = window.__s6k.plateauWatch; pwRising = window.__s6k.pwRising;");
+    ev("agState().diagnoses = {'Zz PD A': {lift: 'Zz PD A', lvl: 'red', read: 'Back volume fell.', agree: ['volume'], try: 'One more set.', at: new Date().toISOString(), day: todayKey()}};");
+    const why = ev("strWhyHTML('Zz PD A', {lift: 'Zz PD A', lvl: 'red', word: 'stalled', sig: [{k: 'stalled', txt: 'x'}], flatRun: 4, flatSince: mesoAddDays(todayKey(), -30)}, [])");
+    ok('show: the Strength screen’s why card carries DELTA’s read and its one try', /DELTA’s read/.test(why) && /Back volume fell\./.test(why) && /Try:<\/b> One more set\./.test(why), why.slice(-500));
+    ok('show: but not when he has picked a dip (that card is about the dip)', !/DELTA’s read/.test(ev("(function(){ strDipSel = mesoAddDays(todayKey(), -9); var h = strWhyHTML('Zz PD A', null, [{date: mesoAddDays(todayKey(), -9), v: 100, pct: 7}]); strDipSel = null; return h; })()")));
+    ok('show: the Overload line’s factors carry it too', /DELTA’s read/.test(ev("pwCausesHTML({lift: 'Zz PD A', lvl: 'red', word: 'stalled', sig: [{k: 'stalled', txt: 'x'}], flatRun: 4, flatSince: mesoAddDays(todayKey(), -30)})")));
+    ev("agState().diagnoses['Zz PD A'].at = new Date(Date.now() - 25 * 86400000).toISOString();");
+    ok('show: a read older than three weeks is not shown', ev("pdReadHTML('Zz PD A')") === '');
+    const before6 = ev('JSON.stringify(S)');
+    ev("pdTargets(); pdContextLine(pdTargets()); agTrackLine('zulu'); hubTrackHTML('delta'); pdReadHTML('Zz PD A');");
+    ok('nothing written: scoring, targets, prompts and the cards only read', ev('JSON.stringify(S)') === before6);
+
+    // --- a week of eating is a band ---
+    const m6 = JSON.parse(ev("JSON.stringify(ckMarks([{kind: 'cal', date: mesoAddDays(todayKey(), -30), end: mesoAddDays(todayKey(), -24), label: '+400 CAL'}, {kind: 'cal', date: mesoAddDays(todayKey(), -10), label: 'TARGET +200'}]," +
+      " function(k){ return 10 + daysBetween(mesoAddDays(todayKey(), -60), k) * 5; }, function(v){ return v; }, 20, 180, 10, 310))"));
+    ok('bands: a week of eating is a faint band across the week; a target change keeps its line', /<rect class="ck-calw" x="160\.0"[^>]*width="34\.0"/.test(m6.under) &&
+       (m6.under.match(/<line /g) || []).length === 1 && />\+400 CAL</.test(m6.labels) && />TARGET \+200</.test(m6.labels), m6.under);
+    ev("S.nutrition = []; var wk6 = weekKeyOf(mesoAddDays(todayKey(), -28));" +
+       "[[0, 3000], [7, 3000], [14, 3420]].forEach(function(p){ for(var d = 0; d < 5; d++) S.nutrition.push({date: mesoAddDays(wk6, p[0] + d), cals: p[1]}); });");
+    const cm = JSON.parse(ev("JSON.stringify(ckEventMarks(mesoAddDays(todayKey(), -60), ['cal']))"));
+    ok('bands: the shift spans its Monday to Sunday', cm.length === 1 && cm[0].end === ev("mesoAddDays(mesoAddDays(weekKeyOf(mesoAddDays(todayKey(), -28)), 14), 6)"), JSON.stringify(cm));
+  } catch (e) {
+    ok('V4 stage 6 section', false, e.stack);
+  } finally {
+    ev("try{ if(window.__s6k){ plateauWatch = window.__s6k.plateauWatch; pwRising = window.__s6k.pwRising; plateauCauses = window.__s6k.plateauCauses; } if(window.__pdc){ pdContextLine = window.__pdc; pdSpecLine = window.__pds; } }catch(e){} strDipSel = null;");
+    unstubAgents();
+    ev('if(window.__cc6) callClaudeWithData = window.__realData || window.__cc6;');
+    ev('if(window.__s6Saved){ S = JSON.parse(window.__s6Saved); delete window.__s6Saved; } delete window.__s6k; localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

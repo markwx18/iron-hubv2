@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-04-v8">
+<meta name="ironhub-build" content="2026-10-05-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1482,6 +1482,18 @@
   .pw-conf{flex:none; padding:2px 8px; border-radius:999px; border:1px solid var(--line2); font-family:var(--disp); font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);}
   .pw-conf.high{border-color:var(--good); color:var(--good);}
   .pw-conf.medium{border-color:var(--warn); color:var(--warn);}
+  /* track record on the Hub card, DELTA's plateau read (V4 stage 6) */
+  .hub-track{display:flex; flex-direction:column; gap:3px; margin-top:12px; padding:10px 12px; border-radius:var(--r-ctl); background:var(--panel2);}
+  .hub-track-k{font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);}
+  .hub-track-v{font-size:13px; line-height:1.45;}
+  .hub-track-a{font-size:12px; color:var(--dim);}
+  .pd-read{display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:var(--r-ctl); background:var(--panel2);}
+  .str-why .pd-read{background:var(--panel2);}
+  .pw-why .pd-read{background:var(--panel);}
+  .pd-read-h{display:flex; align-items:center; gap:8px; font-size:13px;}
+  .pd-read-h .pw-note{margin-left:auto;}
+  .pd-read p{margin:0; font-size:13px; line-height:1.45; color:var(--text);}
+  .pd-try{color:var(--muted) !important;}
   /* Progress › Strength hero (V4 stage 5, the A × C artboard) */
   .str-span{column-span:all; -webkit-column-span:all;}
   .str-hero{display:flex; flex-direction:column; gap:14px;}
@@ -4323,6 +4335,11 @@ function ckMarks(marks, px, py, T, B, L, R){
         if(m.kind === 'deload') out.under += '<rect x="'+x.toFixed(1)+'" y="'+T.toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="'+Math.max(0, B - T).toFixed(1)+'" rx="3" fill="var(--panel2)"/>';
         else out.under += '<rect x="'+x.toFixed(1)+'" y="'+(T - 5).toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="3" rx="1.5" fill="'+k.col+'" opacity=".85"/>';
         lab(k.row, x + 2, k.row === 'bot' ? B - 5 : T - 9, m.label, k.col);
+      } else if(m.kind === 'cal' && m.end){
+        // A week of eating (his choice, 2026-10-04): a faint band across that week, not a one-day line.
+        const x2 = Math.max(x + 4, Math.min(R, px(m.end) + 4));
+        out.under += '<rect class="ck-calw" x="'+x.toFixed(1)+'" y="'+T.toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="'+Math.max(0, B - T).toFixed(1)+'" rx="3" fill="'+k.col+'" opacity=".09"/>';
+        lab('top', x + 3, T - 9, m.label, k.col);
       } else if(m.kind === 'cal'){
         out.under += '<line x1="'+x.toFixed(1)+'" x2="'+x.toFixed(1)+'" y1="'+T.toFixed(1)+'" y2="'+B.toFixed(1)+'" stroke="'+k.col+'" stroke-width="1" stroke-dasharray="2 3" opacity=".75"/>';
         lab('top', x + 3, T - 9, m.label, k.col);
@@ -6331,6 +6348,14 @@ function applyPulled(d, exportedAt){
     // Same for DELTA's debrief: it comes across wholesale too.
     if(localAgents.debrief && localAgents.debrief.at &&
        (!a.debrief || localAgents.debrief.at > (a.debrief.at||''))) a.debrief = localAgents.debrief;
+    // DELTA's plateau reads: per lift, newer wins, so reads written on two devices both survive.
+    if(localAgents.diagnoses && typeof localAgents.diagnoses === 'object'){
+      if(!a.diagnoses || typeof a.diagnoses !== 'object') a.diagnoses = {};
+      Object.keys(localAgents.diagnoses).forEach(function(k){
+        const loc = localAgents.diagnoses[k];
+        if(loc && loc.at && (!a.diagnoses[k] || loc.at > (a.diagnoses[k].at || ''))) a.diagnoses[k] = loc;
+      });
+    }
   }
   if(localLastAuto){
     const iv = invState();
@@ -15060,7 +15085,7 @@ function ckEventMarks(from, kinds){
       if(weeks[i] < from) continue;
       const d = pxMean(wk[weeks[i]]) - (pxMean(wk[weeks[i-1]]) + pxMean(wk[weeks[i-2]])) / 2;
       if(Math.abs(d) >= MK_CAL_SHIFT && !cal.some(function(c){ return Math.abs(daysBetween(c.date, weeks[i])) < 14; }))
-        cal.push({kind:'cal', date:weeks[i], label:(d > 0 ? '+' : '\u2212')+Math.round(Math.abs(d) / 50) * 50+' CAL'});
+        cal.push({kind:'cal', date:weeks[i], end:mesoAddDays(weeks[i], 6), label:(d > 0 ? '+' : '\u2212')+Math.round(Math.abs(d) / 50) * 50+' CAL'});
     }
     out.push.apply(out, cal);
   }
@@ -15145,6 +15170,8 @@ function strWhyHTML(nm, risk, dips){
   } else if(dips.length){ const d = dips[dips.length-1]; title = 'Why the '+homeShortDate(d.date)+' dip'; c = dipCauses(d); }
   else return '';
   let h = '<section class="str-sec str-why" aria-label="'+esc(title)+'"><div class="str-sec-h"><span>'+esc(title)+'</span><span class="pw-note">likely, not proven</span></div>'+pwFactorsHTML(c);
+  // DELTA's own read on a stalled or slowing lift (V4 stage 6), under the app's factors.
+  if(!sel) h += pdReadHTML(nm);
   if(dips.length) h += '<div class="str-dips"><span>Dips on the chart</span>'+dips.map(function(d){
       return '<button class="str-dip'+(d.date === strDipSel ? ' on' : '')+'" onclick="strDip(\''+d.date+'\')">'+esc(homeShortDate(d.date))+' \u2212'+d.pct+'%</button>';
     }).join('')+'</div>';
@@ -18159,6 +18186,208 @@ function agReject(pid){
   save(); renderOps();
 }
 
+/* ============================================================
+   TRACK RECORDS (V4 stage 6). How each agent's APPROVED changes turned out, scored from the logs
+   whenever it is read and never stored, the way predResolve() scores a forecast: a stored verdict
+   would lose to an older snapshot on a pull. Free: it only reads, and each agent is handed one line.
+   Changes applied from ZULU's chat cards never go through a proposal, so they are not scored.
+   ============================================================ */
+const TR_SETTLE_DAYS = 28, TR_RESET_SESSIONS = 2, TR_SWAP_SESSIONS = 4, TR_CAL_MOVE = 0.1, TR_SET_MOVE = 0.5, TR_BACK = 0.97;
+const TR_KIND = {liftReset:'resets', cal:'calorie changes', pro:'protein changes', swapEx:'swaps', addEx:'added lifts',
+                 setCount:'set changes', deload:'deloads', experiment:'experiments', schedule:'schedule changes',
+                 cycleSchedule:'schedule changes', fuelFood:'foods added'};
+const TR_WORD = {held:'held', missed:'missed', toward:'moved the scale toward the band', same:'no change', away:'moved it away',
+                 climbing:'climbing', flat:'flat', down:'down', better:'better', worse:'worse', back:'back to level',
+                 notyet:'not back yet', unclear:'no clear difference', applied:'applied', pending:'too soon', nodata:'no data'};
+const TR_ORDER = ['held','missed','toward','same','away','climbing','flat','down','better','worse','back','notyet','unclear','applied','pending','nodata'];
+/* A lift's gym sessions after a day, oldest first. */
+function trLiftSessions(nm, after){
+  return (S.logs||[]).filter(function(l){ return l && l.date > after && !l.deload && !l.home; })
+    .sort(function(a, b){ return a.date.localeCompare(b.date); })
+    .map(function(l){ const e = (l.entries||[]).find(function(x){ return x.exercise === nm; }); return e && e.sets && e.sets.length ? {date:l.date, sets:e.sets} : null; })
+    .filter(Boolean);
+}
+function agOutcome(p){
+  if(!p || p.status !== 'approved' || !p.fix) return null;
+  const fx = p.fix, q = fx.payload || {}, t = todayKey(), at = p.closed || p.created;
+  if(!at) return {state:'nodata'};
+  const settled = daysBetween(at, t) >= TR_SETTLE_DAYS;
+  const late = function(){ return {state: settled ? 'nodata' : 'pending'}; };
+  if(fx.type === 'liftReset'){
+    // Held: in the next two sessions of that lift, the reset weight for at least the bottom of the range.
+    const ss = trLiftSessions(q.name, at).slice(0, TR_RESET_SESSIONS);
+    if(!ss.length) return late();
+    const lo = isFormFocus(q.name) ? FORM_LO : exRepMode(q.name).lo;
+    if(ss.some(function(x){ return x.sets.some(function(st){ return (+st.w||0) >= +q.w && (+st.r||0) >= lo; }); })) return {state:'held'};
+    return {state: ss.length < TR_RESET_SESSIONS && !settled ? 'pending' : 'missed'};
+  }
+  if(fx.type === 'cal'){
+    // The scale's 4-week pace after the change against before it, judged by its distance from the band.
+    if(!settled) return {state:'pending'};
+    const b = bulkRate(4, at), a = bulkRate(4, mesoAddDays(at, TR_SETTLE_DAYS));
+    if(!b || !a || !isFinite(b.rate) || !isFinite(a.rate)) return {state:'nodata'};
+    const mid = (BULK_LO + BULK_HI) / 2, gain = Math.abs(b.rate - mid) - Math.abs(a.rate - mid);
+    return {state: gain >= TR_CAL_MOVE ? 'toward' : gain <= -TR_CAL_MOVE ? 'away' : 'same',
+            before:Math.round(b.rate*100)/100, after:Math.round(a.rate*100)/100};
+  }
+  if(fx.type === 'swapEx' || fx.type === 'addEx'){
+    // The new lift over its first four sessions, judged like the plateau watch: percent of its level a week.
+    const ss = trLiftSessions(fx.type === 'swapEx' ? q.to : q.name, at);
+    if(ss.length < TR_SWAP_SESSIONS) return late();
+    const pct = pwPctPerWeek(ss.slice(0, TR_SWAP_SESSIONS).map(function(x){ return {date:x.date, v:sessionBestE1(x.sets)}; }));
+    return {state: pct === null ? 'nodata' : pct > PW_CLIMB_PCT ? 'climbing' : pct < -PW_FALL_PCT ? 'down' : 'flat'};
+  }
+  if(fx.type === 'setCount'){
+    // The lift's clean trend over the four weeks after against the four before.
+    if(!settled) return {state:'pending'};
+    const pts = e1rmSeries(q.exercise, {excludeHome:true, excludeMod:true});
+    const b = pwPctPerWeek(pts.filter(function(x){ return x.date <= at && x.date > mesoAddDays(at, -TR_SETTLE_DAYS); }));
+    const a = pwPctPerWeek(pts.filter(function(x){ return x.date > at && x.date <= mesoAddDays(at, TR_SETTLE_DAYS); }));
+    if(b === null || a === null) return {state:'nodata'};
+    return {state: a - b >= TR_SET_MOVE ? 'better' : b - a >= TR_SET_MOVE ? 'worse' : 'same'};
+  }
+  if(fx.type === 'deload'){
+    // Back to level: in the first two sessions after the deload week, most lifts within 3% of their
+    // best in the four weeks before it.
+    const from = mesoAddDays(at, 6);
+    const after = (S.logs||[]).filter(function(l){ return l && l.date > from && !l.deload && !l.home; })
+      .sort(function(a, b){ return a.date.localeCompare(b.date); }).slice(0, 2);
+    if(!after.length) return late();
+    let n = 0, ok = 0;
+    after.forEach(function(l){ (l.entries||[]).forEach(function(e){
+      const before = e1rmSeries(e.exercise).filter(function(x){ return x.date <= at && x.date > mesoAddDays(at, -TR_SETTLE_DAYS); });
+      if(!before.length) return;
+      const best = Math.max.apply(null, before.map(function(x){ return x.v; }));
+      n++; if(sessionBestE1(e.sets) >= best * TR_BACK) ok++;
+    }); });
+    if(!n) return {state:'nodata'};
+    return {state: ok * 2 >= n ? 'back' : 'notyet'};
+  }
+  if(fx.type === 'experiment'){
+    const xs = expState(), all = [xs.active].concat(xs.history).filter(Boolean);
+    const x = all.find(function(r){ return r.template === q.template && r.startedAt === at; });
+    if(!x) return {state:'nodata'};
+    if(x.status === 'running') return {state:'pending'};
+    const r = x.result;
+    return {state: !r ? 'nodata' : r.direction === 'unclear' ? 'unclear' : r.direction};
+  }
+  return {state:'applied'};
+}
+/* One agent's scored changes, by kind. Kinds the app no longer has (bpFreq) are left out. */
+function agTrack(id){
+  const out = {};
+  agState().proposals.filter(function(p){ return p && p.agent === id && p.status === 'approved' && p.fix && TR_KIND[p.fix.type]; }).forEach(function(p){
+    const o = agOutcome(p); if(!o) return;
+    const g = out[p.fix.type] || (out[p.fix.type] = {n:0, by:{}});
+    g.n++; g.by[o.state] = (g.by[o.state] || 0) + 1;
+  });
+  return out;
+}
+function agTrackText(id){
+  const t = agTrack(id);
+  // The kind with the most changes first: his resets outnumber everything else DELTA has done.
+  return Object.keys(t).sort(function(x, y){ return t[y].n - t[x].n; }).map(function(k){
+    const g = t[k];
+    return TR_KIND[k]+' '+TR_ORDER.filter(function(st){ return g.by[st]; }).map(function(st){ return g.by[st]+' '+TR_WORD[st]; }).join(', ');
+  }).join('; ');
+}
+/* The agents' line: its own record for a specialist, everyone's for ZULU. About 40 tokens. */
+function agTrackLine(id){
+  const ids = id === 'zulu' ? AG_ORDER.concat('zulu') : [id];
+  const lines = ids.map(function(k){ const x = agTrackText(k); return x ? (id === 'zulu' ? AGENTS[k].name+': ' : '')+x : ''; }).filter(Boolean);
+  if(!lines.length) return '';
+  return '\n'+(id === 'zulu' ? 'TRACK RECORDS' : 'YOUR TRACK RECORD')+' (approved changes, scored by the app from his logs since; use it to calibrate, not to defend):'+'\n'+
+    lines.map(function(l){ return '  '+l; }).join('\n')+'\n';
+}
+
+/* ============================================================
+   PLATEAU DIAGNOSIS (V4 stage 6: the first paid addition, his choice 2026-10-04). DELTA gives its read
+   on the lifts the plateau watch flags, inside its EXISTING nightly call: a "diagnosis" key in its JSON,
+   like "debrief", asked for only on a night with something to diagnose, so a quiet night's prompt is
+   byte-identical and costs nothing extra. At most PD_MAX lifts a night. What comes back is commentary,
+   validated and clipped like the debrief; a change it wants still goes through proposals and
+   agValidateFix().
+   ============================================================ */
+const PD_MAX = 2, PD_QUIET_DAYS = 21, PD_SHOW_DAYS = 21, PD_READ_MAX = 240, PD_TRY_MAX = 160, PD_KEEP = 40;
+const PD_FACTORS = ['recovery', 'food', 'volume', 'load', 'consistency', 'stale'];
+function pdAge(d){ return d && d.at ? daysBetween(dateKeyOf(new Date(d.at)), todayKey()) : Infinity; }
+/* The lifts to diagnose tonight: a lift the watch moved up a level this week first, then the worst
+   not looked at in PD_QUIET_DAYS. A lift that got worse since DELTA's last read is due again. */
+function pdTargets(rows){
+  let all = rows;
+  if(!all){ try{ all = plateauWatch(); }catch(e){ all = []; } }
+  const dg = agState().diagnoses || {};
+  let rising = [];
+  try{ rising = pwRising(all).map(function(r){ return r.lift; }); }catch(e){ rising = []; }
+  const due = function(r){
+    const d = dg[r.lift];
+    if(!d || pdAge(d) >= PD_QUIET_DAYS) return true;
+    return PW_LEVELS[r.lvl].n > PW_LEVELS[PW_LEVELS[d.lvl] ? d.lvl : 'green'].n;
+  };
+  const bad = all.filter(function(r){ return r.lvl !== 'green' && due(r); });
+  return bad.filter(function(r){ return rising.indexOf(r.lift) >= 0; })
+    .concat(bad.filter(function(r){ return rising.indexOf(r.lift) < 0; })).slice(0, PD_MAX);
+}
+/* What DELTA is handed for each: the watch's level and reasons, the app's likely factors with their
+   confidence, and its own last read. */
+function pdContextLine(targets){
+  if(!targets || !targets.length) return '';
+  const dg = agState().diagnoses || {};
+  return '\n'+'PLATEAU WATCH, DIAGNOSE THESE (the app flagged them on clean sessions; give your read in "diagnosis"):'+'\n'+
+    targets.map(function(r){
+      let c = [];
+      try{ c = plateauCauses(r.lift, todayKey(), pwCauseWindow(r)); }catch(e){ c = []; }
+      const prev = dg[r.lift];
+      return '- '+r.lift+': '+r.word+' ('+r.sig.map(function(x){ return x.txt; }).join('; ')+'). App\u2019s likely factors: '+
+        (c.length ? c.map(function(x){ return x.k+' ['+x.conf+'] '+x.txt; }).join('; ') : 'none stands out')+'.'+
+        (prev && prev.read ? ' Your last read ('+prev.day+'): '+prev.read : '');
+    }).join('\n')+'\n';
+}
+function pdSpecLine(targets){
+  if(!targets || !targets.length) return '';
+  return '\n'+'ALSO include a top-level "diagnosis" key, one entry per lift under PLATEAU WATCH, DIAGNOSE THESE:'+'\n'+
+    '  "diagnosis":[{"lift":"<exact name from that list>","read":"<='+PD_READ_MAX+' chars: what you think is holding it, citing his numbers",'+
+    '"agree":["<the app factors you think matter, from: '+PD_FACTORS.join(', ')+'>"],"try":"<='+PD_TRY_MAX+' chars: the one change you would try first"}]'+'\n'+
+    '  Check his history with your tools before you agree or disagree with the app\u2019s factors. The diagnosis changes nothing '+
+    'by itself: a change he should apply still goes in proposals.'+'\n';
+}
+/* Validated like the debrief: only lifts it was asked about, strings only and clipped, factor keys
+   only from the app's list. Anything else is dropped -- a diagnosis is commentary, so losing one costs a card. */
+function agValidateDiagnosis(raw, asked){
+  if(!Array.isArray(raw) || !Array.isArray(asked) || !asked.length) return [];
+  const clip = function(v, n){
+    if(typeof v !== 'string') return '';
+    let t = v.replace(/\s+/g, ' ').trim();
+    if(t.length > n) t = t.slice(0, n - 1).replace(/\s+\S*$/, '')+'\u2026';
+    return t;
+  };
+  const out = [], seen = {};
+  raw.forEach(function(d){
+    if(!d || typeof d !== 'object' || out.length >= PD_MAX || typeof d.lift !== 'string') return;
+    const ask = asked.find(function(x){ return invNormName(x.lift) === invNormName(d.lift); });
+    if(!ask || seen[ask.lift]) return;
+    const read = clip(d.read, PD_READ_MAX);
+    if(!read) return;
+    seen[ask.lift] = 1;
+    out.push({lift:ask.lift, lvl:ask.lvl, read:read, try:clip(d.try, PD_TRY_MAX),
+      agree:(Array.isArray(d.agree) ? d.agree : []).filter(function(k, i, arr){ return typeof k === 'string' && PD_FACTORS.indexOf(k) >= 0 && arr.indexOf(k) === i; }),
+      at:new Date().toISOString(), day:todayKey()});
+  });
+  return out;
+}
+/* DELTA's read on a lift, while it is recent. Reads only. */
+function pdRead(nm){
+  const d = (agState().diagnoses || {})[nm];
+  return d && d.read && pdAge(d) <= PD_SHOW_DAYS ? d : null;
+}
+function pdReadHTML(nm){
+  const d = pdRead(nm);
+  if(!d) return '';
+  return '<div class="pd-read"><div class="pd-read-h"><span class="cc-glyph" style="color:'+AGENTS.delta.col+'">D</span><b>DELTA\u2019s read</b>'+
+    '<span class="pw-note">'+esc(homeShortDate(d.day))+'</span></div><p>'+esc(d.read)+'</p>'+
+    (d.try ? '<p class="pd-try"><b>Try:</b> '+esc(d.try)+'</p>' : '')+'</div>';
+}
+
 /* ---- context handed to the agents ---- */
 function agContext(){
   const sc = scheduleMode()==='cycle'
@@ -18338,7 +18567,9 @@ function agJsonSpec(id){
       '  "debrief":{"well":"<=160 chars","change":"<=160 chars","next":"<=160 chars"}'+'\n'+
       '  well = what went well, with his numbers. change = the ONE thing to do differently. next = what '+
       'it means for the next session of that day. Plain sentences, to him. The debrief changes nothing '+
-      'by itself: anything that should be applied still goes in proposals.'+'\n' : '');
+      'by itself: anything that should be applied still goes in proposals.'+'\n' : '')+
+    // Plateau diagnosis (V4 stage 6): only on a night with lifts to diagnose.
+    (id==='delta' ? pdSpecLine(pdTargets()) : '');
 }
 
 /* Everything an agent is handed before it starts asking questions. Deliberately still a
@@ -18348,8 +18579,8 @@ function agBaseContext(id){
   // data health) does not need it, and every agent that gets it pays for it on every round.
   let intel = '';
   if(id==='delta' || id==='echo' || id==='zulu'){ try{ intel = intelSummary(); }catch(e){ intel = ''; } }
-  return coachMemContext()+trainingContext()+agContext()+intel+agRecentSaid(id)+
-    (id==='delta' ? agTodaySessionNote()+olAgentContext() : '');
+  return coachMemContext()+trainingContext()+agContext()+intel+agRecentSaid(id)+agTrackLine(id)+
+    (id==='delta' ? agTodaySessionNote()+olAgentContext()+pdContextLine(pdTargets()) : '');
 }
 /* agRecentSaid()'s "say so in one short line and stop" is aimed at a repeated TREND
    observation, not at the session itself -- but nothing told DELTA the two were different, so
@@ -18473,6 +18704,8 @@ async function agRunSpecialist(id, manual){
   // Which session the debrief (if asked for) is about -- an id, taken before the await, so a sync
   // landing mid-reply cannot change what the answer is filed against.
   const dbFor = (id==='delta') ? ((agDebriefTarget()||{}).id || null) : null;
+  // The lifts asked about for a diagnosis, taken before the await for the same reason.
+  const pdFor = (id==='delta') ? pdTargets().map(function(r){ return {lift:r.lift, lvl:r.lvl}; }) : null;
   const consulted = [];
   const res = await callClaudeWithData(
     [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
@@ -18482,7 +18715,7 @@ async function agRunSpecialist(id, manual){
   // did not report, which is the truth. Half a sentence stored as a summary is not.
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   const parsed = parseLooseJSON(res.text);
-  if(parsed){ parsed._consulted = consulted; if(dbFor) parsed._debriefFor = dbFor; }
+  if(parsed){ parsed._consulted = consulted; if(dbFor) parsed._debriefFor = dbFor; if(pdFor && pdFor.length) parsed._pdFor = pdFor; }
   return parsed;
 }
 
@@ -18658,6 +18891,17 @@ async function agRunAll(manual){
           const db = agValidateDebrief(r.val.debrief, r.val._debriefFor);
           if(db) a2.debrief = db;
           else if(r.val._debriefFor && r.val.debrief) agLog('delta','My debrief of that session did not pass the check, so it is not shown.');
+        }catch(e){}
+        // The plateau diagnosis (V4 stage 6), into the same live S. Each one also leaves a feed line.
+        try{
+          const dg = agValidateDiagnosis(r.val.diagnosis, r.val._pdFor);
+          if(dg.length){
+            if(!a2.diagnoses || typeof a2.diagnoses !== 'object') a2.diagnoses = {};
+            dg.forEach(function(d){ a2.diagnoses[d.lift] = d; agLog('delta', 'Looked at '+d.lift+': '+d.read); });
+            const keys = Object.keys(a2.diagnoses);
+            if(keys.length > PD_KEEP) keys.sort(function(x, y){ return String(a2.diagnoses[y].at).localeCompare(String(a2.diagnoses[x].at)); })
+              .slice(PD_KEEP).forEach(function(k){ delete a2.diagnoses[k]; });
+          } else if(r.val._pdFor && r.val.diagnosis) agLog('delta','My read on the flagged lifts did not pass the check, so it is not shown.');
         }catch(e){}
       }
     });
@@ -19551,6 +19795,7 @@ function pwCausesHTML(r){
   if(r.sig.length > 1) h += '<p class="pw-sigs">'+r.sig.slice(1).map(function(x){ return esc(x.txt); }).join(' · ')+'</p>';
   h += '<div class="pw-why-h"><span>Likely factors</span><span class="pw-note">likely, not proven</span></div>';
   h += pwFactorsHTML(c);
+  h += pdReadHTML(r.lift);
   return h+'</div>';
 }
 /* The watch's notifications (V4 stage 5). Each is worked out when read and carries the day or the lift
@@ -20021,11 +20266,24 @@ function hubAgentHTML(id){
       '<button class="btn ghost sm" onclick="hubChatFocus()">Chat</button></div>'+
     '<div class="hub-stats">'+stat(pend, pend === 1 ? 'request waiting' : 'requests waiting', pend ? 'warn' : '')+
       stat(tools.length, tools.length === 1 ? 'data read' : 'data reads')+stat(fed ? 'Yes' : 'No', 'in the last cycle')+'</div>'+
+    hubTrackHTML(id)+
     '<p class="ag-role">'+esc(A.role)+'</p>'+
     (st.summary ? '<p class="ag-sum">'+esc(st.summary)+'</p>' : '<p class="ag-empty">No report yet.</p>')+
     (tools.length ? '<div class="hub-tools" aria-label="What it read">'+
       tools.map(function(t){ return '<span>'+esc(HUB_TOOL_WORDS[t] || t)+'</span>'; }).join('')+'</div>' : '')+
     '</section>';
+}
+/* The agent's track record (V4 stage 6): how its approved changes turned out, and how many of its
+   requests he approved. */
+function hubTrackHTML(id){
+  let tr = '';
+  try{ tr = agTrackText(id); }catch(e){ tr = ''; }
+  const done = agState().proposals.filter(function(p){ return p && p.agent === id && (p.status === 'approved' || p.status === 'rejected'); });
+  const ap = done.filter(function(p){ return p.status === 'approved'; }).length;
+  return '<div class="hub-track"><span class="hub-track-k">Track record</span>'+
+    '<span class="hub-track-v">'+esc(tr ? tr+'.' : 'Nothing approved to score yet.')+'</span>'+
+    (done.length ? '<span class="hub-track-a">'+ap+' of '+done.length+' requests approved</span>' : '')+
+    (id === 'zulu' ? '<span class="hub-track-a">Changes made from chat cards are not scored.</span>' : '')+'</div>';
 }
 function hubChatFocus(){
   const i = document.getElementById('agChatIn');
