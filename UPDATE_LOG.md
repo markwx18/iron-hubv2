@@ -85,6 +85,9 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 - Backups no longer carry your API key or tokens.
 - Cut-off AI replies are now counted in your spend.
 - Fixed a bug where logging a weigh-in could hide the sleep section until the next refresh.
+- The info (ⓘ), 1RM and edit buttons on the current lift in Live can be tapped again. They were tiny, and the big weight number was swallowing the tap. They're now proper thumb-sized buttons.
+- On Fuel, the calorie and protein range you tap now lights up in its colour with readable numbers. It was showing dark text on a dark button.
+- Lying Leg Curl: every past set had been logged per side, so all of them (and the PR) are now doubled to the real total. It goes up 10 lb at a time, and Live shows the plates for each side. Log the total from now on.
 
 ---
 

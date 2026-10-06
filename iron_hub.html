@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-05-v8">
+<meta name="ironhub-build" content="2026-10-05-v9">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1604,7 +1604,10 @@
   .fu-log-row{display:flex; align-items:flex-end; gap:8px;}
   .fu-log-row .field{flex:1; min-width:0; margin:0;}
   #fuel .nut-pills{grid-template-columns:repeat(3,minmax(0,1fr));}
-  #fuel .nut-pill{min-height:52px; border-radius:12px; font-family:var(--disp); font-size:15px; background:none; white-space:normal;}
+  /* No background here: an id selector outranks .nut-pill.sel.t-*, and "background:none" wiped the
+     selected pill's fill, leaving its dark text on the dark card (2026-10-05). */
+  #fuel .nut-pill{min-height:52px; border-radius:12px; font-family:var(--disp); font-size:15px; white-space:normal;}
+  #fuel .nut-pill.sel .nt{opacity:1;}
   #fuel .nut-pill .nt{font-family:var(--mono);}
   .rd-hero{display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; margin-bottom:16px;}
   .rd-ring{position:relative; width:220px; height:220px; max-width:100%;}
@@ -1931,7 +1934,11 @@
   .lv4-eye{font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--amber);}
   .lv4-name{font-family:var(--disp); font-weight:700; font-size:clamp(22px, 7vw, 28px); line-height:1.05; letter-spacing:.03em;
     text-transform:uppercase; color:var(--text); max-width:100%; overflow-wrap:anywhere;}
-  .lv4-tools{display:flex; gap:10px; justify-content:center;}
+  /* Above the weight: the numeral's glyphs spill up over this row at 124px, and the browser hit-tests
+     that spill, so a press on the info button landed on the weight and the tap never fired (2026-10-05).
+     And a thumb-sized target, not a 20px glyph. */
+  .lv4-tools{display:flex; gap:4px; justify-content:center; position:relative; z-index:2;}
+  .lv4-tools .ex-info-btn{display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:40px; margin:0; padding:0 8px;}
   .lv4-big{display:flex; align-items:baseline; justify-content:center; gap:10px; margin-top:4px; max-width:100%; flex-wrap:wrap;}
   .lv4-w{font-family:var(--disp); font-weight:700; font-size:clamp(68px, 25vw, 124px); line-height:.86; letter-spacing:-.01em; font-variant-numeric:tabular-nums;}
   .lv4-r{font-family:var(--disp); font-weight:600; font-size:clamp(30px, 11vw, 48px); color:var(--muted); white-space:nowrap;}
@@ -2207,6 +2214,73 @@ function load(){
      benchPracticeFreq   — DELTA’s frequency target for it, set through the retired bpFreq fix.
      audit               — the weekly audit's proposals, retired 2026-09-28 (see staleExercises()). */
 const REMOVED_STATE_KEYS = ['dateOverrides','tempStrengthSplit','tempStrengthWindow','benchPractice','benchPracticeFreq','audit'];
+/* ---- one-time data corrections ----
+   A correction to logged history that he asked for. Each runs ONCE, marked in S.dataFixes, which syncs
+   with the data it changed, so a second device that pulls the corrected data also pulls the mark and
+   never applies it again. It runs only on a state known to be current: after a boot pull that
+   succeeded, or on a device without sync. Run on a stale copy, a device could double numbers the other
+   device had already doubled. A failed pull just waits for the next open.
+   Lying Leg Curl, 2026-10-05: every set through that night was logged per side, not as the total. Weights,
+   what the engine prescribed and decided, and the PR log are all doubled; the step becomes 10 lb total (5
+   a side), and from then on he logs the total. */
+const DATA_FIXES = [
+  {id:'llc-per-side-2026-10-05', lift:'Lying Leg Curl', factor:2, through:'2026-10-05', inc:10}
+];
+function dataFixApply(fx){
+  const k = function(v){ return (typeof v === 'number' && isFinite(v)) ? Math.round(v * fx.factor * 10) / 10 : v; };
+  let n = 0;
+  (S.logs || []).forEach(function(l){
+    if(!l || !l.date || l.date > fx.through) return;
+    let hit = false;
+    (l.entries || []).forEach(function(e){
+      if(!e || e.exercise !== fx.lift) return;
+      (e.sets || []).forEach(function(st){ if(!st) return; st.w = k(st.w); if(st.p && typeof st.p === 'object') st.p.w = k(st.p.w); n++; });
+      hit = true;
+    });
+    if(l.plan && l.plan[fx.lift] && typeof l.plan[fx.lift] === 'object'){ l.plan[fx.lift].w = k(l.plan[fx.lift].w); hit = true; }
+    const d = l.decisions && !Array.isArray(l.decisions) ? l.decisions[fx.lift] : null;
+    if(d && typeof d === 'object'){
+      d.from = k(d.from); d.to = k(d.to);
+      if(typeof d.reason === 'string' && d.reason.indexOf('(logged per side') < 0) d.reason += ' (logged per side; weights since doubled)';
+      hit = true;
+    }
+    if(hit) stampRec(l);
+  });
+  (S.prHistory || []).forEach(function(p){
+    if(!p || p.exercise !== fx.lift || !p.date || p.date > fx.through) return;
+    p.weight = k(p.weight); p.e1rm = k(p.e1rm); p.prev = k(p.prev); p.gain = k(p.gain);
+    stampRec(p);
+  });
+  if(fx.inc){
+    const slots = function(src){
+      Object.keys(src || {}).forEach(function(dk){
+        ((src[dk] || {}).exercises || []).forEach(function(x, j, list){
+          if(typeof x === 'object' && x && exName(x) === fx.lift) x.inc = fx.inc;
+          else if(x === fx.lift) list[j] = {name:fx.lift, inc:fx.inc};
+        });
+      });
+    };
+    slots(S.split);
+    const ms = (S.meso && S.meso.active && S.meso.active.splits) || {};
+    Object.keys(ms).forEach(function(b){ slots((ms[b] || {}).split); });
+  }
+  return n;
+}
+function dataFixesRun(pulled){
+  // Only on a state known to be current (see above).
+  if(syncReady() && S.settings.autoSync !== false && !pulled) return 0;
+  if(!Array.isArray(S.dataFixes)) S.dataFixes = [];
+  let ran = 0;
+  DATA_FIXES.forEach(function(fx){
+    if(S.dataFixes.indexOf(fx.id) >= 0) return;
+    const n = dataFixApply(fx);
+    S.dataFixes.push(fx.id);
+    ran++;
+    try{ agLog('charlie', 'Corrected '+fx.lift+': '+n+' logged set'+(n === 1 ? '' : 's')+' through '+fmtDate(fx.through)+' were per side, so their weights are now the total.'); }catch(e){}
+  });
+  if(ran){ save(); try{ rerenderActive(true); }catch(e){} }
+  return ran;
+}
 function pruneRemovedKeys(){
   let hit = false;
   if(!S) return false;
@@ -2948,7 +3022,8 @@ function liftLoad(nm){
   const n = String(nm || '');
   if(/\bez\b|\bez[- ]?bar\b/i.test(n)) return {kind:'ez'};
   if(/^barbell\b|\bsmith\b|\btrap[- ]?bar\b|\bhex[- ]?bar\b/i.test(n)) return {kind:'bar', bar:GEAR_BAR};
-  if(/\bleg press\b|\bplate[- ]loaded\b|\bhip thrust machine\b/i.test(n)) return {kind:'plates', bar:0};
+  // Lying Leg Curl at his gym takes plates on each side (his answer, 2026-10-05); Machine Leg Curl is a pin stack.
+  if(/\bleg press\b|\bplate[- ]loaded\b|\bhip thrust machine\b|\blying leg curl\b/i.test(n)) return {kind:'plates', bar:0};
   if(/\bdumbbells?\b/i.test(n)) return {kind:'db', step:GEAR_DB_STEP, max:GEAR_DB_MAX};
   return {kind:'other'};
 }
@@ -6761,7 +6836,8 @@ async function autoPullOnLoad(){
       setAccent(); renderHeader(); renderToday();
     }
     markSynced();
-  }catch(e){ const el=$('#hdrSync'); if(el){ el.textContent='\u25cb sync offline'; } }
+    return true;
+  }catch(e){ const el=$('#hdrSync'); if(el){ el.textContent='\u25cb sync offline'; } return false; }
 }
 function disconnectSync(){
   if(!confirm('Disconnect cloud sync on this device? (The gist itself is not deleted \u2014 other devices keep working.)')) return;
@@ -22367,11 +22443,13 @@ try{ navCollapseApply(); renderSidenav(); }catch(e){}
 // cycle concurrently with a pull means the pull can swap S mid-flight. The stale-reference guards
 // inside agRunAll make that survivable, but not racing at all is better than surviving the race.
 // .catch keeps a failed/absent sync from blocking the agents entirely.
-const _bootPull = (async()=>{ try{ await autoPullOnLoad(); }catch(e){} })();
+const _bootPull = (async()=>{ try{ return await autoPullOnLoad(); }catch(e){ return false; } })();
 try{ startUpdateWatcher(); }catch(e){}
 // agents: expire stale proposals on load, then poll for the 9 PM window
 try{ if(agSweepExpired() + agSweepDuplicates()) save(false); }catch(e){}
-_bootPull.then(()=>{
+_bootPull.then((pulled)=>{
+  // A correction he asked for, once, and only on a state the pull just made current.
+  try{ dataFixesRun(pulled); }catch(e){}
   // Before the brief's first check, not after: if today's recovery is missing this asks the
   // relay for it now. It does not block -- the run lands in the gist ~30s later and bgSyncTick
   // picks it up, by which time the brief has either not been written yet (the common case,

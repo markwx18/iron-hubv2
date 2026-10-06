@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3322 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3341 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -270,6 +270,7 @@ so the two orders can no longer disagree.
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock (`intraAdvice()` aim and why, `liveStep()`, `liveLogLabel()`, `livePrWatch()`, `liveFinishEstimate()`, `liveWakeApply()`, quick chips `liveShortOnTime()` / `liveRecoverRest()`), gear `liftLoad()` / `plateCalc()` / `gearLine()` / `plateChange()`, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`); `liveKeepInputs()` / `liveRestoreInputs()` (typed values survive a repaint); `loadLiveDraft()` (`LIVE_DRAFT_MAX_H`, a session past midnight survives) |
+| Data corrections | `DATA_FIXES`, `dataFixesRun(pulled)`, `dataFixApply()`, `S.dataFixes`; `autoPullOnLoad()` returns whether the pull worked |
 | Backup | `exportPayload()` / `importApply()`, `DEVICE_SECRETS` (a backup file carries no credentials; import keeps this device's) |
 | After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
@@ -675,6 +676,20 @@ had to get right, and that any future removal here should copy:
   date — but kept `generateTempStrengthDays()`. For four days the Settings card built S1/S2/S3
   and scheduled them nowhere; the calendar announced D-days straight through a strength block
   and the only way to reach one was the manual day picker.
+
+**A correction to logged history runs once, and only on a current state** (`DATA_FIXES`,
+`dataFixesRun()`, first used 2026-10-05 for Lying Leg Curl, logged per side through that night).
+- **It is marked in `S.dataFixes`.** The mark syncs with the data it changed, so a device that pulls the
+  corrected data also pulls the mark and never applies it again.
+- **It runs only after a boot pull that succeeded**, or on a device without sync. Run on a stale copy, a
+  second device could double numbers the first had already doubled. `autoPullOnLoad()` now returns
+  whether the pull worked, and the boot hands that to `dataFixesRun()`. A failed pull waits for the next
+  open.
+- **`dataFixApply()` scales only that lift's sets through the fix's `through` date.** It also scales each
+  set's `p.w`, the log's `plan` and `decisions` from/to, and the PR log, stamps what it changed, and sets
+  the slot `inc` on the permanent split and every block split. Sessions after the date are untouched.
+- **Add a correction as a new `DATA_FIXES` entry with a new id.** Never reuse or edit an id: a device
+  that already applied it will not run it again.
 
 **Card open-state must not live on the DOM node.** `rerenderActive()` regenerates the whole
 active tab every 30 s and after every sync pull, so DOM-only state is wiped on a timer with
@@ -1534,7 +1549,9 @@ section id, element id and handler was kept; the old detail moved into folds, it
   - the projection card in a fold, and every weigh-in as the raw fold.
 - **Fuel** (`renderFuel()`): today's calorie and protein rings (`fuelRingHTML()`), from today's
   `S.nutrition` row only, judged by `nutTierCal()` / `nutTierPro()`. A tapped range shows as `~`. Then:
-  - the ladder (`nutLogHTML()`) and the week card;
+  - the ladder (`nutLogHTML()`) and the week card. Fuel's `#fuel .nut-pill` rule must never set a
+    background: an id selector outranks `.nut-pill.sel.t-*`, and the selected pill's dark text then sat
+    on the dark card (2026-10-05);
   - Close Today's Gap and meal timing;
   - the Pantry as a fold, open while nothing is stocked because "Start here" points at it.
     `fpOpenPantry()` opens it before scrolling;
@@ -1619,6 +1636,10 @@ Every id and handler is unchanged (`dockW`, `dockR`, `dockEff`, `liveLogBtn`, `r
 The idle screen opens with `liveBriefHTML()`, built from Today's own helpers and only reading. It
 shows nothing on a rest day or once today is logged, and claims a call only when the call has data.
 `.lv3-in` still needs `!important` because its old size is set with `!important`.
+**The tool row (ⓘ, 1RM, ✎) sits above the weight numeral** (`.lv4-tools`, `z-index:2`), with 44px
+buttons. At 124px the numeral's glyphs spill up over that row, and browsers hit-test the spill. Until
+2026-10-05 a press on ⓘ landed on the weight and only the release on the button, so the tap never fired.
+jsdom cannot hit-test; the suite checks the rule exists, and the fix was checked with real clicks.
 
 | Token | Value | Use |
 |---|---|---|
@@ -1665,8 +1686,9 @@ replaces the slider under his finger.
   and sleeves helper. A second function with the same name silently replaced the first, so
   everything here goes through `liftLoad()`. It knows:
   - bar lifts on a 45 (Barbell…, Smith…, Trap Bar…);
-  - plate machines with no bar (Leg Press, Plate-Loaded…, Hip Thrust Machine: he logs the plates
-    alone);
+  - plate machines with no bar (Leg Press, Plate-Loaded…, Hip Thrust Machine, Lying Leg Curl: he logs
+    the plates alone, both sides together). Lying Leg Curl was added on 2026-10-05, after he found he
+    had logged it per side all along. Machine Leg Curl is a pin stack and stays `other`;
   - fixed EZ bars;
   - dumbbells 5-120 in 5s.
 

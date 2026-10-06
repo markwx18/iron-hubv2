@@ -13385,6 +13385,76 @@ setTimeout(async () => {
     ev('if(window.__fmSaved){ S = JSON.parse(window.__fmSaved); delete window.__fmSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== LYING LEG CURL PER SIDE, AND THE LIVE INFO BUTTON (2026-10-05) ===');
+  try {
+    w.__lcSaved = ev('JSON.stringify(S)');
+    // --- gear ---
+    ok('gear: Lying Leg Curl takes plates on each side, with no bar; Machine Leg Curl is still a stack', JSON.stringify(ev("liftLoad('Lying Leg Curl')")) === '{"kind":"plates","bar":0}' &&
+       ev("liftLoad('Machine Leg Curl').kind") === 'other' && ev("plateCalc(90, 0).txt") === '45' && ev("plateCalc(70, 0).txt") === '35');
+    // --- the correction ---
+    ev("S.logs = S.logs.filter(function(l){ return !/^lc/.test(String(l.id)); });");
+    ev(`S.logs.push(stampRec({id: 'lc1', date: '2026-09-04', day: 'D6', entries: [{exercise: 'Lying Leg Curl', sets: [{w: 35, r: 10}, {w: 35, r: 9}]}, {exercise: 'Hammer Curl', sets: [{w: 35, r: 10}]}],
+          decisions: {'Lying Leg Curl': {code: 'hold', from: 35, to: 35, moved: false, reason: 'held at 35 lb'}, 'Hammer Curl': {code: 'hold', from: 35, to: 35}}}));
+        S.logs.push(stampRec({id: 'lc2', date: '2026-10-05', day: 'S1', entries: [{exercise: 'Lying Leg Curl', sets: [{w: 45, r: 8, p: {w: 40, lo: 3, hi: 5}}, {w: 45, r: 6, p: {w: 45, lo: 3, hi: 5}}]}],
+          plan: {'Lying Leg Curl': {w: 40, lo: 3, hi: 5, n: 3}}, decisions: {'Lying Leg Curl': {code: 'increase', from: 35, to: 40, moved: true, reason: 'weight up 35 to 40 lb'}}}));
+        S.logs.push(stampRec({id: 'lc3', date: '2026-10-10', day: 'S1', entries: [{exercise: 'Lying Leg Curl', sets: [{w: 90, r: 5}]}]}));
+        S.prHistory = (S.prHistory || []).filter(function(p){ return p.exercise !== 'Lying Leg Curl'; }).concat([
+          {exercise: 'Lying Leg Curl', weight: 45, reps: 8, e1rm: 57, prev: 46.7, gain: 10.3, date: '2026-10-05', t: 1},
+          {exercise: 'Lying Leg Curl', weight: 90, reps: 6, e1rm: 108, prev: 104, gain: 4, date: '2026-10-12', t: 1}]);
+        S.split = Object.assign({}, S.split, {D6: {name: 'Legs', exercises: ['Lying Leg Curl', {name: 'Hammer Curl', inc: 5}]}});
+        S.meso = {template: null, active: {startedAt: '2026-10-05', startKey: '2026-10-05', weeks: [], splits: {bx: {status: 'approved', split: {S1: {name: 'a', exercises: [{name: 'Lying Leg Curl', inc: 5, sets: 2}]}}}}}};
+        S.dataFixes = [];
+        S.logs.forEach(function(l){ if(/^lc/.test(String(l.id))) l.t = 1; });`);
+    const sets = (id) => JSON.parse(ev("JSON.stringify(S.logs.find(function(l){ return l.id === '" + id + "'; }))"));
+    ev("window.__lcSR = syncReady; syncReady = function(){ return true; }; S.settings.autoSync = true;");
+    ok('run: on a synced device whose pull did not succeed, nothing changes yet', ev('dataFixesRun(false)') === 0 && sets('lc1').entries[0].sets[0].w === 35 && ev('S.dataFixes.length') === 0);
+    ev("window.__lcT = S.meta.changedAt; S.meta.changedAt = 1;");
+    ok('run: after a good pull it applies once', ev('dataFixesRun(true)') === 1 && JSON.stringify(ev('S.dataFixes')) === '["llc-per-side-2026-10-05"]');
+    const a = sets('lc1'), b = sets('lc2'), c = sets('lc3');
+    ok('fix: every set of the lift through Oct 5 is doubled', JSON.stringify(a.entries[0].sets.map(s => s.w)) === '[70,70]' && JSON.stringify(b.entries[0].sets.map(s => s.w)) === '[90,90]');
+    ok('fix: and what was prescribed, planned and decided with it', JSON.stringify(b.entries[0].sets.map(s => s.p.w)) === '[80,90]' && b.plan['Lying Leg Curl'].w === 80 &&
+       b.decisions['Lying Leg Curl'].from === 70 && b.decisions['Lying Leg Curl'].to === 80 && a.decisions['Lying Leg Curl'].to === 70);
+    ok('fix: the engine’s note says the numbers were per side', /\(logged per side; weights since doubled\)$/.test(b.decisions['Lying Leg Curl'].reason));
+    ok('fix: other lifts in the same session are untouched', a.entries[1].sets[0].w === 35 && a.decisions['Hammer Curl'].to === 35);
+    ok('fix: a session after the date (logged as the total) is untouched', c.entries[0].sets[0].w === 90);
+    const prs = JSON.parse(ev("JSON.stringify(S.prHistory.filter(function(p){ return p.exercise === 'Lying Leg Curl'; }))"));
+    ok('fix: the PR log is doubled through the date only', prs[0].weight === 90 && prs[0].e1rm === 114 && prs[0].prev === 93.4 && prs[0].gain === 20.6 && prs[1].weight === 90 && prs[1].e1rm === 108, JSON.stringify(prs));
+    ok('fix: the changed records are stamped, so the sync carries them', b.t > 1 && a.t > 1 && c.t === 1 && ev("S.prHistory.find(function(p){ return p.date === '2026-10-05' && p.exercise === 'Lying Leg Curl'; }).t") > 1);
+    ok('fix: the step is 10 lb total on every slot, the block’s too', ev("JSON.stringify(S.split.D6.exercises[0])") === '{"name":"Lying Leg Curl","inc":10}' &&
+       ev("S.meso.active.splits.bx.split.S1.exercises[0].inc") === 10 && ev("S.split.D6.exercises[1].inc") === 5);
+    ok('fix: saved as a change, with a line in the feed', ev('S.meta.changedAt') > 1 && ev("agState().log.some(function(l){ return /Corrected Lying Leg Curl: 4 logged sets through/.test(l.text); })"));
+    ev("S.meta.changedAt = Math.max(S.meta.changedAt, window.__lcT || 0); delete window.__lcT;");
+    ok('run: never twice', ev('dataFixesRun(true)') === 0 && sets('lc1').entries[0].sets[0].w === 70);
+    // the mark travels with the data: a device pulling the corrected snapshot does not apply it again
+    ev("window.__lcSnap = JSON.parse(JSON.stringify(S));");
+    ev("S.dataFixes = []; S.logs.find(function(l){ return l.id === 'lc1'; }).entries[0].sets[0].w = 35;");
+    ev("applyPulled(window.__lcSnap); delete window.__lcSnap;");
+    ok('sync: the mark arrives with the corrected data, so the other device leaves it alone', ev('dataFixesRun(true)') === 0 && sets('lc1').entries[0].sets[0].w === 70);
+    ev("syncReady = function(){ return false; }; S.dataFixes = []; S.logs.find(function(l){ return l.id === 'lc1'; }).entries[0].sets[0].w = 35;");
+    ok('run: a device without sync applies it at once', ev('dataFixesRun(false)') === 1 && sets('lc1').entries[0].sets[0].w === 70);
+    ev("syncReady = window.__lcSR; delete window.__lcSR;");
+    // the boot pull reports whether it worked, and the correction waits on it
+    ev("window.__lcF = fetchGistData; window.__lcP = pushUnconfirmedChanges; window.__lcSR = syncReady; syncReady = function(){ return true; }; pushUnconfirmedChanges = async function(){};");
+    ev("fetchGistData = async function(){ throw new Error('offline'); };");
+    const failed = await ev('autoPullOnLoad()');
+    ev("fetchGistData = async function(){ return {exportedAt: 0, data: {}}; };");
+    const good = await ev('autoPullOnLoad()');
+    ev("fetchGistData = window.__lcF; pushUnconfirmedChanges = window.__lcP; syncReady = window.__lcSR; delete window.__lcF; delete window.__lcP; delete window.__lcSR;");
+    ok('boot: the pull says whether it worked', failed === false && good === true, failed + '/' + good);
+    ok('boot: and the correction is handed that answer, after the pull', /_bootPull\.then\(\(pulled\)=>\{\s*\/\/[^\n]*\n\s*try\{ dataFixesRun\(pulled\); \}catch\(e\)\{\}/.test(ev('appBoot.toString()')));
+    // --- the info button (layout: jsdom cannot hit-test, so this checks the rule that fixes it is there) ---
+    const css = ev("Array.prototype.map.call(document.querySelectorAll('style'), function(s){ return s.textContent; }).join('')");
+    // A selected intake range is filled by .nut-pill.sel.t-*; an id rule on Fuel that sets a background outranks it and
+    // left dark text on the dark card (2026-10-05). jsdom cannot paint, so this checks the Fuel rule leaves the fill alone.
+    ok('fuel: the Fuel pill rule does not touch the background, so a tapped range keeps its fill', /#fuel \.nut-pill\{[^}]*min-height:52px[^}]*\}/.test(css) && !/#fuel \.nut-pill\{[^}]*background/.test(css) && /\.nut-pill\.sel\.t-on\{background:var\(--good\)/.test(css));
+    ok('live: the tool row sits above the weight numeral, with thumb-sized buttons', /\.lv4-tools\{[^}]*position:relative;[^}]*z-index:2;/.test(css) && /\.lv4-tools \.ex-info-btn\{[^}]*min-width:44px;[^}]*min-height:40px;/.test(css));
+  } catch (e) {
+    ok('leg curl section', false, e.stack);
+  } finally {
+    ev("if(window.__lcSR){ syncReady = window.__lcSR; delete window.__lcSR; } if(window.__lcF){ fetchGistData = window.__lcF; delete window.__lcF; } if(window.__lcP){ pushUnconfirmedChanges = window.__lcP; delete window.__lcP; }");
+    ev('if(window.__lcSaved){ S = JSON.parse(window.__lcSaved); delete window.__lcSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
