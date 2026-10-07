@@ -1847,15 +1847,15 @@ setTimeout(async () => {
        the year, so anything written against todayKey() would test the dormant branch by accident
        and quietly stop testing anything at all once the season opened. */
     ok('a date before the season points at the one coming',
-      ev("JSON.stringify(waSeasonFor('2026-09-21'))") === '{"start":"2026-10-24","end":"2027-04-01"}',
+      ev("JSON.stringify(waSeasonFor('2026-09-21'))") === '{"start":"2026-10-16","end":"2027-04-01"}',
       ev("JSON.stringify(waSeasonFor('2026-09-21'))"));
     ok('a date inside the season, before new year, resolves to it',
-      ev("waSeasonFor('2026-11-01').start") === '2026-10-24');
+      ev("waSeasonFor('2026-11-01').start") === '2026-10-16');
     ok('a date inside the season, AFTER new year, still resolves to the same arc',
-      ev("JSON.stringify(waSeasonFor('2027-02-01'))") === '{"start":"2026-10-24","end":"2027-04-01"}',
+      ev("JSON.stringify(waSeasonFor('2027-02-01'))") === '{"start":"2026-10-16","end":"2027-04-01"}',
       ev("JSON.stringify(waSeasonFor('2027-02-01'))"));
     ok('a date past the end rolls to next winter',
-      ev("waSeasonFor('2027-06-01').start") === '2027-10-24');
+      ev("waSeasonFor('2027-06-01').start") === '2027-10-16');
 
     /* A new top-level S key survives load()'s one-level Object.assign. A field on S.meta would
        come back ABSENT on an existing install -- the 2026-09-02 shape. */
@@ -1869,17 +1869,19 @@ setTimeout(async () => {
     /* An install that already rendered Home holds the OLD start in S.winterArc; the constant alone
        would move nothing for it. */
     ev("S.winterArc = {start:'2026-10-15', end:'2027-04-01', bwTarget:185, sessionTarget:4};");
-    ok('a stored legacy Oct 15 start is moved to Oct 24', ev("winterState().start") === '2026-10-24', ev("winterState().start"));
+    ok('a stored legacy Oct 15 start is moved to Oct 16', ev("winterState().start") === '2026-10-16', ev("winterState().start"));
     ok('...and his targets survive the move', ev("winterState().bwTarget") === 185 && ev("winterState().sessionTarget") === 4);
-    ev("S.winterArc = {start:'2026-10-24', end:'2027-04-01', bwTarget:null, sessionTarget:5};");
+    ev("S.winterArc = {start:'2026-10-24', end:'2027-04-01', bwTarget:185, sessionTarget:4};");
+    ok('a stored Oct 24 start is moved to Oct 16 too', ev("winterState().start") === '2026-10-16' && ev("winterState().bwTarget") === 185, ev("winterState().start"));
+    ev("S.winterArc = {start:'2026-10-16', end:'2027-04-01', bwTarget:null, sessionTarget:5};");
     ok('before the window the arc is dormant', ev("waPhase('2026-10-01')") === 'before');
     ok('inside the window it is active', ev("waPhase('2026-12-01')") === 'active');
     ok('after the end it is done', ev("waPhase('2027-05-01')") === 'done');
-    ok('the arc is 160 days long', ev("waDays('2026-12-01').total") === 160, String(ev("waDays('2026-12-01').total")));
-    ok('day counting is inclusive of the first day', ev("waDays('2026-12-01').elapsed") === 39, String(ev("waDays('2026-12-01').elapsed")));
+    ok('the arc is 168 days long', ev("waDays('2026-12-01').total") === 168, String(ev("waDays('2026-12-01').total")));
+    ok('day counting is inclusive of the first day', ev("waDays('2026-12-01').elapsed") === 47, String(ev("waDays('2026-12-01').elapsed")));
     ok('days-left and days-elapsed account for the whole window',
-      ev("waDays('2026-12-01').elapsed + waDays('2026-12-01').left") === 160);
-    ok('before it starts it counts down instead', ev("waDays('2026-10-01').untilStart") === 23, String(ev("waDays('2026-10-01').untilStart")));
+      ev("waDays('2026-12-01').elapsed + waDays('2026-12-01').left") === 168);
+    ok('before it starts it counts down instead', ev("waDays('2026-10-01').untilStart") === 15, String(ev("waDays('2026-10-01').untilStart")));
 
     // sessions: only logs inside the window, and only up to the date asked about
     ev("S.logs = S.logs.filter(function(l){ return !(l.entries||[]).some(function(e){ return e.exercise==='Arc Lift'; }); });");
@@ -1905,7 +1907,7 @@ setTimeout(async () => {
     [[0,178.0],[2,179.1],[4,178.4],[7,178.9],[9,180.2],[11,179.3],[14,180.1],[16,181.4],[18,180.6],
      [21,181.2],[23,182.5],[25,181.7],[28,182.4],[30,183.6],[32,182.8],[35,183.5],[37,184.7],[39,184.0]]
       .forEach(function (r) {
-        ev("S.weights.push({date:mesoAddDays('2026-10-24'," + r[0] + "), lbs:" + r[1] + "});");
+        ev("S.weights.push({date:mesoAddDays('2026-10-16'," + r[0] + "), lbs:" + r[1] + "});");
       });
     const waBr = ev('bulkRate(4)');
     const waP = ev("waProgress('2026-12-01')");
@@ -1935,7 +1937,7 @@ setTimeout(async () => {
     // pace
     ev("S.winterArc.sessionTarget = 5;");
     ok('pace is measured against the sessions-per-week target',
-      ev("waProgress('2026-12-01').expected") === Math.round((39 / 7) * 5), String(ev("waProgress('2026-12-01').expected")));
+      ev("waProgress('2026-12-01').expected") === Math.round((47 / 7) * 5), String(ev("waProgress('2026-12-01').expected")));
 
     // lift goals are READ from S.road, not duplicated into the arc
     ev("S.road = (S.road||[]).filter(function(g){ return g.exercise!=='Arc Lift'; });");
@@ -1955,8 +1957,8 @@ setTimeout(async () => {
     const cBefore = ev("waCardHTML('2026-10-01')");
     const cActive = ev("waCardHTML('2026-12-01')");
     const cDone = ev("waCardHTML('2027-05-01')");
-    ok('before: the card counts down to the start', /23 days/.test(cBefore), cBefore.slice(0, 200));
-    ok('active: the card shows the day count', /Day<\/div><div class="dt-v">39</.test(cActive), cActive.slice(0, 300));
+    ok('before: the card counts down to the start', /15 days/.test(cBefore), cBefore.slice(0, 200));
+    ok('active: the card shows the day count', /Day<\/div><div class="dt-v">47</.test(cActive), cActive.slice(0, 300));
     ok('active: the card names the bodyweight target', /185/.test(cActive));
     ok('done: the card offers the next arc instead', /waStartNext/.test(cDone) && !/waStartNext/.test(cActive));
     ok('the card escapes into HTML and uses theme variables, not hex',
@@ -1964,7 +1966,7 @@ setTimeout(async () => {
 
     // one line of agent context, computed -- no model call anywhere in this feature
     const waCtx = ev("waContext('2026-12-01')");
-    ok('the agents are told the arc exists', /WINTER ARC/.test(waCtx) && /day 39 of 160/.test(waCtx), waCtx.slice(0, 200));
+    ok('the agents are told the arc exists', /WINTER ARC/.test(waCtx) && /day 47 of 168/.test(waCtx), waCtx.slice(0, 200));
     ok('...and told not to treat it as a training block', /not a training block/.test(waCtx));
     ok('before it starts the agents are told that instead', /Not underway yet/.test(ev("waContext('2026-10-01')")));
     ok('after it ends it says nothing at all', ev("waContext('2027-05-01')") === '');
