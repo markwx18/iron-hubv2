@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-05-v9">
+<meta name="ironhub-build" content="2026-10-06-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -560,6 +560,8 @@
   .cprop-dismissed{font-size:12px; color:var(--dim);}
   .cprop-failed{font-size:12px; color:var(--red); display:flex; align-items:center; gap:6px;}
   .cprop-failed span{font-weight:700;}
+  .cprop-undone{font-size:12px; color:var(--muted); display:flex; align-items:center; gap:8px;}
+  .cprop-undo{margin-left:auto;}
   .coach-plan-banner{display:flex; align-items:center; gap:9px; margin:10px 0 4px; padding:9px 11px; background:var(--panel); border:1px solid var(--violet-dim); border-radius:4px;}
   .cpb-tag{font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:.1em; color:var(--violet); border:1px solid var(--violet-dim); padding:3px 7px; border-radius:2px; flex:none;}
   .cpb-txt{font-size:12.5px; color:var(--text); line-height:1.4;}
@@ -5599,8 +5601,8 @@ async function sendChat(){
       'No fluff, no over-hedging. Keep answers tight (under ~250 words unless asked for a program). '+
       'Never recommend steroids, SARMs, or other PEDs; if asked, explain briefly why not at his age and move on. '+
       'Encourage adequate recovery and realistic rate-of-gain (~0.5-1 lb/week on a lean bulk).\n\n'+
-      'You can propose changes to the app using the provided tools: adding/removing/swapping exercises in the split (permanent), '+
-      'setting a today-only workout override, adjusting fuel targets, or starting a deload. '+
+      'You can propose changes anywhere in the app using the provided tools: the split, today\u2019s workout, a lift\u2019s next weight, '+
+      'sets and modes, deloads, experiments, fuel targets and the pantry, the schedule and plan, renames, and home days. '+
       'When the user clearly asks you to change something, call the appropriate tool. The user must tap Apply before anything '+
       'actually changes, so propose confidently but still briefly explain what you\'re proposing in your text. '+
       'Prefer set_today_workout for one-off "just for today" requests and the permanent tools for lasting changes. '+
@@ -5610,25 +5612,12 @@ async function sendChat(){
       'Don\'t remember things already in the training data below, and don\'t narrate your memory unprompted. '+
       'Everything under WHAT YOU REMEMBER is something he previously confirmed \u2014 treat it as fact and factor it into your advice.\n\n'+
       coachMemContext()+'\n'+trainingContext();
-    const msgs = S.chat.slice(-16).map(m=>{
-      let content = m.content;
-      // Proposal outcomes (applied/failed/dismissed) previously lived only in UI state and never
-      // reached the model, so it had no way to know a prior remember_note/etc had already resolved
-      // and would keep re-proposing it every turn regardless of what the user actually asked next.
-      if(m.proposals && m.proposals.length){
-        const notes = m.proposals.map(p=>{
-          if(p.status==='applied') return '[Action \u201c'+p.desc.verb+'\u201d was applied: '+(p.confirm||'done')+']';
-          if(p.status==='failed') return '[Action \u201c'+p.desc.verb+'\u201d failed: '+(p.error||'error')+' \u2014 do not retry unless the user asks again]';
-          if(p.status==='dismissed') return '[Action \u201c'+p.desc.verb+'\u201d was dismissed by the user \u2014 do not re-propose it]';
-          return '[Action \u201c'+p.desc.verb+'\u201d is still pending user confirmation]';
-        }).join(' ');
-        content = (content||'') + '\n' + notes;
-      }
-      return {role:m.role, content};
-    });
-    const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs(), 4000, {route:'chat:zulu'});
+    // Proposal outcomes (applied/failed/dismissed/undone) reach the model, or it re-proposes a card
+    // that already resolved every turn regardless of what the user actually asked next.
+    const msgs = chatHistoryMsgs(S.chat, 16);
+    const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs('zulu'), 4000, {route:'chat:zulu'});
     const msg = {role:'assistant', content:text || (actions.length?'Here\u2019s what I\u2019d change \u2014 review and apply below:':'')};
-    if(actions.length) msg.proposals = coachStageProposals(actions);
+    if(actions.length) msg.proposals = coachStageProposals(actions.slice(0, CHAT_CARDS_MAX + 1), 'zulu');
     S.chat.push(msg); save(); agThinkingFor = null; renderCoach();
   }catch(e){
     agThinkingFor = null;
@@ -8100,24 +8089,6 @@ function fpToolDefs(){
         includeLiked:{type:'boolean', description:'Also use foods he likes but has not stocked (he would have to buy them).'}
       }}}
   ];
-}
-/* The ONE tool an agent has that is not a read -- and it still writes nothing that takes effect.
-   It only puts a fuelFood proposal into the normal approval queue through agIngest(), where
-   agValidateFix() judges it and agApprove() re-judges it before agApplyFix() adds anything.
-   Offered to ECHO's chat only (opts.propose in agSendChat), by Mark's decision 2026-09-28. */
-const FP_PROPOSE_TOOL = 'propose_fuel_food';
-function fpProposeToolDef(){
-  return {name:FP_PROPOSE_TOOL,
-    description:'Suggest ONE new food for his Fuel Planner pantry. It goes into his approval queue; nothing is added until he approves it, and even then it is only added to his list, not marked as liked or stocked. He is picky: only suggest something close to what he already likes (call get_fuel_planner first), never anything on his exclusion list or like a food he said no to. Macros are for the stated serving and must add up (4*p + 4*c + 9*f close to cal).',
-    input_schema:{type:'object', properties:{
-      title:{type:'string', description:'Short, e.g. "Add chicken Caesar wrap"'},
-      reasoning:{type:'string', description:'One or two sentences on why it fits him, citing what he likes'},
-      name:{type:'string', description:'Plain food name, no notes, no numbers'},
-      cat:{type:'string', enum:FP_CAT_KEYS},
-      serving:{type:'string', description:'Up to 30 characters, e.g. "1 wrap"'},
-      cal:{type:'number'}, p:{type:'number'}, c:{type:'number'}, f:{type:'number'},
-      tags:{type:'array', items:{type:'string', enum:FP_TAGS}}
-    }, required:['title','name','cat','serving','cal','p','c','f']}};
 }
 function fpFoodLine(f){ return f.n+' ('+f.sv+', ~'+f.cal+' cal, '+f.p+'g P)'; }
 function fpPlannerText(){
@@ -13842,10 +13813,30 @@ function clearExpiredCoachDayPlan(){
   if(S.coachDayPlan && S.coachDayPlan.date !== todayKey()) S.coachDayPlan = null;
 }
 
-/* The tool schema advertised to the model. */
-function coachToolDefs(){
+/* ---- chat actions (2026-10-06, his call) ----
+   Every agent's chat can propose changes as cards, each agent only in its own area (CHAT_LANES; ZULU
+   has all of them). Nothing changes until he taps Apply, the card is checked again when he does, and
+   the queue's own checks decide: a lift's weight goes through agValidateFix('liftReset'), sets through
+   setCount's, a food through fpCheckFood, the schedule through its mode gate, with agConflict()'s
+   cross-review rules on top. Applied cards can be undone the same day on the device that applied them
+   (chatUndo*), and only while nothing else has changed what they changed. */
+const CHAT_LANES = {
+  delta:['add_exercise_permanent','remove_exercise_permanent','swap_exercise_permanent','set_today_workout','start_deload','end_deload',
+         'set_lift_weight','set_sets','set_lift_mode','start_experiment','remember_note'],
+  echo:['adjust_fuel','set_food_stock','set_food_pref','add_food','set_workout_time','start_experiment','remember_note'],
+  charlie:['set_week_schedule','set_cycle_pattern','resize_block_segment','rename_exercise','set_home_today','remember_note']
+};
+const CHAT_ALL = ['add_exercise_permanent','remove_exercise_permanent','swap_exercise_permanent','set_today_workout','adjust_fuel','start_deload',
+  'remember_note','end_deload','set_lift_weight','set_sets','set_lift_mode','start_experiment','set_food_stock','set_food_pref','add_food',
+  'set_workout_time','set_week_schedule','set_cycle_pattern','resize_block_segment','rename_exercise','set_home_today'];
+const CHAT_CARDS_MAX = 3;
+function chatActionsFor(agent){ return (!agent || agent === 'zulu') ? CHAT_ALL : (CHAT_LANES[agent] || []); }
+/* The tool schema advertised to the model, only the agent's own actions. Kept short: every chat
+   request carries these. */
+function coachToolDefs(agent){
   const dayList = Object.keys(S.split).join(', ');
-  return [
+  const ex = function(d){ return {type:'string', description:d || 'Exercise name'}; };
+  const all = [
     {name:'add_exercise_permanent', description:'Permanently add an exercise to a training day in the split (applies to all future sessions on that day).',
       input_schema:{type:'object', properties:{
         day:{type:'string', description:'Day key, one of: '+dayList},
@@ -13879,8 +13870,39 @@ function coachToolDefs(){
       input_schema:{type:'object', properties:{
         note:{type:'string', description:'The fact to remember, written concisely in the third person (e.g. "Left shoulder aggravated by barbell overhead press; dumbbells are fine"). Max ~240 chars.'},
         tag:{type:'string', enum:['injury','preference','goal','schedule','equipment','general'], description:'Category for this note.'}
-      }, required:['note']}}
+      }, required:['note']}},
+    {name:'end_deload', description:'End the deload in force early.', input_schema:{type:'object', properties:{}}},
+    {name:'set_lift_weight', description:'Set the weight LIVE prescribes for a lift next. It holds for '+RESET_HOLD_SESSIONS+' sessions, then the engine takes over. At most two increments over his last top set.',
+      input_schema:{type:'object', properties:{exercise:ex(), weight:{type:'number', description:'lb'}}, required:['exercise','weight']}},
+    {name:'set_sets', description:'Change the working sets (2-5) for a lift on a day, permanent split or the strength block in force.',
+      input_schema:{type:'object', properties:{exercise:ex(), sets:{type:'number'}, day:{type:'string', description:'Day key; needed only if the lift is on more than one day'}}, required:['exercise','sets']}},
+    {name:'set_lift_mode', description:'Turn strength mode (3-6 reps), Form Focus or MAXED (machine has no heavier setting) on or off for a lift. Give only the ones to change.',
+      input_schema:{type:'object', properties:{exercise:ex(), strength:{type:'boolean'}, form_focus:{type:'boolean'}, maxed:{type:'boolean'}}, required:['exercise']}},
+    {name:'start_experiment', description:'Start one of the app\'s fixed experiments. The app measures it.',
+      input_schema:{type:'object', properties:{template:{type:'string', enum:Object.keys(EXP_TEMPLATES)}, lift:ex('Lift, for templates about one lift'),
+        range:{type:'string', enum:['high','low'], description:'repRange only: high (12-15) or low (6-8)'}, sessions:{type:'number', description:'3 or 4'}, hypothesis:{type:'string'}}, required:['template','hypothesis']}},
+    {name:'set_food_stock', description:'Mark foods as in the house or run out (Fuel Planner names).',
+      input_schema:{type:'object', properties:{foods:{type:'array', items:{type:'string'}}, in_stock:{type:'boolean'}}, required:['foods','in_stock']}},
+    {name:'set_food_pref', description:'Mark a food as liked, no, hidden, or clear the mark.',
+      input_schema:{type:'object', properties:{food:{type:'string'}, pref:{type:'string', enum:['like','no','hide','clear']}}, required:['food','pref']}},
+    {name:'add_food', description:'Add a new food to his Fuel Planner list (not liked or stocked until he says so). Plain name, macros for the serving, 4p+4c+9f close to cal.',
+      input_schema:{type:'object', properties:{name:{type:'string'}, cat:{type:'string', enum:FP_CAT_KEYS}, serving:{type:'string'},
+        cal:{type:'number'}, p:{type:'number'}, c:{type:'number'}, f:{type:'number'}, tags:{type:'array', items:{type:'string', enum:FP_TAGS}}}, required:['name','cat','serving','cal','p','c','f']}},
+    {name:'set_workout_time', description:'Set the usual workout time fuel timing plans around ("HH:MM", 24h), or "" to clear.',
+      input_schema:{type:'object', properties:{time:{type:'string'}}, required:['time']}},
+    {name:'set_week_schedule', description:'Set the weekday schedule (only while on a weekday schedule). Keys 0=Sun..6=Sat, values a day key or REST, all seven.',
+      input_schema:{type:'object', properties:{map:{type:'object', description:'e.g. {"0":"REST","1":"D1",...}'}}, required:['map']}},
+    {name:'set_cycle_pattern', description:'Set the rotating cycle\'s order of days (only while on a rotating cycle). The cycle start date is never changed.',
+      input_schema:{type:'object', properties:{pattern:{type:'array', items:{type:'string'}}}, required:['pattern']}},
+    {name:'resize_block_segment', description:'Change how many days the plan segment he is in lasts (1-60). Every later date moves.',
+      input_schema:{type:'object', properties:{days:{type:'number'}}, required:['days']}},
+    {name:'rename_exercise', description:'Rename an exercise everywhere, or merge it into another name he already has (moves its history). Cannot be undone from chat.',
+      input_schema:{type:'object', properties:{from:ex('Current name'), to:ex('New name')}, required:['from','to']}},
+    {name:'set_home_today', description:'Turn today\'s home workout (home equipment swaps) on or off.',
+      input_schema:{type:'object', properties:{on:{type:'boolean'}}, required:['on']}}
   ];
+  const allow = chatActionsFor(agent || 'zulu');
+  return all.filter(function(t){ return allow.indexOf(t.name) >= 0; });
 }
 
 /* Turn a tool_use block into a human-readable proposal for the apply-card. */
@@ -13902,6 +13924,43 @@ function coachDescribeAction(name, inp){
       return {verb:'Start deload week', scope:'Recovery', detail:'Begin a 7-day deload \u2014 ~60% loads, light sets, excluded from progression and trend charts.'};
     case 'remember_note':
       return {verb:'Remember this', scope:'Coach memory \u00b7 '+(inp.tag||'general'), detail:'\u201c'+inp.note+'\u201d \u2014 saved permanently and included in every future coach conversation. You can delete it any time from the memory card.'};
+    case 'end_deload':
+      return {verb:'End the deload', scope:'Recovery', detail:'Stop the deload now; normal loads from your next session.'};
+    case 'set_lift_weight':
+      return {verb:'Set next weight', scope:'Lifts \u00b7 '+inp.exercise, detail:inp.exercise+' \u2192 '+inp.weight+' lb next session. It holds for '+RESET_HOLD_SESSIONS+' sessions, then the engine takes over.'};
+    case 'set_sets':
+      return {verb:'Change sets', scope:'Lifts \u00b7 '+inp.day, detail:inp.exercise+' on '+inp.day+': '+(inp.from||'?')+' \u2192 '+inp.sets+' working sets.'};
+    case 'set_lift_mode':{
+      const bits = [];
+      if(inp.strength !== undefined) bits.push('strength mode '+(inp.strength ? 'on' : 'off'));
+      if(inp.form_focus !== undefined) bits.push('Form Focus '+(inp.form_focus ? 'on' : 'off'));
+      if(inp.maxed !== undefined) bits.push('MAXED '+(inp.maxed ? 'on' : 'off'));
+      return {verb:'Lift settings', scope:'Lifts \u00b7 '+inp.exercise, detail:inp.exercise+': '+bits.join(', ')+'.'};
+    }
+    case 'start_experiment':{
+      const T = EXP_TEMPLATES[inp.template] || {};
+      return {verb:'Start an experiment', scope:'Experiment', detail:(T.label||inp.template)+(inp.lift ? ' on '+inp.lift : '')+' for '+inp.sessions+' sessions. '+(inp.hypothesis||'')};
+    }
+    case 'set_food_stock':
+      return {verb:inp.in_stock ? 'In the house' : 'Run out', scope:'Fuel \u00b7 stock', detail:(inp.names||[]).join(', ')+(inp.in_stock ? ' marked in stock.' : ' marked as run out.')};
+    case 'set_food_pref':
+      return {verb:'Food preference', scope:'Fuel', detail:inp.name+' \u2192 '+({like:'liked', no:'no', hide:'hidden', clear:'no mark'}[inp.pref]||inp.pref)+'.'};
+    case 'add_food':
+      return {verb:'Add a food', scope:'Fuel', detail:inp.name+' ('+inp.serving+', ~'+inp.cal+' cal, '+inp.p+'g P) added to your list. Not liked or stocked until you mark it.'};
+    case 'set_workout_time':
+      return {verb:'Workout time', scope:'Fuel timing', detail:inp.time ? 'Fuel timing plans around a '+fuelClockFrom(inp.time, 0)+' workout.' : 'Clear the workout time.'};
+    case 'set_week_schedule':{
+      const dn = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      return {verb:'Weekly schedule', scope:'Schedule', detail:[1,2,3,4,5,6,0].map(function(d){ return dn[d]+' '+(inp.map[d] === 'REST' ? 'rest' : inp.map[d]); }).join(' \u00b7 ')};
+    }
+    case 'set_cycle_pattern':
+      return {verb:'Cycle order', scope:'Schedule', detail:inp.pattern.map(function(x){ return x === 'REST' ? 'rest' : x; }).join(' \u2192 ')+'. The cycle start date stays.'};
+    case 'resize_block_segment':
+      return {verb:'Resize this segment', scope:'Plan \u00b7 '+(inp.name||''), detail:(inp.name||'This segment')+': '+inp.from+' \u2192 '+inp.days+' days. Every later date moves.'};
+    case 'rename_exercise':
+      return {verb:inp.merge ? 'Merge exercises' : 'Rename everywhere', scope:'Exercises', detail:(inp.merge ? 'Merge '+inp.from+' into '+inp.to+': its sessions, PRs and flags move across and become one lift.' : 'Rename '+inp.from+' to '+inp.to+' in the split, every logged session, PRs and flags.')+' Cannot be undone from chat.'};
+    case 'set_home_today':
+      return {verb:'Home workout', scope:'Today', detail:inp.on ? 'Today is a home session: lifts swap to your home equipment.' : 'Today is back to a gym session.'};
     default:
       return {verb:name, scope:'', detail:JSON.stringify(inp)};
   }
@@ -13911,8 +13970,144 @@ function coachDescribeAction(name, inp){
    be applied: names cleaned and resolved, the same way agValidateFix() treats the nightly queue.
    ZULU's chat used to skip all of that -- adjust_fuel had no limits at all, and a coaching note
    inside an exercise name went straight into the session as that exercise's name. */
-function coachValidateAction(name, inp){
+function coachValidateAction(name, inp, agent){
   inp = Object.assign({}, inp||{});
+  const who = agent || 'zulu';
+  // Each agent proposes only in its own area, the chat's version of AG_FIX_ALLOWED.
+  if(chatActionsFor(who).indexOf(name) < 0) return {ok:false, error:'That is outside '+((AGENTS[who]||{}).name||who)+'\u2019s area.'};
+  const viaFix = function(fx){
+    const v = agValidateFix(fx, who);
+    return v ? {ok:true, fx:v} : {ok:false, error:agRejectReason(fx, who)};
+  };
+  if(name==='end_deload'){
+    if(!deloadActive()) return {ok:false, error:'No deload is running.'};
+    return {ok:true, inp:{}};
+  }
+  if(name==='set_lift_weight'){
+    const r = viaFix({type:'liftReset', payload:{name:inp.exercise, w:inp.weight, days:14}});
+    if(!r.ok) return r;
+    return {ok:true, inp:{exercise:r.fx.payload.name, weight:r.fx.payload.w}};
+  }
+  if(name==='set_sets'){
+    const nm = agResolveExName(inp.exercise);
+    if(!nm) return {ok:false, error:'\u201c'+String(inp.exercise||'').slice(0,40)+'\u201d is not a lift you train.'};
+    const n = Math.round(+inp.sets || 0);
+    if(!(n >= 2 && n <= 5)) return {ok:false, error:'Sets go from 2 to 5.'};
+    // The days it is on in the split in force (a strength block's S1-S3 while one runs), else the permanent split.
+    const src = activeSplitObj();
+    const onDays = function(o){ return Object.keys(o||{}).filter(function(dk){ return ((o[dk]||{}).exercises||[]).some(function(x){ return exName(x) === nm; }); }); };
+    let days = onDays(src); if(!days.length && src !== S.split) days = onDays(S.split);
+    if(!days.length) return {ok:false, error:nm+' is not on any day of your split.'};
+    const day = inp.day ? String(inp.day) : (days.length === 1 ? days[0] : '');
+    if(!day) return {ok:false, error:nm+' is on '+days.join(' and ')+'; say which day.'};
+    if(days.indexOf(day) < 0) return {ok:false, error:nm+' is not on '+day+'.'};
+    const block = !S.split[day] || (src !== S.split && src[day]);
+    const slot = ((block ? src : S.split)[day].exercises || []).find(function(x){ return exName(x) === nm; });
+    const cur = (slot && typeof slot === 'object' && slot.sets) ? slot.sets : 3;
+    if(cur === n) return {ok:false, error:nm+' already has '+n+' sets on '+day+'.'};
+    // The queue's own rules: the permanent split through agValidateFix, a block day through the same cross-review.
+    if(!block){ const r = viaFix({type:'setCount', payload:{exercise:nm, day:day, sets:n}}); if(!r.ok) return r; }
+    else {
+      const c = agConflict({type:'setCount', payload:{exercise:nm, day:day, sets:n}});
+      if(c) return {ok:false, error:c};
+    }
+    return {ok:true, inp:{exercise:nm, day:day, sets:n, from:cur, block:!!block}};
+  }
+  if(name==='set_lift_mode'){
+    const nm = agResolveExName(inp.exercise);
+    if(!nm) return {ok:false, error:'\u201c'+String(inp.exercise||'').slice(0,40)+'\u201d is not a lift you train.'};
+    const inSplit = [activeSplitObj(), S.split].some(function(o){ return Object.keys(o||{}).some(function(dk){ return ((o[dk]||{}).exercises||[]).some(function(x){ return exName(x) === nm; }); }); });
+    if(!inSplit) return {ok:false, error:nm+' is not on any day of your split.'};
+    const out = {exercise:nm};
+    if(typeof inp.strength === 'boolean' && inp.strength !== isStrMode(nm)) out.strength = inp.strength;
+    if(typeof inp.form_focus === 'boolean' && inp.form_focus !== isFormFocus(nm)) out.form_focus = inp.form_focus;
+    if(typeof inp.maxed === 'boolean' && inp.maxed !== isMaxed(nm)) out.maxed = inp.maxed;
+    if(Object.keys(out).length < 2) return {ok:false, error:nm+' is already set that way.'};
+    return {ok:true, inp:out};
+  }
+  if(name==='start_experiment'){
+    const r = viaFix({type:'experiment', payload:{template:inp.template, lift:inp.lift, range:inp.range, sessions:inp.sessions||4, hypothesis:inp.hypothesis}});
+    if(!r.ok) return r;
+    return {ok:true, inp:r.fx.payload};
+  }
+  if(name==='set_food_stock' || name==='set_food_pref'){
+    const foods = fpFoods();
+    const find = function(raw){
+      const k = fpNorm(raw); if(!k) return null;
+      const exact = foods.filter(function(f){ return fpNorm(f.n) === k; });
+      if(exact.length) return exact[0];
+      const part = foods.filter(function(f){ return fpNorm(f.n).indexOf(k) >= 0; });
+      return part.length === 1 ? part[0] : null;
+    };
+    if(name==='set_food_pref'){
+      const fd = find(inp.food);
+      if(!fd) return {ok:false, error:'No food called \u201c'+String(inp.food||'').slice(0,40)+'\u201d on his list.'};
+      const want = {like:'l', no:'d', hide:'h', clear:''}[inp.pref];
+      if(want === undefined) return {ok:false, error:'Unknown preference.'};
+      if((fd.pref || '') === want) return {ok:false, error:fd.n+' is already marked that way.'};
+      return {ok:true, inp:{id:fd.id, name:fd.n, food:fd.n, pref:inp.pref}};   // food: so the tap's re-check reads the same input
+    }
+    const list = Array.isArray(inp.foods) ? inp.foods.slice(0, 20) : [];
+    if(typeof inp.in_stock !== 'boolean' || !list.length) return {ok:false, error:'Name the foods and whether they are in or out.'};
+    const ids = [], names = [], missing = [];
+    list.forEach(function(raw){
+      const fd = find(raw);
+      if(!fd){ missing.push(String(raw).slice(0, 30)); return; }
+      // Never stock a food he said no to or hid: fpSetStock() would clear that "no".
+      if(inp.in_stock && (fd.pref === 'd' || fd.pref === 'h')){ missing.push(fd.n+' (you said no to it)'); return; }
+      if(!!fd.stocked === inp.in_stock || ids.indexOf(fd.id) >= 0) return;
+      ids.push(fd.id); names.push(fd.n);
+    });
+    if(missing.length) return {ok:false, error:'Not on his list or not allowed: '+missing.join(', ')+'.'};
+    if(!ids.length) return {ok:false, error:'Those are already marked that way.'};
+    return {ok:true, inp:{ids:ids, names:names, foods:names, in_stock:inp.in_stock}};   // foods: so the tap's re-check reads the same input
+  }
+  if(name==='add_food'){
+    const r = viaFix({type:'fuelFood', payload:{name:inp.name, cat:inp.cat, serving:inp.serving, cal:inp.cal, p:inp.p, c:inp.c, f:inp.f, tags:inp.tags||[]}});
+    if(!r.ok) return r;
+    return {ok:true, inp:r.fx.payload};
+  }
+  if(name==='set_workout_time'){
+    const t = String(inp.time == null ? '' : inp.time).trim();
+    const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+    if(t && !(m && +m[1] <= 23 && +m[2] <= 59)) return {ok:false, error:'A time looks like 17:30.'};
+    const v = m ? String(+m[1]).padStart(2, '0')+':'+m[2] : '';
+    if(v === ((S.fuel||{}).workoutTime || '')) return {ok:false, error:'That is already the workout time.'};
+    return {ok:true, inp:{time:v}};
+  }
+  if(name==='set_week_schedule'){
+    const r = viaFix({type:'schedule', payload:{map:inp.map||{}}});
+    if(!r.ok) return r;
+    return {ok:true, inp:{map:r.fx.payload.map}};
+  }
+  if(name==='set_cycle_pattern'){
+    const r = viaFix({type:'cycleSchedule', payload:{pattern:inp.pattern}});
+    if(!r.ok) return r;
+    return {ok:true, inp:{pattern:r.fx.payload.pattern}};
+  }
+  if(name==='resize_block_segment'){
+    const w = mesoCurrentWeek();
+    if(!w) return {ok:false, error:'No plan segment is running.'};
+    const d = Math.round(+inp.days || 0), cur = w.days || (daysBetween(w.startKey, w.endKey) + 1);
+    if(!(d >= 1 && d <= 60)) return {ok:false, error:'A segment runs 1 to 60 days.'};
+    if(d === cur) return {ok:false, error:'It is already '+d+' days.'};
+    return {ok:true, inp:{n:w.n, days:d, from:cur, name:w.name}};
+  }
+  if(name==='rename_exercise'){
+    const from = agResolveExName(inp.from);
+    if(!from) return {ok:false, error:'\u201c'+String(inp.from||'').slice(0,40)+'\u201d is not a lift you train.'};
+    const to = exAcceptName(inp.to);
+    if(!to) return {ok:false, error:'\u201c'+String(inp.to||'').slice(0,40)+'\u201d does not read as an exercise name.'};
+    if(to === from) return {ok:false, error:'That is the same name.'};
+    const why = exRenameBlocker(from, to);
+    if(why) return {ok:false, error:why};
+    return {ok:true, inp:{from:from, to:to, merge:exNameUsage().some(function(u){ return u.name === to; })}};
+  }
+  if(name==='set_home_today'){
+    const on = !!inp.on;
+    if(on === homeActiveToday()) return {ok:false, error:'Today is already '+(on ? 'a home' : 'a gym')+' session.'};
+    return {ok:true, inp:{on:on}};
+  }
   const dayOk = d => !!S.split[d];
   // A today-only plan may be for a strength-block day (S1/S2/S3), which is in the split in force
   // but not in S.split. The permanent actions stay on S.split, which is all they write to.
@@ -13986,7 +14181,7 @@ function coachValidateAction(name, inp){
 }
 
 /* Execute a validated action against S. Returns a short confirmation string. */
-function coachExecuteAction(name, inp){
+function coachExecuteAction(name, inp, agent){
   if(name==='add_exercise_permanent'){
     const item = {name:inp.exercise, inc:slotInc(inp.exercise)};
     const arr = S.split[inp.day].exercises = S.split[inp.day].exercises||[];
@@ -14030,6 +14225,60 @@ function coachExecuteAction(name, inp){
     const rec = coachMemAdd(inp.note, inp.tag);
     return rec ? 'Saved to coach memory.' : 'Nothing to save.';
   }
+  if(name==='end_deload'){ endDeloadWeek(); return 'Deload ended.'; }
+  if(name==='set_lift_weight'){
+    agApplyFix({type:'liftReset', payload:{name:inp.exercise, w:inp.weight, days:14}}, agent || 'zulu');
+    save();
+    return inp.exercise+' \u2192 '+inp.weight+' lb next session.';
+  }
+  if(name==='set_sets'){
+    const src = inp.block ? activeSplitObj() : S.split;
+    const list = (src[inp.day] || {}).exercises || [];
+    const i = list.findIndex(function(x){ return exName(x) === inp.exercise; });
+    if(i < 0) throw new Error(inp.exercise+' is no longer on '+inp.day);
+    if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:slotInc(list[i])};
+    list[i].sets = inp.sets;
+    save();
+    return inp.exercise+' on '+inp.day+': '+inp.sets+' sets.';
+  }
+  if(name==='set_lift_mode'){
+    const patch = {};
+    if(inp.strength !== undefined) patch.repMode = inp.strength ? 'str' : 'hyp';   // off is 'hyp', never null (load() would turn it back on)
+    if(inp.form_focus !== undefined) patch.formFocus = inp.form_focus;
+    if(inp.maxed !== undefined) patch.maxed = inp.maxed;
+    applyExFlag(inp.exercise, patch);
+    save();
+    try{ refreshSplitEditor(); }catch(e){}
+    return inp.exercise+' updated.';
+  }
+  if(name==='start_experiment'){
+    if(!agApplyFix({type:'experiment', payload:inp}, agent || 'zulu')) throw new Error('the experiment could not start');
+    save();
+    return 'Experiment started.';
+  }
+  if(name==='set_food_stock'){
+    inp.ids.forEach(function(id){ fpSetStock(id, inp.in_stock); });
+    save();
+    return inp.names.join(', ')+(inp.in_stock ? ' in stock.' : ' marked run out.');
+  }
+  if(name==='set_food_pref'){
+    const cur = (fpFood(inp.id) || {}).pref || '';
+    const want = {like:'l', no:'d', hide:'h', clear:''}[inp.pref];
+    if(want) fpSetPref(inp.id, want); else if(cur) fpSetPref(inp.id, cur);   // tapping the lit mark clears it
+    save();
+    return inp.name+' updated.';
+  }
+  if(name==='add_food'){
+    if(!agApplyFix({type:'fuelFood', payload:inp}, agent || 'zulu')) throw new Error('his list is full');
+    save();
+    return inp.name+' added to your list.';
+  }
+  if(name==='set_workout_time'){ fuelInit(); S.fuel.workoutTime = inp.time; save(); return inp.time ? 'Workout time set.' : 'Workout time cleared.'; }
+  if(name==='set_week_schedule'){ agApplyFix({type:'schedule', payload:{map:inp.map}}, agent || 'zulu'); save(); setAccent(); return 'Schedule updated.'; }
+  if(name==='set_cycle_pattern'){ agApplyFix({type:'cycleSchedule', payload:{pattern:inp.pattern}}, agent || 'zulu'); save(); setAccent(); return 'Cycle updated.'; }
+  if(name==='resize_block_segment'){ mesoSetWeekDays(inp.n, inp.days); return 'Segment is now '+inp.days+' days.'; }
+  if(name==='rename_exercise'){ exRenameEverywhere(inp.from, inp.to); save(); try{ refreshSplitEditor(); }catch(e){} return inp.from+' \u2192 '+inp.to+' everywhere.'; }
+  if(name==='set_home_today'){ S.homeToday = inp.on ? {date:todayKey()} : null; save(); return inp.on ? 'Home session today.' : 'Gym session today.'; }
   return 'Done.';
 }
 
@@ -14234,12 +14483,13 @@ function aiTruncated(r){ return !!(r && r.stop === 'max_tokens'); }
 async function callClaudeWithData(messages, system, maxTokens, opts, onTool){
   const msgs = messages.slice();
   // The Fuel Planner's two read tools go to ECHO only (opts.fuelTools): every other agent would
-  // pay for their definitions on every round and has no use for them. opts.propose is the one
-  // non-read tool, ECHO's chat only -- see FP_PROPOSE_TOOL. It is handed to the caller's function,
-  // never to agRunDataTool(), which stays unable to write.
-  const propose = (opts && typeof opts.propose === 'function') ? opts.propose : null;
+  // pay for their definitions on every round and has no use for them. opts.actions is a chat's
+  // action cards: a call is handed to the caller's onCall, which only stages a card; nothing is
+  // applied here, and agRunDataTool() stays unable to write.
+  const act = (opts && opts.actions && typeof opts.actions.onCall === 'function') ? opts.actions : null;
+  const actNames = act ? (act.defs || []).map(function(t){ return t.name; }) : [];
   const tools = agDataToolDefs().concat(opts && opts.fuelTools ? fpToolDefs() : [])
-                                .concat(propose ? [fpProposeToolDef()] : []);
+                                .concat(act ? (act.defs || []) : []);
   // Mid-workout DELTA passes a smaller cap: every round is another few seconds standing
   // at the rack, and one lookup then an answer is the right shape there.
   const rounds = Math.max(1, Math.min(AI_TOOL_ROUNDS, (opts && opts.maxRounds) || AI_TOOL_ROUNDS));
@@ -14267,9 +14517,9 @@ async function callClaudeWithData(messages, system, maxTokens, opts, onTool){
       used++;
       if(onTool){ try{ onTool(c.name, c.input||{}); }catch(e){} }
       let out;
-      if(c.name === FP_PROPOSE_TOOL){
-        try{ out = propose ? String(propose(c.input||{})) : 'That tool is not available here.'; }
-        catch(e){ out = 'Not queued: '+(e && e.message ? e.message : 'error'); }
+      if(actNames.indexOf(c.name) >= 0){
+        try{ out = String(act.onCall(c.name, c.input||{})); }
+        catch(e){ out = 'Not proposed: '+(e && e.message ? e.message : 'error'); }
       } else out = agRunDataTool(c.name, c.input||{});
       if(out.length > AI_TOOL_MAXCHARS) out = out.slice(0, AI_TOOL_MAXCHARS)+'\n'+'... (truncated)';
       return {type:'tool_result', tool_use_id:c.id, content:out};
@@ -14282,35 +14532,82 @@ async function callClaudeWithData(messages, system, maxTokens, opts, onTool){
 }
 
 /* ---- proposal lifecycle: proposals live on the chat message they came with ---- */
-function coachStageProposals(actions){
+function coachStageProposals(actions, agent){
   // returns array of proposal objects with validation state
   return actions.map(a=>{
-    const v = coachValidateAction(a.name, a.input);
+    const v = coachValidateAction(a.name, a.input, agent || 'zulu');
     // The card shows, and Apply applies, the cleaned action -- not the raw one the model wrote.
     const input = (v.ok && v.inp) ? v.inp : a.input;
-    return {id:'p_'+Math.random().toString(36).slice(2,9), name:a.name, input:input,
+    return {id:'p_'+Math.random().toString(36).slice(2,9), name:a.name, input:input, agent:agent || 'zulu',
       desc:coachDescribeAction(a.name, input), valid:v.ok, error:v.error||null, status:'pending'};
   });
 }
 function coachFindProposal(pid){
-  for(const m of S.chat){ if(m.proposals){ const p=m.proposals.find(x=>x.id===pid); if(p) return {msg:m, p}; } }
+  const lists = [S.chat || []];
+  const ch = agState().chats || {};
+  Object.keys(ch).forEach(function(k){ lists.push(ch[k] || []); });
+  for(const list of lists){ for(const m of list){ if(m && m.proposals){ const p = m.proposals.find(x=>x.id===pid); if(p) return {msg:m, p}; } } }
   return null;
 }
+/* What each action can change, for its same-day Undo. A card with no entry has no Undo: a rename
+   rewrites history across the whole app and is said, on the card, not to be undoable. */
+const CHAT_UNDO_KEYS = {add_exercise_permanent:['split'], remove_exercise_permanent:['split'], swap_exercise_permanent:['split'],
+  set_today_workout:['coachDayPlan','overrideDay'], adjust_fuel:['fuel','targetHist'], start_deload:['deload'], end_deload:['deload','meso'],
+  remember_note:['coachMem'], set_lift_weight:['invest'], set_sets:['split','meso'], set_lift_mode:['split','meso'], start_experiment:['experiments'],
+  set_food_stock:['fuel'], set_food_pref:['fuel'], add_food:['fuel'], set_workout_time:['fuel'], set_week_schedule:['schedule'],
+  set_cycle_pattern:['cycleSchedule'], resize_block_segment:['meso'], set_home_today:['homeToday']};
+const CHAT_UNDO_KEY = 'ironhub:chatundo', CHAT_UNDO_MAX = 12;
+/* Kept on this device only: an undo is a choice made on the screen in front of him, and the snapshots
+   would otherwise ride along on every sync. Only today's are kept. */
+function chatUndoStore(){ try{ return JSON.parse(localStorage.getItem(CHAT_UNDO_KEY) || '{}') || {}; }catch(e){ return {}; } }
+function chatUndoSave(st){
+  const t = todayKey();
+  Object.keys(st).forEach(function(k){ if(!st[k] || st[k].day !== t) delete st[k]; });
+  const ks = Object.keys(st).sort(function(a, b){ return (st[a].at || 0) - (st[b].at || 0); });
+  while(ks.length > CHAT_UNDO_MAX) delete st[ks.shift()];
+  try{ localStorage.setItem(CHAT_UNDO_KEY, JSON.stringify(st)); }catch(e){}
+}
+function chatUndoSnap(keys){ return JSON.stringify(keys.map(function(k){ return S[k] === undefined ? null : S[k]; })); }
+function chatUndoAvailable(pid){ const e = chatUndoStore()[pid]; return !!(e && e.day === todayKey()); }
 function coachApplyProposal(pid){
   const found = coachFindProposal(pid); if(!found) return;
   const {p} = found;
   if(!p.valid || p.status!=='pending') return;
+  const agent = p.agent || 'zulu';
   // re-validate at apply time (state may have changed since proposed)
-  const v = coachValidateAction(p.name, p.input);
+  const v = coachValidateAction(p.name, p.input, agent);
   if(!v.ok){ p.status='failed'; p.error=v.error; save(); renderCoach(); return; }
+  const keys = CHAT_UNDO_KEYS[p.name] || null;
+  const before = {};
+  if(keys) keys.forEach(function(k){ before[k] = (k in S) ? JSON.stringify(S[k]) : null; });
   try{
-    const conf = coachExecuteAction(p.name, v.inp || p.input);
+    const conf = coachExecuteAction(p.name, v.inp || p.input, agent);
     p.status='applied'; p.confirm=conf;
+    if(keys){ const st = chatUndoStore(); st[p.id] = {day:todayKey(), at:Date.now(), keys:keys, before:before, after:chatUndoSnap(keys)}; chatUndoSave(st); }
+    if(agent !== 'zulu') agLog(agent, 'You applied \u201c'+p.desc.verb+'\u201d from chat: '+conf);
   }catch(e){ p.status='failed'; p.error=e.message; }
   save(); renderCoach();
   // reflect downstream UI that may have changed
   try{ if(typeof renderSettings==='function' && document.getElementById('settings')) renderSettings(); }catch(e){}
   try{ invUpdateBadge(); }catch(e){}
+}
+/* Undo, the same day, on the device that applied it, and only while nothing else has changed what the
+   card changed: putting back an old copy over a newer edit would silently undo that edit too. */
+function coachUndoProposal(pid){
+  const found = coachFindProposal(pid); if(!found) return false;
+  const p = found.p, st = chatUndoStore(), e = st[pid];
+  if(p.status !== 'applied' || !e || e.day !== todayKey()) return false;
+  if(chatUndoSnap(e.keys) !== e.after){
+    alert('Something else has changed this since, so it cannot be undone from the card. Change it back by hand.');
+    return false;
+  }
+  e.keys.forEach(function(k){ if(e.before[k] === null || e.before[k] === undefined) delete S[k]; else S[k] = JSON.parse(e.before[k]); });
+  delete st[pid]; chatUndoSave(st);
+  p.status = 'undone';
+  try{ agLog(p.agent || 'zulu', 'You undid \u201c'+p.desc.verb+'\u201d.'); }catch(_){}
+  save(); setAccent(); renderCoach();
+  try{ rerenderActive(true); }catch(_){}
+  return true;
 }
 function coachDismissProposal(pid){
   const found = coachFindProposal(pid); if(!found) return;
@@ -14322,7 +14619,8 @@ function coachProposalHTML(p){
   const statusRow = {
     applied:'<div class="cprop-done"><span>\u2713</span>'+esc(p.confirm||'Applied')+'</div>',
     dismissed:'<div class="cprop-dismissed">Dismissed</div>',
-    failed:'<div class="cprop-failed"><span>\u2717</span>'+esc(p.error||'Could not apply')+'</div>'
+    failed:'<div class="cprop-failed"><span>\u2717</span>'+esc(p.error||'Could not apply')+'</div>',
+    undone:'<div class="cprop-undone">Undone</div>'
   }[p.status];
   let h = '<div class="cprop '+(p.status!=='pending'?'done':'')+'">';
   h += '<div class="cprop-top"><span class="cprop-verb">'+esc(p.desc.verb)+'</span>'+
@@ -14338,9 +14636,29 @@ function coachProposalHTML(p){
     }
   } else {
     h += statusRow||'';
+    if(p.status === 'applied' && chatUndoAvailable(p.id))
+      h += '<div class="cprop-acts"><button class="btn ghost sm cprop-undo" onclick="coachUndoProposal(\''+p.id+'\')">Undo</button></div>';
   }
   h += '</div>';
   return h;
+}
+/* The chat history the model sees, with what became of each card, so it neither re-proposes a card he
+   dismissed nor claims one he never applied. */
+function chatHistoryMsgs(list, n){
+  return (list || []).slice(-n).map(function(m){
+    let content = m.content;
+    if(m.proposals && m.proposals.length){
+      const notes = m.proposals.map(function(p){
+        if(p.status==='applied') return '[Action \u201c'+p.desc.verb+'\u201d was applied: '+(p.confirm||'done')+']';
+        if(p.status==='undone') return '[Action \u201c'+p.desc.verb+'\u201d was applied, then undone by the user]';
+        if(p.status==='failed') return '[Action \u201c'+p.desc.verb+'\u201d failed: '+(p.error||'error')+' \u2014 do not retry unless the user asks again]';
+        if(p.status==='dismissed') return '[Action \u201c'+p.desc.verb+'\u201d was dismissed by the user \u2014 do not re-propose it]';
+        return '[Action \u201c'+p.desc.verb+'\u201d is still pending user confirmation]';
+      }).join(' ');
+      content = (content||'') + '\n' + notes;
+    }
+    return {role:m.role, content:content || '\u2014'};
+  });
 }
 
 
@@ -20707,39 +21025,29 @@ async function agSendChat(id){
     const sys = agSharedBrief()+
       '\nYou are '+AGENTS[id].name+'. Answer only within your own domain ('+AGENTS[id].role+'). '+
       'If the question belongs to another agent, say which one and give a short answer anyway if you can. '+
-      (isEcho
-        ? 'Your domain includes his Fuel Planner. The one thing you can do from this chat is suggest a new food for his '+
-          'Fuel Planner list with propose_fuel_food: it waits in his approval queue, and nothing is added until he approves '+
-          'it. Only use it when he asks for ideas or his stock clearly cannot close the gap, at most one or two per reply, '+
-          'and tell him it is waiting for his approval. You cannot change anything else from this chat \u2014 '
-        : 'You cannot change app state from this chat \u2014 ')+
-      'structural changes come from the daily cycle or from ZULU. '+
-      'If you think something should change, say so and tell him to run a cycle.'+
+      'You can make changes in your own area with your action tools. Each one shows him a card, and nothing changes '+
+      'until he taps Apply. Use them when he asks for a change, or when he agrees to one you suggested; for questions '+
+      'and advice, just answer. At most '+CHAT_CARDS_MAX+' cards a reply. If a tool says a change was not proposed, '+
+      'tell him why in plain words and never say it was made. Anything outside your area belongs to another agent: say which.'+
       agToolNote()+(isEcho ? agFuelToolNote() : '')+'\n'+
       coachMemContext()+trainingContext()+agContext()+qaContextLine(id);
-    const msgs = a.chats[id].slice(-14).map(m=>({role:m.role, content:m.content}));
-    // Read-only tools, plus -- for ECHO only -- a tool that can queue a Fuel Planner food for his
-    // approval and nothing else. See FP_PROPOSE_TOOL.
-    const opts = {route:'chat:'+id};
-    if(isEcho){
-      let queued = 0;
-      opts.fuelTools = true;
-      opts.propose = function(inp){
-        if(queued >= 2) return 'Not queued: at most two suggestions per reply.';
-        const pr = {title:String(inp.title || ('Add '+(inp.name || 'a food'))).slice(0,120),
-                    reasoning:String(inp.reasoning || '').slice(0,400), fix:{type:'fuelFood', payload:inp}};
-        if(!agValidateFix(pr.fix, 'echo')) return 'Not queued: '+agRejectReason(pr.fix, 'echo')+'. Tell him why; do not say it was added.';
-        // Re-resolved HERE, after the await that produced this call: a sync pull during it replaces
-        // S wholesale, and a proposal written into the old agents object would be silently lost.
-        if(!agIngest(agState(), 'echo', {proposals:[pr]})) return 'Not queued: that food is already waiting in his approval queue.';
-        queued++;
-        save();
-        return 'Queued for his approval as \u201c'+pr.title+'\u201d. Nothing is added until he approves it in the Hub.';
-      };
-    }
+    const msgs = chatHistoryMsgs(a.chats[id], 14);
+    // Read tools, plus this agent's own action cards (coachToolDefs(id)). A card is only staged here; it is
+    // checked again and applied only when he taps Apply.
+    const staged = [];
+    const opts = {route:'chat:'+id, actions:{defs:coachToolDefs(id), onCall:function(name, inp){
+      if(staged.length >= CHAT_CARDS_MAX) return 'Not proposed: at most '+CHAT_CARDS_MAX+' cards a reply.';
+      const pr = coachStageProposals([{name:name, input:inp}], id)[0];
+      if(!pr.valid) return 'Not proposed: '+pr.error+' Tell him why; nothing changed.';
+      staged.push(pr);
+      return 'Shown to him as a card: '+pr.desc.verb+' \u2014 '+pr.desc.detail+' Nothing changes until he taps Apply; say it is waiting for his tap.';
+    }}};
+    if(isEcho) opts.fuelTools = true;
     const {text} = await callClaudeWithData(msgs, sys, 4000, opts);
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
-    agState().chats[id].push({role:'assistant', content:text||'\u2014'});
+    const reply = {role:'assistant', content:text||(staged.length ? 'Here\u2019s what I\u2019d change \u2014 review and apply below:' : '\u2014')};
+    if(staged.length) reply.proposals = staged;
+    agState().chats[id].push(reply);
     save(); agThinkingFor = null; renderOps();
   }catch(e){
     agThinkingFor = null;
@@ -21672,13 +21980,13 @@ function agChatHTML(){
   if(!msgs.length){
     h += '<div class="msg sys">'+esc(A.name)+' \u2014 '+esc(A.role)+'. '+
       (isZulu ? 'Carries everything Coach knew, including its memory and your full chat history.'
-              : 'Ask about its domain; it reads your full training data.')+'</div>';
+              : 'Ask about its domain, or ask it to change something there. It reads your full training data, and every change waits for your tap.')+'</div>';
   }
   msgs.forEach((m,i)=>{
     const isNew = i >= firstNew;
     const body = m.role==='user' ? esc(m.content) : renderMarkdown(m.content);
     if(m.content) h += '<div class="msg '+(m.role==='user'?'me':'ai')+(isNew?' ag-new':'')+'">'+body+'</div>';
-    if(isZulu && m.proposals && m.proposals.length){
+    if(m.proposals && m.proposals.length){
       h += '<div class="cprop-wrap'+(isNew?' ag-new':'')+'">'+m.proposals.map(p=>coachProposalHTML(p)).join('')+'</div>';
     }
   });

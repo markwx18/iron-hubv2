@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3341 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3397 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -277,6 +277,7 @@ so the two orders can no longer disagree.
 | Agent questions | `qaDue()`, `qaTurn()` / `qaOfferTo()` (`QA_ORDER`), `qaSpecLine()`, `agValidateQuestion()` / `qaSimilar()`, `qaIngest()`, `qaOpen()`, `qaAnswer()` / `qaSkip()` / `qaUndo()`, `qaContextLine()`, `qaCardHTML()`, `qaHubHTML()`, `S.agents.questions` |
 | Track records & diagnosis | `agOutcome()`, `agTrack()` / `agTrackText()` / `agTrackLine()`, `hubTrackHTML()`; `pdTargets()`, `pdContextLine()` / `pdSpecLine()`, `agValidateDiagnosis()`, `pdReadHTML()`, `S.agents.diagnoses` |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()` (the Hub: `hubFed()`, `hubStatus()`, `hubMapHTML()`, `hubAgentHTML()`, `hubSpendHTML()`), `coachValidateAction()` |
+| Chat actions | `CHAT_LANES` / `CHAT_ALL` / `chatActionsFor()`, `coachToolDefs(agent)`, `coachValidateAction(name, inp, agent)`, `coachExecuteAction()`, `coachStageProposals()`, `coachFindProposal()`, `coachApplyProposal()`, undo `coachUndoProposal()` / `chatUndoStore()` / `CHAT_UNDO_KEYS`, `chatHistoryMsgs()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network; the cap: `spendLedgerSync()` (`S.spend`), `spendMonth()`, `spendBlock()`, `spendPreflight()`, `spendManualOk()`, `spendCap()` |
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
@@ -292,7 +293,7 @@ so the two orders can no longer disagree.
 | Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
 | Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()`, `fuelFoodAllowed()`; targets change only through `fuelTargetSet()`, which logs `S.targetHist` (`fuelTargetHistory()`) |
 | Family pantry check | `famShareLink()` / `famShare()` / `famOut()`, `famFamilyPage()` / `famTick()` / `famSend()`, `famValid()`, `famDiff()`, `famShowReview()` / `famApply()`, `famRoute()` / `famReviewFromHash()` / `famCopyPage()` / `famPaste()`; the boot is `appBoot()` |
-| Fuel planner | `FOOD_DB`, `fpFoods()`, `fpPool()`, `fpCombos()` / `fpBuild()`, `fpStockDue()`, `fpCheckFood()`, `fpSetStock()` / `fpSetPref()` / `fpTidy()`; ECHO: `fpToolDefs()`, `fpProposeToolDef()`, `fpPlannerText()` |
+| Fuel planner | `FOOD_DB`, `fpFoods()`, `fpPool()`, `fpCombos()` / `fpBuild()`, `fpStockDue()`, `fpCheckFood()`, `fpSetStock()` / `fpSetPref()` / `fpTidy()`; ECHO: `fpToolDefs()`, `fpPlannerText()` (a new food from chat is the `add_food` card) |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
 | Nav shell | `renderSidenav()`, `navDrawerSet()` (`navDrawerOpen`), `navCollapseToggle()`, `showMainTab()` (`_navEnter`, `navEnterAnim()`), `smoothScroll()` |
 | Muscle map data | `bmViewerData()`, `bmStatusFor()`, `bmWeeklyVol()`, `bmTrainedDays()` |
@@ -317,19 +318,36 @@ looped by `callClaudeWithData()`): `list_lifts`, `get_lift_history`, `get_e1rm_s
 `get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`. ECHO alone also gets
 `get_fuel_planner` and `plan_fuel_combos` (`fpToolDefs()`, through `opts.fuelTools`), in its
 nightly check and its chat. Both are reads, and the second runs the tab's own `fpCombos()`.
-There is no write tool and there must never be one — state still changes only through the
-proposal queue and `agApplyFix()`. **The one exception is queue-only, and Mark chose it on
-2026-09-28:**
-- ECHO's chat has `propose_fuel_food`, passed as `opts.propose` from `agSendChat('echo')`.
-- `callClaudeWithData()` hands it to that function, never to `agRunDataTool()`, which stays
-  unable to write.
-- It can only put a `fuelFood` proposal into the normal queue through `agIngest()`, so it gets
-  `agValidateFix()`, dedupe and the 2-per-reply cap. Nothing applies until `agApprove()`
-  re-validates it.
-- It re-resolves `agState()` inside the handler, after the await (the suite swaps `S` mid-reply
-  to prove it).
+There is no write tool and there must never be one: a tool call never changes state by itself.
+**The chats propose action cards** (Mark's call on 2026-10-06, replacing ECHO's queue-only
+`propose_fuel_food` from 2026-09-28). He asked for all four agents to be able to act from chat,
+with every card needing his tap:
+- **Each agent proposes only in its own area** (`CHAT_LANES`; ZULU has `CHAT_ALL`, 21 actions).
+  `coachToolDefs(agent)` offers only those, and `coachValidateAction(name, inp, agent)` refuses
+  anything else first, so a tool another agent owns is not even a tool it has.
+  - DELTA: the split, today's workout, deloads, a lift's next weight, sets, modes, experiments, notes.
+  - ECHO: fuel targets, stock, likes, a new food, workout time, experiments, notes.
+  - CHARLIE: the schedule or cycle order (never the anchor), the segment length, renames, home day,
+    notes.
+- **Every check is one that already exists.** A weight is a `liftReset` through `agValidateFix()`
+  (so `agResetCeiling()`), sets are a `setCount` (a block day goes through `agConflict()`), a food is
+  `fpCheckFood()`, the schedule keeps its mode gate, an experiment is `expValidate()`, a rename is
+  `exRenameBlocker()`. A refusal is told to the agent ("Not proposed: …") and no card is shown.
+- **A call only stages a card.** `callClaudeWithData()` hands `opts.actions.onCall` the call, never
+  `agRunDataTool()`. At most `CHAT_CARDS_MAX` (3) a reply. The reply and its cards are written into
+  the re-resolved `agState()` after the await (the suite swaps `S` mid-reply to prove it). Night
+  routes carry no action tools.
+- **His tap checks it again** (`coachApplyProposal()`). What a card stores must pass the same check
+  a second time: the food cards once dropped the field the check reads, so every stock card failed
+  at the tap. The suite loops every kind to keep that true.
+- **Undo is same-day, this device** (`chatUndoStore()` in `localStorage['ironhub:chatundo']`, never
+  in `S`). It snapshots the keys in `CHAT_UNDO_KEYS` and refuses once any of them has changed since,
+  because putting an old copy back would erase that change too. A rename has no undo, and its card
+  says so.
+- Applied and undone cards leave a line in the agent's feed, and `chatHistoryMsgs()` tells the model
+  what became of each card. Changes from chat are not proposals, so track records do not score them.
 
-Do not widen it to another agent or another fix type without asking. The loop is bounded by
+Do not add a tool that writes without his tap. The loop is bounded by
 `AI_TOOL_ROUNDS` (6, or 2 for mid-workout DELTA) with results capped at `AI_TOOL_MAXCHARS`,
 because it runs unattended and an unbounded loop is an unbounded bill.
 
@@ -351,7 +369,8 @@ something. The nightly queue applies only through `agApplyFix()`, after `agAppro
 `agValidateFix()` on it a second time (a proposal can wait a week, and the split or a lift's weights
 can change under it). This used to say `agApplyFix()` was the *only* write path, and it was not.
 These are the others, all tap-to-apply:
-- ZULU's chat cards, which go through `coachValidateAction()` → `coachExecuteAction()`
+- every agent's chat cards (since 2026-10-06; ZULU's before that), which go through
+  `coachValidateAction()` → `coachExecuteAction()`, each agent only in its own lane
 - Investigation's Apply fix (`invApplyFix()`)
 - the fatigue banner's Start deload (`startDeloadWeek()`)
 - meso split approval
@@ -459,7 +478,7 @@ Check the ledger before starting the next.
 
   `agTrackLine(id)` puts the agent's own record in its prompt; ZULU gets everyone's.
   `hubTrackHTML()` shows it on the Hub card, with how many requests he approved. Changes made from
-  ZULU's chat cards never become proposals, so they are not scored, and ZULU's card says so.
+  Chat cards (any agent's) never become proposals, so they are not scored, and ZULU's card says so.
 - **Plateau diagnosis rides DELTA's existing nightly call**, like the debrief. No new request.
   - `pdTargets()` picks at most `PD_MAX` (2) lifts a night: a lift that just moved up a level
     (`pwRising()`) first, then the worst not read in `PD_QUIET_DAYS` (21). A lift that got worse

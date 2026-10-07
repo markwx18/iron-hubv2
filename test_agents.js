@@ -9467,18 +9467,23 @@ setTimeout(async () => {
     ok('tools: ECHO gets the planner tools at night and in chat',
        ['night:echo', 'chat:echo'].every(r => has(r, 'get_fuel_planner') && has(r, 'plan_fuel_combos')), JSON.stringify(tb));
     ok('tools: DELTA and CHARLIE never do', ['night:delta', 'night:charlie', 'chat:delta', 'chat:charlie'].every(r => tb[r] && !has(r, 'get_fuel_planner') && !has(r, 'plan_fuel_combos')));
-    ok('tools: the propose tool is on ECHO’s chat and nowhere else',
-       has('chat:echo', 'propose_fuel_food') && ['night:echo', 'night:delta', 'night:charlie', 'chat:delta', 'chat:charlie'].every(r => !has(r, 'propose_fuel_food')));
+    // Chat actions (2026-10-06): each chat carries its own agent's action cards, and no nightly run carries any.
+    const ACT = ev('CHAT_ALL');
+    ok('tools: each chat carries only its own agent’s actions, and no night run carries any',
+       has('chat:echo', 'add_food') && !has('chat:echo', 'set_lift_weight') && has('chat:delta', 'set_lift_weight') && !has('chat:delta', 'add_food') &&
+       has('chat:charlie', 'set_week_schedule') && !has('chat:charlie', 'adjust_fuel') &&
+       ['night:echo', 'night:delta', 'night:charlie'].every(r => tb[r] && ACT.every(n => !has(r, n))) &&
+       !Object.keys(tb).some(r => has(r, 'propose_fuel_food')), JSON.stringify(tb));
     ok('tools: ECHO still gets every read tool the others get', (tb['night:delta'] || []).every(n => has('night:echo', n)));
 
-    // --- ECHO's chat can queue a food, and only queue it ---
+    // --- ECHO's chat can suggest a food as a card; nothing is added until he taps Apply ---
     const caesarIn = {title: 'Add chicken Caesar wrap', reasoning: 'close to the chicken wrap he likes', name: 'Chicken Caesar wrap', cat: 'meal', serving: '1 wrap', cal: 520, p: 34, c: 40, f: 24, tags: ['meal', 'quick', 'nocook']};
     const scripted = (input, swapS) => `window.__fpN = 0; window.__fpResult = null;
         aiRequest = async function(m, sys, tools, mt, opts){
           window.__fpN++;
           if(window.__fpN === 1){
             ${swapS ? 'S = JSON.parse(JSON.stringify(S));' : ''}
-            return {content:[{type:'tool_use', id:'tu1', name:'propose_fuel_food', input:${JSON.stringify(input)}}], stop_reason:'tool_use'};
+            return {content:[{type:'tool_use', id:'tu1', name:'add_food', input:${JSON.stringify(input)}}], stop_reason:'tool_use'};
           }
           var last = m[m.length-1];
           window.__fpResult = last && last.content && last.content[0] && last.content[0].content;
@@ -9488,23 +9493,29 @@ setTimeout(async () => {
     ev(scripted(caesarIn, false));
     ev("document.getElementById('agChatIn').value = 'any ideas? I am bored of my stock';");
     await ev("agSendChat('echo')");
-    ok('chat: a sound suggestion lands in the queue as ECHO’s fuelFood proposal',
-       ev("agPending().filter(function(p){ return p.agent === 'echo' && p.fix && p.fix.type === 'fuelFood' && p.fix.payload.name === 'Chicken Caesar wrap'; }).length") === 1);
-    ok('chat: and ECHO is told it is waiting, not added', /^Queued for his approval/.test(String(ev('window.__fpResult'))), String(ev('window.__fpResult')));
-    ok('chat: nothing is added to his list until he approves', ev('S.fuel.custom.length') === 0);
+    const lastEcho = () => ev("JSON.parse(JSON.stringify(agState().chats.echo.slice(-1)[0]))");
+    const c1 = lastEcho();
+    ok('chat: a sound suggestion becomes a card on ECHO’s reply',
+       c1.proposals && c1.proposals.length === 1 && c1.proposals[0].name === 'add_food' && c1.proposals[0].valid && c1.proposals[0].status === 'pending' &&
+       c1.proposals[0].agent === 'echo' && c1.proposals[0].input.name === 'Chicken Caesar wrap', JSON.stringify(c1));
+    ok('chat: and ECHO is told it waits for his tap, not that it was added', /^Shown to him as a card/.test(String(ev('window.__fpResult'))), String(ev('window.__fpResult')));
+    ok('chat: nothing is added to his list, or queued, until he taps', ev('S.fuel.custom.length') === 0 && ev('agPending().length') === 0);
+    ev("coachApplyProposal(" + JSON.stringify(c1.proposals[0].id) + ")");
+    ok('chat: tapping Apply adds it to his list, not liked or stocked', ev("S.fuel.custom.filter(function(f){ return f.n === 'Chicken Caesar wrap'; }).length") === 1 &&
+       ev("(fpFoods().find(function(f){ return f.n === 'Chicken Caesar wrap'; }) || {}).pref || ''") === '' && !ev("(fpFoods().find(function(f){ return f.n === 'Chicken Caesar wrap'; }) || {}).stocked"));
+    ev("S.fuel.custom = [];");
     ev(scripted(Object.assign({}, caesarIn, {title: 'Add egg wrap', name: 'Egg and cheese wrap'}), false));
     ev("document.getElementById('agChatIn').value = 'another?';");
     await ev("agSendChat('echo')");
-    ok('chat: a food on his exclusion list is not queued, and ECHO is told why',
-       ev("agPending().length") === 1 && /^Not queued: .*exclusion/.test(String(ev('window.__fpResult'))), String(ev('window.__fpResult')));
-    // A sync pull can replace S wholesale while the model is thinking. The proposal must land in
-    // the S that exists when the tool call arrives, or it is written to an orphan and lost.
-    ev("agState().proposals = [];");
+    ok('chat: a food on his exclusion list gets no card, and ECHO is told why',
+       !(lastEcho().proposals || []).length && /^Not proposed: .*exclusion/.test(String(ev('window.__fpResult'))), String(ev('window.__fpResult')));
+    // A sync pull can replace S wholesale while the model is thinking. The card must land in the S
+    // that exists when the reply is written, or it is written to an orphan and lost.
     ev(scripted(Object.assign({}, caesarIn, {title: 'Add a steak burrito', name: 'Steak burrito', cal: 900, p: 50, c: 90, f: 36}), true));
     ev("document.getElementById('agChatIn').value = 'something bigger?';");
     await ev("agSendChat('echo')");
-    ok('chat: a sync landing mid-reply does not lose the proposal (re-resolved after the await)',
-       ev("(S.agents.proposals || []).filter(function(p){ return p.status === 'pending' && p.fix && p.fix.payload.name === 'Steak burrito'; }).length") === 1);
+    ok('chat: a sync landing mid-reply does not lose the card (re-resolved after the await)',
+       ev("((S.agents.chats.echo.slice(-1)[0] || {}).proposals || []).filter(function(p){ return p.status === 'pending' && p.input.name === 'Steak burrito'; }).length") === 1);
   } catch (e) {
     ok('fuel planner section', false, e.stack);
   }
@@ -13453,6 +13464,189 @@ setTimeout(async () => {
   } finally {
     ev("if(window.__lcSR){ syncReady = window.__lcSR; delete window.__lcSR; } if(window.__lcF){ fetchGistData = window.__lcF; delete window.__lcF; } if(window.__lcP){ pushUnconfirmedChanges = window.__lcP; delete window.__lcP; }");
     ev('if(window.__lcSaved){ S = JSON.parse(window.__lcSaved); delete window.__lcSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== CHAT ACTIONS FOR EVERY AGENT (2026-10-06) ===');
+  /* Mark asked for DELTA, ECHO and CHARLIE to be able to act from chat, with every change a card he taps. Each
+     agent proposes only in its own area, through the queue's own validators, and a card is checked again when
+     he taps it. Undo is same-day, this device, and refused once something else has changed the same state. */
+  try {
+    w.__caSaved = ev('JSON.stringify(S)');
+    ev("window.__caTK = todayKey; todayKey = function(){ return '2026-10-06'; }; window.__caAlert = window.alert; window.alert = function(m){ window.__caAlerted = m; };");
+    ev("window.__caRealAi = aiRequest; live = null; localStorage.removeItem(CHAT_UNDO_KEY);");
+    ev("S.deload = null; S.pain = []; expState().active = null; invState().overrides = {}; invState().flags = []; mesoState().active = null; S.homeToday = null;" +
+       " delete S.scheduleMode; delete S.cycleSchedule; S.chat = []; agState().chats = {}; agState().log = [];");
+    ev("S.logs = [{id:'ca1', date:'2026-10-01', day:'D2', entries:[{exercise:'Lat Pulldown', sets:[{w:150, r:10, e:'solid'}, {w:150, r:9, e:'solid'}]}," +
+       " {exercise:'Hammer Curl', sets:[{w:30, r:10, e:'solid'}]}]}];");
+    ev("fuelInit(); S.fuel.foods = {rotchk:{p:'d'}, bagel:{s:1}}; S.fuel.custom = [];");
+    const cv = (name, inp, who) => { w.__inp = inp; return JSON.parse(ev("JSON.stringify(coachValidateAction(" + JSON.stringify(name) + ", window.__inp, " + JSON.stringify(who) + "))")); };
+    const names = who => ev("JSON.stringify(coachToolDefs(" + JSON.stringify(who) + ").map(function(t){ return t.name; }).sort())");
+    const lane = who => ev("JSON.stringify(CHAT_LANES." + who + ".slice().sort())");
+
+    // --- lanes ---
+    ok('lanes: DELTA, ECHO and CHARLIE are each offered exactly their own actions',
+       ['delta', 'echo', 'charlie'].every(x => names(x) === lane(x)), names('delta') + ' | ' + names('echo') + ' | ' + names('charlie'));
+    ok('lanes: ZULU is offered every action, and every lane action has a definition',
+       JSON.parse(names('zulu')).length === ev('CHAT_ALL.length') && ['delta', 'echo', 'charlie'].every(x => JSON.parse(lane(x)).every(n => JSON.parse(names('zulu')).indexOf(n) >= 0)));
+    ok('lanes: no agent but ZULU reaches outside its area', JSON.parse(names('delta')).indexOf('adjust_fuel') < 0 && JSON.parse(names('echo')).indexOf('set_lift_weight') < 0 &&
+       JSON.parse(names('charlie')).indexOf('add_food') < 0 && JSON.parse(names('echo')).indexOf('set_week_schedule') < 0);
+    const calOk = {calories: ev('calTarget()') + 100};
+    const off = cv('adjust_fuel', calOk, 'delta');
+    ok('lanes: the validator refuses another agent’s action however well-formed, and says whose area it is',
+       off.ok === false && /outside DELTA/.test(off.error) && cv('adjust_fuel', calOk, 'echo').ok === true && cv('adjust_fuel', calOk, 'zulu').ok === true &&
+       cv('set_lift_weight', {exercise: 'Lat Pulldown', weight: 155}, 'echo').ok === false, JSON.stringify(off));
+
+    // --- each action is held to the queue's own checks ---
+    const lw = cv('set_lift_weight', {exercise: 'lat pulldown', weight: 160}, 'delta');
+    ok('weight: two increments over the last top set passes, in the app’s spelling', lw.ok && lw.inp.exercise === 'Lat Pulldown' && lw.inp.weight === 160, JSON.stringify(lw));
+    const lwHi = cv('set_lift_weight', {exercise: 'Lat Pulldown', weight: 165}, 'delta');
+    ok('weight: one step past the ceiling is refused, and says why', lwHi.ok === false && /too heavy/.test(lwHi.error), JSON.stringify(lwHi));
+    ok('weight: a lift he does not train is refused', /not a lift you train/.test(cv('set_lift_weight', {exercise: 'Trap Bar Deadlift', weight: 200}, 'delta').error || ''));
+    const cur = ev("exSlotSets('D2', 'Lat Pulldown')");
+    const ss = cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1}, 'delta');
+    ok('sets: a change on a lift on one day finds the day', ss.ok && ss.inp.day === 'D2' && ss.inp.from === cur && ss.inp.sets === cur + 1 && ss.inp.block === false, JSON.stringify(ss));
+    ok('sets: out of range, or no change, is refused', cv('set_sets', {exercise: 'Lat Pulldown', sets: 9}, 'delta').ok === false && /already/.test(cv('set_sets', {exercise: 'Lat Pulldown', sets: cur}, 'delta').error || ''));
+    ev("invState().overrides['Lat Pulldown'] = invResetRecord(150, 10, 'Agent');");
+    ok('sets: the cross-review rules apply (no set change on a lift under a reset)', /under a reset/.test(cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1}, 'delta').error || ''));
+    ev("invState().overrides = {}; S.split.D5.exercises.push('Lat Pulldown');");
+    ok('sets: a lift on two days asks which', /say which day/.test(cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1}, 'delta').error || '') &&
+       cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1, day: 'D5'}, 'delta').ok === true);
+    ev("S.split.D5.exercises.pop();");
+    const md = cv('set_lift_mode', {exercise: 'Preacher Curl Machine', maxed: true, strength: false}, 'delta');
+    ok('mode: only what actually changes is kept', md.ok && md.inp.maxed === true && !('strength' in md.inp), JSON.stringify(md));
+    ok('mode: nothing to change is refused', /already set/.test(cv('set_lift_mode', {exercise: 'Preacher Curl Machine', maxed: false}, 'delta').error || ''));
+    ok('deload: ending one needs one running', cv('end_deload', {}, 'delta').ok === false);
+    const bagel = ev("fpFood('bagel').n"), chick = ev("fpFood('rotchk').n");
+    ok('stock: a food he said no to is never stocked (that would clear his no)', /said no/.test(cv('set_food_stock', {foods: [chick], in_stock: true}, 'echo').error || ''));
+    ok('stock: a food not on his list is refused', /Not on his list/.test(cv('set_food_stock', {foods: ['Unicorn steak'], in_stock: false}, 'echo').error || ''));
+    const st = cv('set_food_stock', {foods: [bagel.toLowerCase()], in_stock: false}, 'echo');
+    ok('stock: a real food resolves to its id', st.ok && JSON.stringify(st.inp.ids) === '["bagel"]', JSON.stringify(st));
+    ok('food: an unknown preference or no change is refused', cv('set_food_pref', {food: bagel, pref: 'love'}, 'echo').ok === false && cv('set_food_pref', {food: chick, pref: 'no'}, 'echo').ok === false);
+    ok('time: a time that is not one is refused, and one is tidied', cv('set_workout_time', {time: '25:00'}, 'echo').ok === false && cv('set_workout_time', {time: '5:30'}, 'echo').inp.time === '05:30');
+    const wk = {0: 'REST', 1: 'D1', 2: 'D2', 3: 'D3', 4: 'REST', 5: 'D4', 6: 'D5'};
+    ok('schedule: a full week passes on a weekday schedule, a cycle order does not', cv('set_week_schedule', {map: wk}, 'charlie').ok === true &&
+       cv('set_week_schedule', {map: {0: 'REST'}}, 'charlie').ok === false && cv('set_cycle_pattern', {pattern: ['D1', 'REST']}, 'charlie').ok === false);
+    ok('plan: resizing needs a segment running', /No plan segment/.test(cv('resize_block_segment', {days: 4}, 'charlie').error || ''));
+    ok('rename: a milestone lift cannot be renamed away', cv('rename_exercise', {from: 'Barbell Bench Press', to: 'Flat Bench'}, 'charlie').ok === false);
+    const rnm = cv('rename_exercise', {from: 'Hammer Curl', to: 'Preacher Curl Machine'}, 'charlie');
+    ok('rename: into a name he already has is shown as a merge', rnm.ok && rnm.inp.merge === true && cv('rename_exercise', {from: 'Hammer Curl', to: 'Cross Body Hammer Curl'}, 'charlie').inp.merge === false, JSON.stringify(rnm));
+    // The card stores the checked, tidied input, and the tap checks THAT again. For the food cards it once dropped the
+    // field the check reads, so every stock and preference card failed at the tap (caught 2026-10-06).
+    const caesar = {name: 'Chicken Caesar wrap', cat: 'meal', serving: '1 wrap', cal: 520, p: 34, c: 40, f: 24, tags: ['meal', 'quick', 'nocook']};
+    const sample = [['delta', 'set_lift_weight', {exercise: 'Lat Pulldown', weight: 160}], ['delta', 'set_sets', {exercise: 'Lat Pulldown', sets: cur + 1}],
+      ['delta', 'set_lift_mode', {exercise: 'Preacher Curl Machine', maxed: true}], ['echo', 'set_food_stock', {foods: [bagel], in_stock: false}],
+      ['echo', 'set_food_pref', {food: bagel, pref: 'like'}], ['echo', 'set_workout_time', {time: '5:30'}], ['echo', 'adjust_fuel', calOk], ['echo', 'add_food', caesar],
+      ['charlie', 'set_week_schedule', {map: wk}], ['charlie', 'rename_exercise', {from: 'Hammer Curl', to: 'Cross Body Hammer Curl'}], ['charlie', 'set_home_today', {on: true}],
+      ['zulu', 'remember_note', {note: 'Left knee dislikes deep lunges', tag: 'injury'}]];
+    const notIdem = sample.filter(([who, n, inp]) => { const v1 = cv(n, inp, who); return !v1.ok || !cv(n, v1.inp || inp, who).ok; }).map(x => x[1]);
+    ok('cards: what a card stores passes the same check again at the tap, for every kind', notIdem.length === 0, notIdem.join(','));
+    ok('home: no change is refused', /already a gym/.test(cv('set_home_today', {on: false}, 'charlie').error || ''));
+
+    // --- apply and undo ---
+    const stage = (who, name, inp) => { w.__inp = inp; return ev("(function(){ var p = coachStageProposals([{name:" + JSON.stringify(name) + ", input:window.__inp}], " + JSON.stringify(who) + ")[0];" +
+      " var list = " + (who === 'zulu' ? "S.chat" : "(agState().chats[" + JSON.stringify(who) + "] = agState().chats[" + JSON.stringify(who) + "] || [])") + ";" +
+      " list.push({role:'assistant', content:'ok', proposals:[p]}); return p.id; })()"); };
+    const prop = pid => JSON.parse(ev("JSON.stringify(coachFindProposal(" + JSON.stringify(pid) + ").p)"));
+    const card = pid => ev("coachProposalHTML(coachFindProposal(" + JSON.stringify(pid) + ").p)");
+    const p1 = stage('delta', 'set_lift_weight', {exercise: 'Lat Pulldown', weight: 160});
+    ok('apply: a staged card changes nothing', !ev("invOverrideFor('Lat Pulldown')") && /coachApplyProposal\('/.test(card(p1)));
+    ev("S.meta.changedAt = 1; coachApplyProposal(" + JSON.stringify(p1) + ")");
+    ok('apply: his tap applies it, as a saved change', ev("(invOverrideFor('Lat Pulldown') || {}).w") === 160 && prop(p1).status === 'applied' && ev('S.meta.changedAt') > 1);
+    ok('apply: the feed says he applied it from DELTA’s chat', ev("agState().log.some(function(l){ return /You applied .Set next weight. from chat/.test(l.text); })"));
+    ok('undo: an applied card offers Undo today', new RegExp("coachUndoProposal\\('" + p1 + "'\\)").test(card(p1)));
+    ok('undo: it puts it back', ev("coachUndoProposal(" + JSON.stringify(p1) + ")") === true && !ev("invOverrideFor('Lat Pulldown')") && prop(p1).status === 'undone' &&
+       /Undone/.test(card(p1)) && !/coachUndoProposal/.test(card(p1)));
+    ok('undo: only once', ev("coachUndoProposal(" + JSON.stringify(p1) + ")") === false);
+    ok('undo: the model hears it was undone', /was applied, then undone/.test(ev("JSON.stringify(chatHistoryMsgs(agState().chats.delta, 20))")));
+    const p2 = stage('delta', 'set_lift_weight', {exercise: 'Lat Pulldown', weight: 160});
+    ev("S.logs[0].entries[0].sets.forEach(function(s){ s.w = 100; });");
+    ev("coachApplyProposal(" + JSON.stringify(p2) + ")");
+    ok('apply: checked again at the tap (the ceiling moved, so it is refused and nothing is written)',
+       prop(p2).status === 'failed' && /too heavy/.test(prop(p2).error) && !ev("invOverrideFor('Lat Pulldown')"), JSON.stringify(prop(p2)));
+    ev("S.logs[0].entries[0].sets.forEach(function(s){ s.w = 150; });");
+    const p3 = stage('echo', 'set_food_stock', {foods: [bagel], in_stock: false});
+    ev("coachApplyProposal(" + JSON.stringify(p3) + ")");
+    ok('apply: stock is changed by his tap', ev("!!fpFood('bagel').stocked") === false, JSON.stringify(prop(p3)));
+    ev("window.__caAlerted = ''; fpSetStock('wmilk', true);");
+    ok('undo: refused once something else has changed the same state, which is kept',
+       ev("coachUndoProposal(" + JSON.stringify(p3) + ")") === false && /cannot be undone/.test(ev('window.__caAlerted')) && ev("!!fpFood('wmilk').stocked") === true && prop(p3).status === 'applied');
+    const p4 = stage('charlie', 'set_home_today', {on: true});
+    ev("coachApplyProposal(" + JSON.stringify(p4) + ")");
+    ok('apply: a home day from CHARLIE', ev('homeActiveToday()') === true);
+    ev("todayKey = function(){ return '2026-10-07'; };");
+    ok('undo: not offered the next day', ev("chatUndoAvailable(" + JSON.stringify(p4) + ")") === false && ev("coachUndoProposal(" + JSON.stringify(p4) + ")") === false && !/coachUndoProposal/.test(card(p4)));
+    ev("todayKey = function(){ return '2026-10-06'; };");
+    const p5 = stage('charlie', 'rename_exercise', {from: 'Hammer Curl', to: 'Cross Body Hammer Curl'});
+    ok('rename: the card says it cannot be undone', /Cannot be undone/.test(prop(p5).desc.detail));
+    ev("coachApplyProposal(" + JSON.stringify(p5) + ")");
+    ok('rename: applied everywhere, and no Undo is offered', ev("S.split.D2.exercises.map(exName).indexOf('Cross Body Hammer Curl')") >= 0 &&
+       ev("S.logs[0].entries[1].exercise") === 'Cross Body Hammer Curl' && ev("chatUndoAvailable(" + JSON.stringify(p5) + ")") === false && !/coachUndoProposal/.test(card(p5)));
+    const p6 = stage('delta', 'set_sets', {exercise: 'Lat Pulldown', sets: cur + 1});
+    ev("coachApplyProposal(" + JSON.stringify(p6) + ")");
+    ok('apply: sets change on that day', ev("exSlotSets('D2', 'Lat Pulldown')") === cur + 1);
+    ok('undo: and come back', ev("coachUndoProposal(" + JSON.stringify(p6) + ")") === true && ev("exSlotSets('D2', 'Lat Pulldown')") === cur);
+    const p7 = stage('delta', 'set_lift_mode', {exercise: 'Preacher Curl Machine', maxed: true});
+    ev("coachApplyProposal(" + JSON.stringify(p7) + ")");
+    ok('apply: MAXED goes on', ev("isMaxed('Preacher Curl Machine')") === true);
+    ev("coachUndoProposal(" + JSON.stringify(p7) + ")");
+    ok('undo: and off again', ev("isMaxed('Preacher Curl Machine')") === false);
+    const p8 = stage('echo', 'set_food_pref', {food: bagel, pref: 'no'});
+    ev("fpSetStock('bagel', true); coachApplyProposal(" + JSON.stringify(p8) + ")");
+    ok('apply: a no takes the food out of stock', ev("fpFood('bagel').pref") === 'd' && !ev("fpFood('bagel').stocked"));
+    ev("S.scheduleMode = 'cycle'; S.cycleSchedule = {anchor:'2026-08-03', pattern:['D1','D2','D3','REST']};");
+    ok('schedule: in a cycle, a weekday map is refused', cv('set_week_schedule', {map: wk}, 'charlie').ok === false);
+    const p9 = stage('charlie', 'set_cycle_pattern', {pattern: ['D1', 'D2', 'REST']});
+    ev("coachApplyProposal(" + JSON.stringify(p9) + ")");
+    ok('schedule: the cycle order changes and its start date never does', ev("JSON.stringify(S.cycleSchedule)") === JSON.stringify({anchor: '2026-08-03', pattern: ['D1', 'D2', 'REST']}));
+    ev("delete S.scheduleMode; delete S.cycleSchedule;");
+    ok('undo: snapshots stay on this device, never in synced state', ev("JSON.stringify(S).indexOf(" + JSON.stringify(p6) + ") >= 0") && ev("Object.keys(S).every(function(k){ return !/undo/i.test(k); })") &&
+       Object.keys(JSON.parse(ev("localStorage.getItem(CHAT_UNDO_KEY)") || '{}')).length >= 1);
+
+    // --- the model's side: a call stages a card, never a change ---
+    ev("var __t = document.getElementById('agChatIn'); if(!__t){ __t = document.createElement('textarea'); __t.id = 'agChatIn'; document.body.appendChild(__t); }");
+    const script = (calls, swapS) => `window.__caN = 0; window.__caRes = []; window.__caTools = [];
+        aiRequest = async function(m, sys, tools, mt, opts){
+          window.__caN++;
+          window.__caTools = (tools || []).map(function(t){ return t.name; });
+          if(window.__caN === 1){
+            ${swapS ? 'S = JSON.parse(JSON.stringify(S));' : ''}
+            return {content:${JSON.stringify(calls)}.map(function(c, i){ return {type:'tool_use', id:'tu'+i, name:c[0], input:c[1]}; }), stop_reason:'tool_use'};
+          }
+          var last = m[m.length-1];
+          window.__caRes = (last.content || []).map(function(b){ return String(b.content); });
+          return {content:[{type:'text', text:'Done.'}], stop_reason:'end_turn'};
+        };`;
+    const send = async (who, calls, swapS) => { ev(script(calls, swapS)); ev("document.getElementById('agChatIn').value = 'please change it';"); await ev("agSendChat(" + JSON.stringify(who) + ")"); };
+    const lastOf = who => JSON.parse(ev("JSON.stringify(agState().chats[" + JSON.stringify(who) + "].slice(-1)[0])"));
+    await send('delta', [['set_lift_weight', {exercise: 'Lat Pulldown', weight: 160}]]);
+    const m1 = lastOf('delta');
+    ok('model: DELTA’s call becomes a pending card on its reply, and changes nothing',
+       m1.role === 'assistant' && (m1.proposals || []).length === 1 && m1.proposals[0].status === 'pending' && m1.proposals[0].agent === 'delta' && !ev("invOverrideFor('Lat Pulldown')"), JSON.stringify(m1));
+    ok('model: and DELTA is told it waits for his tap', /^Shown to him as a card/.test(ev('window.__caRes[0]')), ev('window.__caRes[0]'));
+    ok('model: DELTA’s chat carries its own actions and the read tools', ev("window.__caTools.indexOf('set_lift_weight') >= 0 && window.__caTools.indexOf('get_lift_history') >= 0 && window.__caTools.indexOf('add_food') < 0"));
+    ok('model: the card shows in DELTA’s chat, and Apply works from there', (ev("agActiveChat = 'delta', agChatHTML()").indexOf("coachApplyProposal('" + m1.proposals[0].id + "')") >= 0) &&
+       (ev("coachApplyProposal(" + JSON.stringify(m1.proposals[0].id) + "), (invOverrideFor('Lat Pulldown') || {}).w") === 160));
+    ev("invState().overrides = {}; agActiveChat = 'zulu';");
+    await send('delta', [['set_lift_weight', {exercise: 'Lat Pulldown', weight: 300}]]);
+    ok('model: a call the checks refuse gets no card, and the agent is told why', !(lastOf('delta').proposals || []).length && /^Not proposed: .*too heavy/.test(ev('window.__caRes[0]')), ev('window.__caRes[0]'));
+    const cal0 = ev('calTarget()');
+    await send('delta', [['adjust_fuel', {calories: cal0 + 100}]]);
+    ok('model: an action outside the agent’s area is not even a tool it has', !(lastOf('delta').proposals || []).length && /Unknown tool/.test(ev('window.__caRes[0]')) && ev('calTarget()') === cal0, ev('window.__caRes[0]'));
+    await send('delta', [['set_lift_weight', {exercise: 'Lat Pulldown', weight: 155}], ['set_lift_mode', {exercise: 'Preacher Curl Machine', maxed: true}],
+                         ['remember_note', {note: 'Prefers cables to dumbbells for curls', tag: 'preference'}], ['remember_note', {note: 'Trains before school on Mondays', tag: 'schedule'}]]);
+    ok('model: at most three cards a reply', (lastOf('delta').proposals || []).length === 3 && /^Not proposed: at most 3/.test(ev('window.__caRes[3]')), ev('JSON.stringify(window.__caRes)'));
+    await send('charlie', [['set_home_today', {on: false}]], false);
+    ev("S.homeToday = null;");
+    await send('charlie', [['set_home_today', {on: true}]], true);
+    ok('model: a sync landing mid-reply does not lose the card (re-resolved after the await)',
+       ((lastOf('charlie').proposals || [])[0] || {}).name === 'set_home_today' && ev('homeActiveToday()') === false);
+  } catch (e) {
+    ok('chat actions section', false, e.stack);
+  } finally {
+    ev("if(window.__caRealAi){ aiRequest = window.__caRealAi; delete window.__caRealAi; } if(window.__caTK){ todayKey = window.__caTK; delete window.__caTK; }" +
+       " if(window.__caAlert !== undefined){ window.alert = window.__caAlert; delete window.__caAlert; } agActiveChat = 'zulu'; localStorage.removeItem(CHAT_UNDO_KEY);");
+    ev("var __t3 = document.getElementById('agChatIn'); if(__t3 && !__t3.closest('#ops')) __t3.remove();");
+    ev('if(window.__caSaved){ S = JSON.parse(window.__caSaved); delete window.__caSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

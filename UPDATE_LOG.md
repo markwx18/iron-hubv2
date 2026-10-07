@@ -70,6 +70,13 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 
 ## The agents
 
+- **Every agent can make changes from chat now, not just ZULU.** Ask and it shows you a card. Nothing changes until you tap Apply.
+  - **DELTA** handles training: a lift's next weight, sets, strength mode, Form Focus and MAXED, adding, removing or swapping lifts, today's workout, deloads and experiments.
+  - **ECHO** handles food: calorie and protein targets, what's in stock, likes and no's, adding a food to your list, and your workout time for fuel timing.
+  - **CHARLIE** handles your schedule: the weekly schedule or cycle order, how long the current plan block runs, renaming a lift, and home days.
+  - **ZULU** can do all of it.
+- **Every card is checked twice**, when the agent suggests it and again when you tap Apply, with the same rules as the nightly requests. A weight can't jump more than two steps over your last top set, nothing gets added next to a fresh injury flag, and a food you said no to never gets stocked.
+- **Undo**: an applied card shows an Undo button for the rest of the day on that device. It won't undo if you've changed the same thing since, so it can't erase your newer edit. Renaming a lift can't be undone from chat, and its card says so.
 - **Track records**: each agent's past suggestions are scored from your real training afterwards, so you can see how often their advice held up.
 - **Plateau diagnosis**: when a lift stalls, DELTA gives its own read on why and what to try first.
 - **One question a week**: an agent may ask you something it can't tell from your data. Tap an answer, add a note if you want, or skip. It remembers your answer for 90 days. It never changes anything on its own.
