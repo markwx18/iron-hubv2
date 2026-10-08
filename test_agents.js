@@ -13651,6 +13651,64 @@ setTimeout(async () => {
     ev('if(window.__caSaved){ S = JSON.parse(window.__caSaved); delete window.__caSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== WINTER ARC COUNTDOWN (2026-10-08) ===');
+  /* He asked for a live countdown to Oct 16, 5 PM Eastern, and a launch message with golf being over once it
+     goes live. Every check passes the instant and the date in, so none depends on the clock or the machine's zone. */
+  try {
+    w.__wcSaved = ev('JSON.stringify(S)');
+    ev("S.winterArc = {start:'2026-10-16', end:'2027-04-01', sessionTarget:5, bwTarget:null};");
+    const go = Date.UTC(2026, 9, 16, 21, 0, 0);   // 5 PM EDT is 21:00 UTC
+    ok('go-live: 5 PM Eastern on Oct 16 is 21:00 UTC (daylight time, whatever the device zone)', ev("waGoLiveMs('2026-10-16')") === go, ev("waGoLiveMs('2026-10-16')"));
+    ok('go-live: and on standard time it is 22:00 UTC, so the zone is read, not assumed', ev("waGoLiveMs('2026-12-16')") === Date.UTC(2026, 11, 16, 22, 0, 0));
+    const cs = (ms, key) => JSON.parse(ev('JSON.stringify(waCountState(' + ms + ', ' + JSON.stringify(key) + '))'));
+    const chip = (ms, key) => ev('waCountHTML(waCountState(' + ms + ', ' + JSON.stringify(key) + '))');
+    const left = 8 * 86400000 + 4 * 3600000 + 12 * 60000 + 33000;
+    ok('count: days, then hh:mm:ss, with a phone’s short form beside it', /Winter Arc<\/span><span class="wa-c-v"><span class="wa-full">8d 04:12:33<\/span><span class="wa-short">8d 04h<\/span>/.test(chip(go - left, '2026-10-08')), chip(go - left, '2026-10-08'));
+    // jsdom cannot lay out, so these check the rules that make it fit a phone's top bar (measured in a real browser at 393 and 320)
+    const wcss = ev("Array.prototype.map.call(document.querySelectorAll('style'), function(s){ return s.textContent; }).join('')");
+    ok('count: a phone shows the short form, and a small one gives the wordmark’s room to the countdown',
+       /\.wa-full\{display:none;\} \.wa-short\{display:inline;\}/.test(wcss) && /@media \(max-width:360px\)\{ \.topbar:has\(\.wa-count:not\(\[hidden\]\)\) \.brand-txt\{display:none;\}/.test(wcss));
+    ok('count: the last day drops the days', /<span class="wa-c-v">00:00:01</.test(chip(go - 1000, '2026-10-16')));
+    ok('count: on Oct 16 before 5 PM it is still counting, not live', cs(go - 60000, '2026-10-16').phase === 'count' && ev("waLaunchHTML(" + (go - 60000) + ", '2026-10-16')") === '');
+    ok('count: nothing more than 30 days out', chip(go - 31 * 86400000, '2026-09-15') === '' && chip(go - 29 * 86400000, '2026-09-17') !== '');
+    const d1 = cs(go, '2026-10-16');
+    ok('live: at 5 PM it is day 1, with the days to go', d1.phase === 'live' && d1.day === 1 && d1.total === 168 && /Day 1<\/span><span class="wa-c-s">167 to go/.test(chip(go, '2026-10-16')), JSON.stringify(d1));
+    const launch = ev("waLaunchHTML(" + go + ", '2026-10-16')");
+    ok('launch: the message is there once it is live, golf and all', /Winter Arc is live/.test(launch) && /Golf’s done for the year/.test(launch) && /168 days to April 1\. Hit 5 sessions a week/.test(launch), launch);
+    ok('launch: it stays three days, then the chip just counts the days', ev("waLaunchHTML(" + (go + 2 * 86400000) + ", '2026-10-18')") !== '' &&
+       ev("waLaunchHTML(" + (go + 3 * 86400000) + ", '2026-10-19')") === '' && /Day 4</.test(chip(go + 3 * 86400000, '2026-10-19')));
+    ok('done: nothing after the arc ends', chip(go + 200 * 86400000, '2027-04-02') === '' && /last day/.test(chip(go + 167 * 86400000, '2027-04-01')));
+    ev("S.winterArc.start = '2026-10-24';");
+    ok('a stored old start (Oct 24) still counts to Oct 16', cs(go - 1000, '2026-10-16').left === 1000);
+    ev("delete S.winterArc;");
+    const before = ev('JSON.stringify(S)');
+    ev("waCountState(" + (go - 1000) + ", '2026-10-16'); waLaunchHTML(" + go + ", '2026-10-16'); waCountTick();");
+    ok('the countdown only reads: no S.winterArc is created, nothing in S changes', ev('JSON.stringify(S)') === before && ev("'winterArc' in S") === false);
+    ok('the countdown has its own button in the top bar', ev("!!document.querySelector('.topbar .wa-slot #waCount')"));
+    // The tick, at a fixed instant: it patches the button, hides it when there is nothing to show.
+    ev("S.winterArc = {start:'2026-10-16', end:'2027-04-01', sessionTarget:5, bwTarget:null};");
+    ev("window.__wcNow = Date.now; window.__wcTK = todayKey; todayKey = function(){ return '2026-10-16'; }; Date.now = function(){ return " + (go - 1000) + "; }; waCountTick();");
+    ok('tick: the button shows the countdown, amber in the last day', /00:00:01/.test(ev("document.getElementById('waCount').innerHTML")) &&
+       ev("document.getElementById('waCount').hidden") === false && ev("document.getElementById('waCount').classList.contains('soon')"));
+    ev("Date.now = function(){ return " + go + "; }; window.__wcRA = rerenderActive; window.__wcRAn = 0; rerenderActive = function(){ window.__wcRAn++; }; waCountTick();");
+    ok('tick: at 5 PM it flips to day 1 and asks for one guarded repaint, so Today shows the message',
+       /Day 1/.test(ev("document.getElementById('waCount').innerHTML")) && ev('window.__wcRAn') === 1 && ev("document.getElementById('waCount').classList.contains('live')"));
+    ev("waCountTick();");
+    ok('tick: and only once', ev('window.__wcRAn') === 1);
+    ev("rerenderActive = window.__wcRA; delete window.__wcRA; delete window.__wcRAn;");
+    ev("renderHome();");
+    ok('Today opens on the launch message when it is live', /Winter Arc is live/.test(ev("document.getElementById('home').innerHTML")));
+    ev("Date.now = function(){ return " + (go - 40 * 86400000) + "; }; todayKey = function(){ return '2026-09-06'; }; waCountTick(); renderHome();");
+    ok('tick: hidden when the arc is more than 30 days out, and Today has no message', ev("document.getElementById('waCount').hidden") === true &&
+       !/Winter Arc is live/.test(ev("document.getElementById('home').innerHTML")));
+  } catch (e) {
+    ok('winter arc countdown section', false, e.stack);
+  } finally {
+    ev("if(window.__wcNow){ Date.now = window.__wcNow; delete window.__wcNow; } if(window.__wcTK){ todayKey = window.__wcTK; delete window.__wcTK; } if(window.__wcRA){ rerenderActive = window.__wcRA; delete window.__wcRA; }");
+    ev('if(window.__wcSaved){ S = JSON.parse(window.__wcSaved); delete window.__wcSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+    ev("try{ waCountTick(); renderHome(); }catch(e){}");
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

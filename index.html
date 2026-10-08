@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-07-v1">
+<meta name="ironhub-build" content="2026-10-08-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -70,6 +70,29 @@
   .logo-mark::after{content:""; position:absolute; inset:3.5px; background:var(--amber); border-radius:1px;}
   .brand-txt{font-family:var(--disp); font-weight:700; font-size:19px; letter-spacing:.03em; text-transform:uppercase; line-height:1; position:relative; top:1px;}
   .topbar .spacer{flex:1;}
+  /* The Winter Arc countdown sits in the top bar's empty middle. It shrinks before anything else does. */
+  .wa-slot{display:flex; justify-content:center; align-items:center; min-width:0;}
+  .wa-count{display:flex; align-items:baseline; gap:8px; min-width:0; max-width:100%; overflow:hidden; white-space:nowrap;
+    background:none; border:1px solid var(--line); border-radius:var(--r-ctl); padding:5px 12px; color:var(--text); cursor:pointer;
+    font-family:var(--disp); text-transform:uppercase; letter-spacing:.06em; line-height:1;}
+  .wa-count[hidden]{display:none;}
+  .wa-c-l{font-size:11px; font-weight:600; color:var(--cyan);}
+  .wa-c-v{font-size:16px; font-weight:700; font-variant-numeric:tabular-nums;}
+  .wa-c-s{font-size:12px; color:var(--muted);}
+  .wa-short{display:none;}
+  .wa-count.soon{border-color:var(--amber);} .wa-count.soon .wa-c-v{color:var(--amber);}
+  .wa-count.live{border-color:var(--cyan);}
+  @media (max-width:600px){
+    .wa-count{flex-direction:column; align-items:center; gap:2px; padding:3px 6px; letter-spacing:.02em;}
+    .wa-c-l{font-size:9px;} .wa-c-v{font-size:14px;} .wa-c-s{display:none;}
+    .wa-full{display:none;} .wa-short{display:inline;}
+  }
+  @media (max-width:360px){ .topbar:has(.wa-count:not([hidden])) .brand-txt{display:none;} .wa-count{padding:3px 5px;} .wa-c-l{font-size:8px; letter-spacing:.03em;} .wa-c-v{font-size:13px;} }
+  .wa-launch{border:1px solid var(--cyan); background:linear-gradient(160deg, color-mix(in srgb, var(--cyan) 16%, transparent), transparent 70%), var(--panel);}
+  .wa-launch .wa-l-e{font-family:var(--disp); font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--cyan);}
+  .wa-launch h3{font-family:var(--disp); font-size:28px; text-transform:uppercase; letter-spacing:.02em; margin:4px 0 8px; line-height:1.05;}
+  .wa-launch p{font-size:14.5px; line-height:1.55; color:var(--text); margin:0 0 8px;}
+  .wa-launch p.wa-l-k{font-family:var(--disp); font-size:15px; letter-spacing:.04em; text-transform:uppercase; color:var(--amber); margin:4px 0 0;}
 
   .modeswitch{display:flex; gap:0; background:var(--base); border:1px solid var(--line2); border-radius:4px; overflow:hidden; flex:none;}
   .modeswitch button{font-family:var(--disp); font-weight:600; font-size:14px; letter-spacing:.08em; text-transform:uppercase; padding:8px 16px; background:none; border:none; color:var(--dim); position:relative; transition:.15s;}
@@ -2009,7 +2032,7 @@
     <button class="top-btn top-menu" id="topMenu" onclick="navDrawerToggle()" title="Menu" aria-label="Open menu" aria-expanded="false" aria-controls="sidenav"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
     <span class="logo-mark"></span>
     <div class="brand-txt">Iron Hub</div>
-    <div class="spacer"></div>
+    <div class="spacer wa-slot"><button class="wa-count" id="waCount" hidden onclick="setMode('review');showMainTab('home')" aria-label="Winter Arc"></button></div>
     <button class="notif-btn" id="notifBtn" onclick="notifToggle()" title="Notifications" aria-label="Notifications">
       <span class="notif-ic">◉</span><span class="notif-badge" id="notifBadge"></span>
     </button>
@@ -21171,6 +21194,92 @@ function winterState(){
     S.winterArc.start = S.winterArc.start.slice(0,5) + WA_START_MD;
   return S.winterArc;
 }
+/* ---- the countdown to go-live (2026-10-08, his request) ----
+   The arc's dates are calendar days, but the moment it goes live is a clock time: 5 PM Eastern on the
+   start date. Eastern, not "EST": on Oct 16 New York is on daylight time (UTC-4), and 5 PM on his clock
+   is what he means either way, so the instant is worked out from the America/New_York wall clock.
+   - Until then the top bar counts down, only in the last WA_COUNT_DAYS, so a season six months out does
+     not tick at him from April.
+   - From then on it reads "Winter Arc · Day N", and for the first WA_HYPE_DAYS Today opens on the
+     launch message.
+   It is a pure read. waCountState() never calls winterState(), which creates S.winterArc, so the 1 s
+   tick cannot write state, and the tick patches one button's markup, so it never repaints under his
+   hands (LIVE included). */
+const WA_GO_HOUR = 17, WA_TZ = 'America/New_York', WA_COUNT_DAYS = 30, WA_HYPE_DAYS = 3;
+/* What the New York wall clock reads at this instant, minus the instant: -4h on daylight time, -5h on standard. */
+function waZoneOffsetMs(ms){
+  try{
+    const parts = new Intl.DateTimeFormat('en-US', {timeZone:WA_TZ, hourCycle:'h23', year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', second:'2-digit'}).formatToParts(new Date(ms));
+    const v = {}; parts.forEach(function(p){ v[p.type] = +p.value; });
+    return Date.UTC(v.year, v.month-1, v.day, v.hour % 24, v.minute, v.second) - Math.floor(ms/1000)*1000;
+  }catch(e){ return -4*3600000; }   // no time-zone data on the device: mid-October Eastern is UTC-4
+}
+/* 5 PM Eastern on the start date, as an instant. Checked twice so a start on a clock-change day still lands. */
+function waGoLiveMs(startKey){
+  const p = String(startKey).split('-').map(Number);
+  const wall = Date.UTC(p[0], p[1]-1, p[2], WA_GO_HOUR, 0, 0);
+  const off = waZoneOffsetMs(wall - waZoneOffsetMs(wall));
+  return wall - off;
+}
+/* The season the countdown reads, without creating or migrating anything (winterState() does both). */
+function waSeasonRead(key){
+  const w = (S.winterArc && S.winterArc.start && S.winterArc.end) ? S.winterArc : waSeasonFor(key);
+  let start = String(w.start);
+  if(WA_LEGACY_START_MDS.indexOf(start.slice(5)) >= 0) start = start.slice(0,5) + WA_START_MD;
+  return {start:start, end:String(w.end), sessionTarget:(S.winterArc && S.winterArc.sessionTarget) || WA_DEFAULT_SESSIONS};
+}
+/* null (nothing to show) | {phase:'count', left} | {phase:'live', day, total, hype}. nowMs and key are
+   parameters so the suite never depends on the clock. */
+function waCountState(nowMs, key){
+  const k = key || todayKey(), w = waSeasonRead(k);
+  if(k > w.end) return null;
+  const go = waGoLiveMs(w.start), left = go - nowMs;
+  if(left > 0) return left > WA_COUNT_DAYS*86400000 ? null : {phase:'count', left:left, go:go};
+  const day = Math.max(1, daysBetween(w.start, k) + 1), total = daysBetween(w.start, w.end) + 1;
+  return {phase:'live', day:day, total:total, left:Math.max(0, total - day), hype:day <= WA_HYPE_DAYS, go:go, sessionTarget:w.sessionTarget};
+}
+function waCountHTML(c){
+  if(!c) return '';
+  if(c.phase === 'count'){
+    const sec = Math.ceil(c.left/1000), d = Math.floor(sec/86400), hh = Math.floor(sec%86400/3600), mm = Math.floor(sec%3600/60), ss = sec%60;
+    const two = function(n){ return String(n).padStart(2, '0'); };
+    const full = (d ? d+'d ' : '')+two(hh)+':'+two(mm)+':'+two(ss);
+    // A phone's top bar has room for about six characters between the logo and the buttons, so more than a day
+    // out it reads "8d 07h"; the last day ticks in full everywhere.
+    return '<span class="wa-c-l">Winter Arc</span><span class="wa-c-v">'+
+      (d ? '<span class="wa-full">'+full+'</span><span class="wa-short">'+d+'d '+two(hh)+'h</span>' : full)+'</span>';
+  }
+  return '<span class="wa-c-l">Winter Arc</span><span class="wa-c-v">Day '+c.day+'</span>'+
+    '<span class="wa-c-s">'+(c.left ? c.left+' to go' : 'last day')+'</span>';
+}
+let _waLastPhase = null;
+function waCountTick(){
+  const el = document.getElementById('waCount'); if(!el) return;
+  let c = null;
+  try{ c = waCountState(Date.now()); }catch(e){ c = null; }
+  const h = waCountHTML(c);
+  if(el.innerHTML !== h) el.innerHTML = h;
+  el.hidden = !h;
+  el.classList.toggle('soon', !!(c && c.phase === 'count' && c.left <= 86400000));
+  el.classList.toggle('live', !!(c && c.phase === 'live'));
+  el.title = c ? (c.phase === 'count' ? 'Winter Arc goes live Oct 16, 5 PM Eastern' : 'Winter Arc, day '+c.day+' of '+c.total) : '';
+  // The moment it goes live, Today gets its launch message. rerenderActive() keeps its own guard, so
+  // this cannot repaint under typed input or a LIVE session.
+  const ph = c ? c.phase : null;
+  if(_waLastPhase === 'count' && ph === 'live'){ try{ rerenderActive(); }catch(e){} }
+  _waLastPhase = ph;
+}
+/* Today's launch message, the first WA_HYPE_DAYS of the arc and only once it is live. */
+function waLaunchHTML(nowMs, key){
+  const c = waCountState(nowMs == null ? Date.now() : nowMs, key);
+  if(!c || c.phase !== 'live' || !c.hype) return '';
+  return '<div class="card wa-launch"><div class="wa-l-e">Winter Arc · Day '+c.day+' of '+c.total+'</div>'+
+    '<h3>Winter Arc is live.</h3>'+
+    '<p>Golf’s done for the year. The clubs go in the garage, and every hour the course used to take belongs to the iron now.</p>'+
+    '<p>'+(c.left+1)+' days to April 1. Hit '+c.sessionTarget+' sessions a week, eat your target, get your sleep. Nobody sees this part, and that’s why it works.</p>'+
+    '<p class="wa-l-k">Show up in spring a different lifter.</p></div>';
+}
 /* 'before' | 'active' | 'done'. String compares on YYYY-MM-DD, like every other window here. */
 function waPhase(key){
   const w = winterState(), k = key || todayKey();
@@ -21699,6 +21808,7 @@ function renderHome(){
   else if(rd) why = 'Readiness '+rd.label+(rd.source === 'WHOOP' ? ', from WHOOP.' : ', from your check-in.');
   else why = 'No readiness reading yet — you’ll be asked when you start a session.';
   h += '<p class="cc-why">'+esc(why)+'</p></div><div class="cc-main">';
+  try{ h += waLaunchHTML(); }catch(e){ console.warn('winter arc launch card failed', e); }
 
   /* -- what the day holds -- */
   const kl = live ? [] : todayKeyLifts(t.dayKey, callForPlan, 2);
@@ -22744,6 +22854,9 @@ renderLive();
 try{ setMode(_draft ? 'live' : 'review'); }catch(e){ console.warn('initial mode failed', e); }
 // session clock ticker
 setInterval(()=>{ if(live && MODE==='live') updateSessionBar(); }, 1000);
+// the Winter Arc countdown in the top bar: patches one button, never repaints
+try{ waCountTick(); }catch(e){}
+setInterval(()=>{ try{ waCountTick(); }catch(e){} }, 1000);
 // review nav wiring (the rail's collapsed state is a per-device choice, applied before first paint)
 try{ navCollapseApply(); renderSidenav(); }catch(e){}
 // background sync + weekly audit (no-ops gracefully in sandbox)

@@ -15,6 +15,13 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 
 ---
 
+## Winter Arc countdown
+
+- **A live countdown to Winter Arc** sits in the top bar: days and hours on your phone, down to the second on desktop and in the last day. It shows from 30 days out.
+- **At 5 PM Eastern on Oct 16 it goes live.** The top bar switches to "Winter Arc · Day 1", and for the first three days Today opens on a launch message. Golf's done; the iron gets the hours now.
+
+---
+
 ## Live (your workout screen)
 
 - **Every set now tells you what to aim for**: "Set 1: 160 × 5. Hold 160, aim for 6", with the reason.

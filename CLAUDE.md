@@ -75,7 +75,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3397 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3417 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -257,6 +257,7 @@ so the two orders can no longer disagree.
 | Train (A × C) | Plan `planHeroHTML()`, `planBlocks()`, `planLenStep()`, `planSetType()`; Log `logHeroHTML()`, `logChipsHTML()`, `logRowHTML()`, `logPRsOn()` (`logFilter`, `logOpen`); Library `libLifts()`, `libMatches()`, `libFilterRows()`, `libCardHTML()`, `libFlag()`, `libRename()`; `exRenameFlow()` (the one rename flow) |
 | Body (A × C) | Weight `bwHeroHTML()`, `bwWeeklyRows()`, `bwHeadingHTML()`, `bwWeeksHTML()`, `BW_BAND_CHIP`; Fuel `fuelHeroHTML()` / `fuelRingHTML()`, `nutLogHTML()`, `nutHistFold()`; Ready `rdHeroHTML()`, `rdBarsHTML()`, `rdCheckinsHTML()` |
 | Settings (A × C) | `setGlance()` / `setGlanceHTML()` (`SET_TONE`), `setOpenGroup()`, `setGearHTML()`, `settingsSummaries()` |
+| Winter Arc | `winterState()`, `waPhase()`, `waCardHTML()`; the countdown `waGoLiveMs()`, `waSeasonRead()`, `waCountState()` / `waCountHTML()`, `waCountTick()` (`#waCount`), `waLaunchHTML()` |
 | Recap | `recapSlides()`, `recapYear()` / `recapFinal()` / `recapTitle()`, `recapRender()` / `recapOpen()` / `recapGo()` / `recapClose()`, `recapCardHTML()` |
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
@@ -987,6 +988,18 @@ date; V4's removal of date overrides stands.
   "Recap" so it does not repeat the year card). The story is `#recapOverlay`: Next and Back, a swipe,
   Escape and the arrow keys.
 - **The Dec 31 notice:** one notification, id `recap:<year>`, for `RECAP_NOTIFY_DAYS`.
+
+**The Winter Arc countdown is a clock in the top bar, and it only reads** (his request, 2026-10-08).
+- **Go-live is 5 PM Eastern on the start date** (`WA_GO_HOUR`, `WA_TZ`), worked out from the America/New_York wall
+  clock by `waGoLiveMs()`. Oct 16 is daylight time, so that is 21:00 UTC; the suite checks a December date lands at 22:00, so
+  the zone is read, not assumed, and a mutant run with the machine on UTC proves the device's own zone is not used.
+- **It shows only in the last `WA_COUNT_DAYS` (30)**, then "Winter Arc · Day N" until the arc ends. For the first
+  `WA_HYPE_DAYS` (3) Today opens on `waLaunchHTML()` (golf is over, his ask).
+- **`waCountState()` never calls `winterState()`**, which creates and migrates `S.winterArc`; it reads through
+  `waSeasonRead()`. The 1 s `waCountTick()` patches one button's markup and asks `rerenderActive()` (guarded) once,
+  at the flip to live, so it never repaints under his hands.
+- **A phone's top bar has about six characters of room.** More than a day out it reads "8d 07h" (`.wa-short`), and at 360px
+  and under the IRON HUB wordmark gives way while the countdown shows (`:has()`). Measured at 393 and 320.
 
 **The strength radar is `muscleResponse(12, {clean:true})` times 12** (his choice: growth over 12 weeks).
 - The `clean` option is opt-in, and the default the agents read is unchanged.
