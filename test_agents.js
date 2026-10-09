@@ -13398,6 +13398,136 @@ setTimeout(async () => {
     ev('if(window.__fmSaved){ S = JSON.parse(window.__fmSaved); delete window.__fmSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== FAMILY PANTRY DROP BOX (2026-10-09) ===');
+  {
+    const fdFetch = w.fetch;
+    const calls = [];
+    const famDecoded = (link, kind) => JSON.parse(ev('JSON.stringify(famDec(' + JSON.stringify(String(link).split('#' + kind + '=')[1]) + '))'));
+    let respond = () => Promise.reject(new TypeError('Failed to fetch'));
+    try {
+      w.__fdSaved = ev('JSON.stringify(S)');
+      w.fetch = (u, o) => { calls.push({u: String(u), m: (o && o.method) || 'GET', b: o && o.body}); return respond(String(u), o || {}); };
+      const json = (status, body) => () => Promise.resolve({status, ok: status >= 200 && status < 300, json: () => Promise.resolve(body)});
+      ev("fuelInit(); S.fuel.foods = {chkbr: {s: 1}, bagel: {p: 'l'}, egghb: {p: 'l'}}; S.fuel.custom = []; delete S.fuel.famBox; delete S.fuel.famDone; _famInbox = null; _famInboxAt = 0;");
+      // --- off by default: no URL, no box, links only ---
+      ev("FAM_DROP_URL = '';");
+      const offLink = ev('famShareLink()');
+      ok('off: with no drop URL the link carries no box and none is made', !famDecoded(offLink, 'family').b && ev('!S.fuel.famBox'));
+      // --- on: the link carries the box, and the box is reused ---
+      ev("FAM_DROP_URL = 'https://drop.test';");
+      const l1 = ev('famShareLink()'), b1 = famDecoded(l1, 'family').b;
+      ev("S.fuel.famBox.at = '2026-09-01T00:00:00.000Z';");
+      const l2 = ev('famShareLink()'), b2 = famDecoded(l2, 'family').b;
+      ok('box: the link carries a 128-bit box id', /^[A-Za-z0-9_-]{22}$/.test(b1 || ''), b1);
+      ok('box: a second share reuses the box, so an older link still lands, and re-dates it', b1 === b2 && ev('S.fuel.famBox.at') > '2026-10-01', ev('JSON.stringify(S.fuel.famBox)'));
+      ev("window.__fdT = S.meta.changedAt; S.meta.changedAt = 1; var __m = document.body.appendChild(document.createElement('p')); __m.id = 'famShareMsg'; Object.defineProperty(navigator, 'share', {configurable: true, value: function(){ return Promise.resolve(); }});");
+      ev('famShare()');
+      ok('box: sharing saves it as his change, so the other device learns the box', ev('S.meta.changedAt') > 1);
+      ev("S.meta.changedAt = Math.max(S.meta.changedAt, window.__fdT); delete window.__fdT; delete navigator.share; document.getElementById('famShareMsg').remove();");
+      const VF = (o, k) => JSON.parse(ev('JSON.stringify(famValid(' + JSON.stringify(o) + ', ' + JSON.stringify(k) + '))'));
+      ok('valid: a well-formed box and drop id are kept, anything else is dropped', VF({v: 1, k: 'p', b: b1, f: [['bagel', 1]]}, 'p').b === b1 &&
+         VF({v: 1, k: 'p', b: 'short', f: [['bagel', 1]]}, 'p').b === undefined && VF({v: 1, k: 'p', b: b1 + '/..', f: [['bagel', 1]]}, 'p').b === undefined &&
+         VF({v: 1, k: 'r', id: b1, f: [['bagel', 1]]}, 'r').id === b1 && VF({v: 1, k: 'r', id: '<x>', f: [['bagel', 1]]}, 'r').id === undefined);
+      // --- their page: Submit ---
+      ev("window.__fdHash = location.hash; location.hash = '#family=' + " + JSON.stringify(l2.split('#family=')[1]) + "; window.__fdDiv = document.body.appendChild(document.createElement('div')); famFamilyPage(__fdDiv);");
+      ok('family: with a box their page offers Submit', ev("__fdDiv.querySelector('.fam-foot .btn').textContent") === 'Submit' && ev("__fdDiv.querySelector('.fam-foot .btn').getAttribute('onclick')") === 'famSubmit()');
+      ev("FAM_DROP_URL = ''; famFamilyPage(__fdDiv);");
+      ok('family: with no drop URL it is Send it back, as before', ev("__fdDiv.querySelector('.fam-foot .btn').textContent") === 'Send it back');
+      ev("FAM_DROP_URL = 'https://drop.test'; location.hash = '#family=' + " + JSON.stringify(offLink.split('#family=')[1]) + "; famFamilyPage(__fdDiv);");
+      ok('family: an old link with no box is Send it back too', ev("__fdDiv.querySelector('.fam-foot .btn').textContent") === 'Send it back');
+      ev("location.hash = '#family=' + " + JSON.stringify(l2.split('#family=')[1]) + "; famFamilyPage(__fdDiv); document.getElementById('famName').value = 'Mom';");
+      ev("famTick(__fdDiv.querySelector('[data-id=\"chkbr\"]')); famTick(__fdDiv.querySelector('[data-id=\"egghb\"]'));");
+      calls.length = 0; respond = json(200, {ok: true});
+      const sent = await ev('famSubmit()');
+      const post = calls[0] || {};
+      const posted = post.b ? JSON.parse(ev('JSON.stringify(famValid(' + post.b + ", 'r'))")) : null;
+      ok('submit: one POST into his box', sent === 'sent' && calls.length === 1 && post.m === 'POST' && post.u === 'https://drop.test/box/' + b1, JSON.stringify(calls));
+      ok('submit: what it sends is a reply the app accepts, with an id, who, and the ticks', !!posted && /^[A-Za-z0-9_-]{22}$/.test(posted.id || '') && posted.from === 'Mom' &&
+         JSON.stringify(posted.f.slice().sort()) === JSON.stringify([['bagel', 0], ['chkbr', 0], ['egghb', 1]]), post.b);
+      ok('submit: it says so, and the button rests', /Sent\. It will show up in Iron Hub/.test(ev("document.getElementById('famMsg').textContent")) && ev("document.getElementById('famSubmitBtn').disabled") === true);
+      ev("famTick(__fdDiv.querySelector('[data-id=\"bagel\"]'));");
+      ok('submit: changing a tick after sending lets them send again', ev("document.getElementById('famSubmitBtn').disabled") === false && ev("document.getElementById('famSubmitBtn').textContent") === 'Submit');
+      // the box is down, or the network: fall back to the reply link, never lose the update
+      ev("window.__fdShared = null; Object.defineProperty(navigator, 'share', {configurable: true, value: function(o){ window.__fdShared = o; return Promise.resolve(); }});");
+      calls.length = 0; respond = () => Promise.reject(new TypeError('Failed to fetch'));
+      const fb1 = await ev('famSubmit()');
+      const fbReply = ev('window.__fdShared') ? JSON.parse(ev("JSON.stringify(famValid(famDec(window.__fdShared.url.split('#famreply=')[1]), 'r'))")) : null;
+      ok('submit: with no network it hands them the reply link instead', fb1 === 'fallback:share' && !!fbReply && fbReply.from === 'Mom' && fbReply.f.some(x => x[0] === 'bagel' && x[1] === 1), fb1);
+      ev("window.__fdShared = null;"); respond = json(500, {ok: false});
+      const fb2 = await ev('famSubmit()');
+      ok('submit: a box that answers with an error falls back too', fb2 === 'fallback:share' && !!ev('window.__fdShared') && ev("document.getElementById('famSubmitBtn').disabled") === false);
+      ev("delete navigator.share; __fdDiv.remove(); delete window.__fdDiv; location.hash = window.__fdHash || ''; delete window.__fdHash;");
+      // --- his side: the inbox ---
+      const D = (id, extra) => Object.assign({v: 1, k: 'r', id, from: 'Mom', at: new Date().toISOString(), f: [['bagel', 1], ['chkbr', 0], ['egghb', 1]]}, extra || {});
+      const IDA = 'dropA_0123456789abcdef', IDB = 'dropB_0123456789abcdef';
+      calls.length = 0; respond = json(200, {drop: D(IDA), receivedAt: new Date().toISOString()});
+      ok('inbox: a drop in the box is picked up', await ev('famInboxCheck(true)') === true && calls.length === 1 && calls[0].m === 'GET' && calls[0].u === 'https://drop.test/box/' + b1, JSON.stringify(calls));
+      const nf = JSON.parse(ev("JSON.stringify(notifItems().filter(function(i){ return /^fam:/.test(i.id); }))"));
+      ok('inbox: it is in the bell, saying who and what changed', nf.length === 1 && nf[0].id === 'fam:' + IDA && nf[0].title === 'Mom checked the pantry' && /^2 in the house, 1 run out\. Tap to review\.$/.test(nf[0].body) && nf[0].go === 'famInboxOpen()', JSON.stringify(nf));
+      ev("activeMainTab = 'home'; renderHome();");
+      ok('inbox: and on Today, as a card with Review', ev("!!document.querySelector('#home .fam-in')") && /Mom checked the pantry/.test(ev("document.querySelector('#home .fam-in').textContent")) &&
+         ev("document.querySelector('#home .fam-in .btn').getAttribute('onclick')") === 'famInboxOpen()');
+      ev('renderFuel();');
+      ok('inbox: and on Fuel', ev("!!document.querySelector('#fuel .fam-in')"));
+      ok('inbox: nothing was written to his state by looking', ev('!S.fuel.famDone'));
+      ev("famInboxOpen(); window.__fdT = S.meta.changedAt; S.meta.changedAt = 1;");
+      calls.length = 0; respond = json(200, {ok: true, cleared: true});
+      ev("Array.prototype.find.call(document.querySelectorAll('#famOverlay .btn'), function(b){ return b.textContent === 'Apply'; }).click();");
+      ok('apply: the stock changes and is saved as his change', ev("fpFood('bagel').stocked") === true && ev("fpFood('chkbr').stocked") === false && ev("fpFood('egghb').stocked") === true && ev('S.meta.changedAt') > 1);
+      ok('apply: the update is marked handled, and the card and bell entry go', JSON.stringify(ev('S.fuel.famDone')) === JSON.stringify([IDA]) && ev('_famInbox') === null &&
+         !ev("notifItems().some(function(i){ return /^fam:/.test(i.id); })") && !ev("!!document.querySelector('#home .fam-in')"));
+      ok('apply: the box is asked to clear THAT update, by its id', calls.length === 1 && calls[0].m === 'POST' && calls[0].u === 'https://drop.test/box/' + b1 + '/clear?id=' + IDA, JSON.stringify(calls));
+      ev("S.meta.changedAt = Math.max(S.meta.changedAt, window.__fdT); delete window.__fdT;");
+      // the clear never reached the box: the same drop comes back on the next check, and is not shown again
+      calls.length = 0; respond = json(200, {drop: D(IDA), receivedAt: new Date().toISOString()});
+      ok('inbox: an update he already dealt with is not shown again, even if the box still has it', await ev('famInboxCheck(true)') === false && ev('_famInbox') === null);
+      // a newer one, which he ignores
+      respond = json(200, {drop: D(IDB, {from: '<img src=x onerror=window.__fdPwn=1>', f: [['chkbr', 1]]}), receivedAt: new Date().toISOString()});
+      await ev('famInboxCheck(true)');
+      ev("renderHome();");
+      ok('inbox: the sender’s name is text, never markup', !ev("!!document.querySelector('#home .fam-in img')") && ev('window.__fdPwn') === undefined && ev('_famInbox.id') === IDB);
+      calls.length = 0;
+      ev("famInboxOpen(); Array.prototype.find.call(document.querySelectorAll('#famOverlay .btn'), function(b){ return b.textContent === 'Ignore'; }).click();");
+      ok('ignore: changes no stock, but counts as handled and clears the box', ev("fpFood('chkbr').stocked") === false && ev('S.fuel.famDone.indexOf(' + JSON.stringify(IDB) + ')') === 1 &&
+         calls.length === 1 && /\/clear\?id=dropB_/.test(calls[0].u));
+      // a pasted reply link is not from the box, and Ignore on it marks nothing
+      const pasted = ev("famBase() + '#famreply=' + famEnc({v: 1, k: 'r', id: 'pasteX_0123456789abcde', from: 'Dad', at: new Date().toISOString(), f: [['bagel', 0]]})");
+      calls.length = 0;
+      ev("famFromText(" + JSON.stringify(pasted) + "); famClose();");
+      ok('paste: a pasted update is not marked handled and asks no box anything', ev("S.fuel.famDone.indexOf('pasteX_0123456789abcde')") === -1 && calls.length === 0);
+      // a network error keeps what was there
+      respond = json(200, {drop: D('dropC_0123456789abcdef'), receivedAt: new Date().toISOString()});
+      await ev('famInboxCheck(true)');
+      respond = () => Promise.reject(new TypeError('Failed to fetch'));
+      ok('inbox: a failed check keeps the update it already had', await ev('famInboxCheck(true)') === false && ev('_famInbox && _famInbox.id') === 'dropC_0123456789abcdef');
+      respond = () => Promise.resolve({status: 204, ok: true, json: () => Promise.resolve(null)});
+      ok('inbox: an empty box clears it', await ev('famInboxCheck(true)') === false && ev('_famInbox') === null);
+      // the other device handled it while this one was asking: S is read after the await, never before
+      respond = (u) => { ev("window.__fdSnap = JSON.parse(JSON.stringify(S)); __fdSnap.fuel.famDone = (__fdSnap.fuel.famDone || []).concat(['dropD_0123456789abcdef']); S = __fdSnap; delete window.__fdSnap;");
+                         return json(200, {drop: D('dropD_0123456789abcdef'), receivedAt: new Date().toISOString()})(); };
+      ok('inbox: a pull landing during the check is honoured (handled on the other device, not shown here)', await ev('famInboxCheck(true)') === false && ev('_famInbox') === null);
+      // when it does not ask at all
+      respond = json(200, {drop: D('dropE_0123456789abcdef'), receivedAt: new Date().toISOString()});
+      calls.length = 0;
+      ev("S.fuel.famBox.at = new Date(Date.now() - 29 * 86400000).toISOString();"); await ev('famInboxCheck(true)');
+      const c1 = calls.length;
+      ev("S.fuel.famBox.at = new Date().toISOString(); FAM_DROP_URL = '';"); await ev('famInboxCheck(true)');
+      const c2 = calls.length;
+      ev("FAM_DROP_URL = 'https://drop.test'; delete S.fuel.famBox;"); await ev('famInboxCheck(true)');
+      ok('inbox: no request with no share in the last 4 weeks, no drop URL, or no box', c1 === 0 && c2 === 0 && calls.length === 0, [c1, c2, calls.length].join());
+      ev("S.fuel.famBox = {id: " + JSON.stringify(b1) + ", at: new Date().toISOString()}; _famInboxAt = Date.now();");
+      calls.length = 0; await ev('famInboxCheck()');
+      ok('inbox: a check within the minute does not ask again', calls.length === 0);
+    } catch (e) {
+      ok('family drop box section', false, e.stack);
+    } finally {
+      w.fetch = fdFetch;
+      ev("try{ famClose(); }catch(e){} try{ delete navigator.share; }catch(e){} FAM_DROP_URL = ''; _famInbox = null; _famInboxAt = 0; _famSending = false;");
+      ev("if(window.__fdDiv){ __fdDiv.remove(); delete window.__fdDiv; } if(window.__fdHash !== undefined){ location.hash = window.__fdHash || ''; delete window.__fdHash; } localStorage.removeItem(FAM_NAME_KEY); activeMainTab = 'home';");
+      ev('if(window.__fdSaved){ S = JSON.parse(window.__fdSaved); delete window.__fdSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+    }
+  }
+
   console.log('=== LYING LEG CURL PER SIDE, AND THE LIVE INFO BUTTON (2026-10-05) ===');
   try {
     w.__lcSaved = ev('JSON.stringify(S)');

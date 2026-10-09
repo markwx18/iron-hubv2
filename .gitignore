@@ -6,3 +6,6 @@ gist_before_restore_*.json
 
 # wrangler dev local state (KV/D1/cache) — machine-local, never commit
 discord/.wrangler/
+
+# pantry worker local state
+pantry/.wrangler/

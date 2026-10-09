@@ -1,0 +1,12 @@
+# Cloudflare Pages project (not a Worker): *.workers.dev is blocked on Mark's home network, *.pages.dev is not.
+# The API lives in functions/box/[[path]].js, which hands every /box/* request to src/worker.js.
+name = "ironhub-pantry"
+pages_build_output_dir = "public"
+compatibility_date = "2026-09-01"
+
+# Holds one family pantry update per box until Iron Hub picks it up. See README.md.
+[[kv_namespaces]]
+binding = "DROPS"
+id = "276bd887b61a40c68de9138d55a856de"
+
+# No secrets. The box id in the family link is the only permission (see src/worker.js).

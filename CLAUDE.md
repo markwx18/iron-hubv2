@@ -28,6 +28,10 @@ harness and is never loaded by the app.
 own `package.json` and test suite (`node discord/test_worker.js`, must be 0 failed too), and the
 app never loads anything from it. Its setup guide is `discord/README.md`.
 
+`pantry/` is the family pantry check's drop box, a separate Cloudflare Pages project (its own `package.json`;
+`node pantry/test_worker.js`, must be 0 failed). The app only ever fetches its URL (`FAM_DROP_URL`).
+Its setup guide is `pantry/README.md`.
+
 ---
 
 ## Deploy workflow
@@ -75,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3417 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3448 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -293,7 +297,7 @@ so the two orders can no longer disagree.
 | Readiness | `todayReadiness()`, `rdComplete()`, `readinessNow()`, `anReadinessOutcome()`, `anReadinessTrim()`, `renderAnReadiness()` |
 | Bulk quality | `anBulkQuality()`, `anBqLifts()`, `anDualSpark()` |
 | Fuel | `renderFuel()`, `fuelTimingHTML()`, `fuelClockFrom()`, `fuelFoodAllowed()`; targets change only through `fuelTargetSet()`, which logs `S.targetHist` (`fuelTargetHistory()`) |
-| Family pantry check | `famShareLink()` / `famShare()` / `famOut()`, `famFamilyPage()` / `famTick()` / `famSend()`, `famValid()`, `famDiff()`, `famShowReview()` / `famApply()`, `famRoute()` / `famReviewFromHash()` / `famCopyPage()` / `famPaste()`; the boot is `appBoot()` |
+| Family pantry check | `famShareLink()` / `famShare()` / `famOut()`, `famFamilyPage()` / `famTick()` / `famSend()`, `famValid()`, `famDiff()`, `famShowReview()` / `famApply()`, `famRoute()` / `famReviewFromHash()` / `famCopyPage()` / `famPaste()`; the drop box `FAM_DROP_URL`, `famBoxId()`, `famSubmit()`, `famInboxCheck()` / `famInboxOpen()` / `famInboxDone()` (`_famInbox`, `S.fuel.famDone`); the boot is `appBoot()` |
 | Fuel planner | `FOOD_DB`, `fpFoods()`, `fpPool()`, `fpCombos()` / `fpBuild()`, `fpStockDue()`, `fpCheckFood()`, `fpSetStock()` / `fpSetPref()` / `fpTidy()`; ECHO: `fpToolDefs()`, `fpPlannerText()` (a new food from chat is the `add_food` card) |
 | Live refresh | `rerenderActive()`, `bgSyncTick()`, `opsSignature()`, `refreshBlocked()` |
 | Nav shell | `renderSidenav()`, `navDrawerSet()` (`navDrawerOpen`), `navCollapseToggle()`, `showMainTab()` (`_navEnter`, `navEnterAnim()`), `smoothScroll()` |
@@ -796,6 +800,34 @@ stock only, sent back by a reply link, and he reviews it before it applies.
   one he said no to or hid, because `fpSetStock()` would clear that "no".
 - **Apply** (`famApply()`) is his tap, and it `save()`s. It counts as this week's stock check, the same as
   changing stock in the Pantry. A reply `FAM_OLD_DAYS` (14) or more old says so.
+- **The drop box: Submit instead of a reply link** (his choices, 2026-10-09). On an iPhone the reply link
+  opened in Safari and had to be pasted, so `pantry/` holds one update per box until his app looks. It is
+  **separate from `discord/` on purpose**: that Worker is a window and must stay read-only. Mark chose
+  Cloudflare over the Apps Script, whose URL and secret are per device.
+  - **It is a Pages project at `ironhub-pantry.pages.dev`, not a `workers.dev` Worker.** His home Xfinity
+    network blocks every `*.workers.dev` name (its filter answers with a block page and an expired
+    certificate, even through 1.1.1.1), and that is the network the family submits from. `pages.dev` is not
+    blocked. The logic is `pantry/src/worker.js`; `functions/box/[[path]].js` only hands requests to it.
+    Do not move it back to `workers.dev` without checking from his house.
+  - **`FAM_DROP_URL` empty means off**, and every path is the link flow above, unchanged. It is `let` so
+    the suite can point it at a fake.
+  - **The box id is the only permission.** `famBoxId()` makes 128 random bits once, in `S.fuel.famBox`
+    (synced, so both devices check the same box), reused by every share and re-dated by it. It travels in
+    the `#family=` payload as `b`. Whoever holds the link can leave or clear an update, no more than a
+    crafted reply link could always do, and the review still guards it. The Worker has no secrets, checks
+    the shape, caps the body at 16 KB, and keeps each box for 30 days.
+  - **Their page:** with a box and a URL, the button is **Submit** (`famSubmit()`, one POST, 8 s timeout via
+    `famFetch()`). Anything but a clear yes falls back to the reply link (`famOut()`), so a dead Worker costs
+    them one step, never the update. A tick after sending re-enables it, and the newer update replaces the old one.
+  - **His side:** `famInboxCheck()`, from `agForegroundCheck()` and its own minute tick (NOT `bgSyncTick()`,
+    which needs gist sync). It sends one GET, only within `FAM_INBOX_DAYS` (28) of the last share. The
+    result is the module-scoped `_famInbox`, never `S`, so nothing is written across the await. `S` is read
+    only after it. A failed check keeps what it had. The update shows as a bell item and a Today card (also
+    on Fuel), and Review opens the same sheet.
+  - **Handled is in `S.fuel.famDone`** (the last `FAM_DONE_KEEP` ids). Apply, Ignore and Close all mark it
+    (`famInboxDone()`), then ask the box to clear **by id**, so an update sent while he was reviewing
+    survives. The clear is best-effort: `famDone` alone keeps a handled update from showing on either
+    device. A pasted link has no box and marks nothing.
 
 **Today's call sets the plan automatically, inside hard bounds.** `dayCall(date, dayKey)` returns
 push / normal / easy / recover. WHOOP carries about half of it when today's data is in:

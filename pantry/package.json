@@ -1,0 +1,14 @@
+{
+  "name": "ironhub-pantry",
+  "private": true,
+  "type": "module",
+  "description": "Drop box for the family pantry check. Deploy-time tooling only; the app only ever fetches its URL.",
+  "scripts": {
+    "test": "node test_worker.js",
+    "dev": "wrangler pages dev",
+    "deploy": "wrangler pages deploy --branch main"
+  },
+  "devDependencies": {
+    "wrangler": "4.131.1"
+  }
+}

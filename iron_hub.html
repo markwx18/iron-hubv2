@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-08-v1">
+<meta name="ironhub-build" content="2026-10-09-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -8059,6 +8059,7 @@ function renderFuel(){
   const f = S.fuel;
   let html = '';
   try{ html += fuelHeroHTML(); }catch(e){}
+  try{ html += famInboxCardHTML(); }catch(e){}
   html += fpStockCardHTML('fuel');
   html += '<section class="str-sec" aria-label="Log today"><div class="str-sec-h"><span>Log today in one tap</span><span class="pw-note">from Cal AI</span></div>'+nutLogHTML()+'</section>';
   html += nutWeekCard();
@@ -8160,6 +8161,36 @@ function fpCombosText(r, opts){
    ============================================================ */
 const FAM_NAME_KEY = 'ironhub:famname', FAM_MAX_ITEMS = 300, FAM_OLD_DAYS = 14;
 const FAM_ID = /^[A-Za-z0-9_-]{1,40}$/;
+/* The drop box (2026-10-09): pantry/, a Worker of its own. With a URL here the family page gets a Submit
+   button that leaves the update in a box his app checks, instead of a reply link he has to paste. Empty
+   means off, and everything works by links as before. `let` so the suite can point it at a fake.
+   The box id (S.fuel.famBox, 128 random bits, in the link's #fragment) is the only permission the box has. */
+let FAM_DROP_URL = 'https://ironhub-pantry.pages.dev';
+const FAM_BOX_RE = /^[A-Za-z0-9_-]{22,43}$/, FAM_INBOX_DAYS = 28, FAM_DONE_KEEP = 10, FAM_FETCH_MS = 8000;
+function famRandId(){
+  const a = new Uint8Array(16);
+  try{ crypto.getRandomValues(a); }catch(e){ for(let i = 0; i < 16; i++) a[i] = Math.floor(Math.random() * 256); }
+  let s = ''; for(let i = 0; i < 16; i++) s += String.fromCharCode(a[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+/* One box, reused by every share so an older link still lands, and dated by the latest share: the app only
+   checks it for FAM_INBOX_DAYS after that, so one share does not mean polling forever. In S.fuel, so the
+   other device learns it on the next sync. */
+function famBoxId(){
+  fuelInit();
+  const b = S.fuel.famBox;
+  if(!b || !FAM_BOX_RE.test(String(b.id || ''))) S.fuel.famBox = {id:famRandId(), at:''};
+  S.fuel.famBox.at = new Date().toISOString();
+  return S.fuel.famBox.id;
+}
+/* fetch with a timeout: a request that never settles must not leave a button saying "Sending…". */
+function famFetch(url, init){
+  const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = setTimeout(function(){ if(ctl) ctl.abort(); }, FAM_FETCH_MS);
+  const o = Object.assign({cache:'no-store'}, init || {});
+  if(ctl) o.signal = ctl.signal;
+  return fetch(url, o).finally(function(){ clearTimeout(timer); });
+}
 function famEnc(o){
   return btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
@@ -8186,7 +8217,9 @@ function famValid(o, kind){
       c[k] = [v[0].replace(/[\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60), v[1]];
   });
   const out = {v:1, k:kind, f:f, c:c, at:famStamp(o.at)};
+  if(kind === 'p' && typeof o.b === 'string' && FAM_BOX_RE.test(o.b)) out.b = o.b;
   if(kind === 'r'){
+    if(typeof o.id === 'string' && FAM_BOX_RE.test(o.id)) out.id = o.id;
     out.from = typeof o.from === 'string' ? o.from.replace(/[\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 30) : '';
     out.sent = famStamp(o.sent);
   }
@@ -8200,7 +8233,9 @@ function famShareLink(){
   if(!foods.length) return null;
   const c = {};
   foods.forEach(function(f){ if(f.custom) c[f.id] = [String(f.n).slice(0, 60), f.cat]; });
-  return famBase()+'#family='+famEnc({v:1, k:'p', at:new Date().toISOString(), f:foods.map(function(f){ return [f.id, f.stocked ? 1 : 0]; }), c:c});
+  const o = {v:1, k:'p', at:new Date().toISOString(), f:foods.map(function(f){ return [f.id, f.stocked ? 1 : 0]; }), c:c};
+  if(FAM_DROP_URL) o.b = famBoxId();
+  return famBase()+'#family='+famEnc(o);
 }
 /* Share sheet where there is one (iOS, Android), else the clipboard, else the link on screen. */
 function famOut(url, title, text, msgEl){
@@ -8222,6 +8257,7 @@ function famShare(){
   const msg = document.getElementById('famShareMsg');
   const url = famShareLink();
   if(!url){ if(msg) msg.textContent = 'Like or stock a few foods first, so there is a list to check.'; return null; }
+  if(FAM_DROP_URL) save();   // the link made or re-dated the box, and the other device needs to know it
   return famOut(url, 'Pantry check', 'Can you tick what we have in the house?', msg);
 }
 function famCardHTML(){
@@ -8271,7 +8307,12 @@ function famShowReview(r){
   if(!ov){ ov = document.createElement('div'); ov.id = 'famOverlay'; ov.className = 'fam-ov'; document.body.appendChild(ov); }
   ov.innerHTML = famReviewHTML(r);
 }
-function famClose(){ _famPending = null; const ov = document.getElementById('famOverlay'); if(ov) ov.remove(); }
+/* Ignore or Close. An update from the drop box counts as handled either way, so it does not come back. */
+function famClose(){
+  const r = _famPending; _famPending = null;
+  const ov = document.getElementById('famOverlay'); if(ov) ov.remove();
+  if(r && r.box && famInboxDone(r)){ save(); try{ renderNotif(); }catch(e){} fpRepaint(); }
+}
 /* His tap. Worked out again against his list as it is now, and saved as his change. Setting stock counts as
    this week's stock check, the same as changing it in the Pantry. */
 function famApply(){
@@ -8279,9 +8320,81 @@ function famApply(){
   const d = famDiff(r);
   d.add.forEach(function(x){ fpSetStock(x.id, true); });
   d.remove.forEach(function(x){ fpSetStock(x.id, false); });
+  famInboxDone(r);
   save();
+  _famPending = null;
   famClose();
+  try{ renderNotif(); }catch(e){}
   fpRepaint();
+}
+/* ---- the drop box, his side ----
+   _famInbox is module-scoped, never in S: it is a copy of what the box holds, re-read on every check, and
+   writing it into S would sync one device's copy onto the other. What IS in S is the list of ids he has
+   dealt with (S.fuel.famDone), so neither device shows one again even if the clear never reached the box. */
+let _famInbox = null, _famInboxAt = 0, _famInboxBusy = false;
+function famInboxBox(){
+  if(!FAM_DROP_URL || !S.fuel) return '';
+  const b = S.fuel.famBox;
+  if(!b || !FAM_BOX_RE.test(String(b.id || ''))) return '';
+  const at = Date.parse(b.at || '');
+  if(!isFinite(at) || Date.now() - at > FAM_INBOX_DAYS * 86400000) return '';
+  return b.id;
+}
+/* One GET, from agForegroundCheck() and the minute tick. Writes nothing to S, so a pull landing during the
+   await cannot orphan a write; S is read only after it, for the handled ids and the box as it is now. */
+async function famInboxCheck(force){
+  const box = famInboxBox();
+  if(!box){ _famInbox = null; return false; }
+  if(_famInboxBusy || (!force && Date.now() - _famInboxAt < 50000)) return false;
+  if(!force && typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
+  _famInboxBusy = true; _famInboxAt = Date.now();
+  let got = false, drop = null;
+  try{
+    const res = await famFetch(FAM_DROP_URL+'/box/'+box, {method:'GET'});
+    if(res.status === 204) got = true;
+    else if(res.ok){ const j = await res.json(); got = true; drop = j ? famValid(j.drop, 'r') : null; }
+  }catch(e){ /* offline or the box is down: keep what we had, the next check tries again */ }
+  finally{ _famInboxBusy = false; }
+  if(!got) return false;
+  const done = S.fuel && Array.isArray(S.fuel.famDone) ? S.fuel.famDone : [];
+  if(drop && (!drop.id || done.indexOf(drop.id) >= 0 || famInboxBox() !== box)) drop = null;
+  const was = _famInbox ? _famInbox.id : '';
+  _famInbox = drop ? Object.assign(drop, {box:box}) : null;
+  if(was !== (drop ? drop.id : '')){ try{ renderNotif(); }catch(e){} try{ rerenderActive(); }catch(e){} }
+  return !!drop;
+}
+/* Marks it handled (the caller saves) and asks the box to drop it, by id, so an update sent while he was
+   reviewing this one stays. The clear is best-effort: famDone already stops it showing again. */
+function famInboxDone(r){
+  if(!r || !r.box || !r.id) return false;
+  fuelInit();
+  const done = Array.isArray(S.fuel.famDone) ? S.fuel.famDone.slice() : [];
+  if(done.indexOf(r.id) < 0) done.push(r.id);
+  S.fuel.famDone = done.slice(-FAM_DONE_KEEP);
+  if(_famInbox && _famInbox.id === r.id) _famInbox = null;
+  if(FAM_DROP_URL){
+    try{ famFetch(FAM_DROP_URL+'/box/'+r.box+'/clear?id='+encodeURIComponent(r.id), {method:'POST', headers:{'Content-Type':'text/plain'}, body:''}).catch(function(){}); }catch(e){}
+  }
+  return true;
+}
+function famInboxOpen(){ if(_famInbox) famShowReview(_famInbox); }
+function famInboxLine(r){
+  const d = famDiff(r), parts = [];
+  if(d.add.length) parts.push(d.add.length+' in the house');
+  if(d.remove.length) parts.push(d.remove.length+' run out');
+  return parts.length ? parts.join(', ') : 'nothing changed';
+}
+function famInboxNotif(){
+  const r = _famInbox; if(!r) return null;
+  return {id:'fam:'+r.id, tone:'var(--amber)', title:(r.from || 'Someone at home')+' checked the pantry',
+    body:famInboxLine(r).replace(/^./, function(c){ return c.toUpperCase(); })+'. Tap to review.', when:r.at, go:'famInboxOpen()'};
+}
+function famInboxCardHTML(){
+  const r = _famInbox; if(!r) return '';
+  return '<div class="card fam-in"><div class="k" style="color:var(--amber)">Pantry update</div>'+
+    '<p class="small" style="margin-top:4px;line-height:1.5">'+esc(r.from || 'Someone at home')+' checked the pantry'+(r.at ? ' '+esc(agTimeAgo(r.at)) : '')+
+    ': '+esc(famInboxLine(r))+'. Nothing changes until you apply it.</p>'+
+    '<div class="fam-acts"><button class="btn sm" onclick="famInboxOpen()">Review</button></div></div>';
 }
 function famFromText(t){
   const m = String(t || '').match(/#famreply=([A-Za-z0-9_-]+)/);
@@ -8340,7 +8453,9 @@ function famFamilyPage(root){
           '<span>'+esc(it.n)+'</span><b>'+(on ? 'In the house' : 'Not here')+'</b></button>';
       }).join('')+'</section>';
     }).join('')+
-    '<div class="fam-foot"><button type="button" class="btn" onclick="famSend()">Send it back</button><p class="small" id="famMsg"></p></div></main>';
+    '<div class="fam-foot">'+(o.b && FAM_DROP_URL
+      ? '<button type="button" class="btn" id="famSubmitBtn" onclick="famSubmit()">Submit</button>'
+      : '<button type="button" class="btn" onclick="famSend()">Send it back</button>')+'<p class="small" id="famMsg"></p></div></main>';
 }
 /* In place, so a name being typed is never repainted away. */
 function famTick(btn){
@@ -8350,16 +8465,48 @@ function famTick(btn){
   btn.classList.toggle('on', on);
   btn.setAttribute('aria-pressed', String(on));
   btn.querySelector('b').textContent = on ? 'In the house' : 'Not here';
+  // Changed after sending: let them send again (the newer one replaces it in the box).
+  const sb = document.getElementById('famSubmitBtn');
+  if(sb && sb.disabled && !_famSending){ sb.disabled = false; sb.textContent = 'Submit'; const m = document.getElementById('famMsg'); if(m) m.textContent = ''; }
 }
-function famReplyLink(name){
+function famReplyObj(name){
   const o = _famShare;
-  return famBase()+'#famreply='+famEnc({v:1, k:'r', from:String(name || '').slice(0, 30), at:new Date().toISOString(), sent:o.at,
-    f:o.f.map(function(x){ return [x[0], _famTick[x[0]] ? 1 : 0]; }), c:o.c});
+  return {v:1, k:'r', id:famRandId(), from:String(name || '').slice(0, 30), at:new Date().toISOString(), sent:o.at,
+    f:o.f.map(function(x){ return [x[0], _famTick[x[0]] ? 1 : 0]; }), c:o.c};
+}
+function famReplyLink(name, obj){ return famBase()+'#famreply='+famEnc(obj || famReplyObj(name)); }
+function famNameNow(){
+  const el = document.getElementById('famName'), name = el ? String(el.value || '').trim() : '';
+  try{ if(name) localStorage.setItem(FAM_NAME_KEY, name); }catch(e){}
+  return name;
+}
+/* Submit: straight into his box. Anything but a clear yes from the box falls back to the reply link, so a
+   down Worker or a dead network costs them one extra step, never the update. */
+let _famSending = false;
+async function famSubmit(){
+  if(!_famShare || !_famShare.b || !FAM_DROP_URL || _famSending) return null;
+  const name = famNameNow(), obj = famReplyObj(name);
+  const btn = document.getElementById('famSubmitBtn'), msg = document.getElementById('famMsg');
+  _famSending = true;
+  if(btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+  let sent = false;
+  try{
+    const res = await famFetch(FAM_DROP_URL+'/box/'+_famShare.b, {method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify(obj)});
+    sent = !!(res && res.ok);
+  }catch(e){ sent = false; }
+  _famSending = false;
+  if(sent){
+    if(btn){ btn.disabled = true; btn.textContent = 'Sent ✓'; }
+    if(msg) msg.textContent = 'Sent. It will show up in Iron Hub next time it is opened.';
+    return 'sent';
+  }
+  if(btn){ btn.disabled = false; btn.textContent = 'Submit'; }
+  if(msg) msg.textContent = 'Could not send it directly, so text this link back instead.';
+  return 'fallback:'+famOut(famReplyLink(name, obj), 'Pantry update', 'Pantry update'+(name ? ' from '+name : '')+':', msg);
 }
 function famSend(){
   if(!_famShare) return null;
-  const el = document.getElementById('famName'), name = el ? String(el.value || '').trim() : '';
-  try{ if(name) localStorage.setItem(FAM_NAME_KEY, name); }catch(e){}
+  const name = famNameNow();
   return famOut(famReplyLink(name), 'Pantry update', 'Pantry update'+(name ? ' from '+name : '')+':', document.getElementById('famMsg'));
 }
 /* A reply opened where his app is not (Safari on his iPhone): say what it is and offer it to copy. */
@@ -21848,6 +21995,8 @@ function renderHome(){
     }
   }catch(e){ console.warn('debrief card failed', e); }
   try{ h += wpCardHTML(); }catch(e){ console.warn('week plan card failed', e); }
+  // A pantry update the family submitted, until he applies or ignores it.
+  try{ const fin = famInboxCardHTML(); if(fin) h += '<div class="dash-sec">Pantry</div>'+fin; }catch(e){ console.warn('pantry update card failed', e); }
   // The Fuel Planner's Monday stock check, until he confirms it.
   try{
     const stockCard = fpStockCardHTML('home');
@@ -21940,6 +22089,8 @@ function notifItems(){
   }catch(e){}
   // V4 stage 5: what the plateau watch and the forecasts found. Worked out here, never stored.
   try{ pwNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
+  // A pantry update from the family drop box, until he applies or ignores it.
+  try{ const fi = famInboxNotif(); if(fi) out.push(fi); }catch(e){}
   const wr = waterReminder();
   if(wr) out.push({id:'water:'+todayKey(), tone:'var(--cyan)', title:'Water', body:wr, when:null});
   // Spend at 80% of the monthly cap, and again (a new id) when it is reached.
@@ -22732,6 +22883,8 @@ function agForegroundCheck(){
   // This week's forecasts for the prediction record. Idempotent, on-device, no API.
   try{ predTick(); }catch(e){}
   try{ expTick(); }catch(e){}
+  // A pantry update the family submitted. One GET, only while a share from the last 4 weeks is out.
+  try{ Promise.resolve(famInboxCheck()).catch(function(){}); }catch(e){}
 }
 
 /* ============================================================
@@ -22762,6 +22915,7 @@ function tabSignature(){
   return [
     MODE, activeMainTab, navMemory[activeMainTab] || activeReviewTab,
     notifOpen?1:0,
+    _famInbox ? _famInbox.id : '',
     S.meta ? S.meta.changedAt : 0,
     S.logs.length, S.weights.length, S.nutrition.length, S.readiness.length,
     (a.proposals||[]).length, (a.log||[]).length,
@@ -22818,6 +22972,8 @@ async function bgSyncTick(){
 function startLiveRefresh(){
   setInterval(bgSyncTick, 60000);          // pull other devices' changes while the tab is open
   setInterval(rerenderActive, 30000);      // repaint so relative timestamps + local state stay current
+  // The family drop box, while the app sits open. Not in bgSyncTick(): it must work without gist sync.
+  setInterval(function(){ try{ Promise.resolve(famInboxCheck()).catch(function(){}); }catch(e){} }, 60000);
   document.addEventListener('visibilitychange', ()=>{
     if(document.visibilityState==='visible'){
       // Chained rather than fired alongside: agForegroundCheck() reads the state this pull is
