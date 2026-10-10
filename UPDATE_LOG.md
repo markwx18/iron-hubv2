@@ -89,7 +89,8 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 - **Today-only changes**: ask for fewer sets or a lighter weight "just today" and you get a card that changes today's session only, even on a lift under a reset or an Investigation flag. Your split is untouched and it's gone tomorrow. It works mid-session too, for lifts you haven't started.
 - **One card for several lifts**: "D3: Leg Press, Leg Extension, Abductor 3 → 2" is one tap and one Undo. Permanent changes now say so ("Every D3 from now on"), and anything left out is listed on the card with the reason.
 - **Refused requests are shown**: a line under the reply says what wasn't changed and why.
-- Today's plan line counts the sets you'll really do during a deload (2 a lift).
+- Today's plan line, and the lift list on Train › Plan, show the sets you'll really do: 2 a lift during a deload, and any today-only change. Plan used to show your split's 3 next to deload weights.
+- The "Not changed" line under a reply groups lifts that share a reason, and no longer cuts a name off mid-word.
 - **Track records**: each agent's past suggestions are scored from your real training afterwards, so you can see how often their advice held up.
 - **Plateau diagnosis**: when a lift stalls, DELTA gives its own read on why and what to try first.
 - **One question a week**: an agent may ask you something it can't tell from your data. Tap an answer, add a note if you want, or skip. It remembers your answer for 90 days. It never changes anything on its own.

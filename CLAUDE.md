@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3508 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3512 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -1616,7 +1616,9 @@ section id, element id and handler was kept; the old detail moved into folds, it
   - the strength split's approval warning, which stays in the hero and is never folded;
   - the next `PLAN_TILE_DAYS` (5) days from `scheduledDayFor()`, so a block's S1/S2/S3 and then the
     normal schedule;
-  - today's lifts from `todayKeyLifts()` (reads only), with Start, Resume or Logged;
+  - today's lifts from `todayKeyLifts()` (reads only), with Start, Resume or Logged. The set count is the built
+    exercise's (`l.n`, LIVE's `planned`), never the split's: on 2026-10-10 it printed "3 x 8-12" beside deload weights
+    while LIVE gave 2, and ZULU was right;
   - Edit this segment. The Length stepper (`planLenStep()`) and the type chips (`planSetType()`,
     which asks first) call the week editor's own `mesoSetWeekDays()` / `mesoSetWeekType()`.
 

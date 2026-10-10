@@ -12730,6 +12730,14 @@ setTimeout(async () => {
     const pl = qa('#peDiv .plan-lift', "[e.querySelector('b').textContent, e.querySelector('.plan-lift-w').firstChild.textContent, e.querySelector('.plan-lift-b span').textContent]");
     ok('plan: today’s lifts are the block day’s, at the weights LIVE would give', kl.length === 2 && JSON.stringify(pl.map(p => [p[0], p[1]])) === JSON.stringify(kl), JSON.stringify(pl) + ' vs ' + JSON.stringify(kl));
     ok('plan: with the block’s set counts', /^4 × /.test(pl[0][2]) && /^3 × /.test(pl[1][2]), JSON.stringify(pl));
+    // A deload gives every lift 2 light sets; the list printed the split's count beside the deload weight (2026-10-10).
+    ev("window.__plTK2 = todayKey; todayKey = function(){ return '2026-10-10'; }; __peDiv.innerHTML = planHeroHTML();");
+    const pd = qa('#peDiv .plan-lift .plan-lift-b span');
+    const kd = JSON.parse(ev("JSON.stringify(todayKeyLifts(dashToday().dayKey, undefined, 12).map(function(l){ return l.n; }))"));
+    ok('plan: during a deload each lift shows the 2 sets LIVE will give', ev('deloadActive()') === true && pd.length > 0 && pd.every(x => /^2 × /.test(x)) && kd.every(n => n === 2), JSON.stringify(pd));
+    ev("S.todayAdjust = {date:'2026-10-10', lifts:{}}; S.todayAdjust.lifts[todayKeyLifts(dashToday().dayKey, undefined, 1)[0].name] = {sets:1}; __peDiv.innerHTML = planHeroHTML();");
+    ok('plan: and a today-only change shows there too', /^1 × /.test(qa('#peDiv .plan-lift .plan-lift-b span')[0]), JSON.stringify(qa('#peDiv .plan-lift .plan-lift-b span')));
+    ev("delete S.todayAdjust; todayKey = window.__plTK2; delete window.__plTK2; __peDiv.innerHTML = planHeroHTML();");
     ok('plan: Start starts today’s session', ev("(function(){ var b = document.querySelector('#peDiv .plan-acts button'); return b ? b.getAttribute('onclick') + '|' + b.textContent : null; })()") === 'liveStartSession()|Start S2');
     ev("S.logs.push({id: 9009, date: '2026-10-06', day: 'S2', entries: []}); __peDiv.innerHTML = planHeroHTML();");
     ok('plan: once today is logged it says so, with nothing to start', /Logged today/.test(q('#peDiv .plan-acts')) && q('#peDiv .plan-acts button') === null);
@@ -13936,6 +13944,14 @@ setTimeout(async () => {
     ev("S.chat.push({role:'assistant', content:'x', refused:[{what:" + JSON.stringify(mal) + ", why:" + JSON.stringify(mal) + "}]}); renderOps();");
     // Checked on the DOM, not the markup string: a browser re-serialises an injected <img src=x> as <img src="x">,
     // so a string search for the raw text passes whether or not it was escaped.
+    // His screenshot (2026-10-10): six lifts, one reason, printed six times under a subject cut off at "H".
+    const six = ['Leg Press', 'Machine Leg Curl', 'Machine Leg Extension', 'Abductor/Adductor Machine', 'Hip Thrust Machine', 'Hanging Leg Raise'];
+    w.__six = six;
+    const sixWhat = ev("chatActionWhat('adjust_today', {changes: window.__six.map(function(n){ return {exercise:n, sets:2}; })})");
+    ok('loop: a long list of lifts is named, not cut mid-word', sixWhat === 'Today only (Leg Press, Machine Leg Curl and 4 more)', sixWhat);
+    ok('loop: lifts left out for one reason are one line', ev("chatSkipGroups(window.__six.map(function(n){ return {exercise:n, why:'that is already what LIVE gives today'}; })).length") === 1 &&
+       /^Leg Press, Machine Leg Curl, Machine Leg Extension, Abductor\/Adductor Machine, Hip Thrust Machine, Hanging Leg Raise \(that is already what LIVE gives today\)$/.test(
+         ev("chatSkipGroups(window.__six.map(function(n){ return {exercise:n, why:'that is already what LIVE gives today'}; })).map(function(x){ return x.names.join(', ')+' ('+x.why+')'; }).join('; ')")));
     ok('loop: a refusal line is escaped', ev("document.querySelectorAll('#agChatBox .cprop-refused img').length") === 0 &&
        ev("document.querySelector('#agChatBox .cprop-refused:last-of-type').textContent").indexOf('<img src=x onerror=alert(1)>') >= 0);
   } catch (e) {

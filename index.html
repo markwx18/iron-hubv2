@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-10-v1">
+<meta name="ironhub-build" content="2026-10-10-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14198,7 +14198,7 @@ function coachDescribeAction(name, inp){
       const days = ch.map(function(c){ return c && c.day; }).filter(function(d, i, a){ return d && a.indexOf(d) === i; });
       const per = ch.map(function(c){ return (c && c.exercise || '?')+' '+((c && c.from) || '?')+' \u2192 '+(c && c.sets); }).join(', ');
       const less = ch.some(function(c){ return c && c.from && c.sets < c.from; });
-      const left = (inp.skipped || []).map(function(x){ return x.exercise+' ('+x.why+')'; }).join('; ');
+      const left = chatSkipGroups(inp.skipped).map(function(x){ return x.names.join(', ')+' ('+x.why+')'; }).join('; ');
       return {verb:'Change sets (permanent)', scope:'Permanent \u00b7 '+(days.join(', ') || '?'),
         detail:'Every '+(days.join(' and ') || 'session')+' from now on: '+per+'.'+
           (less && deloadActive() ? ' The deload already runs 2 light sets a lift by itself, so this is for after it.' : '')+
@@ -14212,7 +14212,7 @@ function coachDescribeAction(name, inp){
         if(c.weight != null) b.push((c.fromW ? c.fromW+' \u2192 ' : '')+c.weight+' lb');
         return (c.exercise || '?')+' '+b.join(', ');
       }).join('; ');
-      const left = (inp.skipped || []).map(function(x){ return x.exercise+' ('+x.why+')'; }).join('; ');
+      const left = chatSkipGroups(inp.skipped).map(function(x){ return x.names.join(', ')+' ('+x.why+')'; }).join('; ');
       return {verb:'Today only', scope:'Today'+(inp.day ? ' \u00b7 '+inp.day : ''),
         detail:'Just today\u2019s session: '+(per || 'nothing')+'. Your split is untouched, and it is gone tomorrow.'+(left ? ' Left out: '+left+'.' : '')};
     }
@@ -14316,7 +14316,7 @@ function coachValidateAction(name, inp, agent){
       if(changes.some(function(x){ return x.exercise === r.item.exercise && x.day === r.item.day; })) return;
       changes.push(r.item);
     });
-    if(!changes.length) return {ok:false, error:skipped.map(function(x){ return x.exercise+': '+x.why; }).join('; ')+'.'};
+    if(!changes.length) return {ok:false, error:chatSkipGroups(skipped).map(function(x){ return x.names.join(', ')+': '+x.why; }).join('; ')+'.'};
     return {ok:true, inp:{changes:changes, skipped:skipped}};
   }
   if(name==='adjust_today'){
@@ -14358,7 +14358,7 @@ function coachValidateAction(name, inp, agent){
       if(item.sets == null && item.weight == null) return skip(c, 'that is already what LIVE gives today');
       changes.push(item);
     });
-    if(!changes.length) return {ok:false, error:(skipped.length ? skipped.map(function(x){ return x.exercise+': '+x.why; }).join('; ') : 'No lifts to change')+'.'};
+    if(!changes.length) return {ok:false, error:(skipped.length ? chatSkipGroups(skipped).map(function(x){ return x.names.join(', ')+': '+x.why; }).join('; ') : 'No lifts to change')+'.'};
     return {ok:true, inp:{changes:changes, skipped:skipped, day:ts.dk}};
   }
   if(name==='set_lift_mode'){
@@ -15801,7 +15801,9 @@ function planHeroHTML(){
     const sets = liveSlotSets(td.dayKey);
     h += '<section class="str-sec" aria-label="Today"><div class="str-sec-h"><span>Today \u00b7 '+esc(td.dayKey+' '+(dayName(td.dayKey) || ''))+'</span>'+
       '<span class="pw-note">'+lifts.length+' lifts</span></div><div class="plan-lifts">'+lifts.map(function(l, i){
-        return '<div class="plan-lift"><span class="plan-lift-i">'+(i + 1)+'</span><span class="plan-lift-b"><b>'+esc(l.name)+'</b><span>'+(+sets[l.name] || 3)+' \u00d7 '+(l.lo ? l.lo+'\u2013'+l.hi : '')+'</span></span>'+
+        // The sets LIVE will give (a deload's 2, a today-only change), from the same build as the weight. It used to
+        // print the split's count beside LIVE's weight, so a deload read "3 x 8-12" at 60% loads (2026-10-10).
+        return '<div class="plan-lift"><span class="plan-lift-i">'+(i + 1)+'</span><span class="plan-lift-b"><b>'+esc(l.name)+'</b><span>'+(+l.n || +sets[l.name] || 3)+' \u00d7 '+(l.lo ? l.lo+'\u2013'+l.hi : '')+'</span></span>'+
           '<span class="plan-lift-w">'+(l.w > 0 ? l.w+'<small> lb</small>' : '\u2014')+'</span></div>';
       }).join('')+'</div>'+
       '<div class="plan-acts">'+(live ? '<button class="btn sm" onclick="setMode(\'live\')">Resume session</button>'
@@ -20681,6 +20683,15 @@ function chatActionRules(id){
     'is stated there. Use day keys exactly as listed. If a tool says a change was not proposed, or a card left a lift out, tell him what and '+
     'why in one line, and never say a change was made that was not.';
 }
+/* Lifts left out of a card, grouped by reason: six lifts with one reason are one line, not six. */
+function chatSkipGroups(skipped){
+  const g = [];
+  (skipped || []).forEach(function(x){
+    const hit = g.find(function(y){ return y.why === x.why; });
+    if(hit) hit.names.push(x.exercise); else g.push({why:x.why, names:[x.exercise]});
+  });
+  return g;
+}
 /* A reason without the lift's name in front of it, for a line that already names the lift. */
 function chatWhyShort(nm, why){
   let w = String(why || '').replace(/\.$/, '');
@@ -20695,7 +20706,9 @@ function chatActionWhat(name, inp){
   const subj = i.exercise || lifts.join(', ') || i.food || (Array.isArray(i.foods) ? i.foods.join(', ') : '') || i.from || '';
   let verb = name;
   try{ verb = coachDescribeAction(name, i).verb || name; }catch(e){}
-  return String(verb)+(subj ? ' ('+String(subj).slice(0, 80)+')' : '');
+  // A long list of lifts names the first two and counts the rest; it was clipped at 80 characters, mid-word ("H").
+  const sub = lifts.length > 3 && !i.exercise ? lifts.slice(0, 2).join(', ')+' and '+(lifts.length - 2)+' more' : String(subj);
+  return String(verb)+(sub ? ' ('+(sub.length > 90 ? sub.slice(0, sub.lastIndexOf(' ', 88))+'\u2026' : sub)+')' : '');
 }
 /* The one onCall every chat hands callClaudeWithData(): a call only ever stages a card; a refusal is told to
    the model AND kept for the reply, where he sees it as a line. */
@@ -22022,7 +22035,7 @@ function todayKeyLifts(dk, call, n){
       const ex = buildOneLiveExercise(nm, null, {call:call, sets:sets[nm]});
       const w = +ex.targetW || 0, d = ex._decision || {};
       const from = (d.from === null || d.from === undefined || d.from === '') ? null : +d.from;
-      out.push({name:nm, w:w, lo:ex.lo, hi:ex.hi,
+      out.push({name:nm, w:w, lo:ex.lo, hi:ex.hi, n:ex.planned,
                 delta:(w > 0 && from !== null && isFinite(from)) ? Math.round((w - from) * 10) / 10 : null});
     });
   }catch(e){}
