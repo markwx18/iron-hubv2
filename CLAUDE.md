@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3448 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3461 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -261,7 +261,7 @@ so the two orders can no longer disagree.
 | Train (A × C) | Plan `planHeroHTML()`, `planBlocks()`, `planLenStep()`, `planSetType()`; Log `logHeroHTML()`, `logChipsHTML()`, `logRowHTML()`, `logPRsOn()` (`logFilter`, `logOpen`); Library `libLifts()`, `libMatches()`, `libFilterRows()`, `libCardHTML()`, `libFlag()`, `libRename()`; `exRenameFlow()` (the one rename flow) |
 | Body (A × C) | Weight `bwHeroHTML()`, `bwWeeklyRows()`, `bwHeadingHTML()`, `bwWeeksHTML()`, `BW_BAND_CHIP`; Fuel `fuelHeroHTML()` / `fuelRingHTML()`, `nutLogHTML()`, `nutHistFold()`; Ready `rdHeroHTML()`, `rdBarsHTML()`, `rdCheckinsHTML()` |
 | Settings (A × C) | `setGlance()` / `setGlanceHTML()` (`SET_TONE`), `setOpenGroup()`, `setGearHTML()`, `settingsSummaries()` |
-| Winter Arc | `winterState()`, `waPhase()`, `waCardHTML()`; the countdown `waGoLiveMs()`, `waSeasonRead()`, `waCountState()` / `waCountHTML()`, `waCountTick()` (`#waCount`), `waLaunchHTML()` |
+| Winter Arc | `winterState()`, `waPhase()`, `waCardHTML()`; his dates `waEditHTML()` / `waReadDates()` / `waSaveTargets()`, `waStartTime()` / `waEndTime()`, `waWallMs()` / `waEndMs()`; the countdown `waGoLiveMs()`, `waSeasonRead()`, `waCountState()` / `waCountHTML()`, `waCountTick()` (`#waCount`), `waLaunchHTML()` |
 | Recap | `recapSlides()`, `recapYear()` / `recapFinal()` / `recapTitle()`, `recapRender()` / `recapOpen()` / `recapGo()` / `recapClose()`, `recapCardHTML()` |
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
@@ -1025,6 +1025,15 @@ date; V4's removal of date overrides stands.
 - **Go-live is 5 PM Eastern on the start date** (`WA_GO_HOUR`, `WA_TZ`), worked out from the America/New_York wall
   clock by `waGoLiveMs()`. Oct 16 is daylight time, so that is 21:00 UTC; the suite checks a December date lands at 22:00, so
   the zone is read, not assumed, and a mutant run with the machine on UTC proves the device's own zone is not used.
+- **He sets the start and end himself** (2026-10-09, his ask), date and time, from the card's **Edit dates & targets**.
+  `S.winterArc` then carries `startTime` / `endTime` (`HH:MM`, Eastern wall clock, `waWallMs()`) and `custom:true`.
+  - No `startTime` means 5 PM (`WA_GO_HOUR`); no `endTime` means the end of the end date, as before.
+  - **`custom` turns the legacy-start migration off** (`winterState()`, `waSeasonRead()`). Without it, a start he picked
+    on Oct 15 or Oct 24 would be silently moved to the default.
+  - `waReadDates()` refuses an end at or before the start, or more than `WA_MAX_DAYS`, and a refusal saves nothing,
+    targets included. Saving is `save()`.
+  - `waPhase()` with no key goes by the instants, so Today does not show the arc as on before it goes live. With a
+    key it still compares dates. `waCountState()` stops at `waEndMs()`.
 - **It shows only in the last `WA_COUNT_DAYS` (30)**, then "Winter Arc · Day N" until the arc ends. For the first
   `WA_HYPE_DAYS` (3) Today opens on `waLaunchHTML()` (golf is over, his ask).
 - **`waCountState()` never calls `winterState()`**, which creates and migrates `S.winterArc`; it reads through

@@ -13831,6 +13831,44 @@ setTimeout(async () => {
     ev("Date.now = function(){ return " + (go - 40 * 86400000) + "; }; todayKey = function(){ return '2026-09-06'; }; waCountTick(); renderHome();");
     ok('tick: hidden when the arc is more than 30 days out, and Today has no message', ev("document.getElementById('waCount').hidden") === true &&
        !/Winter Arc is live/.test(ev("document.getElementById('home').innerHTML")));
+    // --- his own dates and times (2026-10-09): Oct 19, 7 PM Eastern, edited from the card ---
+    ev("rerenderActive = window.__wcRA || rerenderActive; Date.now = window.__wcNow || Date.now; todayKey = function(){ return '2026-10-09'; };");
+    ok('times: 7 PM Eastern on Oct 19 is 23:00 UTC, and on a standard-time date it is midnight UTC',
+       ev("waGoLiveMs('2026-10-19', '19:00')") === Date.UTC(2026, 9, 19, 23, 0, 0) && ev("waGoLiveMs('2026-12-19', '19:00')") === Date.UTC(2026, 11, 20, 0, 0, 0));
+    ev("S.winterArc = {start:'2026-10-16', end:'2027-04-01', sessionTarget:5, bwTarget:null}; waEditOpen = true;");
+    ev("window.__waDiv = document.body.appendChild(document.createElement('div')); __waDiv.innerHTML = waEditHTML();");
+    ok('edit: the form shows the current start, 5 PM, and a blank end time', ev("document.getElementById('waStart').value") === '2026-10-16' &&
+       ev("document.getElementById('waStartT').value") === '17:00' && ev("document.getElementById('waEnd').value") === '2027-04-01' && ev("document.getElementById('waEndT').value") === '');
+    // a bad pair saves nothing, targets included
+    ev("document.getElementById('waStart').value = '2026-10-19'; document.getElementById('waStartT').value = '19:00'; document.getElementById('waEnd').value = '2026-10-18'; document.getElementById('waSess').value = '6';");
+    ok('edit: an end before the start is refused, says why, and saves nothing', ev('waSaveTargets()') === false &&
+       /end has to come after the start/.test(ev("document.getElementById('waMsg').textContent")) && ev('S.winterArc.start') === '2026-10-16' && ev('S.winterArc.sessionTarget') === 5);
+    ev("document.getElementById('waEnd').value = '2027-03-01'; document.getElementById('waEndT').value = '12:00'; window.__waT = S.meta.changedAt; S.meta.changedAt = 1;");
+    ok('edit: a good one saves the dates, the times and the targets, as his change', ev('waSaveTargets()') === true && ev('S.winterArc.start') === '2026-10-19' &&
+       ev('S.winterArc.startTime') === '19:00' && ev('S.winterArc.end') === '2027-03-01' && ev('S.winterArc.endTime') === '12:00' && ev('S.winterArc.custom') === true &&
+       ev('S.winterArc.sessionTarget') === 6 && ev('S.meta.changedAt') > 1, ev('JSON.stringify(S.winterArc)'));
+    ev("S.meta.changedAt = Math.max(S.meta.changedAt, window.__waT); delete window.__waT;");
+    const go7 = Date.UTC(2026, 9, 19, 23, 0, 0);
+    ok('count: it counts to his time, not 5 PM', cs(go7 - 60000, '2026-10-19').phase === 'count' && cs(go7 - 60000, '2026-10-19').left === 60000 &&
+       cs(Date.UTC(2026, 9, 19, 21, 0, 0), '2026-10-19').phase === 'count');
+    const l7 = cs(go7, '2026-10-19');
+    ok('live: at 7 PM it is day 1 of his length', l7.phase === 'live' && l7.day === 1 && l7.total === 134, JSON.stringify(l7));
+    ok('launch: the message counts to his end date', /134 days to March 1\./.test(ev("waLaunchHTML(" + go7 + ", '2026-10-19')")), ev("waLaunchHTML(" + go7 + ", '2026-10-19')"));
+    ok('end: it runs to noon Eastern on his end date, then stops', cs(Date.UTC(2027, 2, 1, 16, 59, 0), '2027-03-01').phase === 'live' &&
+       cs(Date.UTC(2027, 2, 1, 17, 0, 0), '2027-03-01') === null);
+    ev("Date.now = function(){ return " + (go7 - 3600000) + "; }; todayKey = function(){ return '2026-10-19'; }; waCountTick();");
+    ok('tick: the button says when, in his words', ev("document.getElementById('waCount').title") === 'Winter Arc goes live Oct 19, 7 PM Eastern', ev("document.getElementById('waCount').title"));
+    ok('phase now: on the day but before 7 PM the arc has not started', ev('waPhase()') === 'before' && ev("waPhase('2026-10-19')") === 'active');
+    ev("Date.now = function(){ return " + go7 + "; };");
+    ok('phase now: from 7 PM it is on', ev('waPhase()') === 'active');
+    // a date he picks is never "legacy", even when it is one of the old ones
+    ev("S.winterArc = {start:'2026-10-24', end:'2027-04-01', sessionTarget:5, bwTarget:null, custom:true};");
+    ok('his own Oct 24 stays Oct 24 (the old-start move is only for dates he never chose)', ev('winterState().start') === '2026-10-24' && ev("waSeasonRead('2026-10-09').start") === '2026-10-24');
+    // a blank end time goes back to the end of the day
+    ev("S.winterArc = {start:'2026-10-19', end:'2027-03-01', startTime:'19:00', endTime:'12:00', sessionTarget:5, bwTarget:null, custom:true}; __waDiv.innerHTML = waEditHTML(); document.getElementById('waEndT').value = ''; waSaveTargets();");
+    ok('edit: clearing the end time runs the arc to the end of that day', !ev("'endTime' in S.winterArc") && cs(Date.UTC(2027, 2, 2, 4, 59, 0), '2027-03-01').phase === 'live' &&
+       cs(Date.UTC(2027, 2, 2, 5, 0, 0), '2027-03-01') === null);
+    ev("__waDiv.remove(); delete window.__waDiv; waEditOpen = false;");
   } catch (e) {
     ok('winter arc countdown section', false, e.stack);
   } finally {

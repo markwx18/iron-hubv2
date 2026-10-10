@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-09-v1">
+<meta name="ironhub-build" content="2026-10-09-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21337,7 +21337,8 @@ function winterState(){
     S.winterArc = Object.assign({bwTarget:null, sessionTarget:WA_DEFAULT_SESSIONS}, S.winterArc||{}, se);
   }
   if(S.winterArc.sessionTarget == null) S.winterArc.sessionTarget = WA_DEFAULT_SESSIONS;
-  if(WA_LEGACY_START_MDS.indexOf(String(S.winterArc.start).slice(5)) >= 0)
+  // A start he set himself (custom) is never "legacy", even when it lands on one of the old dates.
+  if(!S.winterArc.custom && WA_LEGACY_START_MDS.indexOf(String(S.winterArc.start).slice(5)) >= 0)
     S.winterArc.start = S.winterArc.start.slice(0,5) + WA_START_MD;
   return S.winterArc;
 }
@@ -21353,6 +21354,24 @@ function winterState(){
    tick cannot write state, and the tick patches one button's markup, so it never repaints under his
    hands (LIVE included). */
 const WA_GO_HOUR = 17, WA_TZ = 'America/New_York', WA_COUNT_DAYS = 30, WA_HYPE_DAYS = 3;
+/* Since 2026-10-09 he can set the start and end himself, date and time (waEditHTML()). S.winterArc then
+   carries startTime / endTime as 'HH:MM' on the Eastern wall clock, and custom:true so the legacy-start
+   migration leaves his date alone. No startTime means WA_GO_HOUR; no endTime means the end of the end date,
+   which is how the arc always ended. */
+const WA_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/, WA_DATE_RE = /^\d{4}-\d{2}-\d{2}$/, WA_MAX_DAYS = 366;
+const WA_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function waStartTime(w){ return (w && WA_TIME_RE.test(String(w.startTime || ''))) ? w.startTime : String(WA_GO_HOUR).padStart(2,'0')+':00'; }
+function waEndTime(w){ return (w && WA_TIME_RE.test(String(w.endTime || ''))) ? w.endTime : ''; }
+/* '7 PM', '7:30 PM'. */
+function waTimeLabel(t){
+  const p = String(t).split(':').map(Number), h = p[0], m = p[1] || 0;
+  return ((h % 12) || 12)+(m ? ':'+String(m).padStart(2,'0') : '')+(h < 12 ? ' AM' : ' PM');
+}
+/* 'Oct 19, 7 PM' (short) or 'October 19' (long, no time). */
+function waWhenLabel(key, t, long){
+  const p = String(key).split('-').map(Number), mo = WA_MONTHS[p[1]-1] || '';
+  return (long ? mo : mo.slice(0,3))+' '+p[2]+(t ? ', '+waTimeLabel(t) : '');
+}
 /* What the New York wall clock reads at this instant, minus the instant: -4h on daylight time, -5h on standard. */
 function waZoneOffsetMs(ms){
   try{
@@ -21362,29 +21381,38 @@ function waZoneOffsetMs(ms){
     return Date.UTC(v.year, v.month-1, v.day, v.hour % 24, v.minute, v.second) - Math.floor(ms/1000)*1000;
   }catch(e){ return -4*3600000; }   // no time-zone data on the device: mid-October Eastern is UTC-4
 }
-/* 5 PM Eastern on the start date, as an instant. Checked twice so a start on a clock-change day still lands. */
-function waGoLiveMs(startKey){
-  const p = String(startKey).split('-').map(Number);
-  const wall = Date.UTC(p[0], p[1]-1, p[2], WA_GO_HOUR, 0, 0);
+/* A date and an 'HH:MM' on the Eastern wall clock, as an instant. Checked twice so a time on a clock-change
+   day still lands. */
+function waWallMs(key, t){
+  const p = String(key).split('-').map(Number), hm = String(t || '00:00').split(':').map(Number);
+  const wall = Date.UTC(p[0], p[1]-1, p[2], hm[0] || 0, hm[1] || 0, 0);
   const off = waZoneOffsetMs(wall - waZoneOffsetMs(wall));
   return wall - off;
+}
+/* The start time (5 PM unless he set one) on the start date, as an instant. */
+function waGoLiveMs(startKey, t){ return waWallMs(startKey, t || waStartTime(null)); }
+/* When the arc is over: his end time on the end date, or the end of that day. */
+function waEndMs(w){
+  const et = waEndTime(w);
+  return et ? waWallMs(w.end, et) : waWallMs(mesoAddDays(w.end, 1), '00:00');
 }
 /* The season the countdown reads, without creating or migrating anything (winterState() does both). */
 function waSeasonRead(key){
   const w = (S.winterArc && S.winterArc.start && S.winterArc.end) ? S.winterArc : waSeasonFor(key);
   let start = String(w.start);
-  if(WA_LEGACY_START_MDS.indexOf(start.slice(5)) >= 0) start = start.slice(0,5) + WA_START_MD;
-  return {start:start, end:String(w.end), sessionTarget:(S.winterArc && S.winterArc.sessionTarget) || WA_DEFAULT_SESSIONS};
+  if(!w.custom && WA_LEGACY_START_MDS.indexOf(start.slice(5)) >= 0) start = start.slice(0,5) + WA_START_MD;
+  return {start:start, end:String(w.end), startTime:waStartTime(w), endTime:waEndTime(w),
+          sessionTarget:(S.winterArc && S.winterArc.sessionTarget) || WA_DEFAULT_SESSIONS};
 }
 /* null (nothing to show) | {phase:'count', left} | {phase:'live', day, total, hype}. nowMs and key are
    parameters so the suite never depends on the clock. */
 function waCountState(nowMs, key){
   const k = key || todayKey(), w = waSeasonRead(k);
-  if(k > w.end) return null;
-  const go = waGoLiveMs(w.start), left = go - nowMs;
-  if(left > 0) return left > WA_COUNT_DAYS*86400000 ? null : {phase:'count', left:left, go:go};
+  if(k > w.end || nowMs >= waEndMs(w)) return null;
+  const go = waGoLiveMs(w.start, w.startTime), left = go - nowMs;
+  if(left > 0) return left > WA_COUNT_DAYS*86400000 ? null : {phase:'count', left:left, go:go, start:w.start, startTime:w.startTime};
   const day = Math.max(1, daysBetween(w.start, k) + 1), total = daysBetween(w.start, w.end) + 1;
-  return {phase:'live', day:day, total:total, left:Math.max(0, total - day), hype:day <= WA_HYPE_DAYS, go:go, sessionTarget:w.sessionTarget};
+  return {phase:'live', day:day, total:total, left:Math.max(0, total - day), hype:day <= WA_HYPE_DAYS, go:go, sessionTarget:w.sessionTarget, end:w.end};
 }
 function waCountHTML(c){
   if(!c) return '';
@@ -21410,7 +21438,7 @@ function waCountTick(){
   el.hidden = !h;
   el.classList.toggle('soon', !!(c && c.phase === 'count' && c.left <= 86400000));
   el.classList.toggle('live', !!(c && c.phase === 'live'));
-  el.title = c ? (c.phase === 'count' ? 'Winter Arc goes live Oct 16, 5 PM Eastern' : 'Winter Arc, day '+c.day+' of '+c.total) : '';
+  el.title = c ? (c.phase === 'count' ? 'Winter Arc goes live '+waWhenLabel(c.start, c.startTime)+' Eastern' : 'Winter Arc, day '+c.day+' of '+c.total) : '';
   // The moment it goes live, Today gets its launch message. rerenderActive() keeps its own guard, so
   // this cannot repaint under typed input or a LIVE session.
   const ph = c ? c.phase : null;
@@ -21424,12 +21452,20 @@ function waLaunchHTML(nowMs, key){
   return '<div class="card wa-launch"><div class="wa-l-e">Winter Arc · Day '+c.day+' of '+c.total+'</div>'+
     '<h3>Winter Arc is live.</h3>'+
     '<p>Golf’s done for the year. The clubs go in the garage, and every hour the course used to take belongs to the iron now.</p>'+
-    '<p>'+(c.left+1)+' days to April 1. Hit '+c.sessionTarget+' sessions a week, eat your target, get your sleep. Nobody sees this part, and that’s why it works.</p>'+
+    '<p>'+(c.left+1)+' days to '+esc(waWhenLabel(c.end, '', true))+'. Hit '+c.sessionTarget+' sessions a week, eat your target, get your sleep. Nobody sees this part, and that’s why it works.</p>'+
     '<p class="wa-l-k">Show up in spring a different lifter.</p></div>';
 }
-/* 'before' | 'active' | 'done'. String compares on YYYY-MM-DD, like every other window here. */
+/* 'before' | 'active' | 'done'. Asked about a date, it compares YYYY-MM-DD like every other window here.
+   Asked about now (no key), it goes by the start and end times, so the card does not claim the arc is on
+   before it goes live. */
 function waPhase(key){
   const w = winterState(), k = key || todayKey();
+  if(!key){
+    const now = Date.now();
+    if(now < waGoLiveMs(w.start, waStartTime(w))) return 'before';
+    if(now >= waEndMs(w)) return 'done';
+    return 'active';
+  }
   if(k < w.start) return 'before';
   if(k > w.end) return 'done';
   return 'active';
@@ -21458,7 +21494,7 @@ function waGoals(){
 /* The whole model in one object, so the card and the agent line cannot disagree. */
 function waProgress(key){
   const w = winterState(), k = key || todayKey();
-  const phase = waPhase(k), days = waDays(k);
+  const phase = key ? waPhase(k) : waPhase(), days = waDays(k);
   const wksElapsed = days.elapsed/7, wksLeft = days.left/7;
   const sessions = waSessions(k);
   const expected = Math.round(wksElapsed * (w.sessionTarget||WA_DEFAULT_SESSIONS));
@@ -21500,25 +21536,61 @@ function waContext(key){
    regenerates Home every 30 s and after every sync pull. */
 let waEditOpen = false;
 function waToggleEdit(){ waEditOpen = !waEditOpen; renderHome(); }
+/* The dates and times he typed, checked. Returns {start, startTime, end, endTime} or {err}. An empty end
+   time means the end of the end date. Nothing here writes. */
+function waReadDates(v){
+  const ok = function(k){ return WA_DATE_RE.test(k) && isFinite(Date.parse(k+'T00:00:00Z')) && new Date(k+'T00:00:00Z').toISOString().slice(0,10) === k; };
+  const st = String(v.startTime || '').slice(0,5), et = String(v.endTime || '').slice(0,5);
+  if(!ok(v.start)) return {err:'Pick a start date.'};
+  if(!ok(v.end)) return {err:'Pick an end date.'};
+  if(!WA_TIME_RE.test(st)) return {err:'Pick a start time.'};
+  if(et && !WA_TIME_RE.test(et)) return {err:'That end time is not a time.'};
+  const d = {start:v.start, startTime:st, end:v.end, endTime:et};
+  if(waEndMs(d) <= waGoLiveMs(d.start, st)) return {err:'The end has to come after the start.'};
+  if(daysBetween(d.start, d.end) + 1 > WA_MAX_DAYS) return {err:'An arc can run at most a year.'};
+  return d;
+}
 function waSaveTargets(){
   const w = winterState();
-  const bwEl = document.getElementById('waBw'), stEl = document.getElementById('waSess');
-  const bwv = bwEl ? parseFloat(bwEl.value) : NaN;
-  const stv = stEl ? parseInt(stEl.value,10) : NaN;
+  const val = function(id){ const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  const msg = document.getElementById('waMsg');
+  // The dates are checked first, and a bad one saves nothing at all, targets included.
+  const d = document.getElementById('waStart') ? waReadDates({start:val('waStart'), startTime:val('waStartT'), end:val('waEnd'), endTime:val('waEndT')}) : null;
+  if(d && d.err){ if(msg) msg.textContent = d.err; return false; }
+  const bwv = parseFloat(val('waBw')), stv = parseInt(val('waSess'), 10);
   w.bwTarget = (isFinite(bwv) && bwv > 0) ? Math.round(bwv*10)/10 : null;
   if(isFinite(stv) && stv >= 1 && stv <= 7) w.sessionTarget = stv;
+  if(d && (d.start !== w.start || d.end !== w.end || d.startTime !== waStartTime(w) || d.endTime !== waEndTime(w))){
+    w.start = d.start; w.end = d.end; w.startTime = d.startTime;
+    if(d.endTime) w.endTime = d.endTime; else delete w.endTime;
+    w.custom = true;   // his dates: the legacy-start migration must never move them
+  }
   waEditOpen = false;
   save();   // a user action: touch+push, or the next background pull reverts it
+  try{ waCountTick(); }catch(e){}
   renderHome();
+  return true;
 }
+/* The next arc keeps the times he chose; its dates are the default season again. */
 function waStartNext(){
-  const se = waSeasonFor(mesoAddDays(todayKey(), 1));
+  const se = waSeasonFor(mesoAddDays(todayKey(), 1)), w = S.winterArc || {};
   S.winterArc = {start:se.start, end:se.end, bwTarget:null, sessionTarget:WA_DEFAULT_SESSIONS};
+  if(WA_TIME_RE.test(String(w.startTime || ''))) S.winterArc.startTime = w.startTime;
+  if(WA_TIME_RE.test(String(w.endTime || ''))) S.winterArc.endTime = w.endTime;
   save(); renderHome();
 }
 function waEditHTML(){
   const w = winterState();
+  const inp = 'background:var(--base);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:5px 8px';
+  const field = function(label, id, type, value, width){
+    return '<label class="small" style="color:var(--dim)">'+label+'<br><input id="'+id+'" type="'+type+'" value="'+esc(value)+'" style="width:'+width+';'+inp+'"></label>';
+  };
   return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">'+
+    field('Starts', 'waStart', 'date', w.start, '150px')+field('at (Eastern)', 'waStartT', 'time', waStartTime(w), '120px')+
+  '</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">'+
+    field('Ends', 'waEnd', 'date', w.end, '150px')+field('at (blank = end of day)', 'waEndT', 'time', waEndTime(w), '120px')+
+  '</div>'+
+  '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">'+
     '<label class="small" style="color:var(--dim)">Bodyweight target (lb)<br>'+
       '<input id="waBw" type="number" step="0.5" value="'+(w.bwTarget==null?'':esc(String(w.bwTarget)))+'" '+
       'style="width:110px;background:var(--base);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:5px 8px"></label>'+
@@ -21527,7 +21599,7 @@ function waEditHTML(){
       'style="width:90px;background:var(--base);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:5px 8px"></label>'+
     '<button class="btn primary sm" onclick="waSaveTargets()">Save</button>'+
     '<button class="btn ghost sm" onclick="waToggleEdit()">Cancel</button>'+
-  '</div>';
+  '</div><p class="small" id="waMsg" style="color:var(--warn);margin-top:6px"></p>';
 }
 function waCardHTML(key){
   const p = waProgress(key);
@@ -21535,11 +21607,12 @@ function waCardHTML(key){
     return '<div class="dash-sec">Winter Arc</div><div class="card" style="border-left:3px solid var(--line2)">'+
       '<p class="small" style="color:var(--dim)">The arc ended '+esc(fmtDate(p.end))+' \u2014 '+p.sessions+' sessions over '+
       p.days.total+' days.</p>'+
-      '<button class="btn ghost sm" style="margin-top:8px" onclick="waStartNext()">Start the next arc</button></div>';
+      '<button class="btn ghost sm" style="margin-top:8px" onclick="waStartNext()">Start the next arc</button> '+
+      (waEditOpen ? waEditHTML() : '<button class="btn ghost sm" style="margin-top:8px" onclick="waToggleEdit()">Edit dates</button>')+'</div>';
   }
   let h = '<div class="dash-sec">Winter Arc</div><div class="card" style="border-left:3px solid var(--cyan)">';
   if(p.phase==='before'){
-    h += '<p class="small">Starts '+esc(fmtDate(p.start))+' \u2014 <b>'+p.days.untilStart+' day'+(p.days.untilStart===1?'':'s')+
+    h += '<p class="small">Starts '+esc(fmtDate(p.start))+', '+esc(waTimeLabel(waStartTime(winterState())))+' \u2014 <b>'+p.days.untilStart+' day'+(p.days.untilStart===1?'':'s')+
       '</b> out. Runs to '+esc(fmtDate(p.end))+'.</p>'+
       '<p class="small" style="color:var(--dim);margin-top:4px">Target '+p.sessionTarget+' sessions a week'+
       (p.bw&&p.bw.target?', bodyweight to '+p.bw.target+' lb':'')+
@@ -21567,7 +21640,7 @@ function waCardHTML(key){
     }
   }
   h += waEditOpen ? waEditHTML()
-    : '<button class="btn ghost sm" style="margin-top:8px" onclick="waToggleEdit()">Set targets</button>';
+    : '<button class="btn ghost sm" style="margin-top:8px" onclick="waToggleEdit()">Edit dates &amp; targets</button>';
   return h + '</div>';
 }
 /* ---- Today, the command center (V4 stage 3: the A × C look) ----
