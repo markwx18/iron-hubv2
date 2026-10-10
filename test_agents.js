@@ -9320,13 +9320,44 @@ setTimeout(async () => {
        sv2('1 bagel, 2 tbsp', 2) === '2 × 1 bagel, 2 tbsp' && sv2('1 can (5 oz)', 2) === '2 × 1 can (5 oz)' &&
        sv2('1 scoop + 16 oz milk', 2) === '2 × 1 scoop + 16 oz milk' && sv2('a plate', 2) === '2 × a plate');
     ok('serving: one serving is shown as written', sv2('6 oz cooked', 1) === '6 oz cooked');
-    ev("window.__fpKeep2 = S.fuel.foods; S.fuel.foods = {chkbr:{s:1}};");
-    const breast = JSON.parse(ev('JSON.stringify(fpCombos(560, 106, {}))'));
-    const bHtml = ev('fpComboHTML(' + JSON.stringify(breast.combos[0]) + ', 0)');
-    ok('serving: two chicken breasts read "12 oz cooked" beside their 106 g, not "6 oz"',
-       breast.combos[0].items[0].qty === 2 && /12 oz cooked/.test(bHtml) && /~560 · 106g/.test(bHtml) && !/>6 oz cooked</.test(bHtml), bHtml.slice(0, 400));
+    // Two of a small portion is still one portion, and its row says the doubled amount (deli turkey, 4 oz -> 8 oz).
+    ev("window.__fpKeep2 = S.fuel.foods; S.fuel.foods = {turkdeli:{s:1}};");
+    const turk = JSON.parse(ev('JSON.stringify(fpCombos(240, 44, {}))'));
+    const bHtml = ev('fpComboHTML(' + JSON.stringify(turk.combos[0]) + ', 0)');
+    ok('serving: two portions of deli turkey read "8 oz" beside their 44 g, not "4 oz"',
+       turk.combos[0].items[0].qty === 2 && />8 oz</.test(bHtml) && /~240 · 44g/.test(bHtml) && !/>4 oz</.test(bHtml), bHtml.slice(0, 400));
     ok('serving: and ECHO is told the same amount with its numbers',
-       ev("fpCombosText(fpCombos(560, 106, {}), {})").indexOf('Chicken breast, 12 oz cooked (~560 cal, 106g P)') >= 0);
+       ev("fpCombosText(fpCombos(240, 44, {}), {})").indexOf('Deli turkey, 8 oz (~240 cal, 44g P)') >= 0);
+    // His report (2026-10-10): "1/2 rotisserie chicken, 800 cal, 90g" and a double whey shake. A second serving
+    // is only offered while the two together are one sensible portion, so these three never double.
+    ev("S.fuel.foods = {chkbr:{s:1}, rotchk:{s:1}, wheymlk:{s:1}};");
+    const nod = JSON.parse(ev('JSON.stringify(fpCombos(2300, 92, {}))'));
+    ok('portion: chicken breast, rotisserie chicken and a whey shake are never put on a plate twice',
+       nod.combos.length > 0 && nod.combos.every(c => c.items.every(i => i.qty === 1)), JSON.stringify(nod.combos.map(c => c.items.map(i => i.id + 'x' + i.qty))));
+    // His screen (2026-10-10): the same gap and the same proteins, plus the snacks he keeps.
+    ev("S.fuel.foods = {rotchk:{s:1}, chkbr:{s:1}, chknug:{s:1}, wheymlk:{s:1}, chips:{s:1}, pbcup:{s:1}, gkyog:{s:1}, grapes:{s:1}, pretzel:{s:1}, bagel:{s:1}, rice:{s:1}};");
+    const his = JSON.parse(ev('JSON.stringify(fpCombos(2300, 92, {}))'));
+    const isMain = (id) => ev('(function(f){ return f.cat === "meat" || f.cat === "meal"; })(fpFood(' + JSON.stringify(id) + '))');
+    ok('plate: one main a plate, never rotisserie chicken AND nuggets', his.combos.length === 3 && his.combos.every(c => c.items.filter(i => isMain(i.id)).length <= 1),
+       JSON.stringify(his.combos.map(c => c.items.map(i => i.id))));
+    ok('plate: no plate runs past 150 cal or 20 g over the meal it is sized to', his.combos.every(c => c.cal <= his.plateCal + 150 && c.p <= his.plateP + 20 || c.items.length === 1),
+       JSON.stringify(his.combos.map(c => [c.cal, c.p])));
+    ok('plate: a plate is more than one food when one food is not a meal', his.combos.every(c => c.items.length >= 2));
+    ok('snacks: up to three, each one or two snack foods, snack-sized', his.snacks.length === 3 &&
+       his.snacks.every(c => c.items.length <= 2 && c.cal <= 350 + 50 && c.items.every(i => i.qty === 1 && ev('fpSnacky(fpFood(' + JSON.stringify(i.id) + '))'))),
+       JSON.stringify(his.snacks.map(c => [c.items.map(i => i.id), c.cal])));
+    ok('snacks: they are on Fuel under the meals, and ECHO hears them too', (ev('renderFuel()'), /Snack 1/.test(ev("document.getElementById('fpCombOut').textContent"))) &&
+       /Snack options/.test(ev("fpCombosText(fpCombos(2300, 92, {}), {})")));
+    ok('snacks: I’ll eat this on a snack notes the snack', (function(){ ev('fpAccept(' + his.combos.length + ')'); return ev('fpPlanned.sig') === his.snacks[0].sig; })(), ev('fpPlanned.sig'));
+    // Each rule on its own, where the plate ceilings would let the plate through: two bagels (600 cal) fit a
+    // 700-cal plate but are two portions; rotisserie chicken + deli turkey fits both ceilings but is two mains.
+    ev("S.fuel.foods = {bagel:{s:1}};");
+    const bag = JSON.parse(ev('JSON.stringify(fpCombos(700, 20, {}))'));
+    ok('portion: a second bagel is a second portion, so it is not offered', bag.combos.length === 1 && bag.combos[0].items[0].qty === 1, JSON.stringify(bag.combos.map(c => c.items)));
+    ev("S.fuel.foods = {rotchk:{s:1}, turkdeli:{s:1}};");
+    const two = JSON.parse(ev('JSON.stringify(fpCombos(700, 50, {}))'));
+    ok('plate: rotisserie chicken and deli turkey are two mains, so never one plate', two.combos.length >= 1 && two.combos.every(c => c.items.filter(i => isMain(i.id)).length <= 1),
+       JSON.stringify(two.combos.map(c => c.items.map(i => i.id))));
     ev("S.fuel.foods = window.__fpKeep2; delete window.__fpKeep2;");
 
     // "Already eaten" shrinks the gap. Module-scoped and per-day, and the tab reads it.

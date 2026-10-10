@@ -19,6 +19,7 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 
 - **A live countdown to Winter Arc** sits in the top bar: days and hours on your phone, down to the second on desktop and in the last day. It shows from 30 days out.
 - **At 5 PM Eastern on Oct 16 it goes live.** The top bar switches to "Winter Arc · Day 1", and for the first three days Today opens on a launch message. Golf's done; the iron gets the hours now.
+- **You set the dates.** Edit dates & targets on the Winter Arc card takes a start date and time and an end date and time (Eastern). Leave the end time blank to run to the end of that day. The countdown, the launch and the card all follow.
 
 ---
 
@@ -63,6 +64,8 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 - **Weight**: your latest weigh-in, big, with your pace and whether you're in the band, a weigh-in box right there, then the chart, where it's heading, and the last few weekly averages.
 - **Fuel**: today's calorie and protein rings. **The one-tap calorie and protein buttons moved here** from the weight tab. Your pantry folds away once it's stocked.
 - **Family pantry check**: tap Share with family on Fuel and text the link to someone at home. They get a simple tick-list of your foods (no app or account needed), tap what's in the house, and send it back. You see exactly what changed ("In the house now: ground beef · Run out: chicken breast") and tap Apply, or Ignore. It only changes what's in stock; your likes and targets stay yours. On iPhone, if their reply opens in Safari, tap Copy update there, then Paste family update in Fuel.
+- **Submit goes straight to your app.** Share a new link and their page has a Submit button. Next time you open Iron Hub, the update is in the bell and on Today, ready to review. If Submit ever fails, their page falls back to sending the link.
+- **Meal options read like meals.** No more "1/2 rotisserie chicken, 800 cal, 90 g" or two whey shakes: one food is one portion, a plate has one main plus sides, and no plate runs far past a meal. **Snack options** now sit under the meals, built from your snacks.
 - **Ready**: your recovery ring against your own usual, HRV, resting heart rate and sleep, a 14-day strip, how recovery affects your PRs, and your recent check-ins.
 - The tabs are now Weight, Fuel, Quality and Ready.
 

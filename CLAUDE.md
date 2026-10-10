@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3512 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3521 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -796,9 +796,19 @@ from what he has stocked and likes. Cal AI has no sync path, so it never reads l
   `SYNC_HISTORY`.
 - **`fpFoods()` is the one list.** The pantry, the combiner and ECHO's tools all read it, and it
   is a pure read (it does not call `fuelInit()`), so ECHO's tools write nothing.
-- **`fpCombos()` is pure and deterministic.** It is greedy, weights protein 1.2×, and allows two
-  servings of any one food and five foods per plate. Pick and skip counts only break near-ties.
-  Each later plate avoids the earlier foods and drops their anchor.
+- **`fpCombos()` is pure and deterministic.** It is greedy, weights protein 1.2×, and allows five foods per
+  plate. Pick and skip counts only break near-ties. Each later plate avoids the earlier foods and drops their anchor.
+- **A plate reads like a meal he would eat** (his report, 2026-10-10: "1/2 rotisserie chicken, 800 cal, 90 g" and a
+  double whey shake). After the first item, `fpBuild()` holds three hard limits:
+  - a second serving only while the two together are one portion (`FP_ITEM_CAL` 450, `FP_ITEM_PRO` 45);
+  - no more than 150 cal or 20 g over the plate;
+  - one main per plate (category `meat` or `meal`).
+
+  Each rule has its own test where the other two would let the plate through: in a realistic fixture they
+  overlap, and a mutant of one survived until they did.
+- **Snack options** sit under the meals (`fpSnackCombos()`, `res.snacks`): up to three, one or two `fpSnacky()` foods,
+  one serving each, sized to `FP_SNACK_CAL` / `FP_SNACK_PRO` with a 50 cal / 10 g ceiling. `fpShown` is meals then
+  snacks, so "I'll eat this" on a snack notes the snack. ECHO's `fpCombosText()` lists them too.
 - **A plate row shows the amount its numbers are for** (`fpServingFor()`): "12 oz cooked", not
   "2× … 6 oz cooked" beside a two-serving total, which read as 106 g protein in 6 oz of chicken.
   A compound or bracketed serving becomes "2 × 1 can (5 oz)" rather than being rewritten. ECHO's

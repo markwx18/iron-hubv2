@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-10-v2">
+<meta name="ironhub-build" content="2026-10-10-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -7364,6 +7364,13 @@ const FP_DONE_CAL = 150, FP_DONE_PRO = 10;
    stacked 2x servings to reach 2,000+ cal, which nobody eats as a plate (2026-09-30). The gap is still
    shown in full; each option is capped at a standard meal, and a smaller gap shrinks it further. */
 const FP_PLATE_CAL = 700, FP_PLATE_PRO = 50;
+/* One food is one portion (2026-10-10, his report). A second serving was allowed of anything, so a plate came
+   out as "1/2 rotisserie chicken, 800 cal, 90g" or two whey shakes: a single food eaten in an amount nobody
+   eats. A second serving is now offered only while the doubled amount is still one sensible portion, and the
+   rest of the plate is filled with other foods, which is where his snacks and sides come in. */
+const FP_ITEM_CAL = 450, FP_ITEM_PRO = 45;
+/* Snack options sit under the meals: one or two snack-type foods, sized like a snack. */
+const FP_SNACK_CAL = 350, FP_SNACK_PRO = 20, FP_SNACK_CATS = ['snack','fruit','sweet','spread'];
 /* [id, name, category, serving, cal, protein g, carbs g, fat g, tags]. Typical values for the
    stated serving: approximate, and shown with a ~. The suite checks every row's macros add up.
    An id is what S.fuel.foods keys off and what has already synced to every device, so it is
@@ -7618,27 +7625,39 @@ function fpPool(opts){
    Protein counts 1.2x, because it is the half of the target he misses. Going more than 250 cal
    past the gap costs, and so does every extra item: five things on a plate is a chore, not a
    meal. The bonuses are deliberately small next to the coverage terms, so what he likes can
-   decide between two foods that both fit but can never push in one that does not. */
-function fpBuild(pool, gapCal, gapPro, used){
-  const nC = Math.max(gapCal, 300), nP = Math.max(gapPro, 20);
+   decide between two foods that both fit but can never push in one that does not.
+   Hard limits, after the first item (2026-10-10, so a plate reads like a meal he would eat): no more
+   than 150 cal / 20 g over the plate (50 cal / 10 g on a snack), one main (meat or a made meal), and a
+   second serving only while it stays one portion. lim: {items, snack}. */
+function fpBuild(pool, gapCal, gapPro, used, lim){
+  lim = lim || {};
+  const maxItems = lim.items || 5;
+  const nC = Math.max(gapCal, lim.snack ? 150 : 300), nP = Math.max(gapPro, lim.snack ? 8 : 20);
   const items = [];
   let rc = gapCal, rp = gapPro;
   for(let step = 0; step < 12; step++){
-    if(rc <= 100 && rp <= 8) break;
+    if(rc <= (lim.snack ? 60 : 100) && rp <= (lim.snack ? 4 : 8)) break;
     let best = null, bestV = 0.01;
     pool.forEach(function(fd){
       const have = items.find(function(i){ return i.fd.id === fd.id; });
-      // Two servings of anything, drinks included: with a whole day to fill, a cap of three
-      // made "3x blender shake" the first option, which is not a plan anyone follows.
-      if(have && have.qty >= 2) return;
-      if(!have && items.length >= 5) return;
+      // At most two servings of anything (a cap of three once made "3x blender shake" the first option),
+      // and a second only while the two together are still one portion (FP_ITEM_CAL / FP_ITEM_PRO).
+      if(have && (have.qty >= 2 || lim.snack || fd.cal*2 > FP_ITEM_CAL || fd.p*2 > FP_ITEM_PRO)) return;
+      if(!have && items.length >= maxItems) return;
+      // A snack is snack-sized from its first item: a 600-cal "snack" is a meal.
+      if(lim.snack && fd.cal > gapCal + 150) return;
       // A hard ceiling, not just the soft penalty below: when only low-protein foods are left, chasing
       // the protein gap alone once ran a plate to 2x the target in pasta and bagels.
-      if(items.length && (gapCal - rc) + fd.cal > gapCal + 250) return;
+      if(items.length && (gapCal - rc) + fd.cal > gapCal + (lim.snack ? 50 : 150)) return;
+      // The same ceiling for protein: breast plus a milk shake was 93 g in one sitting against a 50 g plate.
+      if(items.length && (gapPro - rp) + fd.p > gapPro + (lim.snack ? 10 : 20)) return;
+      // One main per plate. Rotisserie chicken AND nuggets is two dinners, not a meal and a side.
+      const main = function(f){ return f.cat === 'meat' || f.cat === 'meal'; };
+      if(!have && main(fd) && items.some(function(i){ return main(i.fd); })) return;
       let v = (rc > 0 ? Math.min(fd.cal, rc)/nC : 0) + 1.2*(rp > 0 ? Math.min(fd.p, rp)/nP : 0);
       const over = fd.cal - Math.max(rc, 0) - 250;
       if(over > 0) v -= 1.5*over/nC;
-      v -= have ? 0.02 : 0.04;
+      v -= have ? 0.02 : (lim.snack ? 0.02 : 0.04);
       if(fd.stocked) v += 0.04;                                   // what is already in the house first
       v += 0.03*Math.min(fd.a, 5) - 0.04*Math.min(fd.x, 5);      // what he actually picks, and skips
       if(used[fd.id]) v -= 0.25;                                  // the next option is a different plate
@@ -7667,7 +7686,7 @@ function fpBuild(pool, gapCal, gapPro, used){
    the options are genuinely different rather than the same plate with a banana swapped in. */
 function fpCombos(gapCal, gapPro, opts){
   gapCal = Math.max(0, Math.round(+gapCal||0)); gapPro = Math.max(0, Math.round(+gapPro||0));
-  const res = {gapCal:gapCal, gapPro:gapPro, done:false, pool:0, combos:[]};
+  const res = {gapCal:gapCal, gapPro:gapPro, done:false, pool:0, combos:[], snacks:[]};
   if(gapCal <= FP_DONE_CAL && gapPro <= FP_DONE_PRO){ res.done = true; return res; }
   let pool = fpPool(opts);
   res.pool = pool.length;
@@ -7686,7 +7705,30 @@ function fpCombos(gapCal, gapPro, opts){
     const anchor = c.items.slice().sort(function(a, b){ return b.cal - a.cal || (a.id < b.id ? -1 : 1); })[0].id;
     pool = pool.filter(function(fd){ return fd.id !== anchor; });
   }
+  res.snacks = fpSnackCombos(gapCal, gapPro, opts);
   return res;
+}
+/* Snack-type foods: the snack shelves, plus anything tagged snack that is not also a meal. */
+function fpSnacky(fd){
+  return fd.tags.indexOf('meal') < 0 && (fd.tags.indexOf('snack') >= 0 || FP_SNACK_CATS.indexOf(fd.cat) >= 0);
+}
+/* Up to three snacks, one or two foods each, every one from a different main food. Same rules as a plate,
+   sized like a snack. Pure, like fpCombos(). */
+function fpSnackCombos(gapCal, gapPro, opts){
+  const out = [], seen = {}, used = {};
+  const sc = Math.min(gapCal, FP_SNACK_CAL), sp = Math.min(gapPro, FP_SNACK_PRO);
+  if(sc < 100) return out;
+  let pool = fpPool(opts).filter(fpSnacky);
+  for(let k = 0; k < 3 && pool.length; k++){
+    const fresh = pool.filter(function(fd){ return !used[fd.id]; });
+    const c = fpBuild(fresh.length ? fresh : pool, sc, sp, used, {items:2, snack:true});
+    if(!c.items.length) break;
+    if(!seen[c.sig]){ seen[c.sig] = 1; c.snack = true; out.push(c); }
+    c.items.forEach(function(i){ used[i.id] = 1; });
+    const anchor = c.items.slice().sort(function(a, b){ return b.cal - a.cal || (a.id < b.id ? -1 : 1); })[0].id;
+    pool = pool.filter(function(fd){ return fd.id !== anchor; });
+  }
+  return out;
 }
 /* Monday-anchored, like the Plan tab. Nothing is ever reset: last week's stock carries over and
    the prompt only asks him to confirm it. Nothing stocked means there is nothing to confirm --
@@ -7922,7 +7964,8 @@ function fpCombinerHTML(){
 function fpCombOutHTML(){
   const e = fpEatenToday(), o = fpOptsNow(), ct = calTarget(), pt = proTarget();
   const r = fpCombos(ct - e.cal, pt - e.pro, {quickOnly:o.quickOnly, includeLiked:o.includeLiked, skip:fpSkipsToday()});
-  fpShown = r.combos;
+  // One list, so "I'll eat this" on a snack (index after the meals) notes the snack.
+  fpShown = r.combos.concat(r.snacks || []);
   let h = '<div class="fp-gap"><span><b>'+r.gapCal.toLocaleString()+'</b> cal</span><span><b>'+r.gapPro+'</b>g protein</span>'+
     '<span class="fp-of">left of '+ct.toLocaleString()+' · '+pt+'g</span></div>';
   if(!r.done && (r.gapCal > r.plateCal || r.gapPro > r.plateP))
@@ -7938,14 +7981,18 @@ function fpCombOutHTML(){
     return h+'<div class="card"><p class="small" style="line-height:1.55">'+why+'</p></div>';
   }
   h += r.combos.map(fpComboHTML).join('');
+  if((r.snacks || []).length){
+    h += '<div class="dash-sec">Snacks</div>'+r.snacks.map(function(c, j){ return fpComboHTML(c, r.combos.length + j, j); }).join('');
+  }
   return h+'<p class="small" style="color:var(--dim);line-height:1.5">~ Macros are approximate. ✕ means “not this”: it drops out for today and ranks lower from then on.</p>';
 }
-function fpComboHTML(c, i){
+/* i is the index into fpShown (meals, then snacks); j, for a snack, is its own number. */
+function fpComboHTML(c, i, j){
   const planned = fpPlanned.date === todayKey() && fpPlanned.sig === c.sig;
   const short = [c.shortC ? c.shortC+' cal' : '', c.shortP ? c.shortP+'g protein' : ''].filter(Boolean).join(' · ');
-  return '<div class="card fp-combo"><div class="fp-ch"><span class="fp-ct">Option '+(i+1)+'</span>'+
+  return '<div class="card fp-combo'+(c.snack ? ' fp-snack' : '')+'"><div class="fp-ch"><span class="fp-ct">'+(c.snack ? 'Snack '+((j||0)+1) : 'Option '+(i+1))+'</span>'+
     '<span class="fp-tot">~'+c.cal.toLocaleString()+' cal · '+c.p+'g P</span></div>'+
-    '<div class="small" style="margin-bottom:4px;color:'+(c.closes ? 'var(--good)">A standard meal' : 'var(--warn)">Light by '+short)+'</div>'+
+    (c.snack ? '' : '<div class="small" style="margin-bottom:4px;color:'+(c.closes ? 'var(--good)">A standard meal' : 'var(--warn)">Light by '+short)+'</div>')+
     c.items.map(function(it){
       // The amount is scaled to the servings counted (fpServingFor), so the numbers beside it
       // are always the numbers for that amount.
@@ -8153,12 +8200,15 @@ function fpCombosText(r, opts){
   if(r.done) return t+'That is already close enough -- nothing left to plan.';
   t += 'Each option is sized to ONE meal (~'+r.plateCal+' cal, '+r.plateP+'g protein at most), not to the whole gap; he eats one, then plans the next.\n';
   if(!r.combos.length) return t+(r.pool ? 'No plate could be built from what fits.' : 'Nothing usable: he has nothing stocked'+(opts.includeLiked ? ' or liked' : '')+' that fits these filters.');
-  return t+r.combos.map(function(c, i){
-    return 'Option '+(i+1)+': '+c.items.map(function(it){
+  const line = function(c){
+    return c.items.map(function(it){
       return it.n+', '+(it.amt || it.sv)+' (~'+it.cal+' cal, '+it.p+'g P)'+(it.buy ? ' [not in stock]' : '');
-    }).join(' + ')+
-      ' = ~'+c.cal+' cal, '+c.p+'g protein, '+(c.closes ? 'a full meal' : 'light by '+c.shortC+' cal / '+c.shortP+'g');
-  }).join('\n');
+    }).join(' + ')+' = ~'+c.cal+' cal, '+c.p+'g protein';
+  };
+  return t+r.combos.map(function(c, i){
+    return 'Option '+(i+1)+': '+line(c)+', '+(c.closes ? 'a full meal' : 'light by '+c.shortC+' cal / '+c.shortP+'g');
+  }).join('\n')+((r.snacks || []).length ? '\nSnack options (one or two snack foods, ~'+FP_SNACK_CAL+' cal at most):\n'+
+    r.snacks.map(function(c, i){ return 'Snack '+(i+1)+': '+line(c); }).join('\n') : '');
 }
 
 /* ============================================================
