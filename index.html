@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-09-v2">
+<meta name="ironhub-build" content="2026-10-10-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -585,6 +585,9 @@
   .cprop-failed span{font-weight:700;}
   .cprop-undone{font-size:12px; color:var(--muted); display:flex; align-items:center; gap:8px;}
   .cprop-undo{margin-left:auto;}
+  /* A request the checks refused, under the reply that asked for it, so it never looks applied. */
+  .cprop-refused{display:flex; flex-direction:column; gap:3px; margin:6px 2px 2px; font-size:12.5px; line-height:1.45; color:var(--muted);}
+  .cprop-refused b{color:var(--warn); font-weight:600;}
   .coach-plan-banner{display:flex; align-items:center; gap:9px; margin:10px 0 4px; padding:9px 11px; background:var(--panel); border:1px solid var(--violet-dim); border-radius:4px;}
   .cpb-tag{font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:.1em; color:var(--violet); border:1px solid var(--violet-dim); padding:3px 7px; border-radius:2px; flex:none;}
   .cpb-txt{font-size:12.5px; color:var(--text); line-height:1.4;}
@@ -4142,7 +4145,7 @@ const PR_LIFTS = {
    the newer fields (swapFrom, removed, set rm/p, toggledAt): absent reads as "not recorded". */
 function sessionMods(l){
   const m = {session:false, deload:false, home:false, coachPlan:false, call:'', toggled:false, skippedCheckIn:false, quick:[],
-             swapped:[], swapFrom:{}, added:[], removed:[], oneRM:[], override:[], callRecover:[], liftDeload:[]};
+             swapped:[], swapFrom:{}, added:[], removed:[], oneRM:[], override:[], callRecover:[], liftDeload:[], todayAdj:[]};
   if(!l) return m;
   m.deload = !!l.deload; m.home = !!l.home; m.coachPlan = !!l.coachPlan;
   if(l.call && !l.call.off && (l.call.call === 'easy' || l.call.call === 'recover')) m.call = l.call.call;
@@ -4156,12 +4159,14 @@ function sessionMods(l){
   // Before swapFrom existed, swapped mixed adds and swaps; with it, an entry without a source is an add.
   m.added = l.swapFrom ? m.swapped.filter(function(n){ return !m.swapFrom[n]; }) : [];
   m.removed = Array.isArray(l.removed) ? l.removed.slice() : [];
+  m.todayAdj = Array.isArray(l.todayAdj) ? l.todayAdj.slice() : [];
   (l.entries || []).forEach(function(e){ if((e.sets || []).some(function(s){ return s && s.rm; })) m.oneRM.push(e.exercise); });
   Object.keys(l.decisions || {}).forEach(function(nm){
     const c = (l.decisions[nm] || {}).code;
     if(c === 'inv-override') m.override.push(nm);
     else if(c === 'call-recover') m.callRecover.push(nm);
     else if(c === 'deload') m.liftDeload.push(nm);
+    else if(c === 'chat-today' && m.todayAdj.indexOf(nm) < 0) m.todayAdj.push(nm);
   });
   // The whole session was shaped by something other than the engine.
   m.session = m.deload || m.home || m.coachPlan || !!m.call;
@@ -4171,7 +4176,8 @@ function sessionMods(l){
    whole, or a swap, a reset, a recover-call step-down, a deloaded lift, or a 1RM test on it. */
 function sessionModLift(m, nm){
   return !!(m.session || m.swapped.indexOf(nm) >= 0 || m.override.indexOf(nm) >= 0 ||
-            m.callRecover.indexOf(nm) >= 0 || m.liftDeload.indexOf(nm) >= 0 || m.oneRM.indexOf(nm) >= 0);
+            m.callRecover.indexOf(nm) >= 0 || m.liftDeload.indexOf(nm) >= 0 || m.oneRM.indexOf(nm) >= 0 ||
+            (m.todayAdj || []).indexOf(nm) >= 0);
 }
 function e1rmSeries(ex, opts){
   const excludeHome = opts && opts.excludeHome;
@@ -5624,23 +5630,28 @@ async function sendChat(){
       'No fluff, no over-hedging. Keep answers tight (under ~250 words unless asked for a program). '+
       'Never recommend steroids, SARMs, or other PEDs; if asked, explain briefly why not at his age and move on. '+
       'Encourage adequate recovery and realistic rate-of-gain (~0.5-1 lb/week on a lean bulk).\n\n'+
-      'You can propose changes anywhere in the app using the provided tools: the split, today\u2019s workout, a lift\u2019s next weight, '+
+      'You can propose changes anywhere in the app using the provided tools: the split, today\u2019s session, a lift\u2019s next weight, '+
       'sets and modes, deloads, experiments, fuel targets and the pantry, the schedule and plan, renames, and home days. '+
-      'When the user clearly asks you to change something, call the appropriate tool. The user must tap Apply before anything '+
-      'actually changes, so propose confidently but still briefly explain what you\'re proposing in your text. '+
-      'Prefer set_today_workout for one-off "just for today" requests and the permanent tools for lasting changes. '+
-      'Only call a tool when the user is asking for a change \u2014 for pure questions or advice, just answer.\n\n'+
+      chatActionRules('zulu')+'\n\n'+
       'You have a durable memory. When he tells you something lasting about himself that you would want in future conversations '+
       '(an injury, a limitation, a preference, a deadline, a gym equipment quirk), call remember_note \u2014 he taps to confirm before it saves. '+
       'Don\'t remember things already in the training data below, and don\'t narrate your memory unprompted. '+
-      'Everything under WHAT YOU REMEMBER is something he previously confirmed \u2014 treat it as fact and factor it into your advice.\n\n'+
-      coachMemContext()+'\n'+trainingContext();
+      'Everything under WHAT YOU REMEMBER is something he previously confirmed \u2014 treat it as fact and factor it into your advice.\n'+
+      agToolNote()+agFuelToolNote()+'\n'+chatContext('zulu');
     // Proposal outcomes (applied/failed/dismissed/undone) reach the model, or it re-proposes a card
     // that already resolved every turn regardless of what the user actually asked next.
     const msgs = chatHistoryMsgs(S.chat, 16);
-    const {text, actions} = await callClaudeWithTools(msgs, system, coachToolDefs('zulu'), 4000, {route:'chat:zulu'});
-    const msg = {role:'assistant', content:text || (actions.length?'Here\u2019s what I\u2019d change \u2014 review and apply below:':'')};
-    if(actions.length) msg.proposals = coachStageProposals(actions.slice(0, CHAT_CARDS_MAX + 1), 'zulu');
+    // The read tools and every action card, through the same loop as the specialists: a call only stages a
+    // card, and the model hears what became of it before it writes the reply. It used to be one round,
+    // written before any check ran (2026-10-10: "Hip Thrust Machine set to 2 sets now as well", above a
+    // refused card).
+    const staged = [], refused = [];
+    const zopts = {route:'chat:zulu', fuelTools:true, actions:{defs:coachToolDefs('zulu'), onCall:chatActionHandler('zulu', staged, refused)}};
+    const {text} = await callClaudeWithData(msgs, system, 4000, zopts);
+    // S is read after the await, so a pull during the reply cannot strand it on an old copy.
+    const msg = {role:'assistant', content:text || (staged.length ? 'Here\u2019s what I\u2019d change \u2014 review and apply below:' : '\u2014')};
+    if(staged.length) msg.proposals = staged;
+    if(refused.length) msg.refused = refused;
     S.chat.push(msg); save(); agThinkingFor = null; renderCoach();
   }catch(e){
     agThinkingFor = null;
@@ -9480,7 +9491,97 @@ function loadLiveDraft(){
 function saveLiveDraft(){ if(live) localStorage.setItem(LIVE_KEY, JSON.stringify(live)); }
 function clearLiveDraft(){ localStorage.removeItem(LIVE_KEY); }
 
+/* Every LIVE prescription goes through here, so a today-only change from chat (S.todayAdjust, adjust_today)
+   reaches the session at start, a rebuild mid-session, Today's key lifts and the agents' TODAY line alike. */
 function buildOneLiveExercise(nm, homeEquipList, opts){
+  const ex = buildOneLiveExerciseBase(nm, homeEquipList, opts);
+  try{ todayAdjApply(ex); }catch(e){}
+  return ex;
+}
+function todayAdjFor(nm){
+  const a = S.todayAdjust;
+  if(!a || a.date !== todayKey() || !a.lifts || !nm) return null;
+  return a.lifts[nm] || null;
+}
+function todayAdjApply(ex){
+  const a = ex && todayAdjFor(ex.name); if(!a) return ex;
+  const bits = [];
+  if(a.sets >= 1 && a.sets <= 5 && a.sets !== ex.planned){ bits.push(a.sets+' set'+(a.sets === 1 ? '' : 's')); ex.planned = a.sets; }
+  if(a.w > 0 && +a.w !== +ex.targetW){
+    const from = ex.targetW;
+    ex.targetW = +a.w; ex.advW = +a.w;
+    if(ex.backoffW) ex.backoffW = backoffWeightFor(ex.name, +a.w);
+    ex.recTarget = a.w+' lb \u00d7 '+ex.lo+'\u2013'+ex.hi+' (today only)';
+    // Recorded as what was prescribed, so the engine log and the prescription record agree with the screen.
+    ex._decision = {code:'chat-today', from:(ex._decision && ex._decision.from != null ? ex._decision.from : null), to:+a.w, moved:true,
+      reason:'Changed for today from chat: '+a.w+' lb'+(from !== '' && from != null ? ' (the plan said '+from+' lb)' : '')+'.'};
+    bits.push(a.w+' lb');
+  }
+  if(!bits.length) return ex;
+  ex._todayAdj = true;
+  ex.recDetail = 'Today only: '+bits.join(', ')+', changed from chat. '+(ex.recDetail || '');
+  ex.advMsg = ex.recDetail;
+  return ex;
+}
+/* A today-only change made while a session runs: rebuild the lifts not started yet, the way liveCallToggle()
+   does. A lift with a logged set is never rewritten. */
+function liveTodayAdjRebuild(){
+  if(!live || live.date !== todayKey()) return;
+  const c = liveEffectiveCall(), sets = liveSlotSets(live.day);
+  live.exercises = live.exercises.map(function(ex){
+    if((ex.sets && ex.sets.length) || ex._swapped || ex.done) return ex;
+    const nb = buildOneLiveExercise(ex.name, ex._homeEquipList, {call:c, sets:sets[ex.name]});
+    if(ex._coachNote){ nb._coachNote = ex._coachNote; nb.recDetail = 'Coach: '+ex._coachNote+'. '+(nb.recDetail||''); nb.advMsg = nb.recDetail; }
+    return nb;
+  });
+  saveLiveDraft();
+  try{ renderLive(); }catch(e){}
+}
+/* The lifts a session on this day would hold: today's coach plan or the day's split, swapped for home
+   equipment on a HOME day. LIVE's start and the agents' TODAY line both read it, so they cannot list
+   different lifts. */
+function liveSessionNames(dk){
+  const plan = coachDayPlanFor(dk);
+  let names = plan ? plan.exercises.slice() : dayExNames(dk);
+  const homeEquipByName = {};
+  if(homeActiveToday()){
+    const mapped = [];
+    names.forEach(nm=>{
+      if(homeSkipFor(nm)) return; // omitted from a HOME session, shorter workout not a forced substitute
+      const sub = homeSubFor(nm);
+      if(sub && sub.name){
+        mapped.push(sub.name);
+        homeEquipByName[sub.name] = (homeEquipInit()[sub.equip==='kb'?'kettlebells':'dumbbells']) || [];
+      } else {
+        mapped.push(nm); // unchanged, already home-compatible (barbell/rack/bench work)
+      }
+    });
+    names = mapped;
+  }
+  return {names:names, homeEquipByName:homeEquipByName, plan:plan};
+}
+/* Today's session as something a chat card can change: the one running, else the one LIVE would start.
+   {why} when there is none (a rest day, or today already logged). */
+function todaySessionNames(){
+  const t = todayKey();
+  if(live && live.date === t){
+    return {dk:live.day, live:true, names:live.exercises.map(function(e){ return e.name; }), homeEquipByName:{},
+            started:live.exercises.filter(function(e){ return (e.sets && e.sets.length) || e.done; }).map(function(e){ return e.name; })};
+  }
+  if((S.logs || []).some(function(l){ return l && l.date === t; })) return {why:'Today\u2019s session is already logged.'};
+  const dk = currentDayKey();
+  if(!dk || dk === 'REST') return {why:'Today is a rest day, so there is no session to change (set_today_workout can put one on today first).'};
+  const ln = liveSessionNames(dk);
+  return {dk:dk, live:false, names:ln.names, homeEquipByName:ln.homeEquipByName, started:[]};
+}
+/* What LIVE gives (or would give) for one lift today, before any today-only change. */
+function todayBaseFor(ts, nm){
+  if(ts.live) return live.exercises.find(function(e){ return e.name === nm; }) || null;
+  let dc = null;
+  try{ if(!deloadActive()) dc = dayCall(todayKey(), ts.dk); }catch(e){ dc = null; }
+  return buildOneLiveExerciseBase(nm, ts.homeEquipByName[nm], {call:dc ? dc.call : undefined, sets:liveSlotSets(ts.dk)[nm]});
+}
+function buildOneLiveExerciseBase(nm, homeEquipList, opts){
   const o = opts || {};
   // With today's call, the call sets the tier recommend() reads. Without one (nothing passed),
   // the check-in's tier, as it always was.
@@ -9574,23 +9675,7 @@ function buildOneLiveExercise(nm, homeEquipList, opts){
 function buildLiveExercises(dk, call){
   clearExpiredCoachDayPlan();
   const _slotSets = liveSlotSets(dk);
-  const plan = coachDayPlanFor(dk);
-  let names = plan ? plan.exercises.slice() : dayExNames(dk);
-  const homeEquipByName = {};
-  if(homeActiveToday()){
-    const mapped = [];
-    names.forEach(nm=>{
-      if(homeSkipFor(nm)) return; // omitted from a HOME session, shorter workout not a forced substitute
-      const sub = homeSubFor(nm);
-      if(sub && sub.name){
-        mapped.push(sub.name);
-        homeEquipByName[sub.name] = (homeEquipInit()[sub.equip==='kb'?'kettlebells':'dumbbells']) || [];
-      } else {
-        mapped.push(nm); // unchanged, already home-compatible (barbell/rack/bench work)
-      }
-    });
-    names = mapped;
-  }
+  const _ln = liveSessionNames(dk), plan = _ln.plan, names = _ln.names, homeEquipByName = _ln.homeEquipByName;
   const built = names.map(nm=>buildOneLiveExercise(nm, homeEquipByName[nm], {call:call, sets:_slotSets[nm]}));
   // A coach note that came with a today-only plan ("reduce 15-20 lb, RPE 6-7") belongs in the
   // advice line. It used to arrive as part of the exercise name.
@@ -10598,6 +10683,9 @@ function endLiveSession(){
   if(Array.isArray(live.removed) && live.removed.length) logRec.removed = live.removed.slice();
   if(live.callToggledAt && logRec.call) logRec.call.toggledAt = +live.callToggledAt;
   if(live.skippedCheckIn) logRec.skippedCheckIn = true;
+  // Lifts a chat card changed for today only (adjust_today): their numbers were his call, not the engine's.
+  const _ta = live.exercises.filter(function(e){ return e && e._todayAdj && (e.sets || []).length; }).map(function(e){ return e.name; });
+  if(_ta.length) logRec.todayAdj = _ta;
   // V4 stage 4: the quick adjustments he made, without the undo bookkeeping.
   if(Array.isArray(live.quick) && live.quick.length)
     logRec.quick = live.quick.map(function(q){ return {k:q.k, at:q.at, lifts:(q.lifts || []).slice()}; });
@@ -13992,19 +14080,22 @@ function clearExpiredCoachDayPlan(){
    (chatUndo*), and only while nothing else has changed what they changed. */
 const CHAT_LANES = {
   delta:['add_exercise_permanent','remove_exercise_permanent','swap_exercise_permanent','set_today_workout','start_deload','end_deload',
-         'set_lift_weight','set_sets','set_lift_mode','start_experiment','remember_note'],
+         'set_lift_weight','set_sets','adjust_today','set_lift_mode','start_experiment','remember_note'],
   echo:['adjust_fuel','set_food_stock','set_food_pref','add_food','set_workout_time','start_experiment','remember_note'],
   charlie:['set_week_schedule','set_cycle_pattern','resize_block_segment','rename_exercise','set_home_today','remember_note']
 };
 const CHAT_ALL = ['add_exercise_permanent','remove_exercise_permanent','swap_exercise_permanent','set_today_workout','adjust_fuel','start_deload',
   'remember_note','end_deload','set_lift_weight','set_sets','set_lift_mode','start_experiment','set_food_stock','set_food_pref','add_food',
-  'set_workout_time','set_week_schedule','set_cycle_pattern','resize_block_segment','rename_exercise','set_home_today'];
+  'set_workout_time','set_week_schedule','set_cycle_pattern','resize_block_segment','rename_exercise','set_home_today','adjust_today'];
 const CHAT_CARDS_MAX = 3;
 function chatActionsFor(agent){ return (!agent || agent === 'zulu') ? CHAT_ALL : (CHAT_LANES[agent] || []); }
 /* The tool schema advertised to the model, only the agent's own actions. Kept short: every chat
    request carries these. */
 function coachToolDefs(agent){
   const dayList = Object.keys(S.split).join(', ');
+  // set_sets also reaches a strength block's own days while one runs; the permanent-split tools do not.
+  const blk = activeSplitObj();
+  const setDays = dayList + (blk !== S.split ? '; while the strength block runs also '+Object.keys(blk).join(', ') : '');
   const ex = function(d){ return {type:'string', description:d || 'Exercise name'}; };
   const all = [
     {name:'add_exercise_permanent', description:'Permanently add an exercise to a training day in the split (applies to all future sessions on that day).',
@@ -14044,8 +14135,11 @@ function coachToolDefs(agent){
     {name:'end_deload', description:'End the deload in force early.', input_schema:{type:'object', properties:{}}},
     {name:'set_lift_weight', description:'Set the weight LIVE prescribes for a lift next. It holds for '+RESET_HOLD_SESSIONS+' sessions, then the engine takes over. At most two increments over his last top set.',
       input_schema:{type:'object', properties:{exercise:ex(), weight:{type:'number', description:'lb'}}, required:['exercise','weight']}},
-    {name:'set_sets', description:'Change the working sets (2-5) for a lift on a day, permanent split or the strength block in force.',
-      input_schema:{type:'object', properties:{exercise:ex(), sets:{type:'number'}, day:{type:'string', description:'Day key; needed only if the lift is on more than one day'}}, required:['exercise','sets']}},
+    {name:'set_sets', description:'PERMANENT: change the working sets (2-5) for one or more lifts on a day of the split, every time that day comes round. Not for one session and not for a deload: that is adjust_today. Put every lift he named in ONE call.',
+      input_schema:{type:'object', properties:{changes:{type:'array', items:{type:'object', properties:{exercise:ex(), sets:{type:'number'},
+        day:{type:'string', description:'Day key ('+setDays+'); needed only if the lift is on more than one day'}}, required:['exercise','sets']}}}, required:['changes']}},
+    {name:'adjust_today', description:'TODAY ONLY: change the sets (1-5) and/or the weight LIVE gives for lifts in today\u2019s session (in a session already running, for lifts not started yet). Works on any lift, including one under a reset, an Investigation flag or an experiment. Never touches the split and is gone tomorrow. Weight at most two increments over his last top set. Put every lift he named in ONE call.',
+      input_schema:{type:'object', properties:{changes:{type:'array', items:{type:'object', properties:{exercise:ex(), sets:{type:'number'}, weight:{type:'number', description:'lb'}}, required:['exercise']}}}, required:['changes']}},
     {name:'set_lift_mode', description:'Turn strength mode (3-6 reps), Form Focus or MAXED (machine has no heavier setting) on or off for a lift. Give only the ones to change.',
       input_schema:{type:'object', properties:{exercise:ex(), strength:{type:'boolean'}, form_focus:{type:'boolean'}, maxed:{type:'boolean'}}, required:['exercise']}},
     {name:'start_experiment', description:'Start one of the app\'s fixed experiments. The app measures it.',
@@ -14098,8 +14192,30 @@ function coachDescribeAction(name, inp){
       return {verb:'End the deload', scope:'Recovery', detail:'Stop the deload now; normal loads from your next session.'};
     case 'set_lift_weight':
       return {verb:'Set next weight', scope:'Lifts \u00b7 '+inp.exercise, detail:inp.exercise+' \u2192 '+inp.weight+' lb next session. It holds for '+RESET_HOLD_SESSIONS+' sessions, then the engine takes over.'};
-    case 'set_sets':
-      return {verb:'Change sets', scope:'Lifts \u00b7 '+inp.day, detail:inp.exercise+' on '+inp.day+': '+(inp.from||'?')+' \u2192 '+inp.sets+' working sets.'};
+    case 'set_sets':{
+      // Says PERMANENT in words: on 2026-10-10 three "for today's deload" changes went into his D3 for good.
+      const ch = Array.isArray(inp.changes) ? inp.changes : [inp];
+      const days = ch.map(function(c){ return c && c.day; }).filter(function(d, i, a){ return d && a.indexOf(d) === i; });
+      const per = ch.map(function(c){ return (c && c.exercise || '?')+' '+((c && c.from) || '?')+' \u2192 '+(c && c.sets); }).join(', ');
+      const less = ch.some(function(c){ return c && c.from && c.sets < c.from; });
+      const left = (inp.skipped || []).map(function(x){ return x.exercise+' ('+x.why+')'; }).join('; ');
+      return {verb:'Change sets (permanent)', scope:'Permanent \u00b7 '+(days.join(', ') || '?'),
+        detail:'Every '+(days.join(' and ') || 'session')+' from now on: '+per+'.'+
+          (less && deloadActive() ? ' The deload already runs 2 light sets a lift by itself, so this is for after it.' : '')+
+          (left ? ' Left out: '+left+'.' : '')};
+    }
+    case 'adjust_today':{
+      const ch = Array.isArray(inp.changes) ? inp.changes : [];
+      const per = ch.map(function(c){
+        const b = [];
+        if(c.sets != null) b.push((c.fromSets != null ? c.fromSets+' \u2192 ' : '')+c.sets+' set'+(c.sets === 1 ? '' : 's'));
+        if(c.weight != null) b.push((c.fromW ? c.fromW+' \u2192 ' : '')+c.weight+' lb');
+        return (c.exercise || '?')+' '+b.join(', ');
+      }).join('; ');
+      const left = (inp.skipped || []).map(function(x){ return x.exercise+' ('+x.why+')'; }).join('; ');
+      return {verb:'Today only', scope:'Today'+(inp.day ? ' \u00b7 '+inp.day : ''),
+        detail:'Just today\u2019s session: '+(per || 'nothing')+'. Your split is untouched, and it is gone tomorrow.'+(left ? ' Left out: '+left+'.' : '')};
+    }
     case 'set_lift_mode':{
       const bits = [];
       if(inp.strength !== undefined) bits.push('strength mode '+(inp.strength ? 'on' : 'off'));
@@ -14159,29 +14275,91 @@ function coachValidateAction(name, inp, agent){
     return {ok:true, inp:{exercise:r.fx.payload.name, weight:r.fx.payload.w}};
   }
   if(name==='set_sets'){
-    const nm = agResolveExName(inp.exercise);
-    if(!nm) return {ok:false, error:'\u201c'+String(inp.exercise||'').slice(0,40)+'\u201d is not a lift you train.'};
-    const n = Math.round(+inp.sets || 0);
-    if(!(n >= 2 && n <= 5)) return {ok:false, error:'Sets go from 2 to 5.'};
-    // The days it is on in the split in force (a strength block's S1-S3 while one runs), else the permanent split.
-    const src = activeSplitObj();
-    const onDays = function(o){ return Object.keys(o||{}).filter(function(dk){ return ((o[dk]||{}).exercises||[]).some(function(x){ return exName(x) === nm; }); }); };
-    let days = onDays(src); if(!days.length && src !== S.split) days = onDays(S.split);
-    if(!days.length) return {ok:false, error:nm+' is not on any day of your split.'};
-    const day = inp.day ? String(inp.day) : (days.length === 1 ? days[0] : '');
-    if(!day) return {ok:false, error:nm+' is on '+days.join(' and ')+'; say which day.'};
-    if(days.indexOf(day) < 0) return {ok:false, error:nm+' is not on '+day+'.'};
-    const block = !S.split[day] || (src !== S.split && src[day]);
-    const slot = ((block ? src : S.split)[day].exercises || []).find(function(x){ return exName(x) === nm; });
-    const cur = (slot && typeof slot === 'object' && slot.sets) ? slot.sets : 3;
-    if(cur === n) return {ok:false, error:nm+' already has '+n+' sets on '+day+'.'};
-    // The queue's own rules: the permanent split through agValidateFix, a block day through the same cross-review.
-    if(!block){ const r = viaFix({type:'setCount', payload:{exercise:nm, day:day, sets:n}}); if(!r.ok) return r; }
-    else {
-      const c = agConflict({type:'setCount', payload:{exercise:nm, day:day, sets:n}});
-      if(c) return {ok:false, error:c};
-    }
-    return {ok:true, inp:{exercise:nm, day:day, sets:n, from:cur, block:!!block}};
+    // One card for every lift he named (2026-10-10: "all five to 2 sets" became four cards and a silent
+    // fifth). Each lift is checked on its own; one that fails is listed on the card as left out, never dropped.
+    const one = function(c){
+      c = c || {};
+      const nm = agResolveExName(c.exercise);
+      if(!nm) return {ok:false, error:'\u201c'+String(c.exercise||'').slice(0,40)+'\u201d is not a lift you train.'};
+      const n = Math.round(+c.sets || 0);
+      if(!(n >= 2 && n <= 5)) return {ok:false, error:'Sets go from 2 to 5.'};
+      // The days it is on in the split in force (a strength block's S1-S3 while one runs), else the permanent split.
+      const src = activeSplitObj();
+      const onDays = function(o){ return Object.keys(o||{}).filter(function(dk){ return ((o[dk]||{}).exercises||[]).some(function(x){ return exName(x) === nm; }); }); };
+      let days = onDays(src); if(!days.length && src !== S.split) days = onDays(S.split);
+      if(!days.length) return {ok:false, error:nm+' is not on any day of your split.'};
+      // On two days and no day named: the day the rest of this request names, else today's. The card says
+      // which day, so a wrong guess is visible before he taps.
+      const day = c.day ? String(c.day) : (days.length === 1 ? days[0] : (days.indexOf(hintDay) >= 0 ? hintDay : ''));
+      if(!day) return {ok:false, error:nm+' is on '+days.join(' and ')+'; say which day.'};
+      if(days.indexOf(day) < 0) return {ok:false, error:nm+' is not on '+day+'.'};
+      const block = !S.split[day] || (src !== S.split && src[day]);
+      const slot = ((block ? src : S.split)[day].exercises || []).find(function(x){ return exName(x) === nm; });
+      const cur = (slot && typeof slot === 'object' && slot.sets) ? slot.sets : 3;
+      if(cur === n) return {ok:false, error:nm+' already has '+n+' sets on '+day+'.'};
+      // The queue's own rules: the permanent split through agValidateFix, a block day through the same cross-review.
+      if(!block){ const r = viaFix({type:'setCount', payload:{exercise:nm, day:day, sets:n}}); if(!r.ok) return r; }
+      else {
+        const cf = agConflict({type:'setCount', payload:{exercise:nm, day:day, sets:n}});
+        if(cf) return {ok:false, error:cf};
+      }
+      return {ok:true, item:{exercise:nm, day:day, sets:n, from:cur, block:!!block}};
+    };
+    const raw = (Array.isArray(inp.changes) && inp.changes.length) ? inp.changes : [{exercise:inp.exercise, sets:inp.sets, day:inp.day}];
+    const named = raw.map(function(c){ return c && c.day ? String(c.day) : ''; }).filter(function(d, i, a){ return d && a.indexOf(d) === i; });
+    let hintDay = named.length === 1 ? named[0] : '';
+    if(!hintDay){ try{ hintDay = currentDayKey(); }catch(e){ hintDay = ''; } }
+    const changes = [], skipped = Array.isArray(inp.skipped) ? inp.skipped.slice(0, 12) : [];
+    raw.slice(0, 12).forEach(function(c){
+      const r = one(c);
+      if(!r.ok){ skipped.push({exercise:String((c && c.exercise) || '?').slice(0, 40), why:chatWhyShort(c && c.exercise, r.error)}); return; }
+      if(changes.some(function(x){ return x.exercise === r.item.exercise && x.day === r.item.day; })) return;
+      changes.push(r.item);
+    });
+    if(!changes.length) return {ok:false, error:skipped.map(function(x){ return x.exercise+': '+x.why; }).join('; ')+'.'};
+    return {ok:true, inp:{changes:changes, skipped:skipped}};
+  }
+  if(name==='adjust_today'){
+    // Today only, so it may override a reset, an Investigation flag or an experiment (his call, 2026-10-10):
+    // those protect the PROGRAM, and this never touches it. The session is marked, so nothing that judges a
+    // lift reads its numbers as the engine's. The weight keeps the queue's ceiling.
+    const ts = todaySessionNames();
+    if(ts.why) return {ok:false, error:ts.why};
+    const pick = function(raw){
+      const want = invNormName(exSplitNote(String(raw||'')).name);
+      return ts.names.find(function(n){ return n === raw; }) || ts.names.find(function(n){ return invNormName(n) === want; }) || null;
+    };
+    const changes = [], skipped = Array.isArray(inp.skipped) ? inp.skipped.slice(0, 12) : [];
+    const skip = function(c, why){ skipped.push({exercise:String((c && c.exercise) || '?').slice(0, 40), why:why}); };
+    (Array.isArray(inp.changes) ? inp.changes : []).slice(0, 12).forEach(function(c){
+      c = c || {};
+      const nm = pick(c.exercise);
+      if(!nm) return skip(c, 'not in today\u2019s session ('+(ts.dk || 'today')+')');
+      if(ts.started.indexOf(nm) >= 0) return skip(c, 'already started in LIVE; change it there');
+      if(changes.some(function(x){ return x.exercise === nm; })) return;
+      const base = todayBaseFor(ts, nm);
+      const item = {exercise:nm};
+      if(c.sets != null){
+        const n = Math.round(+c.sets || 0);
+        if(!(n >= 1 && n <= 5)) return skip(c, 'sets go from 1 to 5 for one session');
+        if(!base || n !== +base.planned){ item.sets = n; if(base) item.fromSets = +base.planned; }
+      }
+      if(c.weight != null){
+        let w = +c.weight;
+        if(!(w > 0)) return skip(c, 'no weight given');
+        w = agSnapWeight(nm, w);
+        const ceil = agResetCeiling(nm);
+        // No logged weight means no ceiling to measure against, and a model's guess (a 900 lb curl) would
+        // otherwise go straight to the rack. The weight box in LIVE is the place for a first number.
+        if(!(ceil.max < Infinity)) return skip(c, 'no logged weight on it yet to measure a change from; type it in LIVE');
+        if(w > ceil.max) return skip(c, w+' lb is too heavy: '+ceil.why);
+        if(!base || w !== +base.targetW){ item.weight = w; if(base && +base.targetW > 0) item.fromW = +base.targetW; }
+      }
+      if(item.sets == null && item.weight == null) return skip(c, 'that is already what LIVE gives today');
+      changes.push(item);
+    });
+    if(!changes.length) return {ok:false, error:(skipped.length ? skipped.map(function(x){ return x.exercise+': '+x.why; }).join('; ') : 'No lifts to change')+'.'};
+    return {ok:true, inp:{changes:changes, skipped:skipped, day:ts.dk}};
   }
   if(name==='set_lift_mode'){
     const nm = agResolveExName(inp.exercise);
@@ -14402,14 +14580,35 @@ function coachExecuteAction(name, inp, agent){
     return inp.exercise+' \u2192 '+inp.weight+' lb next session.';
   }
   if(name==='set_sets'){
-    const src = inp.block ? activeSplitObj() : S.split;
-    const list = (src[inp.day] || {}).exercises || [];
-    const i = list.findIndex(function(x){ return exName(x) === inp.exercise; });
-    if(i < 0) throw new Error(inp.exercise+' is no longer on '+inp.day);
-    if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:slotInc(list[i])};
-    list[i].sets = inp.sets;
+    const ch = Array.isArray(inp.changes) ? inp.changes : [inp];
+    ch.forEach(function(c){
+      const src = c.block ? activeSplitObj() : S.split;
+      const list = (src[c.day] || {}).exercises || [];
+      const i = list.findIndex(function(x){ return exName(x) === c.exercise; });
+      if(i < 0) throw new Error(c.exercise+' is no longer on '+c.day);
+      if(typeof list[i] !== 'object') list[i] = {name:list[i], inc:slotInc(list[i])};
+      list[i].sets = c.sets;
+    });
     save();
-    return inp.exercise+' on '+inp.day+': '+inp.sets+' sets.';
+    return ch.length === 1 ? ch[0].exercise+' on '+ch[0].day+': '+ch[0].sets+' sets.'
+      : ch.map(function(c){ return c.exercise+' on '+c.day+': '+c.sets; }).join(', ')+' sets.';
+  }
+  if(name==='adjust_today'){
+    const t = todayKey();
+    const a = (S.todayAdjust && S.todayAdjust.date === t && S.todayAdjust.lifts) ? S.todayAdjust : {date:t, lifts:{}};
+    inp.changes.forEach(function(c){
+      const cur = Object.assign({}, a.lifts[c.exercise] || {});
+      if(c.sets != null) cur.sets = c.sets;
+      if(c.weight != null) cur.w = c.weight;
+      a.lifts[c.exercise] = cur;
+    });
+    a.by = agent || 'zulu'; a.at = Date.now();
+    S.todayAdjust = a;
+    save();
+    liveTodayAdjRebuild();
+    return 'Today only: '+inp.changes.map(function(c){
+      return c.exercise+(c.sets != null ? ' '+c.sets+' set'+(c.sets === 1 ? '' : 's') : '')+(c.weight != null ? ' at '+c.weight+' lb' : '');
+    }).join(', ')+'.';
   }
   if(name==='set_lift_mode'){
     const patch = {};
@@ -14725,7 +14924,7 @@ const CHAT_UNDO_KEYS = {add_exercise_permanent:['split'], remove_exercise_perman
   set_today_workout:['coachDayPlan','overrideDay'], adjust_fuel:['fuel','targetHist'], start_deload:['deload'], end_deload:['deload','meso'],
   remember_note:['coachMem'], set_lift_weight:['invest'], set_sets:['split','meso'], set_lift_mode:['split','meso'], start_experiment:['experiments'],
   set_food_stock:['fuel'], set_food_pref:['fuel'], add_food:['fuel'], set_workout_time:['fuel'], set_week_schedule:['schedule'],
-  set_cycle_pattern:['cycleSchedule'], resize_block_segment:['meso'], set_home_today:['homeToday']};
+  set_cycle_pattern:['cycleSchedule'], resize_block_segment:['meso'], set_home_today:['homeToday'], adjust_today:['todayAdjust']};
 const CHAT_UNDO_KEY = 'ironhub:chatundo', CHAT_UNDO_MAX = 12;
 /* Kept on this device only: an undo is a choice made on the screen in front of him, and the snapshots
    would otherwise ride along on every sync. Only today's are kept. */
@@ -14773,6 +14972,8 @@ function coachUndoProposal(pid){
   }
   e.keys.forEach(function(k){ if(e.before[k] === null || e.before[k] === undefined) delete S[k]; else S[k] = JSON.parse(e.before[k]); });
   delete st[pid]; chatUndoSave(st);
+  // A today-only change also lives in a session already running: rebuild its lifts not started yet.
+  if(e.keys.indexOf('todayAdjust') >= 0){ try{ liveTodayAdjRebuild(); }catch(_){} }
   p.status = 'undone';
   try{ agLog(p.agent || 'zulu', 'You undid \u201c'+p.desc.verb+'\u201d.'); }catch(_){}
   save(); setAccent(); renderCoach();
@@ -14826,6 +15027,9 @@ function chatHistoryMsgs(list, n){
         return '[Action \u201c'+p.desc.verb+'\u201d is still pending user confirmation]';
       }).join(' ');
       content = (content||'') + '\n' + notes;
+    }
+    if(m.refused && m.refused.length){
+      content = (content||'') + '\n' + m.refused.map(function(r){ return '[Not proposed: '+r.what+' \u2014 '+r.why+']'; }).join(' ');
     }
     return {role:m.role, content:content || '\u2014'};
   });
@@ -20451,6 +20655,162 @@ function agContext(){
       pendingTxt+
     '\n\nPROPOSALS HE HAS ALREADY REJECTED (do not repeat these): '+recentRejects+'\n';
 }
+/* ---- the chats: one context, one set of rules, one card handler (2026-10-10) ----
+   On 2026-10-10 ZULU asked him which day it was, did not know a deload already runs 2 sets, put three
+   "for today" changes into his D3 for good, and told him a refused card had gone through. ZULU's chat
+   had only his profile and logs, no lookups, and wrote its reply before any check ran. Every chat now gets
+   the same picture (agContext, the summary, TODAY) and the same loop, which tells the model what became of
+   each card before it answers. */
+function chatContext(id){
+  const part = function(f){ try{ return f() || ''; }catch(e){ return ''; } };
+  return part(coachMemContext)+part(trainingContext)+part(agContext)+
+    ((id === 'delta' || id === 'echo' || id === 'zulu') ? part(intelSummary) : '')+
+    part(function(){ return agTrackLine(id); })+part(function(){ return qaContextLine(id); })+
+    part(function(){ return agTodayContext(id); });
+}
+function chatActionRules(id){
+  const mine = chatActionsFor(id || 'zulu');
+  const has = function(n){ return mine.indexOf(n) >= 0; };
+  return 'CHANGING THINGS: each action tool shows him a card, and nothing changes until he taps Apply. Use them when he asks for a '+
+    'change, or agrees to one you suggested; for questions and advice, just answer. At most '+CHAT_CARDS_MAX+' cards a reply, so when '+
+    'he wants the same kind of change on several lifts, put them all in ONE call'+(has('set_sets') ? ' (set_sets and adjust_today take a list)' : '')+'. '+
+    (has('adjust_today') ? 'TODAY versus PERMANENT: anything about today\u2019s session only (fewer sets, lighter, short on time, a tweak during '+
+      'a deload) is adjust_today, which works on any lift, locked or not, and never touches the split. set_sets, set_lift_mode and the '+
+      'add/remove/swap tools change every future session of that day: use them only when he wants a lasting change, and say it is permanent. ' : '')+
+    'Read TODAY below before asking him anything: never ask what day it is, which split is in force or what LIVE will give him, because it '+
+    'is stated there. Use day keys exactly as listed. If a tool says a change was not proposed, or a card left a lift out, tell him what and '+
+    'why in one line, and never say a change was made that was not.';
+}
+/* A reason without the lift's name in front of it, for a line that already names the lift. */
+function chatWhyShort(nm, why){
+  let w = String(why || '').replace(/\.$/, '');
+  const r = agResolveExName(nm) || String(nm || '');
+  if(r && w.indexOf(r+' ') === 0) w = w.slice(r.length + 1);
+  return w;
+}
+/* What to call a request in the "Not changed" line under a reply. */
+function chatActionWhat(name, inp){
+  const i = inp || {};
+  const lifts = Array.isArray(i.changes) ? i.changes.map(function(c){ return c && c.exercise; }).filter(Boolean) : [];
+  const subj = i.exercise || lifts.join(', ') || i.food || (Array.isArray(i.foods) ? i.foods.join(', ') : '') || i.from || '';
+  let verb = name;
+  try{ verb = coachDescribeAction(name, i).verb || name; }catch(e){}
+  return String(verb)+(subj ? ' ('+String(subj).slice(0, 80)+')' : '');
+}
+/* The one onCall every chat hands callClaudeWithData(): a call only ever stages a card; a refusal is told to
+   the model AND kept for the reply, where he sees it as a line. */
+function chatActionHandler(id, staged, refused){
+  const mine = chatActionsFor(id || 'zulu');
+  return function(name, inp){
+    if(staged.length >= CHAT_CARDS_MAX){
+      refused.push({what:chatActionWhat(name, inp), why:'more than '+CHAT_CARDS_MAX+' changes in one reply; ask again for this one'});
+      return 'Not proposed: at most '+CHAT_CARDS_MAX+' cards a reply. Put several lifts in one call next time, and tell him this one needs asking again.';
+    }
+    const pr = coachStageProposals([{name:name, input:inp}], id)[0];
+    if(!pr.valid){
+      refused.push({what:chatActionWhat(name, inp), why:String(pr.error || 'not allowed').replace(/\.$/, '')});
+      const hint = (mine.indexOf('adjust_today') >= 0 && /^(set_sets|set_lift_weight|set_lift_mode)$/.test(name))
+        ? ' For today\u2019s session only, adjust_today works on any lift.' : '';
+      return 'Not proposed: '+String(pr.error || 'not allowed').replace(/\.?$/, '.')+hint+' Tell him why in one line; nothing changed.';
+    }
+    staged.push(pr);
+    const left = (pr.input && pr.input.skipped) || [];
+    return 'Shown to him as a card: '+pr.desc.verb+' \u2014 '+pr.desc.detail+
+      (left.length ? ' The card leaves out '+left.map(function(x){ return x.exercise; }).join(', ')+'; tell him which and why.' : '')+
+      ' Nothing changes until he taps Apply; say it is waiting for his tap.';
+  };
+}
+/* What the app knows about TODAY, stated outright (2026-10-10). The rotation and its anchor were in the
+   prompt, but working "today" out from them was left to the model, and ZULU asked him instead. Every line
+   is the app's own read (currentDayKey, mesoCurrentWeek, deloadWindow, the same buildOneLiveExercise LIVE
+   uses), each guarded on its own, and nothing here writes. */
+function agTodayLiftText(ex){
+  if(!ex) return '';
+  const w = +ex.targetW > 0 ? ex.targetW+' lb' : (isBodyweight(ex.name) ? 'bodyweight' : 'no weight yet');
+  const tags = [];
+  if(ex._deload) tags.push('deload');
+  if(ex._todayAdj) tags.push('changed for today');
+  if(ex._decision && ex._decision.code === 'inv-override') tags.push('reset');
+  return ex.name+': '+w+' \u00d7 '+ex.lo+'\u2013'+ex.hi+', '+ex.planned+' set'+(ex.planned === 1 ? '' : 's')+(tags.length ? ' ('+tags.join(', ')+')' : '');
+}
+function agTodayContext(id){
+  const t = todayKey(), L = [];
+  const mine = chatActionsFor(id || 'zulu');
+  const line = function(f){ try{ const x = f(); if(x) L.push(x); }catch(e){} };
+  line(function(){
+    const dk = currentDayKey(), sched = scheduledDayFor(t);
+    return 'Date: '+fmtDate(t)+' ('+t+'). '+(dk === 'REST' ? 'Scheduled: a rest day.'
+      : 'Today is '+dk+' \u2014 '+(dayName(dk) || dk)+(sched && dk !== sched ? ' (moved to today; the schedule said '+sched+')' : '')+'.');
+  });
+  line(function(){
+    const w = mesoCurrentWeek(); if(!w) return '';
+    return 'Plan: '+(w.name || w.type)+', day '+(daysBetween(w.startKey, t) + 1)+' of '+(daysBetween(w.startKey, w.endKey) + 1)+
+      ' ('+fmtDate(w.startKey)+' to '+fmtDate(w.endKey)+').';
+  });
+  line(function(){
+    const dw = deloadWindow(); if(!dw) return '';
+    return 'Deload in force through '+fmtDate(dw.until)+'. LIVE already gives EVERY lift 2 light sets at about 60% of its working weight by '+
+      'itself; nothing needs changing to get that, and the split\u2019s own set counts come back after it.';
+  });
+  line(function(){
+    const src = activeSplitObj(), perm = Object.keys(S.split).join(', ');
+    return src === S.split ? 'Split in force: the permanent split ('+perm+').'
+      : 'Split in force: the strength block\u2019s own days ('+Object.keys(src).join(', ')+'); '+perm+' is the permanent split, back after the block.';
+  });
+  line(function(){
+    if(live && live.date === t){
+      return 'Session in progress ('+live.day+'): '+live.exercises.map(function(ex){
+        return agTodayLiftText(ex)+(ex.sets && ex.sets.length ? ' \u2014 '+ex.sets.length+' logged'+(ex.done ? ', done' : '') : '');
+      }).join('; ')+'.';
+    }
+    const done = (S.logs || []).filter(function(l){ return l && l.date === t; });
+    if(done.length) return 'Already logged today: '+done.map(function(l){
+      return l.day+' ('+(l.entries || []).map(function(e){ return e.exercise; }).join(', ')+')';
+    }).join('; ')+'.';
+    const ts = todaySessionNames();
+    if(ts.why) return '';
+    let dc = null;
+    try{ if(!deloadActive()) dc = dayCall(t, ts.dk); }catch(e){ dc = null; }
+    const sl = liveSlotSets(ts.dk);
+    return 'LIVE will give him today ('+ts.dk+'): '+ts.names.map(function(nm){
+      return agTodayLiftText(buildOneLiveExercise(nm, ts.homeEquipByName[nm], {call:dc ? dc.call : undefined, sets:sl[nm]}));
+    }).join('; ')+'.';
+  });
+  line(function(){
+    const p = S.coachDayPlan;
+    return (p && p.date === t) ? 'A today-only workout is set: '+p.day+' with '+(p.exercises || []).join(', ')+'.' : '';
+  });
+  line(function(){
+    const names = [];
+    [activeSplitObj(), S.split].forEach(function(o){
+      Object.keys(o || {}).forEach(function(dk){ ((o[dk] || {}).exercises || []).forEach(function(x){ const n = exName(x); if(n && names.indexOf(n) < 0) names.push(n); }); });
+    });
+    const flagged = invActiveFlags().map(function(f){ return f.key; });
+    const sharp = painRecent(14).filter(function(p){ return p.level >= 3; }).map(function(p){ return invNormName(p.exercise); });
+    const locks = [];
+    names.forEach(function(nm){
+      const why = [];
+      const ov = invOverrideFor(nm);
+      if(ov){ const st = invOverrideState(nm, ov); why.push('reset to '+ov.w+' lb'+(st && st.left ? ' for '+st.left+' more session'+(st.left === 1 ? '' : 's') : '')); }
+      if(flagged.indexOf('lift:'+nm) >= 0) why.push('Investigation flag open');
+      if(agExpOn(nm)) why.push('experiment running');
+      if(sharp.indexOf(invNormName(nm)) >= 0) why.push('flagged sharp');
+      if(isMaxed(nm)) why.push('MAXED');
+      if(why.length) locks.push(nm+' ('+why.join(', ')+')');
+    });
+    if(!locks.length) return '';
+    return 'Locks: '+locks.join('; ')+'. A reset, an open Investigation flag, an experiment or a sharp flag blocks PERMANENT set and '+
+      'weight changes on that lift'+(mine.indexOf('adjust_today') >= 0 ? '; a today-only change (adjust_today) is allowed on any lift' : '')+
+      '. MAXED means the machine has no heavier setting.';
+  });
+  line(function(){
+    const out = [];
+    for(let i = 1; i <= 5; i++){ const k = mesoAddDays(t, i), d = scheduledDayFor(k); out.push(homeShortDate(k)+' '+(d === 'REST' ? 'rest' : d)); }
+    return 'Next days: '+out.join(', ')+'.';
+  });
+  if(!L.length) return '';
+  return '\nTODAY (the app\u2019s own read, right now; trust it over working it out from the schedule):\n- '+L.join('\n- ')+'\n';
+}
 function agSharedBrief(){
   return 'You are the agent team inside Iron Hub, a training app built by and for Mark (18, lean bulking, '+
     'trains 5\u20136x/week, interested in a federal law-enforcement career). Four agents:\n'+
@@ -21195,28 +21555,19 @@ async function agSendChat(id){
     const sys = agSharedBrief()+
       '\nYou are '+AGENTS[id].name+'. Answer only within your own domain ('+AGENTS[id].role+'). '+
       'If the question belongs to another agent, say which one and give a short answer anyway if you can. '+
-      'You can make changes in your own area with your action tools. Each one shows him a card, and nothing changes '+
-      'until he taps Apply. Use them when he asks for a change, or when he agrees to one you suggested; for questions '+
-      'and advice, just answer. At most '+CHAT_CARDS_MAX+' cards a reply. If a tool says a change was not proposed, '+
-      'tell him why in plain words and never say it was made. Anything outside your area belongs to another agent: say which.'+
-      agToolNote()+(isEcho ? agFuelToolNote() : '')+'\n'+
-      coachMemContext()+trainingContext()+agContext()+qaContextLine(id);
+      'Anything outside your area belongs to another agent: say which. '+chatActionRules(id)+
+      agToolNote()+(isEcho ? agFuelToolNote() : '')+'\n'+chatContext(id);
     const msgs = chatHistoryMsgs(a.chats[id], 14);
     // Read tools, plus this agent's own action cards (coachToolDefs(id)). A card is only staged here; it is
     // checked again and applied only when he taps Apply.
-    const staged = [];
-    const opts = {route:'chat:'+id, actions:{defs:coachToolDefs(id), onCall:function(name, inp){
-      if(staged.length >= CHAT_CARDS_MAX) return 'Not proposed: at most '+CHAT_CARDS_MAX+' cards a reply.';
-      const pr = coachStageProposals([{name:name, input:inp}], id)[0];
-      if(!pr.valid) return 'Not proposed: '+pr.error+' Tell him why; nothing changed.';
-      staged.push(pr);
-      return 'Shown to him as a card: '+pr.desc.verb+' \u2014 '+pr.desc.detail+' Nothing changes until he taps Apply; say it is waiting for his tap.';
-    }}};
+    const staged = [], refused = [];
+    const opts = {route:'chat:'+id, actions:{defs:coachToolDefs(id), onCall:chatActionHandler(id, staged, refused)}};
     if(isEcho) opts.fuelTools = true;
     const {text} = await callClaudeWithData(msgs, sys, 4000, opts);
     // re-resolve: a sync pull during the await may have replaced S (see note in agRunAll)
     const reply = {role:'assistant', content:text||(staged.length ? 'Here\u2019s what I\u2019d change \u2014 review and apply below:' : '\u2014')};
     if(staged.length) reply.proposals = staged;
+    if(refused.length) reply.refused = refused;
     agState().chats[id].push(reply);
     save(); agThinkingFor = null; renderOps();
   }catch(e){
@@ -21686,7 +22037,14 @@ function todayPlanShape(dk){
     const names = (cp && Array.isArray(cp.exercises) && cp.exercises.length) ? cp.exercises : dayExNames(dk);
     const sl = liveSlotSets(dk);
     o.lifts = names.length;
-    o.sets = names.reduce(function(t, nm){ return t + (+sl[nm] || 3); }, 0);
+    // A deload runs 2 light sets a lift (deloadExercise()), whatever the split says, and a today-only change wins
+    // over both. It used to count the split's sets through a deload.
+    const _dl = deloadActive();
+    o.sets = names.reduce(function(t, nm){
+      const a = todayAdjFor(nm);
+      if(a && a.sets) return t + a.sets;
+      return t + (_dl ? 2 : (+sl[nm] || 3));
+    }, 0);
     const d = densityByDay()[dk] || [];
     if(d.length >= DENSITY_MIN){
       const m = d.map(function(x){ return x.mins; }).sort(function(a, b){ return a - b; });
@@ -22322,6 +22680,11 @@ function agChatHTML(){
     if(m.content) h += '<div class="msg '+(m.role==='user'?'me':'ai')+(isNew?' ag-new':'')+'">'+body+'</div>';
     if(m.proposals && m.proposals.length){
       h += '<div class="cprop-wrap'+(isNew?' ag-new':'')+'">'+m.proposals.map(p=>coachProposalHTML(p)).join('')+'</div>';
+    }
+    if(m.refused && m.refused.length){
+      h += '<div class="cprop-refused">'+m.refused.map(function(r){
+        return '<span><b>Not changed:</b> '+esc(r.what)+' \u2014 '+esc(r.why)+'</span>';
+      }).join('')+'</div>';
     }
   });
   if(agThinkingFor === id){

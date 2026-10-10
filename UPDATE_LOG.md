@@ -84,6 +84,12 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
   - **ZULU** can do all of it.
 - **Every card is checked twice**, when the agent suggests it and again when you tap Apply, with the same rules as the nightly requests. A weight can't jump more than two steps over your last top set, nothing gets added next to a fresh injury flag, and a food you said no to never gets stocked.
 - **Undo**: an applied card shows an Undo button for the rest of the day on that device. It won't undo if you've changed the same thing since, so it can't erase your newer edit. Renaming a lift can't be undone from chat, and its card says so.
+- **The agents know what today is.** Every agent's chat is told the day, where you are in your plan, whether a deload is on (and that it already gives 2 light sets), exactly what Live will give you lift by lift, and which lifts are locked and why. No more "which day is today?".
+- **ZULU sees what the others see**, can look up your history, and hears whether each card was accepted before it replies, so it can't tell you something changed when it didn't.
+- **Today-only changes**: ask for fewer sets or a lighter weight "just today" and you get a card that changes today's session only, even on a lift under a reset or an Investigation flag. Your split is untouched and it's gone tomorrow. It works mid-session too, for lifts you haven't started.
+- **One card for several lifts**: "D3: Leg Press, Leg Extension, Abductor 3 → 2" is one tap and one Undo. Permanent changes now say so ("Every D3 from now on"), and anything left out is listed on the card with the reason.
+- **Refused requests are shown**: a line under the reply says what wasn't changed and why.
+- Today's plan line counts the sets you'll really do during a deload (2 a lift).
 - **Track records**: each agent's past suggestions are scored from your real training afterwards, so you can see how often their advice held up.
 - **Plateau diagnosis**: when a lift stalls, DELTA gives its own read on why and what to try first.
 - **One question a week**: an agent may ask you something it can't tell from your data. Tap an answer, add a note if you want, or skip. It remembers your answer for 90 days. It never changes anything on its own.

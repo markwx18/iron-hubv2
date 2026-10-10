@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3461 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3508 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -282,7 +282,7 @@ so the two orders can no longer disagree.
 | Agent questions | `qaDue()`, `qaTurn()` / `qaOfferTo()` (`QA_ORDER`), `qaSpecLine()`, `agValidateQuestion()` / `qaSimilar()`, `qaIngest()`, `qaOpen()`, `qaAnswer()` / `qaSkip()` / `qaUndo()`, `qaContextLine()`, `qaCardHTML()`, `qaHubHTML()`, `S.agents.questions` |
 | Track records & diagnosis | `agOutcome()`, `agTrack()` / `agTrackText()` / `agTrackLine()`, `hubTrackHTML()`; `pdTargets()`, `pdContextLine()` / `pdSpecLine()`, `agValidateDiagnosis()`, `pdReadHTML()`, `S.agents.diagnoses` |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()` (the Hub: `hubFed()`, `hubStatus()`, `hubMapHTML()`, `hubAgentHTML()`, `hubSpendHTML()`), `coachValidateAction()` |
-| Chat actions | `CHAT_LANES` / `CHAT_ALL` / `chatActionsFor()`, `coachToolDefs(agent)`, `coachValidateAction(name, inp, agent)`, `coachExecuteAction()`, `coachStageProposals()`, `coachFindProposal()`, `coachApplyProposal()`, undo `coachUndoProposal()` / `chatUndoStore()` / `CHAT_UNDO_KEYS`, `chatHistoryMsgs()` |
+| Chat actions | `CHAT_LANES` / `CHAT_ALL` / `chatActionsFor()`, `coachToolDefs(agent)`, `coachValidateAction(name, inp, agent)`, `coachExecuteAction()`, `coachStageProposals()`, `coachFindProposal()`, `coachApplyProposal()`, undo `coachUndoProposal()` / `chatUndoStore()` / `CHAT_UNDO_KEYS`, `chatHistoryMsgs()`; every chat's context and loop `chatContext()`, `agTodayContext()`, `chatActionRules()`, `chatActionHandler()` (`refused`); today-only `S.todayAdjust`, `todayAdjFor()` / `todayAdjApply()`, `liveTodayAdjRebuild()`, `todaySessionNames()` / `liveSessionNames()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network; the cap: `spendLedgerSync()` (`S.spend`), `spendMonth()`, `spendBlock()`, `spendPreflight()`, `spendManualOk()`, `spendCap()` |
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
@@ -320,17 +320,17 @@ for a cache nothing reads.
 
 Agents have **read-only data tools** (`agDataToolDefs()`, executed by `agRunDataTool()`,
 looped by `callClaudeWithData()`): `list_lifts`, `get_lift_history`, `get_e1rm_series`,
-`get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`. ECHO alone also gets
+`get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`. ECHO also gets
 `get_fuel_planner` and `plan_fuel_combos` (`fpToolDefs()`, through `opts.fuelTools`), in its
-nightly check and its chat. Both are reads, and the second runs the tab's own `fpCombos()`.
+nightly check and its chat, and so does ZULU's chat, which can change the pantry. Both are reads, and the second runs the tab's own `fpCombos()`.
 There is no write tool and there must never be one: a tool call never changes state by itself.
 **The chats propose action cards** (Mark's call on 2026-10-06, replacing ECHO's queue-only
 `propose_fuel_food` from 2026-09-28). He asked for all four agents to be able to act from chat,
 with every card needing his tap:
-- **Each agent proposes only in its own area** (`CHAT_LANES`; ZULU has `CHAT_ALL`, 21 actions).
+- **Each agent proposes only in its own area** (`CHAT_LANES`; ZULU has `CHAT_ALL`, 22 actions).
   `coachToolDefs(agent)` offers only those, and `coachValidateAction(name, inp, agent)` refuses
   anything else first, so a tool another agent owns is not even a tool it has.
-  - DELTA: the split, today's workout, deloads, a lift's next weight, sets, modes, experiments, notes.
+  - DELTA: the split, today's workout and today's session, deloads, a lift's next weight, sets, modes, experiments, notes.
   - ECHO: fuel targets, stock, likes, a new food, workout time, experiments, notes.
   - CHARLIE: the schedule or cycle order (never the anchor), the segment length, renames, home day,
     notes.
@@ -351,6 +351,40 @@ with every card needing his tap:
   says so.
 - Applied and undone cards leave a line in the agent's feed, and `chatHistoryMsgs()` tells the model
   what became of each card. Changes from chat are not proposals, so track records do not score them.
+
+**Every chat knows today, and is not finicky** (his report and ask, 2026-10-10). In a real chat ZULU asked
+him which day it was, did not know a deload already runs 2 sets, put three "for today's deload" changes into
+his D3 for good, said "Hip Thrust Machine set to 2 sets now as well" above a refused card, and turned "all
+five" into four cards with no word about the fifth. ZULU's chat had only his profile and logs, no lookups,
+and wrote its reply in one round before any check ran.
+- **One context for every chat** (`chatContext(id)`): memory, `trainingContext()`, `agContext()`, the
+  computed summary (not CHARLIE, as at night), the track line, his answers, and **TODAY**
+  (`agTodayContext(id)`). TODAY states the day key and name, the plan segment and its day, the deload and
+  that LIVE already gives 2 light sets, the split in force, what LIVE will give lift by lift (through the
+  same `buildOneLiveExercise()`), what is logged or running, the locks per lift, and the next 5 days. Each
+  line is guarded and nothing in it writes. It is chat-only, so night prompts are byte-identical.
+- **One loop and one handler** (`chatActionHandler()`): ZULU's chat now uses `callClaudeWithData()` like the
+  others, with lookups and the pantry tools. A call only stages a card. A refusal is told to the model
+  ("Not proposed: …", plus "adjust_today works on any lift" where that applies) and kept on the reply as
+  `refused`, shown as a "Not changed:" line under it, escaped, and fed back by `chatHistoryMsgs()`. Past
+  `CHAT_CARDS_MAX` the rest is refused out loud, never dropped. `chatActionRules(id)` is the shared wording.
+- **`set_sets` is one card for every lift named**, and says **permanent** ("Every D3 from now on: …"),
+  adding during a deload that the deload already runs 2 light sets. A lift that fails is listed on the card
+  as left out, with its reason. A lift on two days with no day named takes the day the rest of the request
+  names, else today's, else asks. One Undo covers the card.
+- **`adjust_today` changes today only** (`S.todayAdjust {date, lifts:{name:{sets, w}}}`), DELTA and ZULU.
+  It **overrides resets, Investigation flags and experiments** (his call): those protect the program, and
+  this never touches it. Sets 1-5. Weight keeps the queue's ceiling (`agResetCeiling()`), and a lift with no
+  logged weight takes none (a model's guess would go to the rack; the box in LIVE is the place). Lifts must
+  be in today's session (`todaySessionNames()`), not started in LIVE, on a day that is not rest or already
+  logged.
+  - It reaches LIVE in one place: `buildOneLiveExercise()` wraps `buildOneLiveExerciseBase()` with
+    `todayAdjApply()`, so the start, `liveTodayAdjRebuild()` mid-session (and on Undo), Today's key lifts
+    and plan line, and TODAY all agree. A changed weight records decision `chat-today`.
+  - The log carries `todayAdj` (lifts changed and trained), and `sessionMods().todayAdj` makes
+    `sessionModLift()` read them as shaped, so predictions and experiments leave them out.
+- **Permanent changes keep every rule.** A reset or an open Investigation flag still blocks a permanent
+  set change (his call: keep it); the refusal points at `adjust_today` for today.
 
 Do not add a tool that writes without his tap. The loop is bounded by
 `AI_TOOL_ROUNDS` (6, or 2 for mid-workout DELTA) with results capped at `AI_TOOL_MAXCHARS`,
@@ -1156,7 +1190,8 @@ carries `rm:1`. The log carries:
 - `skippedCheckIn`.
 
 **`sessionMods(log)` is the one reader of all of it**, and `sessionModLift(m, name)` asks "was this
-lift's number shaped by something other than the engine?". `predInterrupted()` and `expExcluded()`
+lift's number shaped by something other than the engine?". Since 2026-10-10 that includes a lift the chat
+changed for today (`todayAdj`). `predInterrupted()` and `expExcluded()`
 are written on it (no change for existing logs). Investigation's trend and its auto-resolve use
 `e1rmSeries(nm, {excludeHome, excludeMod})`, so kept recover days, resets, coach plans, swaps and
 1RM tests no longer read as a decline. `recommend()` / `classifyDecision()` do NOT read it yet:

@@ -1197,6 +1197,10 @@ setTimeout(async () => {
   ev("S.settings.apiKey = 'sk-test'");
   ev("window.__realCall3 = callClaudeWithTools;");
   ev("callClaudeWithTools = async () => ({text:'ack from agent', actions:[]});");
+  // Since 2026-10-10 ZULU's chat goes through callClaudeWithData() like the other three (lookups, and the
+  // card check-back), so every chat's stub sits on that seam.
+  ev("window.__realData4 = callClaudeWithData;");
+  ev("callClaudeWithData = async () => ({text:'ack from agent', toolsUsed:0});");
 
   // every agent's rendered composer must match the ID its send handler reads
   for (const who of ['zulu', 'charlie', 'delta', 'echo']) {
@@ -1217,10 +1221,7 @@ setTimeout(async () => {
      'chat=' + JSON.stringify(ev('S.chat')));
   ok('ZULU assistant reply was recorded', ev("S.chat.some(m=>m.role==='assistant' && /ack from agent/.test(m.content||''))"));
 
-  // a non-lead agent through its own handler. agSendChat routes through the read-only tool
-  // loop now (it can look history up), so the stub has to sit on that seam.
-  ev("window.__realData4 = callClaudeWithData;");
-  ev("callClaudeWithData = async () => ({text:'ack from agent', toolsUsed:0});");
+  // a non-lead agent through its own handler, on the same stubbed seam.
   ev("agSelectChat('delta'); renderOps();");
   ev("agState().chats.delta = [];");
   ev("document.getElementById('agChatIn').value = 'delta ping';");
@@ -13217,7 +13218,7 @@ setTimeout(async () => {
        ctx.indexOf('asked ' + JSON.stringify(good.q) + ': he answered "Sometimes" and wrote "only on S1 days".') >= 0, ctx);
     ok('context: ECHO is not handed DELTA’s answer; ZULU gets every one', ev("qaContextLine('echo')") === '' && /DELTA asked/.test(ev("qaContextLine('zulu')")));
     ok('context: it rides the agents’ base context, and the chat', ev("agBaseContext('delta')").indexOf('WHAT HE TOLD YOU') >= 0 && ev("agBaseContext('zulu')").indexOf('WHAT HE TOLD YOU') >= 0 &&
-       /qaContextLine\(id\)/.test(ev("agSendChat.toString()")));
+       ev("chatContext('delta')").indexOf('WHAT HE TOLD YOU') >= 0 && /chatContext\(id\)/.test(ev("agSendChat.toString()")));
     // --- undo, skip, and the day after ---
     ev("document.querySelector('#home .qa-card .btn').click();");
     ok('undo: Change opens it again the same day', ev("qaOpen() && qaOpen().id") === qid && ev("qaContextLine('delta')") === '');
@@ -13636,14 +13637,20 @@ setTimeout(async () => {
     ok('weight: a lift he does not train is refused', /not a lift you train/.test(cv('set_lift_weight', {exercise: 'Trap Bar Deadlift', weight: 200}, 'delta').error || ''));
     const cur = ev("exSlotSets('D2', 'Lat Pulldown')");
     const ss = cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1}, 'delta');
-    ok('sets: a change on a lift on one day finds the day', ss.ok && ss.inp.day === 'D2' && ss.inp.from === cur && ss.inp.sets === cur + 1 && ss.inp.block === false, JSON.stringify(ss));
+    const ss0 = ss.ok && ss.inp.changes && ss.inp.changes[0];
+    ok('sets: a change on a lift on one day finds the day', !!ss0 && ss.inp.changes.length === 1 && ss0.day === 'D2' && ss0.from === cur && ss0.sets === cur + 1 && ss0.block === false, JSON.stringify(ss));
+    ok('sets: a refusal names the lift', /^Lat Pulldown: /.test(cv('set_sets', {exercise: 'Lat Pulldown', sets: 9}, 'delta').error || ''));
     ok('sets: out of range, or no change, is refused', cv('set_sets', {exercise: 'Lat Pulldown', sets: 9}, 'delta').ok === false && /already/.test(cv('set_sets', {exercise: 'Lat Pulldown', sets: cur}, 'delta').error || ''));
     ev("invState().overrides['Lat Pulldown'] = invResetRecord(150, 10, 'Agent');");
     ok('sets: the cross-review rules apply (no set change on a lift under a reset)', /under a reset/.test(cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1}, 'delta').error || ''));
-    ev("invState().overrides = {}; S.split.D5.exercises.push('Lat Pulldown');");
-    ok('sets: a lift on two days asks which', /say which day/.test(cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1}, 'delta').error || '') &&
+    // On two days and no day named, today's day decides when it is one of them (2026-10-10); otherwise it asks.
+    ev("invState().overrides = {}; S.split.D5.exercises.push('Lat Pulldown'); S.overrideDay = {date:todayKey(), day:'D1'};");
+    ok('sets: a lift on two days, neither of them today, asks which', /say which day/.test(cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1}, 'delta').error || '') &&
        cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1, day: 'D5'}, 'delta').ok === true);
-    ev("S.split.D5.exercises.pop();");
+    ev("S.overrideDay = {date:todayKey(), day:'D5'};");
+    ok('sets: on two days and today is one of them, it takes today', (cv('set_sets', {exercise: 'Lat Pulldown', sets: cur + 1}, 'delta').inp || {changes:[{}]}).changes[0].day === 'D5');
+    ok('sets: but a day named for another lift in the same request wins', (cv('set_sets', {changes: [{exercise: 'Preacher Curl Machine', sets: 2, day: 'D2'}, {exercise: 'Lat Pulldown', sets: cur + 1}]}, 'delta').inp || {changes:[{}, {}]}).changes[1].day === 'D2');
+    ev("S.split.D5.exercises.pop(); delete S.overrideDay;");
     const md = cv('set_lift_mode', {exercise: 'Preacher Curl Machine', maxed: true, strength: false}, 'delta');
     ok('mode: only what actually changes is kept', md.ok && md.inp.maxed === true && !('strength' in md.inp), JSON.stringify(md));
     ok('mode: nothing to change is refused', /already set/.test(cv('set_lift_mode', {exercise: 'Preacher Curl Machine', maxed: false}, 'delta').error || ''));
@@ -13779,6 +13786,165 @@ setTimeout(async () => {
        " if(window.__caAlert !== undefined){ window.alert = window.__caAlert; delete window.__caAlert; } agActiveChat = 'zulu'; localStorage.removeItem(CHAT_UNDO_KEY);");
     ev("var __t3 = document.getElementById('agChatIn'); if(__t3 && !__t3.closest('#ops')) __t3.remove();");
     ev('if(window.__caSaved){ S = JSON.parse(window.__caSaved); delete window.__caSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== THE AGENTS KNOW TODAY, AND ARE NOT FINICKY (2026-10-10) ===');
+  /* His report, from a real chat: ZULU asked him which day it was, did not know a deload already runs 2 sets, put
+     three "for today's deload" changes into his D3 for good, said "Hip Thrust Machine set to 2 sets now as well"
+     above a refused card, and turned "all five" into four cards. Every check here fails on the code that did that. */
+  try {
+    w.__awSaved = ev('JSON.stringify(S)');
+    ev("window.__awTK = todayKey; todayKey = function(){ return '2026-10-10'; }; window.__awAlert = window.alert; window.alert = function(){};");
+    ev("window.__awAi = aiRequest; live = null; clearLiveDraft(); localStorage.removeItem(CHAT_UNDO_KEY);");
+    ev("S.deload = null; S.pain = []; expState().active = null; invState().overrides = {}; invState().flags = []; mesoState().active = null; S.homeToday = null;" +
+       " delete S.todayAdjust; S.coachDayPlan = null; S.chat = []; agState().chats = {}; agState().log = []; S.readiness = [];" +
+       " S.overrideDay = {date:'2026-10-10', day:'D2'};");
+    ev("S.logs = [{id:'aw1', date:'2026-10-01', day:'D2', entries:[{exercise:'Lat Pulldown', sets:[{w:150, r:10, e:'solid'}, {w:150, r:9, e:'solid'}, {w:150, r:8, e:'solid'}]}," +
+       " {exercise:'Preacher Curl Machine', sets:[{w:60, r:10, e:'solid'}, {w:60, r:9, e:'solid'}, {w:60, r:9, e:'solid'}]}]}];");
+    const cv = (name, inp, who) => { w.__inp = inp; return JSON.parse(ev("JSON.stringify(coachValidateAction(" + JSON.stringify(name) + ", window.__inp, " + JSON.stringify(who) + "))")); };
+    const d2 = ev("dayExNames('D2')");
+    const curLat = ev("exSlotSets('D2', 'Lat Pulldown')"), curPre = ev("exSlotSets('D2', 'Preacher Curl Machine')");
+
+    // --- TODAY, stated outright ---
+    const before = ev('JSON.stringify(S)');
+    let ctx = ev("agTodayContext('zulu')");
+    ok('today: the day is stated, not left to be worked out', /Today is D2 \u2014 Back \+ Biceps/.test(ctx), ctx);
+    ok('today: every lift LIVE will give, with its weight and sets', d2.every(n => ctx.indexOf(n + ': ') >= 0) && /Lat Pulldown: \d+ lb \u00d7 \d+\u2013\d+, \d sets/.test(ctx), ctx);
+    ok('today: the next days come from the schedule', (ctx.match(/Next days: (.*)\./) || ['', ''])[1].split(', ').length === 5, ctx);
+    ok('today: building it writes nothing', ev('JSON.stringify(S)') === before);
+    ev("S.deload = {startedAt:'2026-10-10', until:'2026-10-16'};");
+    ctx = ev("agTodayContext('zulu')");
+    ok('today: a deload says LIVE already gives 2 light sets, and the lifts show it', /LIVE already gives EVERY lift 2 light sets/.test(ctx) && /Lat Pulldown: \d+ lb \u00d7 \d+\u2013\d+, 2 sets \(deload\)/.test(ctx), ctx);
+    ok('today: Today counts the sets the deload will really give', ev("todayPlanShape('D2').sets") === 2 * d2.length, String(ev("todayPlanShape('D2').sets")));
+    ev("S.deload = null; invState().overrides['Lat Pulldown'] = invResetRecord(155, 10, 'Agent');");
+    ctx = ev("agTodayContext('zulu')");
+    ok('today: a lock is named, with what it blocks and what it does not', /Lat Pulldown \(reset to 155 lb/.test(ctx) && /a today-only change \(adjust_today\) is allowed on any lift/.test(ctx), ctx);
+    ok('today: CHARLIE, who cannot change today, is not told about adjust_today', /Locks: /.test(ev("agTodayContext('charlie')")) && !/adjust_today/.test(ev("agTodayContext('charlie')")));
+    ev("S.logs.push({id:'aw2', date:'2026-10-10', day:'D2', entries:[{exercise:'Lat Pulldown', sets:[{w:150, r:10, e:'solid'}]}]});");
+    ok('today: a logged session says so instead of a plan', /Already logged today: D2 \(Lat Pulldown\)/.test(ev("agTodayContext('zulu')")));
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 'aw2'; });");
+    const zc = ev("chatContext('zulu')");
+    ok('today: ZULU\u2019s chat gets the same picture as the others: profile, schedule and flags, the summary, TODAY',
+       zc.indexOf(ev('trainingContext()').slice(0, 60)) >= 0 && zc.indexOf(ev('agContext()').slice(0, 60)) >= 0 && /INTELLIGENCE SUMMARY/.test(zc) && /TODAY \(the app/.test(zc));
+    ok('today: CHARLIE\u2019s chat leaves the computed summary out, as its nightly context does', !/INTELLIGENCE SUMMARY/.test(ev("chatContext('charlie')")) && /TODAY \(the app/.test(ev("chatContext('charlie')")));
+
+    // --- adjust_today: today only, any lift, the queue's weight ceiling ---
+    ev("invState().flags = [{key:'lift:Preacher Curl Machine', title:'Preacher Curl Machine declining', status:'active', level:'red'}];");
+    const at = cv('adjust_today', {changes: [{exercise: 'lat pulldown', sets: 1}, {exercise: 'Preacher Curl Machine', sets: 2}, {exercise: 'Barbell Bench Press', sets: 1}, {exercise: 'Hammer Curl', weight: 40}]}, 'delta');
+    ok('today-only: allowed on a lift under a reset and one under an Investigation flag', at.ok && at.inp.changes.map(c => c.exercise).join() === 'Lat Pulldown,Preacher Curl Machine', JSON.stringify(at));
+    ok('today-only: a lift not in today\u2019s session, or with no logged weight to measure from, is left out and says why',
+       /not in today\u2019s session \(D2\)/.test(JSON.stringify(at.inp.skipped)) && /no logged weight on it yet/.test(JSON.stringify(at.inp.skipped)), JSON.stringify(at.inp && at.inp.skipped));
+    ok('today-only: the weight keeps the queue\u2019s ceiling (two steps over the last top set)', /too heavy/.test(cv('adjust_today', {changes: [{exercise: 'Preacher Curl Machine', weight: 900}]}, 'delta').error || '') &&
+       cv('adjust_today', {changes: [{exercise: 'Preacher Curl Machine', weight: 65}]}, 'delta').ok === true);
+    ok('today-only: one set is allowed for one session, six is not', cv('adjust_today', {changes: [{exercise: 'Lat Pulldown', sets: 6}]}, 'delta').ok === false);
+    ok('today-only: not CHARLIE\u2019s or ECHO\u2019s', cv('adjust_today', {changes: [{exercise: 'Lat Pulldown', sets: 1}]}, 'charlie').ok === false && cv('adjust_today', {changes: [{exercise: 'Lat Pulldown', sets: 1}]}, 'echo').ok === false);
+    ev("S.overrideDay = {date:'2026-10-10', day:'REST'};");
+    ok('today-only: a rest day has no session to change', /rest day/.test(cv('adjust_today', {changes: [{exercise: 'Lat Pulldown', sets: 1}]}, 'delta').error || ''));
+    ev("S.overrideDay = {date:'2026-10-10', day:'D2'};");
+    const stage = (who, name, inp) => { w.__inp = inp; return ev("(function(){ var p = coachStageProposals([{name:" + JSON.stringify(name) + ", input:window.__inp}], " + JSON.stringify(who) + ")[0];" +
+      " var list = (agState().chats[" + JSON.stringify(who) + "] = agState().chats[" + JSON.stringify(who) + "] || []);" +
+      " list.push({role:'assistant', content:'ok', proposals:[p]}); return p.id; })()"); };
+    const prop = pid => JSON.parse(ev("JSON.stringify(coachFindProposal(" + JSON.stringify(pid) + ").p)"));
+    const splitBefore = ev('JSON.stringify(S.split)');
+    const q1 = stage('delta', 'adjust_today', {changes: [{exercise: 'Lat Pulldown', sets: 1, weight: 140}]});
+    ok('today-only: the card says it is today only and the split is untouched', /^Today only/.test(prop(q1).desc.verb) && /Your split is untouched, and it is gone tomorrow/.test(prop(q1).desc.detail), JSON.stringify(prop(q1).desc));
+    ev("coachApplyProposal(" + JSON.stringify(q1) + ")");
+    const ex1 = JSON.parse(ev("JSON.stringify(buildOneLiveExercise('Lat Pulldown', null, {}))"));
+    ok('today-only: LIVE gives what the card said, overriding the reset for today', ex1.planned === 1 && ex1.targetW === 140 && ex1._todayAdj === true && ex1._decision.code === 'chat-today', JSON.stringify([ex1.planned, ex1.targetW, ex1._decision]));
+    ok('today-only: the split is exactly as it was', ev('JSON.stringify(S.split)') === splitBefore);
+    ok('today-only: TODAY and Today\u2019s plan line both show it', /Lat Pulldown: 140 lb \u00d7 \d+\u2013\d+, 1 set \(changed for today\)/.test(ev("agTodayContext('delta')")) &&
+       ev("todayPlanShape('D2').sets") === d2.reduce((s, n) => s + (n === 'Lat Pulldown' ? 1 : (ev("exSlotSets('D2', " + JSON.stringify(n) + ")") || 3)), 0));
+    ev("todayKey = function(){ return '2026-10-11'; };");
+    ok('today-only: gone tomorrow', JSON.parse(ev("JSON.stringify(buildOneLiveExercise('Lat Pulldown', null, {}))")).planned !== 1);
+    ev("todayKey = function(){ return '2026-10-10'; };");
+    ok('today-only: one Undo puts it back', ev("coachUndoProposal(" + JSON.stringify(q1) + ")") === true && JSON.parse(ev("JSON.stringify(buildOneLiveExercise('Lat Pulldown', null, {}))")).planned !== 1);
+    ev("S.deload = {startedAt:'2026-10-10', until:'2026-10-16'};");
+    const q2 = stage('delta', 'adjust_today', {changes: [{exercise: 'Preacher Curl Machine', sets: 1}]});
+    ev("coachApplyProposal(" + JSON.stringify(q2) + ")");
+    const ex2 = JSON.parse(ev("JSON.stringify(buildOneLiveExercise('Preacher Curl Machine', null, {}))"));
+    ok('today-only: during a deload it trims the deload\u2019s 2 sets and stays a deload set', ex2._deload === true && ex2.planned === 1, JSON.stringify([ex2._deload, ex2.planned]));
+    ev("S.deload = null; delete S.todayAdjust;");
+    // --- in a session already running: only lifts not started change, and Undo puts them back ---
+    ev("_startLiveNow('D2')");
+    ev("(function(){ var e = live.exercises.find(function(x){ return x.name === 'Lat Pulldown'; }); e.sets.push({w:150, r:10, e:'solid', ts:Date.now()}); })()");
+    const preBefore = ev("live.exercises.find(function(x){ return x.name === 'Preacher Curl Machine'; }).planned");
+    ok('today-only: a lift already started in LIVE is left out, and says so', /already started in LIVE/.test(cv('adjust_today', {changes: [{exercise: 'Lat Pulldown', sets: 1}]}, 'delta').error || ''));
+    const q3 = stage('delta', 'adjust_today', {changes: [{exercise: 'Preacher Curl Machine', sets: 1}]});
+    ev("coachApplyProposal(" + JSON.stringify(q3) + ")");
+    ok('today-only: mid-session it changes the lift not started, and leaves the started one alone',
+       ev("live.exercises.find(function(x){ return x.name === 'Preacher Curl Machine'; }).planned") === 1 && ev("live.exercises.find(function(x){ return x.name === 'Lat Pulldown'; }).sets.length") === 1);
+    ev("(function(){ var e = live.exercises.find(function(x){ return x.name === 'Preacher Curl Machine'; }); e.sets.push({w:60, r:10, e:'solid', ts:Date.now()}); })()");
+    ev('endLiveSession()');
+    const lg = JSON.parse(ev("JSON.stringify(S.logs.filter(function(l){ return l.date === '2026-10-10'; }).slice(-1)[0])"));
+    // Lat Pulldown is under a reset in this fixture, so it reads as shaped for that reason; the check is which lifts the CHAT changed.
+    ok('today-only: the saved session says which lifts the chat changed, and they read as shaped', JSON.stringify(lg.todayAdj) === '["Preacher Curl Machine"]' &&
+       JSON.stringify(ev("sessionMods(" + JSON.stringify(lg) + ").todayAdj")) === '["Preacher Curl Machine"]' &&
+       ev("sessionModLift(sessionMods(" + JSON.stringify(lg) + "), 'Preacher Curl Machine')") === true, JSON.stringify(lg.todayAdj));
+    ev("live = null; clearLiveDraft(); S.logs = S.logs.filter(function(l){ return l.date !== '2026-10-10'; }); delete S.todayAdjust;");
+    ev("_startLiveNow('D2')");
+    const q4 = stage('delta', 'adjust_today', {changes: [{exercise: 'Preacher Curl Machine', sets: 1}]});
+    ev("coachApplyProposal(" + JSON.stringify(q4) + ")");
+    ok('today-only: Undo in a running session puts the lift back too', ev("coachUndoProposal(" + JSON.stringify(q4) + ")") === true && ev("live.exercises.find(function(x){ return x.name === 'Preacher Curl Machine'; }).planned") === preBefore);
+    ev("live = null; clearLiveDraft(); delete S.todayAdjust;");
+
+    // --- one permanent card for several lifts, saying it is permanent and what it left out ---
+    ev("S.deload = {startedAt:'2026-10-10', until:'2026-10-16'}; invState().flags = [];");
+    const ms = cv('set_sets', {changes: [{exercise: 'Lat Pulldown', sets: 2, day: 'D2'}, {exercise: 'Preacher Curl Machine', sets: 2, day: 'D2'}]}, 'zulu');
+    ok('multi: one card, the locked lift listed as left out with its reason', ms.ok && ms.inp.changes.length === 1 && ms.inp.changes[0].exercise === 'Preacher Curl Machine' &&
+       ms.inp.skipped.length === 1 && /Lat Pulldown/.test(ms.inp.skipped[0].exercise) && /under a reset/.test(ms.inp.skipped[0].why), JSON.stringify(ms));
+    ev("invState().overrides = {}; invState().flags = [];");
+    const p5 = stage('zulu', 'set_sets', {changes: [{exercise: 'Lat Pulldown', sets: 2}, {exercise: 'Preacher Curl Machine', sets: 2}]});
+    const d5 = prop(p5).desc;
+    ok('multi: the card says PERMANENT, every D2 from now on', d5.verb === 'Change sets (permanent)' && /^Every D2 from now on: Lat Pulldown \d \u2192 2, Preacher Curl Machine \d \u2192 2\./.test(d5.detail), JSON.stringify(d5));
+    ok('multi: during a deload it says the deload already runs 2 light sets', /The deload already runs 2 light sets a lift by itself, so this is for after it/.test(d5.detail));
+    ev("coachApplyProposal(" + JSON.stringify(p5) + ")");
+    ok('multi: one tap changes both', ev("exSlotSets('D2', 'Lat Pulldown')") === 2 && ev("exSlotSets('D2', 'Preacher Curl Machine')") === 2);
+    ok('multi: one Undo puts both back', ev("coachUndoProposal(" + JSON.stringify(p5) + ")") === true && ev("exSlotSets('D2', 'Lat Pulldown')") === curLat && ev("exSlotSets('D2', 'Preacher Curl Machine')") === curPre);
+    ev("S.deload = null;");
+    const idem = [['delta', 'adjust_today', {changes: [{exercise: 'Lat Pulldown', sets: 1, weight: 145}]}], ['zulu', 'set_sets', {changes: [{exercise: 'Lat Pulldown', sets: 4}, {exercise: 'Preacher Curl Machine', sets: 4}]}]];
+    ok('multi: what each card stores passes the same check again at the tap', idem.every(([who, n, inp]) => { const v1 = cv(n, inp, who); return v1.ok && cv(n, v1.inp, who).ok; }));
+
+    // --- the chat loop: ZULU hears what became of each card before it answers ---
+    ev("invState().overrides['Lat Pulldown'] = invResetRecord(155, 10, 'Agent');");
+    const script = (calls, swapS) => "window.__awN = 0; window.__awRes = []; window.__awSys = ''; window.__awTools = [];" +
+      " aiRequest = async function(m, sys, tools, mt, opts){ window.__awN++; window.__awSys = sys; window.__awTools = (tools || []).map(function(x){ return x.name; });" +
+      " if(window.__awN === 1){ " + (swapS ? 'S = JSON.parse(JSON.stringify(S)); ' : '') +
+      "return {content:" + JSON.stringify(calls) + ".map(function(c, i){ return {type:'tool_use', id:'tu'+i, name:c[0], input:c[1]}; }), stop_reason:'tool_use'}; }" +
+      " var last = m[m.length-1]; window.__awRes = (last.content || []).map(function(b){ return String(b.content); });" +
+      " return {content:[{type:'text', text:'Done.'}], stop_reason:'end_turn'}; };";
+    ev("var __t = document.getElementById('agChatIn'); if(!__t){ __t = document.createElement('textarea'); __t.id = 'agChatIn'; document.body.appendChild(__t); }");
+    const zsend = async (calls, swapS) => { ev(script(calls, swapS)); ev("document.getElementById('agChatIn').value = 'drop today to 2 sets';"); await ev('sendChat()'); };
+    await zsend([['set_lift_weight', {exercise: 'Lat Pulldown', weight: 300}], ['set_sets', {changes: [{exercise: 'Lat Pulldown', sets: 2}, {exercise: 'Preacher Curl Machine', sets: 2}]}]]);
+    const zm = JSON.parse(ev("JSON.stringify(S.chat.slice(-1)[0])"));
+    ok('loop: ZULU\u2019s chat is told TODAY and gets lookups, today-only and the pantry tools', /TODAY \(the app/.test(ev('window.__awSys')) &&
+       ['get_lift_history', 'adjust_today', 'get_fuel_planner'].every(n => ev('window.__awTools').indexOf(n) >= 0), JSON.stringify(ev('window.__awTools')));
+    ok('loop: ZULU hears a refusal before it replies, with the today-only way out', /^Not proposed: .*too heavy.*adjust_today works on any lift/.test(ev('window.__awRes[0]')), ev('window.__awRes[0]'));
+    ok('loop: the reason is whole and ends in a full stop before the hint', /over the 150 lb last used\. For today\u2019s session only/.test(ev('window.__awRes[0]')), ev('window.__awRes[0]'));
+    ok('loop: and hears what a card left out', /The card leaves out Lat Pulldown; tell him which and why/.test(ev('window.__awRes[1]')), ev('window.__awRes[1]'));
+    ok('loop: the reply carries the card and the refusal, and changes nothing yet', (zm.proposals || []).length === 1 && (zm.refused || []).length === 1 &&
+       /too heavy/.test(zm.refused[0].why) && ev("exSlotSets('D2', 'Preacher Curl Machine')") === curPre, JSON.stringify(zm));
+    ev("agSelectChat('zulu'); renderOps();");
+    ok('loop: the refusal shows under the reply as a line, never as an applied card', /<b>Not changed:<\/b> Set next weight \(Lat Pulldown\) \u2014 300 lb is too heavy/.test(ev("document.getElementById('agChatBox').innerHTML")));
+    ok('loop: and the next turn\u2019s history tells the model it was not proposed', /\[Not proposed: Set next weight \(Lat Pulldown\)/.test(ev("JSON.stringify(chatHistoryMsgs(S.chat, 4))")));
+    await zsend([['adjust_today', {changes: [{exercise: 'Preacher Curl Machine', sets: 1}]}], ['adjust_today', {changes: [{exercise: 'Lat Pulldown', sets: 1}]}],
+                 ['remember_note', {note: 'Prefers machines on deload weeks', tag: 'preference'}], ['remember_note', {note: 'Trains after school', tag: 'schedule'}]]);
+    const zm2 = JSON.parse(ev("JSON.stringify(S.chat.slice(-1)[0])"));
+    ok('loop: past three cards the rest is refused out loud, never dropped', (zm2.proposals || []).length === 3 && (zm2.refused || []).length === 1 && /more than 3 changes/.test(zm2.refused[0].why), JSON.stringify(zm2.refused));
+    await zsend([['adjust_today', {changes: [{exercise: 'Preacher Curl Machine', sets: 1}]}]], true);
+    ok('loop: a sync landing mid-reply does not lose ZULU\u2019s reply (S read after the await)', ((ev("JSON.stringify(S.chat.slice(-1)[0])") && JSON.parse(ev("JSON.stringify(S.chat.slice(-1)[0])")).proposals) || []).length === 1);
+    const mal = '<img src=x onerror=alert(1)>';
+    ev("S.chat.push({role:'assistant', content:'x', refused:[{what:" + JSON.stringify(mal) + ", why:" + JSON.stringify(mal) + "}]}); renderOps();");
+    // Checked on the DOM, not the markup string: a browser re-serialises an injected <img src=x> as <img src="x">,
+    // so a string search for the raw text passes whether or not it was escaped.
+    ok('loop: a refusal line is escaped', ev("document.querySelectorAll('#agChatBox .cprop-refused img').length") === 0 &&
+       ev("document.querySelector('#agChatBox .cprop-refused:last-of-type').textContent").indexOf('<img src=x onerror=alert(1)>') >= 0);
+  } catch (e) {
+    ok('agents know today section', false, e.stack);
+  } finally {
+    ev("if(window.__awAi){ aiRequest = window.__awAi; delete window.__awAi; } if(window.__awTK){ todayKey = window.__awTK; delete window.__awTK; }" +
+       " if(window.__awAlert !== undefined){ window.alert = window.__awAlert; delete window.__awAlert; } agActiveChat = 'zulu'; live = null; clearLiveDraft(); localStorage.removeItem(CHAT_UNDO_KEY);");
+    ev("var __t4 = document.getElementById('agChatIn'); if(__t4 && !__t4.closest('#ops')) __t4.remove();");
+    ev('if(window.__awSaved){ S = JSON.parse(window.__awSaved); delete window.__awSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
   console.log('=== WINTER ARC COUNTDOWN (2026-10-08) ===');
