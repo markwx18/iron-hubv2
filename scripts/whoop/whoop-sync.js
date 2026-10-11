@@ -393,6 +393,11 @@ function todaySections(r0, s0, c0, readAt) {
       performance: s0.score.sleep_performance_percentage,
       readAt,
     };
+    /* When the sleep ENDED. The app needs it because a time of day is not a wake time: on
+     * 2026-10-11 the 7:33 AM run read 57% / 6.29h, he went back to sleep, and WHOOP rescored the
+     * same night to 7.85h and ~65% -- but 7:33 is after AG_BRIEF_HOUR, so a clock-only check
+     * trusted it. A reading taken minutes after the sleep ended is the one that can still move. */
+    if (s0.end && isFinite(Date.parse(s0.end))) out.sleep.end = new Date(s0.end).toISOString();
   }
   if (c0 && c0.score) {
     out.strain = { date: dayOf(c0.start), score: c0.score.strain };

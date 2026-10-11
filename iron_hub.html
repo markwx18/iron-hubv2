@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-10-v4">
+<meta name="ironhub-build" content="2026-10-11-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -6293,6 +6293,8 @@ function applyWhoop(raw){
     out.sleep = {date:raw.sleep.date, hours: num(raw.sleep.hours, 0, 24),
                  performance: num(raw.sleep.performance, 0, 100)};
     const ra = readAtOf(raw.sleep); if(ra) out.sleep.readAt = ra;
+    // When that sleep ended (whoopProvisional()). Absent on files from before the relay wrote it.
+    if(stampOk(raw.sleep.end)) out.sleep.end = raw.sleep.end;
   }
   if(raw.strain && dateOk(raw.strain.date)){
     out.strain = {date:raw.strain.date, score: num(raw.strain.score, 0, 21)};
@@ -6356,12 +6358,22 @@ function whoopFresh(){
    as fresh everywhere else -- the status strip showing a 3 AM score is better than showing
    nothing, and the next pull corrects it. An unstamped reading is not provisional: there is
    nothing to say it was early, and treating it so would hold the brief on every old file. */
+/* A clock hour is not a wake time (2026-10-11): the 7:33 AM run read 57% / 6.29h, he went back
+   to sleep, and WHOOP rescored the same night to 7.85h / ~65%. 7:33 is past AG_BRIEF_HOUR, so
+   the clock-only rule trusted it and the brief and strip held the early number until 9 AM.
+   So a reading taken within WHOOP_SETTLE_MIN of the sleep's own end is provisional too: that is
+   the one WHOOP can still extend. The relay records sleep.end; a file without it is judged by
+   the clock alone, exactly as before. */
+const WHOOP_SETTLE_MIN = 45;
 function whoopProvisional(){
   if(!whoopFresh()) return false;
   const t = Date.parse(S.whoop.recovery.readAt || '');
   if(!isFinite(t)) return false;
   const start = new Date(); start.setHours(AG_BRIEF_HOUR, 0, 0, 0);
-  return t < start.getTime();
+  if(t < start.getTime()) return true;
+  const sl = S.whoop.sleep;
+  const end = sl && sl.date === todayKey() ? Date.parse(sl.end || '') : NaN;
+  return isFinite(end) && t - end < WHOOP_SETTLE_MIN * 60000;
 }
 
 /* ---- Asking the relay to run NOW, instead of waiting for a cron that mostly does not fire ----
@@ -23310,7 +23322,8 @@ function briefWhoopDetail(){
   if(w.date !== todayKey()) return 'the newest WHOOP recovery here is dated '+w.date+
     ' ('+w.score+'%), not today';
   if(whoopProvisional()) return 'WHOOP has today at '+w.score+'%, but read at '+
-    new Date(w.readAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})+', before the morning';
+    new Date(w.readAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})+
+    ', before the morning or right after the sleep ended, so it may still be rescored';
   return 'WHOOP has today at '+w.score+'%';
 }
 

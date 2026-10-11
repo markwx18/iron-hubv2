@@ -8436,6 +8436,29 @@ setTimeout(async () => {
     ev(w716);
     ok('app: the 7:16 AM re-read is not', ev('whoopProvisional()') === false);
 
+    // --- 2026-10-11: read at 7:33 AM (after AG_BRIEF_HOUR) minutes after the sleep ended, then he
+    //     went back to sleep and WHOOP rescored. The clock alone called that reading final. ---
+    const sleepEnd = (h, m) => "end:" + at(h, m) + ", ";
+    ev("delete S.whoop; applyWhoop({fetchedAt:" + at(7, 33) + ", recovery:{date:todayKey(), score:57, hrv:121, rhr:60, readAt:" + at(7, 33) + "}, " +
+       "sleep:{date:todayKey(), hours:6.29, performance:70, " + sleepEnd(7, 28) + "readAt:" + at(7, 33) + "}});");
+    ok('app: the sleep end is kept', ev('S.whoop.sleep.end') === atNode(7, 28), ev('S.whoop.sleep.end'));
+    ok('app: a 7:33 AM read, 5 minutes after the sleep ended, is provisional', ev('whoopProvisional()') === true);
+    ok('app: and still fresh, so the strip shows it meanwhile', ev('whoopFresh()') === true);
+    ev("delete S.whoop; applyWhoop({fetchedAt:" + at(9, 0) + ", recovery:{date:todayKey(), score:65, hrv:121, rhr:60, readAt:" + at(9, 0) + "}, " +
+       "sleep:{date:todayKey(), hours:7.9, performance:82, " + sleepEnd(8, 55) + "readAt:" + at(9, 0) + "}});");
+    ok('app: a read 5 minutes after a LATER end is still provisional', ev('whoopProvisional()') === true);
+    ev("delete S.whoop; applyWhoop({fetchedAt:" + at(9, 50) + ", recovery:{date:todayKey(), score:65, hrv:121, rhr:60, readAt:" + at(9, 50) + "}, " +
+       "sleep:{date:todayKey(), hours:7.9, performance:82, " + sleepEnd(8, 55) + "readAt:" + at(9, 50) + "}});");
+    ok('app: a read 55 minutes after the end has settled', ev('whoopProvisional()') === false);
+    ev("delete S.whoop; applyWhoop({fetchedAt:" + at(7, 33) + ", recovery:{date:todayKey(), score:57, readAt:" + at(7, 33) + "}, " +
+       "sleep:{date:todayKey(), hours:6.29, end:'not-a-date', readAt:" + at(7, 33) + "}});");
+    ok('app: a malformed end is dropped and the clock rule alone applies', ev('S.whoop.sleep.end === undefined') && ev('whoopProvisional()') === false);
+    const relEnd = relay.todaySections(
+      {created_at: todayNode + 'T11:30:00.000Z', score:{recovery_score:57, hrv_rmssd_milli:121, resting_heart_rate:60}},
+      {end: todayNode + 'T11:28:00.000Z', score:{stage_summary:{total_light_sleep_time_milli:22644000}, sleep_performance_percentage:70}},
+      null, '2026-10-11T11:33:08.659Z');
+    ok('relay: the sleep section carries when the sleep ended', relEnd.sleep.end === todayNode + 'T11:28:00.000Z', JSON.stringify(relEnd.sleep));
+
     // --- the kick asks for the re-read, but only once the morning has started ---
     ev('window.__realFetchP = window.fetch;');
     ev("S.settings.ghToken='t'; S.settings.gistId='g'; window.__dispP = [];");
