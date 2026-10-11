@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-10-v3">
+<meta name="ironhub-build" content="2026-10-10-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2485,6 +2485,10 @@ function toggleRepMode(dk, i){
 /* ================= HELPERS ================= */
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* A string for a single-quoted JS literal inside an HTML attribute (onclick="f('...')"). JS-escape FIRST, then esc():
+   esc() turns ' into &#39;, which the HTML parser turns straight back into ' before the JS sees it, so the
+   esc(x).replace(/'/g, ...) this replaced left any name with an apostrophe ("Farmer's Walk") breaking its handler. */
+const jsq = s => esc(String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
 /* Tolerant JSON extraction from an LLM reply: strips fences/prose, isolates the
    outermost {...} or [...], and repairs common glitches (trailing commas, smart
    quotes, truncated tails) before parsing. Throws only if truly unrecoverable. */
@@ -3499,7 +3503,10 @@ async function photoSaveAll(blobs){
       body:JSON.stringify({description:'Iron Hub progress photos', public:false,
                            files:{[PHOTO_GIST_FILE]:{content:body}}})});
     if(!c.ok) throw new Error('Could not create the photo gist ('+c.status+')');
-    st.gistId = (await c.json()).id;
+    const gid = (await c.json()).id;
+    // Into the S that exists now: a pull during the upload replaces S whole, and an id written through `st`
+    // would be lost, so the next photo would make a second gist and the first photo would vanish from view.
+    photoState().gistId = gid;
     save();
     return;
   }
@@ -3584,16 +3591,20 @@ async function photoAdd(input){
   try{
     const img = await photoDownscale(file);
     const blobs = await photoLoadAll();
-    const st = photoState();
     const mk = photoMonthKey(todayKey());
     const existing = photoForMonth(mk);
     // One per month, replaced rather than accumulated: this is a monthly tracker, and two
     // photos from the same week are not a progress comparison.
-    if(existing){ delete blobs[existing.id]; st.index = st.index.filter(function(p){ return p.id !== existing.id; }); }
+    if(existing) delete blobs[existing.id];
     const id = 'ph'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     blobs[id] = img.dataUrl;
-    st.index.push({id:id, date:todayKey(), w:img.w, h:img.h, bytes:img.dataUrl.length});
     await photoSaveAll(blobs);
+    // The index is written after the upload, into the S that exists NOW. Written through a reference taken
+    // before it, a pull landing mid-upload (applyPulled() replaces S whole) dropped the entry: the photo sat in
+    // its gist with nothing pointing at it. And a failed upload no longer leaves the index ahead of the gist.
+    const st = photoState();
+    if(existing) st.index = st.index.filter(function(p){ return p.id !== existing.id; });
+    st.index.push({id:id, date:todayKey(), w:img.w, h:img.h, bytes:img.dataUrl.length});
     save();
     photoBusy = '';
   }catch(e){
@@ -3610,8 +3621,9 @@ async function photoDelete(id){
   try{
     const blobs = await photoLoadAll();
     delete blobs[id];
-    photoState().index = photoState().index.filter(function(x){ return x.id !== id; });
     await photoSaveAll(blobs);
+    // After the upload, on the S that exists now (see photoAdd()).
+    photoState().index = photoState().index.filter(function(x){ return x.id !== id; });
     save();
     photoBusy = '';
   }catch(e){ photoBusy = e.message || 'Could not delete that.'; }
@@ -5682,7 +5694,8 @@ async function ingestShot(){
     const parsed = parseLooseJSON(reply);
     window._pendingShot = parsed;
     let html = '<hr><p class="small"><b>Found '+parsed.exercises.length+' exercises'+(parsed.date?' — '+esc(parsed.date):'')+'</b>. Review, pick the day, then confirm:</p>';
-    parsed.exercises.forEach(e=>{ html += '<div class="h-ex"><b>'+esc(e.name)+'</b> '+e.sets.map(s=>s.weight_lbs+'×'+s.reps).join(', ')+'</div>'; });
+    // The name it will be saved under (shotExName()), so the review shows what Confirm writes.
+    parsed.exercises.forEach(e=>{ html += '<div class="h-ex"><b>'+esc(shotExName(e.name))+'</b> '+e.sets.map(s=>esc(String(s.weight_lbs))+'×'+esc(String(s.reps))).join(', ')+'</div>'; });
     html += '<div class="row" style="margin-top:10px">'+
       '<div><label>Date</label><input type="date" id="shotDate" value="'+esc(parsed.date||todayKey())+'"></div>'+
       '<div><label>Day</label><select id="shotDay">'+Object.keys(S.split).map(k=>'<option value="'+k+'">'+k+' — '+esc(S.split[k].name)+'</option>').join('')+'</select></div>'+
@@ -5690,9 +5703,22 @@ async function ingestShot(){
     out.innerHTML = html;
   }catch(e){ out.innerHTML='<span class="err">Could not read it: '+esc(e.message)+'</span>'; }
 }
+/* A name read off a screenshot by a model is resolved like every model-written name: a known lift in its own
+   spelling ("barbell bench press" joins Barbell Bench Press's history), a coaching note never part of a name,
+   and anything else kept as read. It used to be saved raw (found 2026-10-10). */
+function shotExName(raw){
+  const r = exResolveKnown(raw);
+  return r ? r.name : (exSplitNote(raw).name || String(raw||'').trim());
+}
 function confirmShot(){
   const p = window._pendingShot; if(!p) return;
-  const entries = p.exercises.filter(e=>e.sets&&e.sets.length).map(e=>({exercise:e.name, sets:e.sets.map(s=>({w:+s.weight_lbs||0, r:+s.reps||0}))}));
+  // Two rows that resolve to one lift become one entry: historyFor() reads the first entry of a name only.
+  const byName = {}, entries = [];
+  p.exercises.filter(e=>e.sets&&e.sets.length).forEach(e=>{
+    const nm = shotExName(e.name), sets = e.sets.map(s=>({w:+s.weight_lbs||0, r:+s.reps||0}));
+    if(byName[nm]) byName[nm].sets = byName[nm].sets.concat(sets);
+    else { byName[nm] = {exercise:nm, sets:sets}; entries.push(byName[nm]); }
+  });
   const beforePR = snapshotPRs();
   S.logs.push(stampRec({id:Date.now(), date:$('#shotDate').value||todayKey(), day:$('#shotDay').value, entries}));
   save(); checkPRs(beforePR); window._pendingShot=null; renderLog(); renderProgress();
@@ -5704,6 +5730,27 @@ const GIST_FILE = 'ironhub_data.json';
 function syncReady(){ return !!(S.settings.ghToken && S.settings.gistId); }
 function ghHeaders(){ return {'Authorization':'Bearer '+S.settings.ghToken, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'}; }
 let _lastPushExportedAt = 0;   // exportedAt stamp of the snapshot this device last uploaded
+/* The newest gist snapshot this device has SEEN: one it applied, or one its own push wrote. It is what
+   syncReconcileBeforePush() asks before a push overwrites the gist. That used to be changedAt, and save()
+   moves changedAt to now BEFORE the debounced push runs, so every save-triggered push took any older
+   snapshot as already seen and wrote over it -- the 2026-09-19 overwrite, still open whenever the push
+   followed a save (2026-10-10). Its own localStorage key, never S: it is a fact about this device, and
+   S.meta arrives from the other device on every pull. */
+const SYNC_SEEN_KEY = 'ironhub:syncseen';
+function syncSeenAt(){
+  try{ const v = +localStorage.getItem(SYNC_SEEN_KEY); if(v > 0) return v; }catch(e){}
+  // An install from before the key: the last snapshot it confirmed on the gist or consumed from it.
+  return (S.meta && +S.meta.pushedAt) || 0;
+}
+function syncSeenSet(ms, force){
+  // Against the stored key only, never the pushedAt fallback: both callers set pushedAt to this same
+  // value first, so comparing with the fallback would never write the key at all.
+  try{
+    const cur = +localStorage.getItem(SYNC_SEEN_KEY) || 0;
+    if(+ms > 0 && (force || +ms > cur)) localStorage.setItem(SYNC_SEEN_KEY, String(+ms));
+  }catch(e){}
+}
+function syncSeenReset(){ try{ localStorage.removeItem(SYNC_SEEN_KEY); }catch(e){} }
 function syncPayload(){
   const d = JSON.parse(JSON.stringify(S));
   delete d.settings.ghToken; delete d.settings.gistId; delete d.settings.apiKey; // secrets never leave the device
@@ -6012,6 +6059,8 @@ async function connectSync(){
   const tok = $('#ghToken').value.trim();
   if(!tok){ setSyncMsg('Paste a token first.', true); return; }
   S.settings.ghToken = tok; save(false);
+  // What this device saw belongs to whatever gist it used before; the one found below is read fresh.
+  syncSeenReset();
   setSyncMsg('Connecting to GitHub\u2026');
   try{
     const res = await fetch('https://api.github.com/gists?per_page=100',{headers:ghHeaders()});
@@ -6028,6 +6077,7 @@ async function connectSync(){
       if(!c.ok) throw new Error('Could not create gist ('+c.status+')');
       const g = await c.json();
       S.settings.gistId = g.id; save(false);
+      syncSeenSet(_lastPushExportedAt, true);   // the gist holds exactly what this device just wrote
       setSyncMsg('\u2713 Private sync gist created \u2014 this device pushed the first copy.');
     }
     markSynced(); renderSettings();
@@ -6119,7 +6169,9 @@ async function replaceToken(){
 async function syncReconcileBeforePush(){
   const p = await fetchGistData();          // throws on a dead network or a GitHub error; the
                                             // caller must let that abort the push
-  if(!(p.exportedAt > (S.meta ? S.meta.changedAt : 0))) return 0;   // already seen it
+  // Already seen it: applied here, or written by this device's own push. NOT changedAt -- a save() moves
+  // that to now before the push it schedules, so it read every older snapshot as seen (see syncSeenAt()).
+  if(!(p.exportedAt > syncSeenAt())) return 0;
   // Held across the swap: applyPulled() rebinds S, and both merges below read the pre-pull side.
   const localPrev = S, pushedAt = (S.meta && S.meta.pushedAt) || 0;
   applyPulled(p.data, p.exportedAt);
@@ -6168,6 +6220,8 @@ async function syncPush(manual){
     // edited during the await — if they diverge, that gap IS a genuine edit made while this
     // push was in flight, which really is still unpushed and must stay flagged as such.
     S.meta.pushedAt = Math.max(S.meta.pushedAt||0, _lastPushExportedAt);
+    // The gist now holds this device's own snapshot, so it has seen it.
+    syncSeenSet(_lastPushExportedAt);
     markSynced();
     if(manual) setSyncMsg('\u2713 Pushed to cloud at '+new Date().toLocaleTimeString());
   }catch(e){ if(manual) setSyncMsg(e.message, true); }
@@ -6716,6 +6770,8 @@ function applyPulled(d, exportedAt){
   // We just consumed this exact snapshot, so treat it as pushed too — otherwise the boot
   // catch-up push (see BOOT) fires needlessly on every pull, re-uploading what we only just downloaded.
   S.meta.pushedAt = S.meta.changedAt;
+  // ...and as seen, so the next push does not apply it again (syncReconcileBeforePush()).
+  if(exportedAt) syncSeenSet(exportedAt);
   if(localAgents){
     const a = agState();
     if((localAgents.lastRun||'') > (a.lastRun||'')) a.lastRun = localAgents.lastRun;
@@ -6864,7 +6920,7 @@ async function autoPullOnLoad(){
 }
 function disconnectSync(){
   if(!confirm('Disconnect cloud sync on this device? (The gist itself is not deleted \u2014 other devices keep working.)')) return;
-  S.settings.ghToken=''; S.settings.gistId=''; save(false); renderSettings();
+  S.settings.ghToken=''; S.settings.gistId=''; save(false); syncSeenReset(); renderSettings();
 }
 
 /* ================= BULK TAB ================= */
@@ -7076,9 +7132,18 @@ function renderBulk(){
     '<div class="card">'+w.slice().reverse().map(p=>'<div class="h-ex"><b>'+fmtDate(p.date)+'</b> \u2014 '+esc(String(p.lbs))+' lb</div>').join('')+'</div>');
   el.innerHTML = html;
 }
+/* A typo in a weigh-in is worse than no weigh-in. One "1715" for 171.5 puts that week's average near 400 lb, and
+   bulkRate(), the Bulk tab, the Winter Arc card and ECHO's nightly read all take it as real -- ECHO can then
+   propose a calorie change off it. Outside a human range it is refused; a jump of more than WEIGH_JUMP_LB from the
+   nearest earlier weigh-in asks first, because a real one is possible (found 2026-10-10). */
+const WEIGH_MIN_LB = 80, WEIGH_MAX_LB = 400, WEIGH_JUMP_LB = 10;
 function addWeight(){
   const d=$('#wDate').value, v=parseFloat($('#wLbs').value);
   if(!d||!v) return;
+  if(!(v >= WEIGH_MIN_LB && v <= WEIGH_MAX_LB)){ alert(v+' lb does not look like a weigh-in. Check the number and log it again.'); return; }
+  const prev = (S.weights||[]).filter(function(w){ return w && w.date < d && +w.lbs > 0; }).sort(function(a, b){ return b.date.localeCompare(a.date); })[0];
+  if(prev && Math.abs(v - prev.lbs) > WEIGH_JUMP_LB &&
+     !confirm(v+' lb is '+Math.round(Math.abs(v - prev.lbs)*10)/10+' lb '+(v > prev.lbs ? 'up' : 'down')+' from your last weigh-in ('+prev.lbs+' on '+fmtDate(prev.date)+'). Log it anyway?')) return;
   S.weights = S.weights.filter(w=>w.date!==d);
   // Through the section's own renderer, so the sleep fold and the raw fold keep their places.
   S.weights.push(stampRec({date:d, lbs:v})); save(); REVIEW_RENDER.bulk();
@@ -9162,6 +9227,9 @@ function importApply(p){
   S = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), p);
   if(!S.settings) S.settings = JSON.parse(JSON.stringify(DEFAULT_STATE.settings || {}));
   DEVICE_SECRETS.forEach(function(k){ if(keep[k]) S.settings[k] = keep[k]; });
+  // Restoring is "replace ALL current data", the cloud copy included. Marked as seen, the gist as it is now
+  // is overwritten by the next push, as it always was, rather than applied over the restore.
+  syncSeenSet(Date.now(), true);
 }
 function resetAll(){
   if(!confirm('This wipes every log, weight entry, and setting. Export first if you want a backup. Continue?')) return;
@@ -9540,6 +9608,28 @@ function loadLiveDraft(){
 }
 function saveLiveDraft(){ if(live) localStorage.setItem(LIVE_KEY, JSON.stringify(live)); }
 function clearLiveDraft(){ localStorage.removeItem(LIVE_KEY); }
+/* A session he never ended. loadLiveDraft() resumes a draft only from today or the last LIVE_DRAFT_MAX_H
+   hours, and an older one used to be dropped without a word: nothing saved its sets, and the next session's
+   draft overwrote them. He trains at 7:45 PM, so one forgotten End lost the whole session by about 1:45 AM
+   (found 2026-10-10). Run at boot, after the pull: a stale draft with logged sets is saved as the session it
+   was, dated the day it started; one with no sets, or one already in the log, is only cleared. */
+function liveRecoverStale(){
+  if(live) return false;
+  let d = null;
+  try{ d = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); }catch(e){ d = null; }
+  if(!d || !Array.isArray(d.exercises) || !d.date) return false;
+  if(loadLiveDraft()) return false;   // still resumable: the boot already opened it
+  const n = d.exercises.reduce(function(t, e){ return t + ((e && Array.isArray(e.sets)) ? e.sets.length : 0); }, 0);
+  const saved = +d.startedAt > 0 && (S.logs || []).some(function(l){ return l && +l.startedAt === +d.startedAt; });
+  if(!n || saved){ clearLiveDraft(); return false; }
+  live = d; liveActiveIdx = 0;
+  try{ endLiveSession({recovered:true}); }
+  catch(e){ live = null; console.warn('saving an unended session failed', e); return false; }
+  try{ agLog('charlie', 'Saved your '+d.day+' session from '+fmtDate(d.date)+' ('+n+' set'+(n === 1 ? '' : 's')+
+    '). It was never ended, so it had not been logged. Delete it from the Log if it was not a real session.'); save(false); }catch(e){}
+  try{ rerenderActive(true); }catch(e){}
+  return true;
+}
 
 /* Every LIVE prescription goes through here, so a today-only change from chat (S.todayAdjust, adjust_today)
    reaches the session at start, a rebuild mid-session, Today's key lifts and the agents' TODAY line alike. */
@@ -10345,7 +10435,7 @@ function liveExHTML(ex,i){
        '<span class="lv4-eye">Exercise '+(i+1)+' of '+live.exercises.length+' \u00b7 '+(extraSet ? 'extra set '+(ex.sets.length+1) : 'set '+setN+' of '+planned)+'</span>'+
        '<div class="lv4-name">'+esc(ex.name)+'</div>'+
        '<div class="lv4-tools">'+
-         '<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+esc(ex.name).replace(/'/g,"\\'")+'\')" title="Form cues">\u24d8</button>'+
+         '<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+jsq(ex.name)+'\')" title="Form cues">\u24d8</button>'+
          '<button class="ex-info-btn" onclick="activate1RM('+i+')" title="1RM test mode" style="color:var(--violet);font-size:11px">1RM</button>'+
          '<button class="ex-info-btn" onclick="openLiveExEdit('+i+')" title="Swap or remove (today only)" style="color:var(--muted);font-size:12px">\u270e</button></div>'+
        '<div class="lv4-big"><span class="lv4-w">'+(adv.w||'\u2014')+'</span><span class="lv4-r">\u00d7 '+adv.aim+'</span></div>'+
@@ -10681,8 +10771,11 @@ function liveSetToLog(s){
   if(s.rm) o.rm = 1;
   return o;
 }
-/* ---- end session: consolidate -> log -> PRs -> summary ---- */
-function endLiveSession(){
+/* ---- end session: consolidate -> log -> PRs -> summary ----
+   opts.recovered: a session he never ended, saved at a later boot (liveRecoverStale()). It is judged by its own
+   lifts, not by today: a deload in force TODAY says nothing about a session trained days before it. */
+function endLiveSession(opts){
+  const recovered = !!(opts && opts.recovered);
   const entries = live.exercises.filter(e=>e.sets.length).map(e=>({exercise:e.name, sets:e.sets.map(liveSetToLog)}));
   if(!entries.length){ live=null; clearLiveDraft(); renderLive(); return; }
   const before = snapshotPRs();
@@ -10691,7 +10784,7 @@ function endLiveSession(){
   // capture engine decisions + deload flag for the system logger
   const decisions = {};
   live.exercises.forEach(e=>{ if(e._decision) decisions[e.name]=e._decision; });
-  const isDeload = deloadActive() || live.exercises.some(e=>e._deload);
+  const isDeload = (!recovered && deloadActive()) || live.exercises.some(e=>e._deload);
   // Stamp the day's name at save time. Strength-block day keys (S1/S2/S3) stop resolving
   // once the block ends, and permanent days get renamed — either way the log should keep
   // the label it was actually trained under.
@@ -10712,6 +10805,12 @@ function endLiveSession(){
   // session left open while he drove home is not a slower session.
   if(isFinite(+live.startedAt) && +live.startedAt > 0) logRec.startedAt = +live.startedAt;
   logRec.endedAt = Date.now();
+  if(recovered){
+    // Nobody tapped End: the last set is the nearest thing to it, and the record says how it got here.
+    const _lts = Math.max(0, ...live.exercises.map(function(e){ return Math.max(0, ...(e.sets || []).map(function(s){ return +s.ts || 0; })); }));
+    if(_lts > 0) logRec.endedAt = _lts;
+    logRec.recovered = true;
+  }
   /* What the session WAS, not just what was lifted -- none of these left a trace before, so
      nothing could later tell a prescribed session from a coach's plan, a swapped lift or a day
      picked by hand. plan is the prescription per lift (w null when there was none); the summary,
@@ -10757,7 +10856,8 @@ function endLiveSession(){
     const heaviest = en.sets.reduce((m,s)=>(+s.w>(m?+m.w:0)?s:m), null);
     if(heaviest && (!prevPR || +heaviest.w>prevPR.w)) newPRs.push(en.exercise+' · '+heaviest.w+' lb × '+heaviest.r);
   });
-  const note = sessionNote(entries, live.day);
+  let note = sessionNote(entries, live.day, logRec.date);
+  if(recovered) note = 'Saved from '+fmtDate(logRec.date)+': this session was never ended, so it was not logged until now. '+note;
   let _sum = null; try{ _sum = sessionSummary(logRec); }catch(e){ _sum = null; }
   showSummary({exercises:entries.length, sets:totalSets, vol:totalVol, prs:newPRs, note, logId:logRec.id, sum:_sum});
   checkPRs(before);  // fires the e1RM-based PR overlay if applicable (after summary close it remains)
@@ -10767,9 +10867,11 @@ function endLiveSession(){
   // until the next unrelated tab click quietly swaps it out \u2014 refresh both together, always.
   try{ invCheckResolutions(); invUpdateBadge(); }catch(e){}
 }
-function sessionNote(entries, dk){
-  // compare to previous same-day session
-  const prior = S.logs.filter(l=>l.day===dk && l.date!==todayKey()).sort((a,b)=>b.date.localeCompare(a.date))[0];
+function sessionNote(entries, dk, date){
+  // compare to previous same-day session: one from before this session's DATE. It said "not today", which let
+  // a session dated yesterday (past midnight, or recovered) be compared with itself.
+  const d0 = date || todayKey();
+  const prior = S.logs.filter(l=>l.day===dk && l.date < d0).sort((a,b)=>b.date.localeCompare(a.date))[0];
   if(!prior) return 'First '+dk+' session on record — this is your baseline. Every one from here builds on it.';
   const volOf = l=>l.entries.reduce((a,e)=>a+e.sets.reduce((b,s)=>b+(+s.w||0)*(+s.r||0),0),0);
   const todayVol = entries.reduce((a,e)=>a+e.sets.reduce((b,s)=>b+(+s.w||0)*(+s.r||0),0),0);
@@ -12058,7 +12160,7 @@ function renderLibrary(){
     if(!list.length) return;
     h+='<div class="lib-day"><div class="lib-dh" style="color:'+(d.hex||'#9A8B7E')+'">'+dk+' \u00b7 '+esc(d.name||'')+'</div>';
     list.forEach(nm=>{
-      h+='<button class="lib-ex" onclick="showExInfo(\''+esc(nm).replace(/'/g,"\\'")+'\')"><span>'+esc(nm)+'</span><span class="lib-arrow">view \u203a</span></button>';
+      h+='<button class="lib-ex" onclick="showExInfo(\''+jsq(nm)+'\')"><span>'+esc(nm)+'</span><span class="lib-arrow">view \u203a</span></button>';
     });
     h+='</div>';
   });
@@ -12626,7 +12728,7 @@ function liveExHTML_1rm(ex, i, active){
   // header
   h += '<div class="liveex-head" onclick="focusLiveEx('+i+')">';
   h += '<div class="liveex-name">'+esc(ex.name)+
-    '<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+esc(ex.name).replace(/'/g,"\\'")+'\')">&#9432;</button></div>';
+    '<button class="ex-info-btn" onclick="event.stopPropagation();showExInfo(\''+jsq(ex.name)+'\')">&#9432;</button></div>';
   h += '<div class="liveex-chips">';
   h += '<span class="pill" style="border-color:var(--violet-dim);color:var(--violet)">1RM TEST</span>';
   if(!allDone) h += '<span class="pill" style="border-color:var(--amber);color:var(--amber)">Step '+(curStep+1)+'/'+ramp.length+'</span>';
@@ -12907,10 +13009,9 @@ function lastDeloadEndKey(){
 }
 function startDeloadWeek(untilOverride, startOverride){
   let until = untilOverride;
-  if(!until){
-    const end = new Date(Date.now()+6*86400000);
-    until = end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')+'-'+String(end.getDate()).padStart(2,'0');
-  }
+  // Six calendar days on, not six times 24 hours: started in the first hour of Nov 1 (DST ends), now + 144 h was
+  // 11:30 PM on the 6th, and the week came out a day short.
+  if(!until) until = mesoAddDays(startOverride || todayKey(), 6);
   S.deload = {until, startedAt: startOverride || todayKey()};
   save();
   if(typeof renderLive==='function') renderLive();
@@ -13050,7 +13151,7 @@ function libDetailHTML(nm){
         : 'You\u2019re behind an idealized pace here. That\u2019s common on accessories and not alarming \u2014 focus on beating reps before load, and make sure this lift isn\u2019t getting shortchanged late in sessions.')+'</p>';
     }
   }
-  h+='<div style="margin-top:8px"><button class="btn ghost sm" onclick="showExInfo(\''+esc(nm).replace(/'/g,"\\'")+'\')">View form cues \u2192</button></div>';
+  h+='<div style="margin-top:8px"><button class="btn ghost sm" onclick="showExInfo(\''+jsq(nm)+'\')">View form cues \u2192</button></div>';
   return h;
 }
 /* ---- the Library (A x C, his pick 2026-10-05): search and muscle filters, one row per lift with its
@@ -14083,7 +14184,7 @@ function renderInvestigation(){
   const ovL = invOverrideLines();
   if(ovL.length){
     hR += '<h2 class="inv-h2">Active target overrides</h2><div class="card">';
-    ovL.forEach(o=>{ const k = o.name; hR += '<div class="inv-finding" style="display:flex;gap:8px;align-items:center"><span>\u25b8 <b>'+esc(k)+'</b> \u2014 '+o.w+' lb '+esc(o.txt)+'</span><button class="del" style="margin-left:auto" onclick="delete invState().overrides[\''+esc(k).replace(/'/g,"\\'")+'\'];save();renderInvestigation()">clear</button></div>'; });
+    ovL.forEach(o=>{ const k = o.name; hR += '<div class="inv-finding" style="display:flex;gap:8px;align-items:center"><span>\u25b8 <b>'+esc(k)+'</b> \u2014 '+o.w+' lb '+esc(o.txt)+'</span><button class="del" style="margin-left:auto" onclick="delete invState().overrides[\''+jsq(k)+'\'];save();renderInvestigation()">clear</button></div>'; });
     hR += '</div>';
   }
   // history
@@ -16216,7 +16317,8 @@ function fatigueSuggestsDeload(){
   if(dis && dis > mesoAddDays(todayKey(),-10)) return null;
   return fi;
 }
-function fatigueDismiss(){ S.fatigueDismissed = todayKey(); save(false); renderLive(); try{ renderAnFatigue(); }catch(e){} }
+// save(), not save(false): Not now is his tap, and a pull a minute later used to bring the banner back.
+function fatigueDismiss(){ S.fatigueDismissed = todayKey(); save(); renderLive(); try{ renderAnFatigue(); }catch(e){} }
 
 /* ============================================================
    PATTERN ENGINE (V3 intelligence)
@@ -19395,7 +19497,17 @@ function renderAnOverview(){
   const el = document.getElementById('an_over'); if(!el) return;
   const year = todayKey().slice(0,4);
   const logs = S.logs.filter(l=>l.date.startsWith(year));
-  if(!logs.length){ el.innerHTML = anEmpty('Nothing logged in '+year+' yet.'); return; }
+  if(!logs.length){
+    // A new year with nothing logged yet still has last year's recap (it stays through Jan 14) and the radar,
+    // which reads 12 weeks, not the calendar year. Returning on the empty year hid both from Jan 1 until the
+    // first session of the year (found 2026-10-10).
+    let h0 = '';
+    try{ h0 += recapCardHTML(); }catch(e){}
+    h0 += anEmpty('Nothing logged in '+year+' yet.');
+    try{ h0 += strengthRadarHTML(); }catch(e){}
+    el.innerHTML = h0;
+    return;
+  }
   let sets=0, vol=0; const exSet = new Set(); const monthCount = {};
   logs.forEach(l=>{
     monthCount[l.date.slice(0,7)] = (monthCount[l.date.slice(0,7)]||0)+1;
@@ -21246,6 +21358,9 @@ async function agRunAll(manual){
   _agRunning = true;
   let raised = 0;
   let retryable = false;   // set only by a network-only wipeout; read by the finally
+  // The night this cycle is for, read before the await. Read at the end, a cycle that started at 11:58 PM and
+  // finished after midnight stamped the NEXT day, and that night's 9 PM check never ran (found 2026-10-10).
+  const runDay = todayKey();
   try{
     try{ renderOps(); }catch(e){}
     // Settled, not all: one specialist failing must not take the other two down with it.
@@ -21401,7 +21516,7 @@ async function agRunAll(manual){
     } else {
       if(retryable) agLog('zulu','That was my last automatic attempt today. Use Run cycle now if '+
         'you want another.');
-      a4.lastRun = todayKey();
+      a4.lastRun = runDay;
     }
     _agRunning = false; save();
     try{ renderOps(); }catch(e){}
@@ -21909,9 +22024,12 @@ function waGoals(){
 function waProgress(key){
   const w = winterState(), k = key || todayKey();
   const phase = key ? waPhase(k) : waPhase(), days = waDays(k);
-  const wksElapsed = days.elapsed/7, wksLeft = days.left/7;
+  const wksLeft = days.left/7;
   const sessions = waSessions(k);
-  const expected = Math.round(wksElapsed * (w.sessionTarget||WA_DEFAULT_SESSIONS));
+  // Expected by the end of YESTERDAY: today is not over, and its session may still be ahead of him. Counting today
+  // as elapsed read "behind, ~1 by now" from the moment the arc went live -- 7:30 PM on day 1, a quarter of an
+  // hour before his workout (found 2026-10-10). A session logged today still counts toward `sessions`.
+  const expected = Math.round(Math.max(0, days.elapsed - 1)/7 * (w.sessionTarget||WA_DEFAULT_SESSIONS));
   /* Bodyweight goes through bulkRate()/bulkBand() and nothing else. There is ONE lb/wk rate in
      this app and one set of bands; a fifth would be a surface quoting a number the Bulk tab
      contradicts. */
@@ -21937,7 +22055,7 @@ function waProgress(key){
 function waContext(key){
   const p = waProgress(key);
   if(p.phase==='done') return '';
-  if(p.phase==='before') return '\nWINTER ARC: starts '+p.start+' ('+p.days.untilStart+' days away), runs to '+p.end+'. Not underway yet.';
+  if(p.phase==='before') return '\nWINTER ARC: starts '+p.start+' ('+(p.days.untilStart ? p.days.untilStart+' days away' : 'today, later on')+'), runs to '+p.end+'. Not underway yet.';
   let t = '\nWINTER ARC: day '+p.days.elapsed+' of '+p.days.total+' ('+p.start+' to '+p.end+'), '+p.days.left+' days left. '+
     p.sessions+' sessions logged against a '+p.sessionTarget+'/week target ('+(p.onPace?'on pace':'behind pace, expected ~'+p.expected)+').';
   if(p.bwTarget && !p.bw) t += ' Bodyweight target '+p.bwTarget+' lb by '+p.end+' (too few weigh-ins to judge pace).';
@@ -21987,7 +22105,12 @@ function waSaveTargets(){
 }
 /* The next arc keeps the times he chose; its dates are the default season again. */
 function waStartNext(){
-  const se = waSeasonFor(mesoAddDays(todayKey(), 1)), w = S.winterArc || {};
+  const w = S.winterArc || {};
+  // The default season after this arc. The one holding tomorrow is that, unless the arc just ended early (his own
+  // end before Apr 1): then tomorrow is still in this season, and starting it again would restart the arc he just
+  // finished, so it is the one after.
+  let se = waSeasonFor(mesoAddDays(todayKey(), 1));
+  if(w.end && se.start <= w.end) se = waSeasonFor(mesoAddDays(se.end, 1));
   S.winterArc = {start:se.start, end:se.end, bwTarget:null, sessionTarget:WA_DEFAULT_SESSIONS};
   if(WA_TIME_RE.test(String(w.startTime || ''))) S.winterArc.startTime = w.startTime;
   if(WA_TIME_RE.test(String(w.endTime || ''))) S.winterArc.endTime = w.endTime;
@@ -22026,8 +22149,9 @@ function waCardHTML(key){
   }
   let h = '<div class="dash-sec">Winter Arc</div><div class="card" style="border-left:3px solid var(--cyan)">';
   if(p.phase==='before'){
-    h += '<p class="small">Starts '+esc(fmtDate(p.start))+', '+esc(waTimeLabel(waStartTime(winterState())))+' \u2014 <b>'+p.days.untilStart+' day'+(p.days.untilStart===1?'':'s')+
-      '</b> out. Runs to '+esc(fmtDate(p.end))+'.</p>'+
+    // On the start date itself, before the start time, it starts today (it said "0 days out").
+    h += '<p class="small">Starts '+esc(fmtDate(p.start))+', '+esc(waTimeLabel(waStartTime(winterState())))+' \u2014 <b>'+
+      (p.days.untilStart ? p.days.untilStart+' day'+(p.days.untilStart===1?'':'s')+'</b> out' : 'today</b>')+'. Runs to '+esc(fmtDate(p.end))+'.</p>'+
       '<p class="small" style="color:var(--dim);margin-top:4px">Target '+p.sessionTarget+' sessions a week'+
       (p.bw&&p.bw.target?', bodyweight to '+p.bw.target+' lb':'')+
       '. Set them now and the arc just runs in the background.</p>';
@@ -22669,7 +22793,7 @@ function renderNotif(){
   h += items.length ? items.map(function(i){
         return '<div class="notif-item" style="border-left-color:'+i.tone+'"'+
           (i.go?' onclick="notifToggle();'+i.go+'" style="cursor:pointer;border-left-color:'+i.tone+'"':'')+'>'+
-          '<button class="notif-x" aria-label="Dismiss" onclick="event.stopPropagation();notifDismiss(\''+esc(i.id).replace(/'/g,"\\'")+'\')">\u00d7</button>'+
+          '<button class="notif-x" aria-label="Dismiss" onclick="event.stopPropagation();notifDismiss(\''+jsq(i.id)+'\')">\u00d7</button>'+
           '<div class="notif-t">'+esc(i.title)+'</div>'+
           '<div class="notif-b">'+esc(i.body)+'</div>'+
           (i.when?'<div class="notif-when">'+esc(agTimeAgo(i.when))+'</div>':'')+'</div>';
@@ -23526,6 +23650,9 @@ try{ if(agSweepExpired() + agSweepDuplicates()) save(false); }catch(e){}
 _bootPull.then((pulled)=>{
   // A correction he asked for, once, and only on a state the pull just made current.
   try{ dataFixesRun(pulled); }catch(e){}
+  // A session he never ended, saved rather than dropped (see liveRecoverStale()). After the pull, so it
+  // lands on current state and its save goes up as an ordinary new record.
+  try{ liveRecoverStale(); }catch(e){}
   // Before the brief's first check, not after: if today's recovery is missing this asks the
   // relay for it now. It does not block -- the run lands in the gist ~30s later and bgSyncTick
   // picks it up, by which time the brief has either not been written yet (the common case,

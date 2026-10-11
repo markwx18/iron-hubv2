@@ -115,6 +115,18 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 
 ---
 
+## Fixes before Winter Arc (Oct 10)
+
+- **Sync can no longer erase a session.** If one device saved anything before it had caught up with the other, its next sync could overwrite the cloud copy and take the other device's newest session with it, on both devices. It now catches up first, every time. Restoring a backup still replaces the cloud copy.
+- **A workout you forget to end is saved.** If you closed the app without tapping End and came back the next day, the whole session was silently dropped. Now it's saved on your next open, dated the day you trained, with a note saying so.
+- **Winter Arc**: on day 1 the card no longer says you're behind before your first session, the start day says "today" instead of "0 days out", and Start the next arc after an arc you ended early starts next winter's.
+- **New Year**: Progress › Overview keeps your year-in-review recap and the strength radar until your first session of 2027.
+- **The 9 PM agent check** no longer skips a night when the one before ran past midnight.
+- **Weigh-in typos are caught.** A number nobody weighs (like 1715 for 171.5) is refused, and a jump of more than 10 lb from your last weigh-in asks first.
+- An exercise name with an apostrophe no longer breaks its buttons. Screenshot imports match your existing lifts. Photos keep their place if a sync lands mid-upload. "Not now" on the fatigue warning stays dismissed.
+
+---
+
 ## Still to come
 
 - **Cross-review**: ZULU double-checking the other agents' suggestions before they reach you (planned around Oct 12, after a week of spend data).

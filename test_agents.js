@@ -726,7 +726,8 @@ setTimeout(async () => {
     // watermarks are a week old.
     const weekAgo = Date.now() - 7 * 86400000;
     ev("S.logs = S.logs.filter(function(l){ return l.id !== 'staleremote1' && l.id !== 'staleremote2'; });");
-    ev("S.meta.changedAt = " + weekAgo + "; S.meta.pushedAt = " + weekAgo + ";");
+    // What this device has seen is its own watermark (SYNC_SEEN_KEY), a week old like the others.
+    ev("S.meta.changedAt = " + weekAgo + "; S.meta.pushedAt = " + weekAgo + "; localStorage.setItem(SYNC_SEEN_KEY, String(" + weekAgo + "));");
     remote = { app: 'ironhub', v: 1, exportedAt: Date.now() - 3600000,
                data: JSON.parse(ev("JSON.stringify(S)")) };
     remote.data.logs = remote.data.logs.concat([
@@ -813,15 +814,97 @@ setTimeout(async () => {
     ok('a device already up to date still pushes, with one check and no pull',
        patched.length === 1 && gets === 1, 'pushes=' + patched.length + ' gets=' + gets);
 
+    // --- 2026-10-10: the overwrite was still open whenever the push followed a save(), which is every real
+    // push. save() moves changedAt to now before the push it schedules, and the check compared the gist with
+    // changedAt, so any older snapshot read as seen and was written over. The cases above call syncPush()
+    // with a week-old changedAt, the one shape that worked.
+    ev("window.__pgFuelWT = S.fuel.workoutTime;");
+    const weekAgo2 = Date.now() - 7 * 86400000;
+    ev("S.meta.changedAt = " + weekAgo2 + "; S.meta.pushedAt = " + weekAgo2 + "; localStorage.setItem(SYNC_SEEN_KEY, String(" + weekAgo2 + "));");
+    remote = { app: 'ironhub', v: 1, exportedAt: Date.now() - 3600000, data: JSON.parse(ev("JSON.stringify(S)")) };
+    remote.data.logs = remote.data.logs.concat([
+      { id: 'staleremote3', date: '2026-10-09', day: 'D2', t: Date.now() - 3700000,
+        entries: [{ exercise: 'Session Logged On The Phone', sets: [{ w: 225, r: 5 }] }] }]);
+    remote.data.meta = { changedAt: remote.exportedAt, pushedAt: remote.exportedAt, lastSync: remote.exportedAt };
+    // The boot pull failed. Then a weigh-in, and the push its save() schedules.
+    ev("S.weights.push(stampRec({date:'2026-10-10', lbs:171.2})); save(); clearTimeout(_pushTimer); _pushTimer = null;");
+    ok('fixture: the save put changedAt after the gist’s snapshot', ev('S.meta.changedAt') > remote.exportedAt);
+    patched = [];
+    await ev("syncPush(false)");
+    ok('a push that follows a save does not write over a snapshot this device never saw',
+       patched.length === 1 && patched[0].data.logs.some(l => l.id === 'staleremote3') &&
+       patched[0].data.weights.some(x => x.date === '2026-10-10' && x.lbs === 171.2),
+       'pushes=' + patched.length + (patched[0] ? ' session=' + patched[0].data.logs.some(l => l.id === 'staleremote3') : ''));
+    ok('and both the other device’s session and the weigh-in are kept here',
+       ev("S.logs.some(function(l){ return l.id==='staleremote3'; })") && ev("S.weights.some(function(x){ return x.date==='2026-10-10' && x.lbs===171.2; })"));
+
+    // The open laptop: in step, the phone pushes, and the laptop saves anything before its next minute tick.
+    const t0 = Date.now() - 120000;
+    ev("S.meta.changedAt = " + t0 + "; S.meta.pushedAt = " + t0 + "; localStorage.setItem(SYNC_SEEN_KEY, String(" + t0 + "));");
+    remote = { app: 'ironhub', v: 1, exportedAt: Date.now() - 30000, data: JSON.parse(ev("JSON.stringify(S)")) };
+    remote.data.logs = remote.data.logs.concat([
+      { id: 'phonepush2', date: '2026-10-10', day: 'D3', t: Date.now() - 31000,
+        entries: [{ exercise: 'Barbell Back Squat', sets: [{ w: 275, r: 5 }] }] }]);
+    remote.data.meta = { changedAt: remote.exportedAt, pushedAt: remote.exportedAt, lastSync: remote.exportedAt };
+    ev("S.fuel.workoutTime = '18:00'; save(); clearTimeout(_pushTimer); _pushTimer = null;");
+    patched = [];
+    await ev("bgSyncTick()");
+    ok('the minute tick after a save keeps a session another device pushed a moment before',
+       patched.length === 1 && patched[0].data.logs.some(l => l.id === 'phonepush2') &&
+       ev("S.logs.some(function(l){ return l.id==='phonepush2'; })"), 'pushes=' + patched.length);
+
+    // Its own push is seen: the next push applies nothing, so a change made since stays.
+    remote = patched[patched.length - 1];
+    ev("S.fuel.workoutTime = '06:30'; save(); clearTimeout(_pushTimer); _pushTimer = null;");
+    patched = []; gets = 0;
+    await ev("syncPush(false)");
+    ok('a snapshot this device pushed itself is seen, so a change made since is not undone by the next push',
+       ev('S.fuel.workoutTime') === '06:30' && patched.length === 1 && patched[0].data.fuel.workoutTime === '06:30' && gets === 1,
+       'workoutTime=' + ev('S.fuel.workoutTime') + ' pushes=' + patched.length);
+
+    // A pulled snapshot is seen as well: an edit made after a pull is not undone by the push that follows it.
+    const t1 = Date.now() - 60000;
+    ev("S.meta.changedAt = " + t1 + "; S.meta.pushedAt = " + t1 + "; localStorage.setItem(SYNC_SEEN_KEY, String(" + t1 + "));");
+    remote = { app: 'ironhub', v: 1, exportedAt: Date.now() - 5000, data: JSON.parse(ev("JSON.stringify(S)")) };
+    remote.data.meta = { changedAt: remote.exportedAt, pushedAt: remote.exportedAt, lastSync: remote.exportedAt };
+    patched = [];
+    await ev("bgSyncTick()");
+    ok('fixture: the tick pulled the newer snapshot and pushed nothing', patched.length === 0 && ev('S.meta.changedAt') >= remote.exportedAt);
+    ev("S.fuel.workoutTime = '07:15'; save(); clearTimeout(_pushTimer); _pushTimer = null;");
+    await ev("syncPush(false)");
+    ok('a snapshot this device pulled is seen, so an edit made after the pull goes up as made',
+       ev('S.fuel.workoutTime') === '07:15' && patched.length === 1 && patched[0].data.fuel.workoutTime === '07:15',
+       'workoutTime=' + ev('S.fuel.workoutTime') + ' pushes=' + patched.length);
+
+    // A restore is "replace ALL current data", the cloud copy too, as it always was: the gist as it is now is
+    // marked seen, so the push overwrites it rather than applying it over the restore.
+    // This device last saw the gist ten minutes ago, and another device has pushed since.
+    const t2 = Date.now() - 600000;
+    ev("S.meta.changedAt = " + t2 + "; S.meta.pushedAt = " + t2 + "; localStorage.setItem(SYNC_SEEN_KEY, String(" + t2 + "));");
+    // A second before the restore, by the APP's clock: the restore's own mark is the app's Date.now().
+    const appNow = ev('Date.now()');
+    remote = { app: 'ironhub', v: 1, exportedAt: appNow - 1000, data: JSON.parse(ev("JSON.stringify(S)")) };
+    remote.data.logs = remote.data.logs.concat([{ id: 'cloudonly1', date: '2026-10-08', day: 'D1', t: appNow - 1000,
+      entries: [{ exercise: 'Only In The Cloud', sets: [{ w: 100, r: 10 }] }] }]);
+    remote.data.meta = { changedAt: remote.exportedAt, pushedAt: remote.exportedAt, lastSync: remote.exportedAt };
+    ev("importApply(JSON.parse(JSON.stringify(S))); save(); clearTimeout(_pushTimer); _pushTimer = null;");
+    patched = [];
+    await ev("syncPush(false)");
+    ok('a restored backup still replaces the cloud copy, as it always has',
+       patched.length === 1 && !patched[0].data.logs.some(l => l.id === 'cloudonly1') && ev("!S.logs.some(function(l){ return l.id==='cloudonly1'; })"),
+       'pushes=' + patched.length);
+    ev("S.fuel.workoutTime = window.__pgFuelWT; delete window.__pgFuelWT; S.weights = S.weights.filter(function(x){ return !(x.date==='2026-10-10' && x.lbs===171.2); }); syncSeenReset();");
+
     ev("(function(){ var s = JSON.parse(window.__pgSave); S.logs = s.logs; S.weights = s.weights; S.meta = s.meta; })();");
-    ev("S.logs = S.logs.filter(function(l){ return ['staleremote1','offline1','deletedelsewhere1','unreadable1'].indexOf(l.id) < 0; });");
+    ev("S.logs = S.logs.filter(function(l){ return ['staleremote1','offline1','deletedelsewhere1','unreadable1','staleremote3','phonepush2','cloudonly1'].indexOf(l.id) < 0; });");
     ev("delete window.__pgSave;");
     w.fetch = realFetch;
     ev("S.settings.ghToken=''; S.settings.gistId='';");
   } catch (e) {
     ok('a push must not overwrite what this device has not seen', false, e.message);
     ev("if(window.__pgSave){ (function(){ var s = JSON.parse(window.__pgSave); S.logs = s.logs; S.weights = s.weights; S.meta = s.meta; })(); delete window.__pgSave; }");
-    ev("S.logs = S.logs.filter(function(l){ return ['staleremote1','offline1','deletedelsewhere1','unreadable1'].indexOf(l.id) < 0; });");
+    ev("if('__pgFuelWT' in window){ S.fuel.workoutTime = window.__pgFuelWT; delete window.__pgFuelWT; } syncSeenReset();");
+    ev("S.logs = S.logs.filter(function(l){ return ['staleremote1','offline1','deletedelsewhere1','unreadable1','staleremote3','phonepush2','cloudonly1'].indexOf(l.id) < 0; });");
     ev("S.settings.ghToken=''; S.settings.gistId='';");
   }
 
@@ -898,6 +981,22 @@ setTimeout(async () => {
   ok('[bad json] lastRun still stamped', ev('agState().lastRun') === ev('todayKey()'),
      'lastRun=' + ev('agState().lastRun'));
   ok('[bad json] in-flight flag released', ev('_agRunning') === false);
+
+  // A cycle that starts before midnight and ends after it closes ITS night, not the next one. Stamped with
+  // todayKey() at the end, it closed the next day's gate and that night's check never ran (2026-10-10).
+  ev("window.__mnLR = agState().lastRun; window.__mnLRA = agState().lastRunAt; agState().lastRun = ''; agState().lastRunAt = '';");
+  stubAgents({});
+  ev("window.__mnTK = todayKey; window.__mnDay = '2026-10-20'; todayKey = function(){ return window.__mnDay; };" +
+     "window.__mnCC = callClaudeWithData; callClaudeWithData = async function(){ window.__mnDay = '2026-10-21'; return window.__mnCC.apply(null, arguments); };");
+  try {
+    await ev('agRunAll(false)');
+    ok('a cycle that runs past midnight is stamped for the night it started', ev('agState().lastRun') === '2026-10-20',
+       'lastRun=' + ev('agState().lastRun'));
+  } finally {
+    ev("todayKey = window.__mnTK; callClaudeWithData = window.__mnCC; delete window.__mnTK; delete window.__mnCC; delete window.__mnDay;" +
+       "agState().lastRun = window.__mnLR; agState().lastRunAt = window.__mnLRA; delete window.__mnLR; delete window.__mnLRA;");
+    unstubAgents();
+  }
 
   // with the gate closed, the scheduler must not fire a second cycle
   ev("window.__realRun = agRunAll; agRunAll = () => { window.__refired = true; };");
@@ -1937,8 +2036,13 @@ setTimeout(async () => {
 
     // pace
     ev("S.winterArc.sessionTarget = 5;");
+    // Day 47 of the arc: 46 days are over, and today's session may still be ahead.
     ok('pace is measured against the sessions-per-week target',
-      ev("waProgress('2026-12-01').expected") === Math.round((47 / 7) * 5), String(ev("waProgress('2026-12-01').expected")));
+      ev("waProgress('2026-12-01').expected") === Math.round((46 / 7) * 5), String(ev("waProgress('2026-12-01').expected")));
+    // Day 1 expects nothing yet: counting today read "behind, ~1 by now" the moment the arc went live, before his session.
+    ok('pace: day 1 expects no session yet, and day 2 expects the first',
+      ev("waProgress(S.winterArc.start).expected") === 0 && ev("waProgress(mesoAddDays(S.winterArc.start, 1)).expected") === 1,
+      ev("waProgress(S.winterArc.start).expected") + ', ' + ev("waProgress(mesoAddDays(S.winterArc.start, 1)).expected"));
 
     // lift goals are READ from S.road, not duplicated into the arc
     ev("S.road = (S.road||[]).filter(function(g){ return g.exercise!=='Arc Lift'; });");
@@ -1962,6 +2066,24 @@ setTimeout(async () => {
     ok('active: the card shows the day count', /Day<\/div><div class="dt-v">47</.test(cActive), cActive.slice(0, 300));
     ok('active: the card names the bodyweight target', /185/.test(cActive));
     ok('done: the card offers the next arc instead', /waStartNext/.test(cDone) && !/waStartNext/.test(cActive));
+    // The start date itself, before the start time: Today's card said "0 days out". Clock and day are pinned.
+    ev("window.__waTK = todayKey; window.__waDN = Date.now; window.__waArc = JSON.stringify(S.winterArc);" +
+       "todayKey = function(){ return '2026-10-16'; }; Date.now = function(){ return Date.parse('2026-10-16T12:00:00-04:00'); };" +
+       "S.winterArc = Object.assign({}, S.winterArc, {start: '2026-10-16', end: '2027-04-01'}); delete S.winterArc.startTime; delete S.winterArc.endTime;");
+    try {
+      const cDay0 = ev('waCardHTML()');
+      ok('before, on the start date itself: it starts today, not "0 days out"', /<b>today<\/b>/.test(cDay0) && !/0 days/.test(cDay0), cDay0.slice(0, 220));
+      ok('...and the agents are told the same', /starts 2026-10-16 \(today, later on\)/.test(ev('waContext()')), ev('waContext()'));
+      // An arc he ended early (his own end before Apr 1): Start the next arc used to restart the season still
+      // running, Oct 16 to Apr 1, because tomorrow was inside it.
+      ev("todayKey = function(){ return '2027-01-05'; }; S.winterArc = {start: '2026-10-19', end: '2027-01-01', custom: true, bwTarget: null, sessionTarget: 5}; waStartNext();");
+      ok('next arc: after an arc that ended early, it is next winter, not this one again',
+         ev('S.winterArc.start') === '2027-10-16' && ev('S.winterArc.end') === '2028-04-01', ev('JSON.stringify(S.winterArc)'));
+      ev("todayKey = function(){ return '2027-04-05'; }; S.winterArc = {start: '2026-10-16', end: '2027-04-01', bwTarget: null, sessionTarget: 5}; waStartNext();");
+      ok('next arc: after one that ran its course, the coming winter', ev('S.winterArc.start') === '2027-10-16' && ev('S.winterArc.end') === '2028-04-01');
+    } finally {
+      ev("todayKey = window.__waTK; Date.now = window.__waDN; S.winterArc = JSON.parse(window.__waArc); delete window.__waTK; delete window.__waDN; delete window.__waArc;");
+    }
     ok('the card escapes into HTML and uses theme variables, not hex',
       /var\(--cyan\)/.test(cActive) && !/#[0-9a-fA-F]{6}/.test(cActive));
 
@@ -1971,6 +2093,9 @@ setTimeout(async () => {
     ok('...and told not to treat it as a training block', /not a training block/.test(waCtx));
     ok('before it starts the agents are told that instead', /Not underway yet/.test(ev("waContext('2026-10-01')")));
     ok('after it ends it says nothing at all', ev("waContext('2027-05-01')") === '');
+    // agContext() reads the arc against the real clock, so it gets an arc that is not over yet. With the
+    // fixture's Apr 1 2027 end this went red by itself from Apr 2 2027.
+    ev("S.winterArc.end = mesoAddDays(todayKey(), 30); delete S.winterArc.endTime;");
     ok('agContext carries the arc line', /WINTER ARC/.test(ev('agContext()')));
 
     const waRest = JSON.parse(waSaved);
@@ -6508,8 +6633,12 @@ setTimeout(async () => {
           if(whoop) applyWhoop(whoop);
           return {exportedAt: Date.now() - 1000, data: d};
         }; };`);
+    // 6:16 AM today, or a minute ago if it is not 6:17 yet (never before midnight: agState() drops a brief whose
+    // at falls on another day). A fixed 6:16 was newer than "now" between midnight and 6:16, and the
+    // older-brief tests below went red every night in those hours.
     const phoneBrief = "{text:'phone brief', date: todayKey(), hadWhoop:true, at:" +
-      "(function(){ var d=new Date(); d.setHours(6,16,0,0); return d.toISOString(); })()}";
+      "(function(){ var d=new Date(); d.setHours(6,16,0,0); var m=new Date(); m.setHours(0,0,0,0);" +
+      " return new Date(Math.max(m.getTime(), Math.min(d.getTime(), Date.now() - 60000))).toISOString(); })()}";
     const whoop50 = "{recovery:{date:todayKey(), score:50, hrv:115, rhr:65}}";
     const staleLocalB = "delete agState().brief; S.whoop = {recovery:{date: mesoAddDays(todayKey(),-1), score:78}};" +
       "S.meta.changedAt = Date.now() - 100000; window.__briefCalls = 0; window.__pullsB = 0;";
@@ -7819,6 +7948,25 @@ setTimeout(async () => {
     const stamped = JSON.parse(ev('JSON.stringify(S.weights)'))[0] || {};
     ok('addWeight stamps the record with a write time', typeof stamped.t === 'number', JSON.stringify(stamped));
     ok('...stamped at roughly now', Math.abs(Date.now() - (stamped.t || 0)) < 60000);
+
+    // A typo is refused, and a big jump asks first (2026-10-10): one "1715" for 171.5 was taken as real by
+    // bulkRate(), the Winter Arc card and ECHO.
+    ev("window.__awAlert = alert; window.__awConfirm = confirm; window.__awA = 0; window.__awC = 0; window.__awYes = false;" +
+       "alert = function(){ window.__awA++; }; confirm = function(){ window.__awC++; return window.__awYes; };");
+    ev("S.weights = [{date:'2026-08-20', lbs:171}];");
+    const wIn = (d, v) => { w.document.getElementById('wDate').value = d; w.document.getElementById('wLbs').value = v; try { ev('addWeight()'); } catch (e) {} };
+    try {
+      wIn('2026-08-28', '1715');
+      ok('weigh-in: a number nobody weighs is refused, with a message', ev('S.weights.length') === 1 && ev('window.__awA') === 1 && ev('window.__awC') === 0);
+      wIn('2026-08-28', '185');
+      ok('weigh-in: a 14 lb jump asks first, and No logs nothing', ev('window.__awC') === 1 && ev('S.weights.length') === 1);
+      ev('window.__awYes = true;'); wIn('2026-08-28', '185');
+      ok('weigh-in: Yes logs it as typed', ev("S.weights.some(function(x){ return x.date==='2026-08-28' && x.lbs===185; })"));
+      wIn('2026-08-29', '186');
+      ok('weigh-in: an ordinary one asks nothing', ev('window.__awC') === 2 && ev("S.weights.some(function(x){ return x.date==='2026-08-29' && x.lbs===186; })"));
+    } finally {
+      ev("alert = window.__awAlert; confirm = window.__awConfirm; delete window.__awAlert; delete window.__awConfirm; delete window.__awA; delete window.__awC; delete window.__awYes;");
+    }
 
     ev('S.pain = [];');
     try { call('painAdd', 'Barbell Bench Press', 2, 'twinge'); } catch (e) {}
@@ -10443,6 +10591,61 @@ setTimeout(async () => {
     ok('midnight: and judged against that day’s schedule', !!mlog && mlog.scheduled === ev("scheduledDayFor('" + yday + "')"), mlog && mlog.scheduled);
     ev("MODE = 'review'; stopRest(); live = null; clearLiveDraft();");
 
+    // --- a session he never ended is saved at the next boot, not dropped (2026-10-10) ---
+    // He trains at 7:45 PM. A draft left open (no End) was resumable for 6 hours and then ignored without a
+    // word, so an evening session not ended by about 1:45 AM was gone, and the next session's draft overwrote it.
+    const d3 = ev('mesoAddDays(todayKey(), -3)');
+    const st3 = Date.now() - 3 * 86400000;
+    const staleDraft = {date: d3, day: 'D2', startedAt: st3, curIdx: 0, trimmed: false, exercises: [
+      {name: 'Zz Unended Row', sets: [{w: 150, r: 10, e: 'solid', ef: 60, ts: st3 + 600000}, {w: 150, r: 9, ts: st3 + 780000}],
+       done: false, planned: 3, lo: 8, hi: 12, targetW: 150, repMode: 'hyp'},
+      {name: 'Zz Unended Curl', sets: [], done: false, planned: 3, lo: 8, hi: 12, targetW: 40, repMode: 'hyp'}]};
+    const putDraft = (o) => ev("localStorage.setItem(LIVE_KEY, " + JSON.stringify(JSON.stringify(o)) + ");");
+    // A deload in force TODAY, which a session trained three days ago must not be filed under.
+    ev("window.__s0dl = JSON.stringify(S.deload || null); S.deload = {startedAt: todayKey(), until: mesoAddDays(todayKey(), 6)};");
+    putDraft(staleDraft);
+    ok('unended: fixture: the draft is past resuming', ev('loadLiveDraft()') === null);
+    ok('unended: it is saved', ev('liveRecoverStale()') === true);
+    const unendedLog = ev("S.logs.find(function(l){ return +l.startedAt === " + st3 + "; }) || null");
+    ok('unended: as the session it was, dated the day it started, with every set',
+       !!unendedLog && unendedLog.date === d3 && unendedLog.day === 'D2' && unendedLog.entries.length === 1 && unendedLog.entries[0].exercise === 'Zz Unended Row' &&
+       unendedLog.entries[0].sets.length === 2 && unendedLog.entries[0].sets[0].ef === 60, JSON.stringify(unendedLog));
+    ok('unended: today’s deload does not make it a deload session, and the record says it was recovered',
+       !!unendedLog && !unendedLog.deload && unendedLog.recovered === true, JSON.stringify(unendedLog && {deload: unendedLog.deload, recovered: unendedLog.recovered}));
+    ok('unended: it ends at its last set, not at the boot that found it', !!unendedLog && unendedLog.endedAt === st3 + 780000, unendedLog && unendedLog.endedAt);
+    ok('unended: the draft is gone, and CHARLIE says what happened', ev('localStorage.getItem(LIVE_KEY)') === null &&
+       ev("agState().log.some(function(l){ return l.agent === 'charlie' && /never ended/.test(l.text); })"));
+    ok('unended: the summary says why it appeared', /never ended/.test(ev("document.getElementById('sumNote').textContent")));
+    ok('unended: a second boot does nothing more', ev('liveRecoverStale()') === false &&
+       ev("S.logs.filter(function(l){ return +l.startedAt === " + st3 + "; }).length") === 1);
+    putDraft(staleDraft);   // End ran, but the draft outlived it
+    ok('unended: a draft whose session is already logged is only cleared, never logged twice', ev('liveRecoverStale()') === false &&
+       ev("S.logs.filter(function(l){ return +l.startedAt === " + st3 + "; }).length") === 1 && ev('localStorage.getItem(LIVE_KEY)') === null);
+    putDraft(Object.assign({}, staleDraft, {startedAt: st3 - 1000, exercises: staleDraft.exercises.map(function(e){ return Object.assign({}, e, {sets: []}); })}));
+    ok('unended: a stale draft with no sets is cleared and saves nothing', ev('liveRecoverStale()') === false &&
+       !ev("S.logs.some(function(l){ return +l.startedAt === " + (st3 - 1000) + "; })") && ev('localStorage.getItem(LIVE_KEY)') === null);
+    putDraft({date: ev('todayKey()'), day: 'D1', startedAt: Date.now() - 3600000, exercises: [{name: 'Zz Open Row', sets: [{w: 100, r: 10}], done: false, planned: 3}]});
+    ok('unended: a session still resumable is left for the boot to resume', ev('liveRecoverStale()') === false && !!ev('localStorage.getItem(LIVE_KEY)'));
+    // The call itself, not a comment that names it.
+    ok('unended: the boot runs it', /try\{\s*liveRecoverStale\(\);\s*\}catch/.test(ev('appBoot.toString()')));
+    ev("clearLiveDraft(); closeSummary(); S.deload = JSON.parse(window.__s0dl); delete window.__s0dl;");
+    ev("S.logs = S.logs.filter(function(l){ return +l.startedAt !== " + st3 + "; });");
+    // A session dated before today (past midnight, or recovered) is compared with the one before it. The note
+    // compared "not today", so it found the session itself and said "tonnage +0%".
+    ev("S.logs.push({id: 'zznote1', date: mesoAddDays(todayKey(), -10), day: 'ZZD', entries: [{exercise: 'Zz N', sets: [{w: 100, r: 10}]}]});" +
+       "S.logs.push({id: 'zznote2', date: mesoAddDays(todayKey(), -3), day: 'ZZD', entries: [{exercise: 'Zz N', sets: [{w: 120, r: 10}]}]});");
+    const nt = ev("sessionNote([{exercise: 'Zz N', sets: [{w: 120, r: 10}]}], 'ZZD', mesoAddDays(todayKey(), -3))");
+    ok('session note: a session dated before today is compared with the one before it, not with itself', /up 20%/.test(nt), nt);
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 'zznote1' && l.id !== 'zznote2'; });");
+
+    // A name with an apostrophe inside an onclick (2026-10-10). esc() made ' into &#39;, which the HTML parser turns
+    // back into ' before the JS runs, so "Farmer's Walk" broke the ⓘ button and five handlers like it (jsq()).
+    ev(mkLive(["Zz Farmer's Walk"]));
+    ev("window.__fwInfo = showExInfo; window.__fwGot = null; showExInfo = function(n){ window.__fwGot = n; };");
+    ev("document.querySelector('#liveex-0 .ex-info-btn').click();");
+    ok('an apostrophe in a lift name does not break its buttons', ev('window.__fwGot') === "Zz Farmer's Walk", String(ev('window.__fwGot')));
+    ev("showExInfo = window.__fwInfo; delete window.__fwInfo; delete window.__fwGot; MODE = 'review'; stopRest(); live = null; clearLiveDraft();");
+
     // --- a backup is his data, not his credentials ---
     ev("S.settings.apiKey='sk-zz'; S.settings.ghToken='ghp_zz'; S.settings.gistId='gist_zz'; S.settings.gdocUrl='https://zz'; S.settings.gdocSecret='sec_zz';");
     const exp = ev('exportPayload()');
@@ -11375,11 +11578,15 @@ setTimeout(async () => {
     w.__s3hTok = ev('S.settings.ghToken'); w.__s3hGist = ev('S.settings.gistId');
     const ago = function(min){ return new Date(Date.now() - min * 60000).toISOString(); };
     // A cycle that ended 10 minutes ago. ECHO's report is a day old and its last word is a failure.
+    // The failure line is today at 00:01, or a minute after that report if the report is itself today: on the
+    // 25-hour day DST ends (Nov 1), 24h10m before 11:30 PM is 00:20 the same day, and a line at 00:01 came
+    // BEFORE the report, so the hub read ECHO as fine. The feed test below needs the line to be today.
+    const h1At = (function(){ const d = new Date(); d.setHours(0, 1, 0, 0); return new Date(Math.max(d.getTime(), Date.now() - (10 + 1440 - 1) * 60000)).toISOString(); })();
     ev("(function(){ var a = agState(); a.lastRunAt = '" + ago(10) + "';" +
        "a.status = {zulu: {summary: 'z', at: '" + ago(11) + "'}, charlie: {summary: 'c', at: '" + ago(16) + "', consulted: ['list_lifts']}," +
        " delta: {summary: 'Bench up 2%.', at: '" + ago(14) + "', consulted: ['get_lift_history', 'get_e1rm_series', 'get_weekly_volume']}," +
        " echo: {summary: 'e', at: '" + ago(10 + 1440) + "'}};" +
-       "a.log = [{id: 'h1', agent: 'echo', at: new Date(todayKey() + 'T00:01:00').toISOString(), text: 'I could not complete tonight\\u2019s check (Load failed). Nothing changed.'}," +
+       "a.log = [{id: 'h1', agent: 'echo', at: '" + h1At + "', text: 'I could not complete tonight\\u2019s check (Load failed). Nothing changed.'}," +
        "         {id: 'h2', agent: 'delta', at: '" + ago(3000) + "', text: 'An older line <b>with markup</b>.'}];" +
        "a.proposals = [{id: 'hp1', agent: 'delta', status: 'pending', title: 'Lat Pulldown 3 \\u2192 4 sets', reasoning: 'r', created: todayKey(), expires: mesoAddDays(todayKey(), 7), fix: {type: 'setCount', payload: {}}}];" +
        "a.brief = null; _agRunning = false; agActiveChat = 'delta'; })();");
@@ -11397,7 +11604,7 @@ setTimeout(async () => {
     ok('hub: a cycle in progress says so', ev('hubStatus().txt') === 'Cycle running…');
     ev('_agRunning = false;');
     // put ECHO's miss back for the map
-    ev("agState().status.echo.at = '" + ago(10 + 1440) + "'; agState().log.unshift({id: 'h1', agent: 'echo', at: new Date(todayKey() + 'T00:01:00').toISOString(), text: 'I could not complete tonight\\u2019s check (Load failed). Nothing changed.'});");
+    ev("agState().status.echo.at = '" + ago(10 + 1440) + "'; agState().log.unshift({id: 'h1', agent: 'echo', at: '" + h1At + "', text: 'I could not complete tonight\\u2019s check (Load failed). Nothing changed.'});");
 
     ev("setMode('review'); showMainTab('ops');");
     const OPS = "document.getElementById('ops')";
@@ -11426,7 +11633,7 @@ setTimeout(async () => {
 
     // the feed
     const acts = ev("[].slice.call(" + OPS + ".querySelectorAll('.hub-act')).map(function(r){ return [r.querySelector('.hub-act-t').textContent, r.querySelector('.cc-glyph').textContent, r.querySelector('.hub-act-x').innerHTML]; })");
-    ok('hub: today’s feed lines carry the time and the agent’s glyph', acts[0][0] === ev("homeClock(new Date(todayKey() + 'T00:01:00').toISOString())") && acts[0][1] === 'E', JSON.stringify(acts[0]));
+    ok('hub: today’s feed lines carry the time and the agent’s glyph', acts[0][0] === ev("homeClock('" + h1At + "')") && acts[0][1] === 'E', JSON.stringify(acts[0]));
     ok('hub: older lines carry the date, and agent text is escaped', /^[A-Z][a-z]{2} \d+$/.test(acts[1][0]) && acts[1][2].indexOf('&lt;b&gt;') >= 0, JSON.stringify(acts[1]));
 
     // the spend ring: both devices against the cap
@@ -12689,6 +12896,12 @@ setTimeout(async () => {
     ev("todayKey = function(){ return '2027-01-05'; };");
     ok('dates: early January still shows the finished year, still announced for the first week', ev('recapYear()') === '2026' && ev('recapTitle()') === 'Your 2026' &&
        JSON.parse(ev("JSON.stringify(notifItems().map(function(i){ return i.id; }))")).indexOf('recap:2026') >= 0);
+    // Nothing logged in 2027 yet: Overview used to return on the empty year before the recap card, so the
+    // notification led to a page without it (and without the radar) until the first session of the year.
+    ev("renderAnOverview();");
+    const ov27 = ev("document.getElementById('an_over').textContent");
+    ok('dates: before the first session of the new year, Overview still has the recap and the radar',
+       !!ev("!!document.querySelector('#an_over .recap-card')") && /Your 2026/.test(ov27) && /Nothing logged in 2027 yet/.test(ov27) && /Strength by muscle/.test(ov27), ov27.slice(0, 200));
     ev("todayKey = function(){ return '2027-01-12'; };");
     ok('dates: after its week the notice goes, the recap stays', ev('recapTitle()') === 'Your 2026' && !JSON.parse(ev("JSON.stringify(notifItems().map(function(i){ return i.id; }))")).some(id => /^recap:/.test(id)));
     ev("todayKey = function(){ return '2027-01-20'; };");
@@ -13393,7 +13606,9 @@ setTimeout(async () => {
     ok('review: the sender’s name is text, never markup', !ev("!!document.querySelector('#famOverlay img')") && ev('window.__fmPwn') === undefined);
     ev("Array.prototype.find.call(document.querySelectorAll('#famOverlay .btn'), function(b){ return b.textContent === 'Ignore'; }).click();");
     ok('review: Ignore changes nothing', ev("fpFood('bagel').stocked") === true && ev("fpFood('wmilk').pref") === 'h' && !ev("!!document.getElementById('famOverlay')"));
-    const old = ev("famBase() + '#famreply=' + famEnc({v: 1, k: 'r', from: 'Dad', at: new Date(Date.now() - 20 * 86400000).toISOString(), f: [['bagel', 0]]})");
+    // Twenty days before the stubbed today (2026-10-05), as a fixed date. It was Date.now() - 20 days, which
+    // measured the real clock against the stubbed day and turned this red by itself from 2026-10-12.
+    const old = ev("famBase() + '#famreply=' + famEnc({v: 1, k: 'r', from: 'Dad', at: '2026-09-15T12:00:00.000Z', f: [['bagel', 0]]})");
     ev("famFromText(" + JSON.stringify(old) + ");");
     ok('review: an old update says it is old', /a while ago, so check it still holds/.test(sheet()));
     ev("famClose(); window.__fmAl = 0; window.__fmAlK = window.alert; window.alert = function(){ window.__fmAl++; };");
@@ -14088,6 +14303,61 @@ setTimeout(async () => {
     ev("if(window.__wcNow){ Date.now = window.__wcNow; delete window.__wcNow; } if(window.__wcTK){ todayKey = window.__wcTK; delete window.__wcTK; } if(window.__wcRA){ rerenderActive = window.__wcRA; delete window.__wcRA; }");
     ev('if(window.__wcSaved){ S = JSON.parse(window.__wcSaved); delete window.__wcSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
     ev("try{ waCountTick(); renderHome(); }catch(e){}");
+  }
+
+  console.log('=== SMALL FIXES FROM THE 2026-10-10 BUG HUNT ===');
+  try {
+    w.__bhSaved = ev('JSON.stringify(S)');
+    // Not now on the fatigue banner is his tap. Saved with save(false), a pull a minute later brought it back.
+    ev("window.__bhT = S.meta.changedAt; S.meta.changedAt = 1; fatigueDismiss();");
+    ok('fatigue: Not now is saved as his change', ev('S.meta.changedAt') > 1 && ev('S.fatigueDismissed') === ev('todayKey()'));
+    ev("S.meta.changedAt = Math.max(S.meta.changedAt, window.__bhT); delete window.__bhT;");
+
+    // A deload started in the first hour of Nov 1, when the clocks go back, runs to the 7th: now + 144 h was the 6th.
+    // (Only an Eastern-time machine can see the old bug; the fixed code passes anywhere.)
+    ev("window.__bhTK = todayKey; window.__bhDN = Date.now; todayKey = function(){ return '2026-11-01'; };" +
+       "Date.now = function(){ return Date.parse('2026-11-01T00:30:00-04:00'); }; startDeloadWeek();");
+    ok('deload: six calendar days on, whatever the clocks do', ev('S.deload.startedAt') === '2026-11-01' && ev('S.deload.until') === '2026-11-07', ev('JSON.stringify(S.deload)'));
+    ev("todayKey = window.__bhTK; Date.now = window.__bhDN; delete window.__bhTK; delete window.__bhDN;");
+
+    // A pull that lands during a photo upload replaces S whole (here, with the snapshot from before the add). The
+    // new gist's id and the photo's index entry must land in the S that exists after it.
+    ev("window.__bhFetch = fetch; window.__bhDS = photoDownscale; window.__bhPB = _photoBlobs;" +
+       "S.settings.ghToken = 'tok'; S.photos = {gistId: '', index: []}; _photoBlobs = null; window.__bhPull = JSON.stringify(S);" +
+       "photoDownscale = async function(){ return {dataUrl: 'data:image/jpeg;base64,AAAA', w: 30, h: 40}; };" +
+       "fetch = async function(url, opts){" +
+       "  if(opts && (opts.method === 'PATCH' || opts.method === 'POST')){ S = JSON.parse(window.__bhPull); return {ok: true, status: 200, json: async function(){ return {id: 'pgNew'}; }}; }" +
+       "  return {ok: true, status: 200, json: async function(){ return {files: {}}; }};" +
+       "};");
+    await ev("photoAdd({files: [{name: 'x.jpg'}], value: 'x'})");
+    ok('photos: an upload a pull lands during keeps its new gist and indexes the photo',
+       ev('S.photos.gistId') === 'pgNew' && ev('S.photos.index.length') === 1 && ev('S.photos.index[0].date') === ev('todayKey()'), ev('JSON.stringify(S.photos)'));
+    const bhPid = ev('S.photos.index[0] && S.photos.index[0].id');
+    ev("_photoBlobs = null; window.__bhPull = JSON.stringify(S);");   // the other device's copy still lists it
+    await ev("photoDelete('" + bhPid + "')");
+    ok('photos: a delete a pull lands during still removes it', ev('S.photos.index.length') === 0, ev('JSON.stringify(S.photos)'));
+
+    // Screenshot import: the names a model read off the image are resolved, never saved raw, and two rows for one lift
+    // are one entry (historyFor() reads only the first entry of a name).
+    ev("window._pendingShot = {date: '2026-10-08', exercises: [" +
+       "{name: 'barbell bench press', sets: [{weight_lbs: 185, reps: 5}]}," +
+       "{name: 'Lat Pulldown (reduce 10 lb, RPE 7)', sets: [{weight_lbs: 150, reps: 10}]}," +
+       "{name: 'Barbell Bench Press', sets: [{weight_lbs: 185, reps: 4}]}," +
+       "{name: 'Bench Press (Barbell)', sets: [{weight_lbs: 95, reps: 12}]}]};");
+    if (!w.document.getElementById('shotDate')) w.document.body.insertAdjacentHTML('beforeend', '<input id="shotDate"><select id="shotDay"><option value="D1">D1</option></select>');
+    ev("document.getElementById('shotDate').value = '2026-10-08'; document.getElementById('shotDay').value = 'D1'; window.__bhShotN = S.logs.length;");
+    try { ev('confirmShot()'); } catch (e) {}
+    const shotLog = ev('S.logs[S.logs.length - 1]');
+    ok('import: a screenshot name joins the lift it names, its note stripped, one entry per lift, a variant kept',
+       ev('S.logs.length') === ev('window.__bhShotN') + 1 && !!shotLog &&
+       JSON.stringify(shotLog.entries.map(e => [e.exercise, e.sets.length])) === JSON.stringify([['Barbell Bench Press', 2], ['Lat Pulldown', 1], ['Bench Press (Barbell)', 1]]),
+       JSON.stringify(shotLog && shotLog.entries.map(e => [e.exercise, e.sets.length])));
+  } catch (e) {
+    ok('small fixes section', false, e.stack);
+  } finally {
+    ev("if(window.__bhFetch){ fetch = window.__bhFetch; photoDownscale = window.__bhDS; _photoBlobs = window.__bhPB; delete window.__bhFetch; delete window.__bhDS; delete window.__bhPB; delete window.__bhPull; }");
+    ev("if(window.__bhTK){ todayKey = window.__bhTK; Date.now = window.__bhDN; delete window.__bhTK; delete window.__bhDN; }");
+    ev('if(window.__bhSaved){ S = JSON.parse(window.__bhSaved); delete window.__bhSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

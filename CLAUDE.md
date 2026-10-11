@@ -79,11 +79,22 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3521 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3559 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
 every rest day. Name a day key (`"D1"`) instead.
+
+The clock has more traps than the day key, and four were found at once on 2026-10-10:
+- A stubbed `todayKey()` beside the real clock (`Date.now() - 20 days`): the pantry test went red by
+  itself from 2026-10-12.
+- A time of day: a fixture "today at 6:16 AM" is newer than now before 6:16.
+- The 25-hour day DST ends: "24 h 10 min ago" can still be today.
+- An end date: an arc that is over says nothing.
+
+The way to find them is to run the suite with the clock moved. A `-r` preload shifts the harness's
+`Date`, and the same shift goes at the top of the app's first script in a copy passed as
+`IRONHUB_HTML`. Run it at Nov 1 (both ends), New Year, the arc's start and end, and the early hours.
 
 Setup (once): `npm install acorn jsdom`
 
@@ -245,6 +256,27 @@ that reconcile has to get right, and both are tested:
 This does not replace push-before-pull in `autoPullOnLoad()`; it makes the push itself safe,
 so the two orders can no longer disagree.
 
+**"Not applied" is asked of a seen watermark, never of `changedAt`** (found 2026-10-10). The
+reconcile used to test `exportedAt > changedAt`, and `save()` moves `changedAt` to now *before* the
+push it schedules, so every save-triggered push read any older snapshot as already seen and
+PATCHed over it. That is the Sep-19 shape itself: the suite's case called `syncPush()` with a
+week-old `changedAt` and no `save()`, the one shape that worked. A replay showed both real shapes
+losing the other device's session from the gist and from this device: a stale device whose boot
+pull failed, then any tap; and an open laptop that saves anything in the minute after the phone
+pushes. Now:
+- `syncSeenAt()` is the newest snapshot this device applied (`applyPulled()`) or wrote (a
+  successful `syncPush()`), in its own `localStorage['ironhub:syncseen']`, never `S` (it is a fact
+  about this device, and `S.meta` arrives from the other device on every pull). With no key yet,
+  it falls back to `pushedAt`. `syncSeenSet()` compares with the stored key only: comparing with the
+  fallback never wrote it, because both callers set `pushedAt` to the same value first.
+- A restore (`importApply()`) marks the gist as seen, so it still replaces the cloud copy as it
+  always has. `connectSync()` and `disconnectSync()` reset it.
+- The cost, by design: when the reconcile applies a snapshot, this device's NON-history edits since
+  its last push lose to it (top-level keys are replaced whole; only `SYNC_HISTORY` is unioned, and
+  `S.agents` has its own merge, which does not include the per-agent chats). That window is the
+  same one in which the other device's sessions used to be lost, so it is the right trade; a
+  per-key three-way merge is the fix if it ever bites.
+
 ---
 
 ## Architecture map
@@ -252,7 +284,7 @@ so the two orders can no longer disagree.
 | Area | Key functions |
 |---|---|
 | State | `S`, `load()`, `save()`, `LS_KEY = 'ironhub:v1'` |
-| Sync | `autoPullOnLoad()`, `applyPulled()`, `fetchGistData()`, `schedulePush()`, `syncReconcileBeforePush()` |
+| Sync | `autoPullOnLoad()`, `applyPulled()`, `fetchGistData()`, `schedulePush()`, `syncReconcileBeforePush()` (asks `syncSeenAt()`, `SYNC_SEEN_KEY`) |
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()` (`dow` \| `cycle`) |
 | Week windows | `weekStartKey()`, `lastCompletedWeekRange()`, `weeklyVolumeByGroup()` |
 | Progression | `recommend()`, `classifyDecision()` (the two trees, kept in step), `buildOneLiveExercise(nm, homeEquip, {call, sets})`, `intraAdvice()`; jump cautions `e1Spike()` (`SPIKE_PCT`), `atCeiling()` (`STR_CEIL_SETS`) |
@@ -274,7 +306,7 @@ so the two orders can no longer disagree.
 | WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`; a failed run: `S.whoop.relayError`, `whoopRelayFault()`, `whoopRunFailText()`; `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`, `spendRefresh()`, `relayErrorRecord()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
-| Live session | `renderLive()`, the dock (`intraAdvice()` aim and why, `liveStep()`, `liveLogLabel()`, `livePrWatch()`, `liveFinishEstimate()`, `liveWakeApply()`, quick chips `liveShortOnTime()` / `liveRecoverRest()`), gear `liftLoad()` / `plateCalc()` / `gearLine()` / `plateChange()`, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`); `liveKeepInputs()` / `liveRestoreInputs()` (typed values survive a repaint); `loadLiveDraft()` (`LIVE_DRAFT_MAX_H`, a session past midnight survives) |
+| Live session | `renderLive()`, the dock (`intraAdvice()` aim and why, `liveStep()`, `liveLogLabel()`, `livePrWatch()`, `liveFinishEstimate()`, `liveWakeApply()`, quick chips `liveShortOnTime()` / `liveRecoverRest()`), gear `liftLoad()` / `plateCalc()` / `gearLine()` / `plateChange()`, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`); `liveKeepInputs()` / `liveRestoreInputs()` (typed values survive a repaint); `loadLiveDraft()` (`LIVE_DRAFT_MAX_H`, a session past midnight survives); `liveRecoverStale()` (a session never ended is saved at the next boot) |
 | Data corrections | `DATA_FIXES`, `dataFixesRun(pulled)`, `dataFixApply()`, `S.dataFixes`; `autoPullOnLoad()` returns whether the pull worked |
 | Backup | `exportPayload()` / `importApply()`, `DEVICE_SECRETS` (a backup file carries no credentials; import keeps this device's) |
 | After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
@@ -486,7 +518,14 @@ logging this lift". `exSplitNote()` peels off a trailing parenthetical that read
 exercise that reads as a plain name, because suggesting one is part of DELTA's job. The note
 itself travels in `S.coachDayPlan.notes` and shows as LIVE's advice line. The four Sep-12
 entries are still in his logs. Merge them with the Library's rename (`exRenameEverywhere()`), not
-a load-time migration.
+a load-time migration. **But not the Lying Leg Curl one yet** (checked against his data, 2026-10-10): "Lying Leg Curl (reduce 10-15 lb,
+RPE 6-7)" holds 25 x 12 per side, and the per-side correction (`DATA_FIXES`) matched only the exact name, while its
+neighbours now read 70-90. Merged as it is, it would land a fake half-weight dip in that lift's history. It needs
+its own doubling first (a new `DATA_FIXES` entry for that exact name, through 2026-09-12), which is his call.
+
+**A screenshot import resolves its names too** (`shotExName()`, 2026-10-10): a known lift in its own spelling, a
+coaching note stripped, anything else kept as read (a variant like "(Barbell)" stays), and two rows for one lift
+merged into one entry. `confirmShot()` used to save whatever the model read off the image.
 
 **Read-only agent output still needs a validator.** The Overload Status tab is
 informational, so it does not go through the proposal queue — but `olValidateReport()`
@@ -684,6 +723,10 @@ returned at the first gate — which is *before* anything is written to the log,
 screen could explain the silence. Every repaint inside those two functions is now within the `try`
 and individually guarded.
 
+**The nightly cycle stamps the night it started** (`runDay`, read before the await, 2026-10-10). Stamped with
+`todayKey()` at the end, a cycle that started at 11:58 PM and finished after midnight closed the NEXT night's gate,
+and that night's 9 PM check never ran.
+
 ---
 
 ## V4 invariants — things that will silently break if undone
@@ -753,6 +796,11 @@ had to get right, and that any future removal here should copy:
 active tab every 30 s and after every sync pull, so DOM-only state is wiped on a timer with
 nothing to blame it on. `subOpen`, `sdOpen`, `sdHomeOpen` and `photoOpen` are module-scoped
 for this reason.
+
+**A weigh-in is checked before it is believed** (`addWeight()`, 2026-10-10). A fat-fingered "1715" for 171.5 put a
+week's average near 400 lb, and every rate below took it as real, ECHO's nightly read included. Outside
+`WEIGH_MIN_LB`-`WEIGH_MAX_LB` (80-400) it is refused; more than `WEIGH_JUMP_LB` (10) from the nearest earlier
+weigh-in asks first, because a real one is possible.
 
 **One bodyweight rate, and one set of bands.** `bulkRate()` / `bulkBand()`, over weekly averages. Every surface that
 quotes a lb/wk figure goes through it: the Bulk tab, the projection card, `investigateBulk()`,
@@ -1085,6 +1133,13 @@ date; V4's removal of date overrides stands.
   at the flip to live, so it never repaints under his hands.
 - **A phone's top bar has about six characters of room.** More than a day out it reads "8d 07h" (`.wa-short`), and at 360px
   and under the IRON HUB wordmark gives way while the countdown shows (`:has()`). Measured at 393 and 320.
+- **Pace counts the days that are over** (2026-10-10). `waProgress().expected` is the target times (elapsed − 1) / 7:
+  counting today read "behind, ~1 by now" from the moment the arc went live, at 7:30 PM on day 1, a quarter of an hour
+  before his workout. A session logged today still counts. On the start date before the start time the card says it
+  starts "today", not "0 days out". **Start the next arc** after an arc he ended early (before Apr 1) starts next winter's,
+  not the season still running.
+- **The recap outlives the empty new year.** Progress › Overview used to return on "Nothing logged in 2027 yet" before
+  the recap card and the radar, so from Jan 1 until the first session the "Your 2026" recap could not be reached.
 
 **The strength radar is `muscleResponse(12, {clean:true})` times 12** (his choice: growth over 12 weeks).
 - The `clean` option is opt-in, and the default the agents read is unchanged.
@@ -1189,6 +1244,20 @@ every boot. The toggle also writes every slot of the lift on the permanent split
 prescription), `coachPlan`, `swapped`, and `scheduled`. Decisions record the weight LIVE actually
 prescribed (`call-recover`, overrides, deloads, home rounding). Sessions before 2026-09-28 have none
 of these.
+
+**A session he never ended is saved, not dropped** (`liveRecoverStale()`, 2026-10-10). `loadLiveDraft()`
+resumes a draft only from today or the last `LIVE_DRAFT_MAX_H` (6) hours. An older one used to be ignored
+without a word, and the next session's draft overwrote it. He trains at 7:45 PM, so one forgotten End lost
+the whole session by about 1:45 AM. At boot, after the pull, a stale draft with logged sets goes through
+`endLiveSession({recovered:true})`:
+- it is dated the day it started, and its `endedAt` is its last set;
+- the record carries `recovered:true`;
+- it is a deload session only by its own lifts' `_deload`, never because a deload is in force today;
+- the summary and a CHARLIE line say it was never ended.
+
+One with no sets, or one already in the log (same `startedAt`), is only cleared. `sessionNote()` now
+compares a session with the one before its own date. "Not today" compared a session dated yesterday
+with itself.
 
 Since 2026-10-03 it also records how it was modified. Each set carries `p:{w,lo,hi}`, the call it
 was given, so a lighter weight he chose can be told from one he was prescribed. A 1RM-test set
@@ -1461,7 +1530,9 @@ year of hand-written history safe. Editing `workout-schedule.gs` does nothing un
 re-deployed as a **New version**; the `/exec` URL otherwise keeps running the old code.
 
 **Photos never go in `S`.** State holds an index; the blobs live in their own gist, fetched
-on demand. Everything in `S` is re-serialized on every save and re-uploaded on every sync.
+on demand. Everything in `S` is re-serialized on every save and re-uploaded on every sync. The index and the photo
+gist's id are written after the upload's await, into the `S` that exists then (2026-10-10): written through
+a reference taken before it, a pull landing mid-upload lost them.
 
 ## UI conventions
 
@@ -1877,6 +1948,9 @@ here reads from a CSS custom property.
   carries the same warning about `chin` inside "ma**chin**e". Use `\b`.
 - Match surrounding code style rather than imposing a new one.
 - `esc()` all user/model-supplied text going into HTML.
+- **A string inside an `onclick="f('...')"` goes through `jsq()`, never `esc(x).replace(...)`.** `esc()` turns ' into `&#39;`,
+  which the HTML parser turns straight back into ' before the JS runs, so six handlers broke on any name with an
+  apostrophe ("Farmer's Walk") until 2026-10-10. Better still, pass it in a `data-` attribute.
 - Prefer editing existing functions over adding parallel ones.
 
 ---
