@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-11-v1">
+<meta name="ironhub-build" content="2026-10-11-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -53,7 +53,8 @@
     color:var(--text); font-family:var(--body); min-height:100vh; -webkit-font-smoothing:antialiased; line-height:1.55;}
   ::-webkit-scrollbar{width:9px;height:9px} ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
   ::-webkit-scrollbar-track{background:transparent}
-  button{font-family:inherit; cursor:pointer;}
+  /* manipulation: no double-tap-zoom wait, so a quick second tap is a click, not half a zoom gesture. */
+  button{font-family:inherit; cursor:pointer; touch-action:manipulation;}
   input,select,textarea{font-family:var(--body);}
   b,strong{font-weight:600;}
   h2{font-family:var(--disp); font-weight:600; font-size:15px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); margin:18px 2px 9px;}
@@ -435,7 +436,7 @@
   /* Press feedback, everywhere except LIVE: the dock never moves under his hands. */
   #reviewMode button, #reviewMode .btn, .topbar button, .sidenav button, .botnav .ni, .cc-tile, .cc-start{
     transition:transform .09s ease, color .14s, background-color .14s, border-color .14s, box-shadow .14s, opacity .14s;}
-  #reviewMode button:active, #reviewMode .btn:active, .topbar button:active, .sidenav button:active, .botnav .ni:active, .cc-tile:active, .cc-start:active{transform:scale(.97);}
+  #reviewMode button:active, #reviewMode .btn:active, .topbar button:active, .sidenav button:active, .botnav .ni:active{transform:scale(.97);}
   .hidden{display:none !important;}
 
   /* ---- fuel: missing V1 classes ---- */
@@ -1440,14 +1441,22 @@
   .cc-start{position:absolute; left:50%; top:50%; width:36%; aspect-ratio:1; transform:translate(-50%,-50%); border-radius:50%;
     border:none; background:var(--amber); color:var(--on-accent); display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:2px; cursor:pointer; box-shadow:var(--glow-amber);}
-  .cc-start:active{transform:translate(-50%,-50%) scale(.97);}
+  /* Press feedback must not move the hit box: a scale on :active pulled the edge out from under a thumb
+     resting there, the release landed outside and the tap never became a click (the "spam it" report). */
+  /* #reviewMode button:active (above) is more specific and its bare scale() REPLACES the translate(-50%,-50%)
+     that centres these, so a press threw the button half its size off the finger and the tap was lost. The
+     wheel buttons opt out here, at a specificity that beats it. */
+  #reviewMode .cc-start:active, #reviewMode .cc-tile:active, #reviewMode .hub-node:active{transform:translate(-50%,-50%);}
+  .cc-start:active{filter:brightness(.9);}
   .cc-start-l{font-family:var(--disp); font-weight:700; font-size:clamp(20px, 6.5vw, 25px); letter-spacing:.05em; text-transform:uppercase; line-height:1;}
   .cc-start-s{font-family:var(--disp); font-weight:700; font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; opacity:.78;}
   .cc-tile{position:absolute; width:58px; height:58px; transform:translate(-50%,-50%); border:none; border-radius:18px; background:var(--panel);
     color:var(--text); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer;
     font-family:var(--disp); font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; box-shadow:var(--lift);}
   .cc-tile svg{color:var(--amber);}
-  .cc-tile:active{transform:translate(-50%,-50%) scale(.97);}
+  .cc-tile:active{filter:brightness(.88);}
+  /* a 58px tile is a small target one-handed: the click area runs 7px past what is drawn */
+  .cc-tile::after{content:""; position:absolute; inset:-7px;}
   .cc-t0{left:50%; top:11%;} .cc-t1{left:87.1%; top:38%;} .cc-t2{left:72.9%; top:81.6%;} .cc-t3{left:27.1%; top:81.6%;} .cc-t4{left:12.9%; top:38%;}
   .cc-badge{position:absolute; top:-6px; right:-6px; min-width:20px; height:20px; padding:0 5px; border-radius:10px; background:var(--amber);
     color:var(--on-accent); font-family:var(--mono); font-size:11px; display:flex; align-items:center; justify-content:center;}
@@ -1814,7 +1823,7 @@
     gap:2px; cursor:pointer; padding:4px; min-width:0;}
   .hub-node.lead{width:30.5%; border-radius:30px; box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 55%, transparent);}
   .hub-node.on{box-shadow:inset 0 0 0 2px var(--c);}
-  .hub-node:active{transform:translate(-50%,-50%) scale(.97);}
+  .hub-node:active{filter:brightness(.88);}
   .hub-g{font-family:var(--disp); font-weight:700; font-size:22px; line-height:1; color:var(--c);}
   .hub-node.lead .hub-g{font-size:30px;}
   .hub-n{font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.05em; text-transform:uppercase;}

@@ -13869,6 +13869,8 @@ setTimeout(async () => {
     // left dark text on the dark card (2026-10-05). jsdom cannot paint, so this checks the Fuel rule leaves the fill alone.
     ok('fuel: the Fuel pill rule does not touch the background, so a tapped range keeps its fill', /#fuel \.nut-pill\{[^}]*min-height:52px[^}]*\}/.test(css) && !/#fuel \.nut-pill\{[^}]*background/.test(css) && /\.nut-pill\.sel\.t-on\{background:var\(--good\)/.test(css));
     ok('live: the tool row sits above the weight numeral, with thumb-sized buttons', /\.lv4-tools\{[^}]*position:relative;[^}]*z-index:2;/.test(css) && /\.lv4-tools \.ex-info-btn\{[^}]*min-width:44px;[^}]*min-height:40px;/.test(css));
+    // jsdom cannot hit-test, so this pins the rules the fix is made of: a press must not move the hit box.
+    ok('wheels: buttons are tap-safe (manipulation, no :active scale, tiles have click slop)', /button\{[^}]*touch-action:manipulation/.test(css) && !/\.(cc-start|cc-tile|hub-node):active\{[^}]*scale/.test(css) && /#reviewMode \.cc-start:active, #reviewMode \.cc-tile:active, #reviewMode \.hub-node:active\{transform:translate\(-50%,-50%\);\}/.test(css) && !/\.cc-tile:active, \.cc-start:active\{transform/.test(css) && /\.cc-tile::after\{[^}]*inset:-7px/.test(css));
   } catch (e) {
     ok('leg curl section', false, e.stack);
   } finally {
