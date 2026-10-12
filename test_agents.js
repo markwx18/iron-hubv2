@@ -13667,6 +13667,23 @@ setTimeout(async () => {
     const d2 = await famLoad('#famreply=' + rlink.split('#famreply=')[1]);
     ok('boot: a reply link in a browser without his app offers the copy page', /Pantry update/.test(d2.window.document.querySelector('.fam h1').textContent) && !!d2.window.document.querySelector('.fam-foot .btn'));
     d2.window.close();
+    // --- a link tapped while a page is already open changes only the fragment: no reload, no boot ---
+    // (his report, 2026-10-12: the family link opened the main app). jsdom fires a real hashchange.
+    const setHash = (d, h) => new Promise((res) => { d.window.location.hash = h; setTimeout(res, 150); });
+    const d3 = await famLoad('');
+    d3.window.eval("localStorage.setItem(LS_KEY, JSON.stringify({logs:[{id:1,date:'2026-10-01',day:'D1',entries:[]}]}))");
+    d3.window.eval("window.__rv = 0; famReviewFromHash = function(){ window.__rv++; famClearHash(); };");
+    await setHash(d3, '#famreply=' + rlink.split('#famreply=')[1]);
+    ok('warm: a reply link tapped in the running app opens the review', d3.window.eval('window.__rv') === 1);
+    d3.window.eval("localStorage.removeItem(LS_KEY)");
+    d3.window.eval("history.replaceState(null, '', '#family=abc')");
+    ok('warm: a family link tapped in the running app asks for a reload, which routes it', d3.window.eval("famWarmAction('', false)") === 'reload' && d3.window.eval("famWarmAction('', true)") === '');
+    d3.window.close();
+    const d4 = await famLoad('#family=' + link.split('#family=')[1]);
+    const n0 = d4.window.document.querySelectorAll('.fam-item').length;
+    await setHash(d4, '#family=' + d4.window.eval('famEnc({v:1,k:"p",at:new Date().toISOString(),f:[["chkbr",0]],c:{}})'));
+    ok('warm: a second family link on their page redraws it', n0 === 3 && d4.window.document.querySelectorAll('.fam-item').length === 1, n0);
+    d4.window.close();
   } catch (e) {
     ok('family pantry section', false, e.stack);
   } finally {

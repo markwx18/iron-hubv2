@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-11-v2">
+<meta name="ironhub-build" content="2026-10-12-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -8566,6 +8566,15 @@ function famHasState(){
 function famRoute(){
   if(/^#family=/.test(location.hash)) return 'family';
   if(/^#famreply=/.test(location.hash)) return famHasState() ? 'reply' : 'reply-copy';
+  return '';
+}
+/* A link tapped while the page is already open (a tab, or the app, left running) changes only the
+   #fragment, so the browser does not reload and the boot never routes it: the family link showed the main
+   app, and a reply link did nothing. This says what the new fragment needs, given how the page booted. */
+function famWarmAction(route, live){
+  const h = location.hash;
+  if(/^#family=/.test(h)) return route === 'family' ? 'page' : (live ? '' : 'reload');
+  if(/^#famreply=/.test(h)) return route === 'family' || route === 'reply-copy' ? 'reload' : (famHasState() ? 'review' : 'reload');
   return '';
 }
 function famClearHash(){ try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){} }
@@ -23698,6 +23707,17 @@ try{ startLiveRefresh(); }catch(e){}
 (function(){
   let route = '';
   try{ route = famRoute(); }catch(e){ route = ''; }
+  /* registered before the early returns: the family page is itself a page that can be re-tapped */
+  try{
+    window.addEventListener('hashchange', function(){
+      try{
+        const a = famWarmAction(route, liveSessionRunning());
+        if(a === 'page') famFamilyPage();
+        else if(a === 'review') famReviewFromHash();
+        else if(a === 'reload') location.reload();
+      }catch(e){}
+    });
+  }catch(e){}
   if(route === 'family'){ try{ famFamilyPage(); }catch(e){} return; }
   if(route === 'reply-copy'){ try{ famCopyPage(); }catch(e){} return; }
   appBoot();
