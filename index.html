@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-12-v1">
+<meta name="ironhub-build" content="2026-10-14-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3750,6 +3750,14 @@ function effLever(set){
    This is the finer signal the lever buys: "every set was easy" used to be the only way to
    earn a double jump, so four sets at 95 and one at 78 looked identical to four at 95 and
    one at 42. */
+/* The effort score as the agents read it: the word first, the number in brackets. A bare "effort 40"
+   came back to him as "40% effort", which reads as coasting; on this scale 40 is a grind. */
+const EFF_WORD = {fail:'failed reps', grind:'a grind', solid:'solid', easy:'easy'};
+function effScoreText(v){
+  const n = Math.round(+v);
+  const b = effBucketFromLever(n);
+  return b ? EFF_WORD[b]+' ('+n+'/100)' : String(v);
+}
 function effMean(sets){
   const vals = (sets||[]).map(effLever).filter(function(v){ return v !== null; });
   if(!vals.length) return null;
@@ -5642,15 +5650,18 @@ async function sendChat(){
   S.chat.push({role:'user', content:txt}); save();
   agThinkingFor = 'zulu'; renderCoach();
   try{
-    const system = 'You are ZULU, the lead agent in Mark\u2019s Iron Hub app and an evidence-based strength coach '+
+    // "An evidence-based strength coach" claimed evidence it was never given, and "give specific weights,
+    // reps, set counts, and food amounts" invited numbers with nothing behind them (2026-10-14).
+    const system = 'You are ZULU, the lead agent in Mark\u2019s Iron Hub app and the strength coach '+
       'for a motivated 18-year-old natural lifter on a bulk. You oversee three specialist agents \u2014 CHARLIE '+
       '(app logistics, data health, training schedule), DELTA (workouts, splits, progressive overload) and '+
       'ECHO (bulk, fuel, bodyweight trend). Speak as ZULU. If a question sits squarely in one of their domains '+
       'you can note that, but still answer it yourself \u2014 don\u2019t deflect. '+
-      'Be direct and concrete: give specific weights, reps, set counts, and food amounts when relevant. '+
-      'No fluff, no over-hedging. Keep answers tight (under ~250 words unless asked for a program). '+
+      'Be direct and concrete. No fluff, no over-hedging. If he asks for a whole new program, explain the principles '+
+      'and offer to change his existing split with your tools rather than writing one from memory. '+
       'Never recommend steroids, SARMs, or other PEDs; if asked, explain briefly why not at his age and move on. '+
-      'Encourage adequate recovery and realistic rate-of-gain (~0.5-1 lb/week on a lean bulk).\n\n'+
+      'Encourage adequate recovery and a realistic rate of gain ('+BULK_LO+'\u2013'+BULK_HI+' lb/week on a lean bulk).\n'+
+      chatVoiceRules()+agEvidenceRules()+'\n'+
       'You can propose changes anywhere in the app using the provided tools: the split, today\u2019s session, a lift\u2019s next weight, '+
       'sets and modes, deloads, experiments, fuel targets and the pantry, the schedule and plan, renames, and home days. '+
       chatActionRules('zulu')+'\n\n'+
@@ -17165,6 +17176,7 @@ function deloadForecastLineHTML(){
    itself has moved (3000 -> 3700) and "on target" would mean different things in different weeks.
    A week needs 4 logged days; a range needs 3 weeks before it gets a number. */
 const FVR_MIN_DAYS = 4, FVR_MIN_WEEKS = 3;
+const FVR_FIRM_WEEKS = 6;   // under this many weeks a group is shown to the agents as "too few to lean on"
 function fuelVsResults(){
   const t = calTarget();
   const days = {};
@@ -17367,9 +17379,15 @@ function intelSummary(){
       L.push('Intake, last 14 days ('+rows.length+' logged): calories '+fm(c)+' (target '+calTarget()+'); protein '+fm(p)+' (target '+proTarget()+').'); } }catch(e){}
   try{ const mt = mealTimingRead(); if(mt.result) L.push('Meal timing before training (his taps): '+mt.buckets.filter(function(b){ return b.n; }).map(function(b){ return b.label+' n '+b.n+(b.mean !== null ? ' '+sg((b.mean - 1) * 100, 1)+'% vs trend' : ''); }).join('; ')+
     '; '+(mt.result.confidence === 'moderate' ? 'best '+mt.result.label+' ('+sg(mt.result.deltaPct, 1)+'%, moderate confidence)' : 'no clear difference yet')+'.'); }catch(e){}
+  /* It says WEEKS, how many, and what it cannot show (2026-10-14). Labelled "Intake vs results: under 3300
+     cal: ... (n 3)", ZULU read it as calorie DAYS that "correlate with" strength, and then as five low days
+     "costing him months". */
   try{ const fv = fuelVsResults();
-    if(fv.ok) L.push('Intake vs results: '+fv.shown.map(function(k){ const g = fv.groups[k];
-      return g.label+' cal: '+(g.bwPerWeek === null ? '?' : sg(g.bwPerWeek, 2))+' lb, '+(g.strPctPerWeek === null ? '?' : sg(g.strPctPerWeek, 1))+'% e1RM per week (n '+g.n+')'; }).join('; ')+'.'); }catch(e){}
+    if(fv.ok) L.push('Intake vs results, an observation and not a cause (WEEKS grouped by that week’s average daily calories; '+
+      'each shows the next week’s change in bodyweight and in his lifts’ best e1RM; deloads, sleep and block changes fall in '+
+      'those weeks too, so never say intake caused a strength change or put a time cost on it): '+fv.shown.map(function(k){ const g = fv.groups[k];
+      return 'weeks averaging '+g.label+' cal/day: '+(g.bwPerWeek === null ? '?' : sg(g.bwPerWeek, 2))+' lb, '+(g.strPctPerWeek === null ? '?' : sg(g.strPctPerWeek, 1))+
+        '% e1RM per week ('+g.n+' week'+(g.n === 1 ? '' : 's')+(g.n < FVR_FIRM_WEEKS ? ', too few to lean on' : '')+')'; }).join('; ')+'.'); }catch(e){}
   let profiles = [];
   try{
     const src = (typeof activeSplitObj==='function') ? activeSplitObj() : S.split;
@@ -17379,11 +17397,12 @@ function intelSummary(){
     profiles = names.filter(function(n){ return !isBodyweight(n) && loaded(n); }).map(liftProfile).filter(Boolean)
       .sort(function(a, b){ return b.sessions - a.sessions; }).slice(0, 10);
     if(profiles.length){
-      L.push('Lift patterns (e1RM trend lb/wk; weight jumps and how many held; top-set effort now vs before, 0 = failure, 100 = easy):');
+      L.push('Lift patterns (e1RM trend lb/wk; weight jumps and how many held; top-set effort now vs before, as a word with '+
+        'his 0-100 effort score in brackets: 0 = a failed rep, 100 = easy, so lower is HARDER, and it is not a percentage):');
       profiles.forEach(function(p){
         L.push('  '+p.name+': '+(p.e1rmPerWeek === null ? '?' : sg(p.e1rmPerWeek, 1))+' lb/wk; '+p.jumps+' jump'+(p.jumps === 1 ? '' : 's')+
           (p.stickRate !== null ? ' ('+Math.round(p.stickRate*100)+'% held)' : '')+
-          (p.effortNow !== null ? '; effort '+p.effortNow+(p.effortBefore !== null ? ' vs '+p.effortBefore : '') : '')+
+          (p.effortNow !== null ? '; effort '+effScoreText(p.effortNow)+(p.effortBefore !== null ? ' vs '+effScoreText(p.effortBefore) : '') : '')+
           (p.stalled3 ? '; stalled, see below' : p.flat3 ? '; same weight 3 sessions, reps climbing' : '')+(isMaxed(p.name) ? '; MAXED machine' : ''));
       });
     }
@@ -17415,7 +17434,7 @@ function intelSummary(){
         (p.everyDays ? ', trained about every '+p.everyDays+' days' : '')+
         '; last session '+p.lastReps.join(',')+' reps vs '+(str ? 'strength ' : '')+'range '+rr.lo+'-'+rr.hi+' ('+hits+' of '+p.lastReps.length+' sets at '+rr.hi+')'+
         (inc > 0 && p.topW > 0 ? '; next jump +'+inc+' lb = '+Math.round(inc / p.topW * 100)+'%' : '')+
-        (p.effortNow !== null ? '; top-set effort '+p.effortNow : '')+'. '+opts+'.');
+        (p.effortNow !== null ? '; top-set effort '+effScoreText(p.effortNow) : '')+'. '+opts+'.');
     });
   }catch(e){}
   try{ const mr = muscleResponse(6);
@@ -21023,10 +21042,42 @@ function agSharedBrief(){
     '- DELTA: exercise selection, volume, rep ranges and progressive overload.\n'+
     '- ECHO: bodyweight trend, rate of gain, calorie and protein targets.\n'+
     '- ZULU: lead \u2014 oversight, coaching, and cross-domain synthesis.\n\n'+
-    'Be specific and numeric. Cite the actual figures from his data rather than generalities. '+
+    'Coach him: lead with what to do and why, in plain words, then back it with one or two of his real numbers. '+
+    'The numbers support the advice; they are never the advice. Whenever you write to him, call him "you", never "he" or "Mark". '+
     'Never invent data you were not given. If an agent has nothing worth saying this cycle, it says so plainly '+
     'and proposes nothing \u2014 silence is better than filler. Do not propose anything he has already rejected. '+
-    'If two agents would pull in opposite directions, say so inside the proposal and give him the options.\n';
+    'If two agents would pull in opposite directions, say so inside the proposal and give him the options.\n'+
+    agEvidenceRules();
+}
+/* How sure to sound (2026-10-14). ZULU was asked when he would bench 205 and 225. It turned the
+   intake-vs-results line (WEEKS grouped by average intake, 3 weeks a group) into "3500-3900 cal DAYS
+   correlate with +1.3% e1RM/wk", then said five low days "alone could be costing him months". Nothing
+   in the app says anything about months, a few weeks cannot separate food from deloads and sleep, and
+   it never looked at the scale, which is the real test of whether he is eating enough. It also built a
+   5-14 month timeline by hand from three weights without asking whether 205 meant a single or a working
+   set. These are prompt rules, so they are a hint, not a guarantee; the summary lines that misled it
+   (fuelVsResults, the effort lever) are relabelled at the source as well. */
+function agEvidenceRules(){
+  return 'HOW SURE TO SOUND:\n'+
+    '- His data shows what happened, not why. A comparison between groups of weeks or days is an observation, not a cause: '+
+      'never say one thing caused another, or is costing him something, unless the app states it.\n'+
+    '- Never put a size on an effect the app has not computed: no "costing you months", no "worth 10 lb", no timeline you '+
+      'worked out yourself. Asked when he will reach a weight: check whether he means a 1RM or a working weight, give his '+
+      'current best estimated 1RM and recent pace from the data, and say plainly that any date is a rough guess.\n'+
+    '- A pattern over fewer than about 6 weeks, or a handful of sessions, is "an early pattern", never proof.\n'+
+    '- Before blaming food for a stalled lift, check his bodyweight trend: if it is rising inside his target band, food is '+
+      'unlikely to be the main limiter.\n'+
+    '- Say "research shows" or "well established" only for long-settled training and nutrition principles. Anything else '+
+      'is "my read" or "common coaching practice". Never present a guess as a finding.\n';
+}
+/* How every chat answers (2026-10-14): to him, call first, then why, then at most two numbers. The
+   bench-timeline reply above talked about "him" in the third person and opened on a wall of stats. */
+function chatVoiceRules(){
+  return 'HOW TO ANSWER: talk to him as "you". Open with the answer or the call in a sentence or two, the way a good coach would '+
+    'say it, then the reason, then at most two of his numbers in support. No stat dumps. End with one clear next step. Keep it '+
+    'under about 200 words unless he asks for more. Give a weight only from his logged history, TODAY or the app\u2019s own '+
+    'numbers; for a lift with no history, give a method (start light, stop 2\u20133 reps short of failure, add load next '+
+    'session), never a guessed number.\n';
 }
 
 /* ---- per-agent role briefs ----
@@ -21763,7 +21814,7 @@ async function agSendChat(id){
     const sys = agSharedBrief()+
       '\nYou are '+AGENTS[id].name+'. Answer only within your own domain ('+AGENTS[id].role+'). '+
       'If the question belongs to another agent, say which one and give a short answer anyway if you can. '+
-      'Anything outside your area belongs to another agent: say which. '+chatActionRules(id)+
+      'Anything outside your area belongs to another agent: say which. '+chatVoiceRules()+chatActionRules(id)+
       agToolNote()+(isEcho ? agFuelToolNote() : '')+'\n'+chatContext(id);
     const msgs = chatHistoryMsgs(a.chats[id], 14);
     // Read tools, plus this agent's own action cards (coachToolDefs(id)). A card is only staged here; it is
@@ -23217,8 +23268,8 @@ async function agWriteBrief(manual){
     '{"brief":"..."}'+'\n'+
     'brief = 2-4 short sentences: how recovered he is THIS MORNING, what is scheduled today, and '+
     'anything actually waiting on him. Present tense, written to him, worth reading at 7am '+
-    'rather than a status dump. Lead with the recovery figure below if there is one and say what '+
-    'it means for today\u2019s session specifically. If nothing needs him, say so plainly and '+
+    'rather than a status dump. Open with what this morning\u2019s recovery means for today\u2019s '+
+    'session specifically, quoting the figure below in support if there is one. If nothing needs him, say so plainly and '+
     'confidently rather than inventing something to fill the space \u2014 "nothing needs you today, '+
     'train as planned" is a complete and good brief.'+'\n'+
     'Do not describe anything as already changed. Nothing takes effect until he taps Approve.'+'\n'+
