@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3559 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3580 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -526,6 +526,25 @@ its own doubling first (a new `DATA_FIXES` entry for that exact name, through 20
 **A screenshot import resolves its names too** (`shotExName()`, 2026-10-10): a known lift in its own spelling, a
 coaching note stripped, anything else kept as read (a variant like "(Barbell)" stays), and two rows for one lift
 merged into one entry. `confirmShot()` used to save whatever the model read off the image.
+
+**Agents coach, and say how sure they are** (his report, 2026-10-14). Asked when he would bench 205 and 225,
+ZULU wrote about "him", opened on a wall of stats, read the weekly intake-vs-results groups as daily
+correlations, said five low days "alone could be costing him months", and built a 5-14 month timeline by
+hand without asking whether 205 meant a single. Four small changes, all prompt text or summary labels:
+- `agSharedBrief()` says lead with the call, back it with one or two numbers, and call him "you". It used to
+  say "Be specific and numeric. Cite the actual figures", which is the readout voice by instruction.
+- `agEvidenceRules()` ("HOW SURE TO SOUND"), in every agent prompt and ZULU's chat: an observation is not a
+  cause; no effect size or timeline the app has not computed; 1RM or working weight first; under ~6 weeks is
+  an early pattern; check the scale before blaming food; "research shows" only for settled principles.
+- `chatVoiceRules()` ("HOW TO ANSWER"), in all four chats: call first, at most two numbers, one next step, and
+  a method rather than a guessed weight for a lift with no history. ZULU no longer calls itself
+  "evidence-based" or is told to "give specific weights, reps, set counts, and food amounts".
+- The summary's intake line says WEEKS, the week count, "too few to lean on" under `FVR_FIRM_WEEKS` (6), and
+  that it is not a cause. Effort reads `effScoreText()`: "a grind (40/100)", because a bare "effort 40" came
+  back as "40% effort".
+
+These are prompts, so they are hints, not guarantees. The checks that would enforce them (a number in a reply
+traced to data, a principles list with sources) are planned and not built.
 
 **Read-only agent output still needs a validator.** The Overload Status tab is
 informational, so it does not go through the proposal queue — but `olValidateReport()`

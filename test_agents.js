@@ -9194,6 +9194,13 @@ setTimeout(async () => {
        Math.abs(fv.groups.way.bwPerWeek - 0.1) < 1e-6 && Math.abs(fv.groups.on.bwPerWeek - 0.7) < 1e-6 && Math.abs(fv.groups.slight.bwPerWeek - 0.2) < 1e-6, JSON.stringify(fv.groups));
     ok('fuel: the ranges are labelled in real calories around today\u2019s target', fv.groups.slight.label === '3300\u20133700' && fv.groups.on.label === '3700\u20134100');
     ok('fuel: the card shows on the Bulk-quality tab', /What you ate, and what followed/.test(ev('fuelVsResultsCardHTML()')) && /3700\u20134100 cal/.test(ev('fuelVsResultsCardHTML()')));
+    // The agents' copy of it says weeks, how many, and that it is not a cause (2026-10-14). As "under 3300
+    // cal: ... (n 3)" ZULU read it as calorie DAYS and then as low days "costing him months".
+    const fvLine = (ev('intelSummary()').match(/Intake vs results[^\n]*/) || [''])[0];
+    ok('fuel: the agents read it as WEEKS, as an observation and not a cause, with the week count',
+       /WEEKS grouped by that week\u2019s average daily calories/.test(fvLine) && /an observation and not a cause/.test(fvLine) &&
+       /never say intake caused a strength change or put a time cost on it/.test(fvLine) &&
+       /weeks averaging 3300\u20133700 cal\/day: \+0\.20 lb, [+-][\d.]+% e1RM per week \(3 weeks, too few to lean on\)/.test(fvLine) && !/\(n \d/.test(fvLine), fvLine);
     // A week with only two days logged says nothing about what he ate that week.
     const thin = [];
     for (let w = 0; w < 3; w++) for (let d = 0; d < 2; d++) thin.push({date: ev("mesoAddDays(" + JSON.stringify(ev("mesoAddDays(" + JSON.stringify(base) + ", -" + (7 * (w + 1)) + ")")) + ", " + d + ")"), cals: 4500, protein: 160});
@@ -9286,6 +9293,12 @@ setTimeout(async () => {
     ok('summary: per-lift patterns, and the stalled lift’s facts',
        /Lift patterns/.test(sum) && /Zz I Press: \+[\d.]+ lb\/wk; 5 jumps \(100% held\)/.test(sum) && /Cable Row: 150 lb for 6 sessions/.test(sum), (sum.match(/Lift patterns[\s\S]{0,900}/) || [''])[0]);
     ok('summary: no line tells the agent which fix to propose', !/propose with swapEx/.test(sum));
+    // A bare "effort 40" came back to him as "40% effort", which reads as coasting; 40 is a grind (2026-10-14).
+    ok('summary: effort is a word with the score in brackets, never a bare number',
+       /Zz I Press: [^\n]*; effort solid \(60\/100\)/.test(sum) && /Cable Row: 150 lb[^\n]*; top-set effort solid \(60\/100\)/.test(sum) &&
+       /lower is HARDER, and it is not a percentage/.test(sum) && !/effort \d/.test(sum), (sum.match(/Lift patterns[\s\S]{0,900}/) || [''])[0]);
+    ok('summary: 40 on the effort score is a grind, 41 is solid', ev('effScoreText(40)') === 'a grind (40/100)' && ev('effScoreText(41.4)') === 'solid (41/100)' &&
+       ev('effScoreText(10)') === 'failed reps (10/100)', [ev('effScoreText(40)'), ev('effScoreText(41.4)'), ev('effScoreText(10)')].join(' | '));
     ok('summary: muscle groups and the engine\u2019s recent decisions, with the call',
        /Muscle groups, last 6 weeks/.test(sum) && /Engine decisions, last 7 days: .*\[easy\].*Zz I Press increase 170\u2192175/.test(sum), (sum.match(/Engine decisions[^\n]*/) || [''])[0]);
     ok('summary: stays small (under 8000 characters, ~2K tokens)', sum.length < 8000, String(sum.length));
@@ -14400,6 +14413,47 @@ setTimeout(async () => {
     ev("if(window.__bhFetch){ fetch = window.__bhFetch; photoDownscale = window.__bhDS; _photoBlobs = window.__bhPB; delete window.__bhFetch; delete window.__bhDS; delete window.__bhPB; delete window.__bhPull; }");
     ev("if(window.__bhTK){ todayKey = window.__bhTK; Date.now = window.__bhDN; delete window.__bhTK; delete window.__bhDN; }");
     ev('if(window.__bhSaved){ S = JSON.parse(window.__bhSaved); delete window.__bhSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== COACHING VOICE AND HOW SURE TO SOUND (2026-10-14) ===');
+  // Asked when he would bench 205 and 225, ZULU talked about "him", opened on a wall of stats, read weekly
+  // intake groups as daily correlations, said five low days "alone could be costing him months", and built a
+  // 5-14 month timeline by hand. These check the prompts every agent is actually sent, not the helpers alone.
+  try {
+    w.__cvSaved = ev('JSON.stringify(S)');
+    ev("S.settings.apiKey = 'sk-test'; window.__cvData = callClaudeWithData; window.__cvSys = [];");
+    ev("callClaudeWithData = async (msgs, sys) => { window.__cvSys.push(String(sys)); return {text:'ok', toolsUsed:0}; };");
+    ev("agSelectChat('zulu'); renderOps(); S.chat = []; document.getElementById('agChatIn').value = 'when will I bench 225?';");
+    await ev('sendChat()');
+    for (const id of ['delta', 'echo', 'charlie']) {
+      ev("agSelectChat('" + id + "'); renderOps(); agState().chats." + id + " = []; document.getElementById('agChatIn').value = 'q';");
+      await ev("agSendChat('" + id + "')");
+    }
+    const sysAll = ev('window.__cvSys');
+    ok('voice: all four chats sent a prompt', sysAll.length === 4, String(sysAll.length));
+    ok('voice: every chat is told to answer as a coach, to "you", call first, at most two numbers',
+       sysAll.length === 4 && sysAll.every(s => /HOW TO ANSWER: talk to him as "you"/.test(s) && /at most two of his numbers/.test(s) && /End with one clear next step/.test(s)));
+    ok('voice: every chat gets the rules on how sure to sound',
+       sysAll.length === 4 && sysAll.every(s => /HOW SURE TO SOUND/.test(s) && /not a cause/.test(s) && /Never put a size on an effect the app has not computed/.test(s) &&
+         /1RM or a working weight/.test(s) && /check his bodyweight trend/.test(s)));
+    ok('voice: no chat is told to invent a weight for a lift with no history',
+       sysAll.length === 4 && sysAll.every(s => /give a method/.test(s) && !/give specific weights, reps, set counts, and food amounts/.test(s)));
+    ok('voice: ZULU no longer calls itself evidence-based, and its rate of gain is the app’s band',
+       !/evidence-based strength coach/.test(sysAll[0]) && sysAll[0].indexOf('(' + ev('BULK_LO') + '–' + ev('BULK_HI') + ' lb/week on a lean bulk)') >= 0, sysAll[0].slice(0, 900));
+    // The nightly specialists, the synthesis, the letter and the brief all start from agSharedBrief().
+    const shared = ev('agSharedBrief()');
+    ok('voice: the shared brief coaches and calls him "you", and no longer asks for numbers first',
+       /Coach him: lead with what to do and why/.test(shared) && /call him "you"/.test(shared) && !/Be specific and numeric/.test(shared) && /HOW SURE TO SOUND/.test(shared));
+    ev("window.__cvSys = [];");
+    try { await ev('agWriteBrief(true)'); } catch (e) {}
+    const briefSys = ev('window.__cvSys[0]') || '';
+    ok('voice: the brief opens on what recovery means, not on the bare figure',
+       /Open with what this morning’s recovery means for today’s session/.test(briefSys) && !/Lead with the recovery figure/.test(briefSys) && /HOW SURE TO SOUND/.test(briefSys), briefSys.slice(0, 300));
+  } catch (e) {
+    ok('coaching voice section', false, e.stack);
+  } finally {
+    ev("if(window.__cvData){ callClaudeWithData = window.__cvData; delete window.__cvData; delete window.__cvSys; }");
+    ev('if(window.__cvSaved){ S = JSON.parse(window.__cvSaved); delete window.__cvSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
