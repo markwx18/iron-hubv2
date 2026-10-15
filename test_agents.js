@@ -9175,6 +9175,53 @@ setTimeout(async () => {
     ok('forecast: nothing to forecast during a deload', ev('deloadForecast()') === null);
     ev('S.deload = null;');
 
+    // --- signals from before a deload do not count after it (his Oct 15 report) ---
+    // The day his Oct 10-15 deload ended, the forecast said "about 1-2 weeks" with his load ratio at
+    // 0.19, because bench had slipped over four September sessions: the slip the deload was for.
+    // Bench slipping (uneven steps, not a straight line) AND grinders, all before the deload, so each
+    // signal is checked on its own and a mutant that unscopes either one goes red.
+    const bpS = (id, d, w, r, e) => ({id, date: dk(-d), day: 'D1', entries: [{exercise: 'Barbell Bench Press', sets: [{w, r, e}, {w: w - 10, r: r + 1, e}, {w: w - 10, r, e: 'fail'}]}]});
+    const preDl = [bpS(894001, 41, 185, 8, 'grind'), bpS(894002, 33, 185, 7, 'grind'), bpS(894003, 26, 180, 7, 'grind'), bpS(894004, 17, 175, 6, 'grind')];
+    const dlS = [6, 4, 2].map(d => ({id: 894100 + d, date: dk(-d), day: 'D1', deload: true, entries: [{exercise: 'Barbell Bench Press', sets: [{w: 110, r: 8, e: 'easy'}, {w: 110, r: 8, e: 'easy'}]}]}));
+    ev('S.logs = ' + JSON.stringify(preDl.concat(dlS)) + '; S.meso = {template:null, active:null};');
+    ev('S.deload = null;');   // the deload sessions alone mark it, the way his meso week did
+    const pdc = ev('deloadCheck()');
+    ok('deload signals: a bench slip from before the deload does not score after it', !pdc.reasons.some(r => /Bench/.test(r)), JSON.stringify(pdc));
+    ok('deload signals: nor do grinders from before it', !pdc.reasons.some(r => /grind/i.test(r)), JSON.stringify(pdc));
+    const pfc = ev('deloadForecast()');
+    ok('deload forecast: just after a deload, with no new signal, it is no sign yet and 8-12 weeks on time alone',
+       pfc && pfc.weeks === null && pfc.horizon && pfc.horizon.lo === 8 && pfc.horizon.hi === 12 && /No sign of needing one yet\. On time alone, about 8–12 weeks out\./.test(pfc.text), JSON.stringify(pfc));
+    const ptile = ev('todayDeloadTile()');
+    ok('deload forecast: Today’s tile reads ~8–12 wk, not ~2 wk', ptile && ptile.big === '~8–12 wk', JSON.stringify(ptile));
+    // The same slip AFTER a deload still counts: scoping is a cutoff, not an off switch.
+    ev('S.logs = ' + JSON.stringify([bpS(894201, 30, 200, 9, 'solid')].map(l => Object.assign(l, {deload: true}))
+      .concat([bpS(894202, 27, 185, 8, 'solid'), bpS(894203, 19, 185, 7, 'solid'), bpS(894204, 12, 180, 7, 'solid'), bpS(894205, 4, 175, 6, 'solid')])) + ';');
+    const adc = ev('deloadCheck()');
+    ok('deload signals: a bench slip after the last deload still scores', adc.reasons.some(r => /Bench Press e1RM has slipped/.test(r)), JSON.stringify(adc));
+    // Weeks since the deload shorten the horizon; past the low end it says how long it has been.
+    ev('S.logs = ' + JSON.stringify([{id: 894301, date: dk(-22), day: 'D1', deload: true, entries: [{exercise: 'Zz F Press', sets: [{w: 60, r: 10, e: 'easy'}]}]}]) + ';');
+    const hz = ev('deloadForecast()'), wsn = hz && hz.weeksSince;
+    ok('deload forecast: three weeks on, the horizon is 8-12 less the weeks gone',
+       wsn === 3 && hz.horizon && hz.horizon.lo === 5 && hz.horizon.hi === 9 && /about 5–9 weeks out/.test(hz.text), JSON.stringify(hz));
+    ev('S.logs = ' + JSON.stringify([{id: 894302, date: dk(-66), day: 'D1', deload: true, entries: [{exercise: 'Zz F Press', sets: [{w: 60, r: 10, e: 'easy'}]}]}]) + ';');
+    const hz2 = ev('deloadForecast()');
+    ok('deload forecast: nine weeks on, no range, it says nine weeks, inside the usual 8-12',
+       hz2 && hz2.horizon === null && /9 weeks since the last one, inside the usual 8–12\./.test(hz2.text), JSON.stringify(hz2));
+
+    // --- "Next deload in -1 weeks" while in the deload (his Oct 15 screenshot) ---
+    // mesoNextDeload() returns the deload he is in until its last day; five days in, the weeks-until
+    // rounded to -1 on the Plan card and in the agents' PERIODIZATION line.
+    ev("S.meso = {template:null, active:{startedAt:" + JSON.stringify(dk(-60)) + ", startKey:" + JSON.stringify(dk(-60)) + ", splits:{}, weeks:[" +
+       "{type:'hyp', name:'Hypertrophy', n:7, blockId:'h7', blockWeek:1, blockLen:1, startKey:" + JSON.stringify(dk(-60)) + ", endKey:" + JSON.stringify(dk(-6)) + ", repLo:8, repHi:12, rpeLo:7, rpeHi:8}," +
+       "{type:'deload', name:'Deload', n:8, blockId:'d8', blockWeek:1, blockLen:1, startKey:" + JSON.stringify(dk(-5)) + ", endKey:" + JSON.stringify(dk(0)) + ", repLo:8, repHi:12, rpeLo:5, rpeHi:6}]}};");
+    ok('meso: a deload already under way is 0 weeks away, never negative', ev('mesoWeeksUntil(mesoNextDeload())') === 0);
+    const mc = ev('mesoCurrentCardHTML()');
+    ok('meso: the Plan card says you are in the deload, not "in -1 weeks"', /In the deload now, through/.test(mc) && !/-1 week/.test(mc), (mc.match(/meso-now-meta[^>]*>[^<]*/g) || []).join(' | '));
+    ok('meso: nor does the agents’ PERIODIZATION line', !/-1 week/.test(ev('mesoCoachContext()')) && /Next deload: this week/.test(ev('mesoCoachContext()')));
+    ev('endDeloadWeek()');
+    ok('meso: ended early, the card says so', /Deload ended early\./.test(ev('mesoCurrentCardHTML()')));
+    ev('S.meso = {template:null, active:null}; S.deload = null;');
+
     // --- what he ate, and what followed ---
     const base = ev("weekKeyOf(mesoAddDays(todayKey(), -80))");
     const wkStart = w => ev("mesoAddDays(" + JSON.stringify(base) + ", " + (7 * w) + ")");

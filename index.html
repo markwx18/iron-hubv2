@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-14-v1">
+<meta name="ironhub-build" content="2026-10-15-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11878,9 +11878,15 @@ function bwProjectionCardHTML(){
 function deloadCheck(){
   const reasons=[]; let score=0;
   const mains=['Barbell Bench Press','Barbell Back Squat'];
+  // Signals 1 and 2 read only sessions since the last deload ended. A stall or a run of grinders
+  // from before it is what the deload was for; counting it afterwards had the forecast say "about
+  // 1-2 weeks" the day his Oct 10-15 deload ended, on bench sessions from September, with his load
+  // ratio at 0.19. Right after a deload these signals start empty and rebuild from new sessions.
+  const _since = lastDeloadEndKey();
+  const _after = function(d){ return !_since || d > _since; };
   // 1) main lift e1RM flat/declining over last 4 sessions
   mains.forEach(ex=>{
-    const pts=e1rmSeries(ex); if(pts.length>=4){
+    const pts=e1rmSeries(ex).filter(p=>_after(p.date)); if(pts.length>=4){
       const recent=pts.slice(-4); const first=recent[0].v, last=recent[recent.length-1].v;
       if(last < first*0.985){ reasons.push(ex.replace('Barbell ','')+' e1RM has slipped over the last 4 sessions'); score+=2; }
       else if(last < first*1.005){ reasons.push(ex.replace('Barbell ','')+' has stalled (no e1RM gain in 4 sessions)'); score+=1; }
@@ -11888,15 +11894,14 @@ function deloadCheck(){
   });
   // 2) recent grind/fail density across last ~10 logged sessions
   // Deload sessions are meant to feel easy, so they would only dilute the grind share.
-  const recentLogs=[...S.logs].filter(l=>!l.deload).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+  const recentLogs=[...S.logs].filter(l=>!l.deload && _after(l.date)).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
   let grind=0, total=0;
   recentLogs.forEach(l=>l.entries.forEach(e=>e.sets.forEach(s=>{ total++; const b=effBucket(s); if(b==='grind'||b==='fail') grind++; })));
   if(total>=10){ const pct=grind/total; if(pct>=0.4){ reasons.push(Math.round(pct*100)+'% of recent sets tagged grind/fail \u2014 effort is creeping up'); score+=2; } else if(pct>=0.25){ reasons.push('A quarter of recent sets are grinders'); score+=1; } }
   // 3) training weeks since the last deload. This used to count every week ever logged, which
   //    passes 6 once and never resets, so from his seventh week on the score carried a permanent
   //    +1 whether or not he had just deloaded.
-  const _since = lastDeloadEndKey();
-  const weeks=new Set(S.logs.filter(l=>!l.deload && (!_since || l.date > _since)).map(l=>weekKeyOf(l.date)));
+  const weeks=new Set(S.logs.filter(l=>!l.deload && _after(l.date)).map(l=>weekKeyOf(l.date)));
   if(weeks.size>=6){ reasons.push(weeks.size+(_since ? ' training weeks since your last deload ('+fmtDate(_since)+')' : ' training weeks with no deload on record')); score+=1; }
   let severity = score>=4 ? 'recommend' : score>=2 ? 'watch' : 'clear';
   return {severity, score, reasons};
@@ -15361,8 +15366,11 @@ function mesoWeeksUntil(w){
   if(!cur) return null;
   // Segment index differences stopped meaning "weeks" the moment segments could be 3 days
   // long. Measure real elapsed time and convert.
+  // A segment that has already started is 0 weeks away, not negative. mesoNextDeload() returns the
+  // deload he is IN until its last day, so on day 6 of his Oct 10-15 deload this read -1, and both
+  // the Plan card and the agents' prompt said "Next deload in -1 weeks".
   const d = mesoDaysUntil(w);
-  return d === null ? null : Math.round(d/7);
+  return d === null ? null : Math.max(0, Math.round(d/7));
 }
 
 /* ---- the split that is actually in force right now ----
@@ -15808,7 +15816,8 @@ function mesoCurrentCardHTML(){
        (w.rpeLo>0 ? ' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi : '')+'</div>';
   if(nd && ndIn!=null){
     h += '<div class="meso-now-meta" style="color:var(--violet)">'+
-      (ndIn===0 ? 'Deload is this week.' : 'Next deload in '+ndIn+' week'+(ndIn===1?'':'s')+' ('+fmtDate(nd.startKey)+').')+'</div>';
+      (nd.startKey <= todayKey() ? (nd.deloadEnded ? 'Deload ended early.' : 'In the deload now, through '+fmtDate(nd.endKey)+'.')
+       : ndIn===0 ? 'Deload is this week.' : 'Next deload in '+ndIn+' week'+(ndIn===1?'':'s')+' ('+fmtDate(nd.startKey)+').')+'</div>';
   }
   if(w.type==='str'){
     const rec = (a.splits||{})[w.blockId];
@@ -17134,6 +17143,9 @@ function pxMean(a){ const v = a.filter(function(x){ return typeof x === 'number'
    and a day count would be false precision. Built from the fixed deloadCheck(), this week's load
    ratio and how it moved over the week, and how hard sessions have been feeling (feltVsPlan()).
    A planned meso deload is the yardstick: on course for it, or wanted before it. */
+/* His usual span between deloads, in weeks (his call, 2026-10-15). Read only when no fatigue signal
+   is present; it describes, and never brings a deload nearer on its own. */
+const DELOAD_TYPICAL_WEEKS = [8, 12];
 function deloadForecast(){
   if(deloadActive()) return null;
   const t = todayKey(), d = deloadCheck();
@@ -17141,7 +17153,8 @@ function deloadForecast(){
   const weeksSince = since ? Math.floor((Date.parse(t) - Date.parse(since)) / (7*86400000)) : null;
   let rNow = null, rThen = null;
   try{ const a = fatigueIndex(), b = fatigueIndex(mesoAddDays(t, -7)); if(a.ok) rNow = a.ratio; if(b.ok) rThen = b.ratio; }catch(e){}
-  const felt = (S.logs||[]).filter(function(l){ return l && !l.deload && !l.home; })
+  // Since the last deload only, like deloadCheck()'s signals: grinders before it are what it was for.
+  const felt = (S.logs||[]).filter(function(l){ return l && !l.deload && !l.home && (!since || l.date > since); })
     .sort(function(a, b){ return b.date.localeCompare(a.date); }).map(feltVsPlan).filter(Boolean);
   const fNow = pxMean(felt.slice(0, 6).map(function(f){ return f.delta; })), fThen = pxMean(felt.slice(6, 12).map(function(f){ return f.delta; }));
   let pressure = d.score;
@@ -17157,12 +17170,21 @@ function deloadForecast(){
            : weeks === 2 ? 'Likely needed in about 1\u20132 weeks.'
            : weeks === 3 ? 'Building slowly \u2014 probably 2\u20133 weeks out.'
            : 'No sign of needing one yet.';
+  // No signal at all: time since the last deload is the only thing left to go on, so say so, in his
+  // usual span. Any signal above still wins, because it can only bring the date nearer, and so does a
+  // planned meso deload: the plan is the yardstick, and two dates in one line would argue.
+  let horizon = null;
+  if(weeks === null && weeksSince !== null && !planned){
+    const lo = DELOAD_TYPICAL_WEEKS[0], hi = DELOAD_TYPICAL_WEEKS[1];
+    if(weeksSince < lo){ horizon = {lo:Math.max(1, lo - weeksSince), hi:hi - weeksSince}; text += ' On time alone, about '+horizon.lo+'\u2013'+horizon.hi+' weeks out.'; }
+    else text += ' '+weeksSince+' weeks since the last one, '+(weeksSince < hi ? 'inside' : 'past')+' the usual '+lo+'\u2013'+hi+'.';
+  }
   if(planned){
     text += (weeks === null || weeks >= planned.weeksAway)
       ? ' On course for the planned deload on '+fmtDate(planned.start)+'.'
       : ' That is before the planned deload on '+fmtDate(planned.start)+' ('+planned.weeksAway+' week'+(planned.weeksAway === 1 ? '' : 's')+' away) \u2014 it may be worth taking early.';
   }
-  return {weeks:weeks, pressure:Math.round(pressure*10)/10, planned:planned, ratioNow:rNow, ratioWeekAgo:rThen,
+  return {weeks:weeks, horizon:horizon, pressure:Math.round(pressure*10)/10, planned:planned, ratioNow:rNow, ratioWeekAgo:rThen,
           feltNow:fNow === null ? null : Math.round(fNow*10)/10, feltBefore:fThen === null ? null : Math.round(fThen*10)/10,
           weeksSince:weeksSince, text:text};
 }
@@ -22354,6 +22376,7 @@ function todayDeloadTile(){
     }
     if(f.weeks === 0) return {big:'Due', sub:'a deload looks due now'};
     if(f.weeks) return {big:'~'+f.weeks+' wk', sub:'until a deload looks due'};
+    if(f.horizon) return {big:'~'+f.horizon.lo+'–'+f.horizon.hi+' wk', sub:'no sign of needing one yet'};
     return {big:'Not yet', sub:'no sign of needing one'};
   }catch(e){ return null; }
 }

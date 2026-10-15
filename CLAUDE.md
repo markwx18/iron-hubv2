@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3580 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3591 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -1093,6 +1093,15 @@ date; V4's removal of date overrides stands.
 - **`deloadForecast()`** answers in weeks, not days. It uses the fixed `deloadCheck()`, this
   week's load ratio against a week ago (`fatigueIndex(endKey)`), and felt trend, with a planned
   meso deload as the yardstick.
+  - **Signals count only sessions since the last deload ended** (`lastDeloadEndKey()`, 2026-10-15):
+    the bench/squat slip, the grind share and the felt trend. The day his Oct 10-15 deload ended it
+    said "about 1-2 weeks" with his load ratio at 0.19, off a September bench slip, the slip the
+    deload was for. Right after a deload they start empty.
+  - **With no signal, time alone sets a horizon** in his usual span, `DELOAD_TYPICAL_WEEKS` (8-12,
+    his call): "about 8-12 weeks out", less the weeks gone, and the Today tile shows "~8–12 wk". A
+    signal or a planned meso deload wins over it. It describes; it never brings a deload nearer.
+  - **`mesoWeeksUntil()` never goes below 0.** `mesoNextDeload()` returns the deload he is in, so
+    five days into one the Plan card and the agents' PERIODIZATION line read "in -1 weeks".
 - **`fuelVsResults()`** groups weeks by calories actually eaten, in fixed ranges around today's
   target and labelled in real numbers, because the target moved (3000 → 3700). It shows nothing
   until 3 weeks sit in each of two ranges.
