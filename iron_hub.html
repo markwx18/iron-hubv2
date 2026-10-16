@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-15-v1">
+<meta name="ironhub-build" content="2026-10-16-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15559,6 +15559,48 @@ function mesoGenerateStrengthSplit(){
       picks[d.key].push(f);
     }
   });
+
+  // 5. Default to what he actually trained on each S day last time. The generated picks above are only
+  //    the fallback for a day with no logged session: S1-S3 are the lifts he chose, and a proposal that
+  //    reshuffles them is a worse default than repeating them. Names come from the newest log of that day
+  //    key, so a LIVE swap he kept counts; a lift still in the split reuses its slot (increment, flags).
+  const byName = {}; pool.forEach(s=>byName[s.nm] = s);
+  Object.keys(src).forEach(dk=>(src[dk].exercises||[]).forEach(x=>{
+    const nm = exName(x); if(nm && !byName[nm]) byName[nm] = {x, nm, comp:mesoIsCompound(nm), pat:mesoPattern(nm)};
+  }));
+  const claimed = {}; const fromLog = {};
+  MESO_STR_DAYS.forEach(d=>{
+    const last = (S.logs||[]).filter(l=>l && l.day===d.key && (l.entries||[]).length)
+      .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || (b.id||0)-(a.id||0))[0];
+    if(!last) return;
+    const seen = {}; const prev = [];
+    last.entries.forEach(e=>{
+      const nm = e && e.exercise;
+      // a lift can sit on only one S day, so an earlier day keeps it
+      if(!nm || seen[nm] || claimed[nm] || prev.length>=MESO_STR_PER_DAY) return;
+      seen[nm] = true;
+      prev.push(byName[nm] || {x:{name:nm, inc:slotInc(nm)}, nm, comp:mesoIsCompound(nm), pat:mesoPattern(nm)});
+    });
+    if(!prev.length) return;
+    prev.forEach(s=>claimed[s.nm] = true);
+    fromLog[d.key] = true;
+    picks[d.key] = prev;
+    rationale.push(d.key+' ('+d.name+'): '+prev.map(s=>s.nm).join(', ')+' — the lifts you trained on '+d.key+' last time ('+last.date+').');
+  });
+  // A day with no history keeps its generated picks, minus anything a logged day claimed, topped back up.
+  MESO_STR_DAYS.forEach(d=>{
+    if(fromLog[d.key]) return;
+    picks[d.key] = picks[d.key].filter(s=>!claimed[s.nm]);
+    picks[d.key].forEach(s=>claimed[s.nm] = true);
+    while(picks[d.key].length < MESO_STR_PER_DAY){
+      const f = pool.find(s=>!claimed[s.nm]);
+      if(!f) break;
+      claimed[f.nm] = true; picks[d.key].push(f);
+    }
+  });
+  // `used` feeds the "cut for the block" line, so rebuild it from the final picks
+  Object.keys(used).forEach(k=>delete used[k]);
+  MESO_STR_DAYS.forEach(d=>picks[d.key].forEach(s=>used[s.nm] = true));
 
   const out = {};
   MESO_STR_DAYS.forEach(d=>{

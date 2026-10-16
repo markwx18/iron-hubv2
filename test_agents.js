@@ -2876,6 +2876,23 @@ setTimeout(async () => {
     ok('pattern classification', false, e.message);
   }
 
+  console.log('=== STRENGTH BLOCK: DEFAULTS TO HIS LAST S-DAY LIFTS ===');
+  try {
+    ev("S.logs.push({id:99301, date:'2026-01-05', day:'S1', entries:[{exercise:'Zz Old Lift', sets:[{w:100,r:5}]}]})");
+    ev("S.logs.push({id:99302, date:'2026-01-09', day:'S1', entries:[{exercise:'Zz Squat A', sets:[{w:100,r:5}]},{exercise:'Zz Curl B', sets:[{w:20,r:10}]},{exercise:'Zz Squat A', sets:[{w:100,r:5}]}]})");
+    ev("S.logs.push({id:99303, date:'2026-01-10', day:'S2', entries:[{exercise:'Zz Curl B', sets:[{w:20,r:10}]},{exercise:'Zz Press C', sets:[{w:60,r:5}]}]})");
+    const gen = JSON.parse(ev('JSON.stringify(mesoGenerateStrengthSplit())'));
+    const n = k => gen.split[k].exercises.map(x => x.name);
+    ok('S1 repeats its newest session in order, de-duplicated', n('S1').slice(0, 2).join('|') === 'Zz Squat A|Zz Curl B', n('S1').join('|'));
+    ok('a lift on an earlier S day is not repeated on a later one', n('S2').indexOf('Zz Curl B') < 0 && n('S2')[0] === 'Zz Press C', n('S2').join('|'));
+    ok('an older S1 session is ignored', n('S1').indexOf('Zz Old Lift') < 0);
+    const all = Object.keys(gen.split).flatMap(k => n(k));
+    ok('no lift on two days, S3 (no history) still filled', new Set(all).size === all.length && n('S3').length > 0, all.join(','));
+  } catch (e) {
+    ok('S-day defaults', false, e.message);
+  }
+  ev("S.logs = S.logs.filter(l => [99301, 99302, 99303].indexOf(l.id) < 0)");
+
   console.log('=== STRENGTH BLOCK: SPLIT GENERATION ===');
   try {
     const gen = JSON.parse(ev('JSON.stringify(mesoGenerateStrengthSplit())'));
