@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3642 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3657 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -298,6 +298,8 @@ pushes. Now:
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
 | Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
+| What the agents see | nightly `agCalendarContext()` (shares `agCalDayLine()` / `agCalPlanLine()` / `agCalNextDays()` with chat's `agTodayContext()`), `agSplitLiftText()`, `agFeelLine()`, chat `agLastNightLine()`; events `agEvents()` / `agEventsLine()` (`EV_FOR`, `EV_DAYS`), tools `get_events` / `get_recovery` |
+| Roundtable & voices | `AG_VOICE`, `S.agents.roundtable` (`agRoundtable()`, `RT_*`), `agPeersOffered()` / `agPeersSaid()`, `agValidatePeer()`, `agValidateReplies()`; the feed `agLog(agent, text, {to})` + `_agLogRun`, `hubFeedHTML()` / `hubActHTML()` |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
@@ -587,6 +589,36 @@ hand without asking whether 205 meant a single. Four small changes, all prompt t
 - The summary's intake line says WEEKS, the week count, "too few to lean on" under `FVR_FIRM_WEEKS` (6), and
   that it is not a cause. Effort reads `effScoreText()`: "a grind (40/100)", because a bare "effort 40" came
   back as "40% effort".
+
+**The agents talk to each other, at no new cost** (his pick, 2026-10-16: "make the agents more unique, with
+discussions"). It all rides the calls that already run.
+- **Each agent has its own voice** (`AG_VOICE`, one line after the role brief in every prompt it writes in: nightly,
+  chat, and ZULU's letter and brief). His pick of three drafts was "as drafted":
+  - ZULU: a calm, decisive head coach;
+  - CHARLIE: dry and exact;
+  - DELTA: a blunt strength coach;
+  - ECHO: practical about food.
+
+  Every line ends with "Your voice never changes the facts". No voice text says "You are <another agent>", because
+  the suite's stubs route on that phrase.
+- **The roundtable** (`S.agents.roundtable {d, at, said, lines}`) is one object per cycle.
+  - It is written into the re-resolved `agState()` after the specialists, then again after ZULU (the suite swaps `S`
+    mid-reply to prove it), and merged newer-wins in `applyPulled()`.
+  - A night where every specialist failed leaves the last one standing.
+- **The specialists** read last night's roundtable (`agPeersSaid()`, within `RT_FRESH_DAYS`): the others' summaries
+  and any line addressed to them.
+  - They may answer ONE agent in an optional `"peer"` key, asked for only when there is a roundtable to answer, so a
+    first night is byte-identical. It sits before `qaSpecLine`, so the plateau diagnosis stays last.
+  - `agValidatePeer()` keeps only a string to an agent it was shown (never itself), clipped.
+  - `agRecentSaid()` is still own-only; this is a separate section.
+- **ZULU closes the night.** Its digest carries tonight's replies and each waiting request's reasoning. Its
+  `"replies"` key is one line to each specialist that reported (`agValidateReplies()`); a line for an agent that did
+  not report is never kept.
+- **The feed shows a night as one exchange.** `agLog(agent, text, {to})` tags every line of a cycle with `run` and
+  `n` (`_agLogRun`, module-scoped, cleared in `finally`), and `hubFeedHTML()` groups a run under "Nightly cycle" (or
+  "Cycle you ran") in the order said. A reply is drawn as author glyph, then `→ E`. Lines outside a cycle render
+  as before.
+- **The roundtable is commentary.** It changes nothing, and anything to apply still goes through proposals.
 
 These are prompts, so they are hints, not guarantees. The checks that would enforce them (a number in a reply
 traced to data, a principles list with sources) are planned and not built.

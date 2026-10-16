@@ -14766,6 +14766,81 @@ setTimeout(async () => {
     ev('if(window.__evS){ S = JSON.parse(window.__evS); delete window.__evS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== THE ROUNDTABLE: VOICES, REPLIES, ZULU CLOSING THE NIGHT (2026-10-16) ===');
+  // His pick: the agents discuss at no new cost. A specialist reads last night's roundtable and may answer one agent
+  // in an optional "peer" key; ZULU closes with a line to each specialist that reported. Commentary only.
+  try {
+    w.__rtS = ev('JSON.stringify(S)');
+    ev("S.settings.apiKey = 'sk-test'; agState().roundtable = null; agState().log = []; agState().lastRun = ''; agState().proposals = [];");
+    // Records each prompt, answers per agent, and on ZULU's call swaps S the way a sync pull landing mid-reply does.
+    ev("window.__rtReal = callClaudeWithData; window.__rtSys = {}; window.__rtAns = {};" +
+       "callClaudeWithData = async function(msgs, sys){ var who = /You are CHARLIE/.test(sys) ? 'charlie' : /You are DELTA/.test(sys) ? 'delta' : /You are ECHO/.test(sys) ? 'echo' : 'zulu';" +
+       " if(/weekly coach letter/.test(sys)) return {text:'A letter.', toolsUsed:0};" +
+       " window.__rtSys[who] = String(sys); if(who === 'zulu') S = JSON.parse(JSON.stringify(S));" +
+       " return {text: JSON.stringify(window.__rtAns[who]), toolsUsed:0}; };");
+    const night = (ans) => { ev('window.__rtAns = ' + JSON.stringify(ans) + '; window.__rtSys = {};'); return ev('agRunAll(false)'); };
+    await night({
+      charlie: {summary: 'Schedule clean: D3 tomorrow.', proposals: []},
+      delta: {summary: 'Squat moved: 245x6.', proposals: [], peer: {to: 'ECHO', text: 'nothing offered yet'}},
+      echo: {summary: 'Scale up 0.4 lb/wk.', proposals: []},
+      zulu: {summary: 'Good week.', proposals: [], replies: {charlie: 'Noted.', delta: 'Own 250 for two sets.', echo: 'Keep the pace.', bogus: 'x'}}
+    });
+    const s1 = ev('window.__rtSys');
+    ok('roundtable: a first night has no section to answer and no "peer" key in the spec',
+       ['charlie', 'delta', 'echo'].every(k => !/LAST NIGHT’S ROUNDTABLE/.test(s1[k] || '') && !/"peer"/.test(s1[k] || '')), Object.keys(s1).join(','));
+    ok('roundtable: ZULU is asked to close the night with a line to each specialist that reported',
+       /"replies":\{"charlie":"\.\.\.","delta":"\.\.\.","echo":"\.\.\."\}/.test(s1.zulu || ''), (s1.zulu || '').slice(0, 200));
+    const rt1 = ev('JSON.stringify(agState().roundtable)'), r1 = JSON.parse(rt1 || 'null');
+    ok('roundtable: stored in the S that exists after ZULU’s reply (S was swapped mid-reply), with every report and ZULU’s replies',
+       !!r1 && r1.d === ev('todayKey()') && r1.said.charlie === 'Schedule clean: D3 tomorrow.' && r1.said.zulu === 'Good week.' &&
+       JSON.stringify(r1.lines) === JSON.stringify([{from: 'zulu', to: 'charlie', text: 'Noted.'}, {from: 'zulu', to: 'delta', text: 'Own 250 for two sets.'}, {from: 'zulu', to: 'echo', text: 'Keep the pace.'}]), rt1);
+    ok('roundtable: a reply to nobody it was shown is not kept (first night)', !ev("agState().log.some(function(e){ return e.agent === 'delta' && e.to; })"));
+    const lg1 = ev('JSON.stringify(agState().log)'), L1 = JSON.parse(lg1);
+    ok('roundtable: every line of the cycle carries its run and its order', L1.length >= 7 && L1.every(e => e.run && e.run === L1[0].run && e.n > 0) &&
+       L1.find(e => e.to === 'delta').n > L1.find(e => e.text === 'Good week.').n, lg1.slice(0, 400));
+
+    // The next night: the section is there, replies go out, and bad ones are dropped.
+    ev("agState().roundtable.d = mesoAddDays(todayKey(), -1); agState().roundtable.at = new Date(Date.now() - 86400000).toISOString(); agState().lastRun = '';");
+    await night({
+      charlie: {summary: 'Still clean.', proposals: [], peer: {to: 'DELTA', text: 42}},
+      delta: {summary: 'Squat held.', proposals: [], peer: {to: 'echo', text: 'Agreed <b>on</b> the pace: the squat moved in your best-fed week.'}},
+      echo: {summary: 'Pace holding.', proposals: [], peer: {to: 'ECHO', text: 'talking to myself'}},
+      zulu: {summary: 'Steady.', proposals: [], replies: {delta: 'Good catch.'}}
+    });
+    const s2 = ev('window.__rtSys');
+    ok('roundtable: DELTA reads what the others said last night, and ZULU’s line to it',
+       /LAST NIGHT’S ROUNDTABLE[^\n]*\n- ZULU: Good week\.\n- CHARLIE: Schedule clean: D3 tomorrow\.\n- ECHO: Scale up 0\.4 lb\/wk\.\n- ZULU, to you: Own 250 for two sets\./.test(s2.delta || ''),
+       ((s2.delta || '').match(/LAST NIGHT’S ROUNDTABLE[\s\S]{0,300}/) || [''])[0]);
+    ok('roundtable: and may answer one of them, never itself', /"peer":\{"to":"ZULU\|CHARLIE\|ECHO","text":"<=200 chars"\}/.test(s2.delta || ''));
+    const spec = ev("agJsonSpec('delta')");
+    ok('roundtable: the plateau diagnosis stays last in DELTA’s spec', ev("(function(){ var r = pdSpecLine; pdSpecLine = function(){ return 'X'; }; var t = agJsonSpec('delta'); pdSpecLine = r; return t.slice(-1); })()") === 'X' && /"peer"/.test(spec));
+    ok('roundtable: tonight’s replies reach ZULU', /Squat held\.\n  DELTA, to ECHO: Agreed <b>on<\/b> the pace/.test(s2.zulu || ''));
+    const L2 = JSON.parse(ev('JSON.stringify(agState().log)'));
+    ok('roundtable: a reply is logged under its author, to its recipient', L2.some(e => e.agent === 'delta' && e.to === 'echo' && /^Agreed <b>on<\/b> the pace/.test(e.text)));
+    ok('roundtable: a reply to itself, or that is not text, is dropped', !L2.some(e => e.agent === 'echo' && e.to) && !L2.some(e => e.agent === 'charlie' && e.to));
+    // The feed: the night as one block, the reply drawn author -> recipient, its text escaped.
+    ev("setMode('review'); showMainTab('ops');");
+    const feed = ev("(function(){ var b = document.querySelector('#ops .hub-run'); if(!b) return null; var r = b.querySelector('.hub-act.reply'); return {h:b.querySelector('.hub-run-h').textContent, to:r ? r.querySelector('.hub-act-to').textContent : '', x:r ? r.querySelector('.hub-act-x').innerHTML : '', g:r ? r.querySelector('.cc-glyph').textContent : '', rows:b.querySelectorAll('.hub-act').length}; })()");
+    ok('roundtable: the Hub shows the night as one block, the reply as D → E with its text escaped',
+       !!feed && /^Nightly cycle · today, /.test(feed.h) && feed.g === 'D' && feed.to === '→ E' && /^Agreed &lt;b&gt;on&lt;\/b&gt; the pace/.test(feed.x) && feed.rows >= 5, JSON.stringify(feed));
+    // The chats read the roundtable too.
+    ok('roundtable: DELTA’s chat knows what ZULU told it', /- ZULU, to you: Good catch\./.test(ev("chatContext('delta')")));
+    // Voices: each prompt carries its own, and no prompt names another agent as "You are".
+    const s2all = ev('window.__rtSys');
+    ok('voices: each nightly prompt carries its own voice and no other agent’s "You are"',
+       ['charlie', 'delta', 'echo', 'zulu'].every(k => (s2all[k] || '').indexOf(ev('AG_VOICE.' + k)) >= 0 &&
+         ((s2all[k] || '').match(/You are (CHARLIE|DELTA|ECHO|ZULU)/g) || []).every(m => m === 'You are ' + k.toUpperCase())));
+    // A pull carrying an older roundtable does not replace tonight's.
+    ev("window.__rtSnap = JSON.parse(JSON.stringify(S)); window.__rtSnap.agents.roundtable = {d: mesoAddDays(todayKey(), -3), at: new Date(Date.now() - 3*86400000).toISOString(), said:{delta:'old'}, lines:[]};");
+    ev("applyPulled(window.__rtSnap, Date.now())");
+    ok('roundtable: a pull with an older roundtable keeps the newer one', ev('agState().roundtable.said.delta') === 'Squat held.');
+  } catch (e) {
+    ok('roundtable section', false, e.stack);
+  } finally {
+    ev("if(window.__rtReal){ callClaudeWithData = window.__rtReal; delete window.__rtReal; delete window.__rtSys; delete window.__rtAns; delete window.__rtSnap; }");
+    ev('if(window.__rtS){ S = JSON.parse(window.__rtS); delete window.__rtS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
