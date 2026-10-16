@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3614 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3627 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -394,7 +394,24 @@ and wrote its reply in one round before any check ran.
   (`agTodayContext(id)`). TODAY states the day key and name, the plan segment and its day, the deload and
   that LIVE already gives 2 light sets, the split in force, what LIVE will give lift by lift (through the
   same `buildOneLiveExercise()`), what is logged or running, the locks per lift, and the next 5 days. Each
-  line is guarded and nothing in it writes. It is chat-only, so night prompts are byte-identical.
+  line is guarded and nothing in it writes. TODAY itself is chat-only; the night gets the CALENDAR below.
+
+**The nightly agents see what he sees** (his report, 2026-10-16: the agents did not always know the schedule, today,
+or data on his own screen). All of it is read-only context on calls that already run:
+- **The night has a CALENDAR** (`agCalendarContext()`, all four agents, through `agBaseContext()`). It covers today's
+  key and whether it is logged, a HOME day, the plan segment (with a deload ended early), the next 7 days and the
+  plan's next two segments. Its day, plan and next-days lines are the ones chat's TODAY uses (`agCalDayLine()`,
+  `agCalPlanLine()`, `agCalNextDays()`), so the two cannot disagree.
+- **SPLIT carries the numbers** (`agSplitLiftText()`): "Bench Press 3x5-8", from the slot's sets and `exRepMode()`
+  (Form Focus its own). DELTA used to propose a `setCount` without seeing the count.
+- **`intelSummary()` carries the plateau watch** as Today and the Hub colour it, red then amber, at most 8 lifts.
+- **His own read after sessions** (`agFeelLine()`, his last 5 notes within 21 days) goes to DELTA and ZULU, at night
+  and in chat.
+- **The chats know last night** (`agLastNightLine()`): each agent's own report, and for ZULU all four plus the
+  morning brief.
+- **A paid call's pre-pull pushes first.** `agConfirmGateThenRun()` and `agConfirmBriefThenWrite()` call
+  `pushUnconfirmedChanges()` before asking `exportedAt > changedAt`, exactly as `bgSyncTick()` does. Before this, an
+  unpushed local save hid an unseen snapshot, and the cycle or brief ran without the other device's session.
 - **One loop and one handler** (`chatActionHandler()`): ZULU's chat now uses `callClaudeWithData()` like the
   others, with lookups and the pantry tools. A call only stages a card. A refusal is told to the model
   ("Not proposed: …", plus "adjust_today works on any lift" where that applies) and kept on the reply as

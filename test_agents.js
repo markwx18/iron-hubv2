@@ -14585,6 +14585,102 @@ setTimeout(async () => {
     ev('if(window.__deSaved){ S = JSON.parse(window.__deSaved); delete window.__deSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== AGENTS IN SYNC: THE CALENDAR, THE SPLIT’S NUMBERS, WHAT HE SEES (2026-10-16) ===');
+  // He said the agents did not always know the schedule or today, or data he can see on his own screen. TODAY was
+  // chat-only, SPLIT was names only, the plateau watch reached DELTA alone, and the chats did not know last night.
+  try {
+    w.__syS = ev('JSON.stringify(S)');
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    // --- the nightly CALENDAR, for all four ---
+    ev('S.meso = {template:null, active:{startedAt:' + JSON.stringify(dk(-3)) + ', startKey:' + JSON.stringify(dk(-3)) + ', splits:{}, weeks:' + JSON.stringify([
+      {type: 'hyp', name: 'Hypertrophy', n: 1, blockId: 'hA', blockWeek: 1, blockLen: 1, days: 10, startKey: dk(-3), endKey: dk(6), repLo: 8, repHi: 12, rpeLo: 7, rpeHi: 8},
+      {type: 'str', name: 'Strength', n: 2, blockId: 'sB', blockWeek: 1, blockLen: 1, days: 4, startKey: dk(7), endKey: dk(10), repLo: 3, repHi: 5, rpeLo: 8, rpeHi: 9},
+      {type: 'deload', name: 'Deload', n: 3, blockId: 'dC', blockWeek: 1, blockLen: 1, days: 5, startKey: dk(11), endKey: dk(15), repLo: 8, repHi: 12, rpeLo: 5, rpeHi: 6}
+    ]) + '}}; S.deload = null; S.homeToday = {date: todayKey()};');
+    const next7 = ev("(function(){ var o = []; for(var i = 1; i <= 7; i++){ var k = mesoAddDays(todayKey(), i), d = scheduledDayFor(k); o.push(homeShortDate(k)+' '+(d === 'REST' ? 'rest' : d)); } return o.join(', '); })()");
+    const cal = {};
+    for (const id of ['charlie', 'delta', 'echo', 'zulu']) cal[id] = ev("agBaseContext('" + id + "')");
+    ok('sync: every nightly agent gets the CALENDAR, CHARLIE included',
+       ['charlie', 'delta', 'echo', 'zulu'].every(id => /\nCALENDAR \(the app’s own read tonight/.test(cal[id])));
+    ok('sync: the calendar lists the next 7 days from the schedule itself', cal.charlie.indexOf('Next 7 days: ' + next7 + '.') >= 0, (cal.charlie.match(/Next 7 days:[^\n]*/) || [''])[0] + ' / ' + next7);
+    ok('sync: the calendar names the plan segment and the two after it, with their lengths',
+       /Plan: Hypertrophy, day 4 of 10/.test(cal.charlie) && /Coming up in the plan: Strength [^\n]* \(4 days\), then Deload [^\n]* \(5 days\)\./.test(cal.charlie),
+       (cal.charlie.match(/CALENDAR[\s\S]*?\n\n|CALENDAR[\s\S]*$/) || [''])[0].slice(0, 600));
+    ok('sync: the calendar says when today is a HOME session', /HOME session today/.test(cal.delta));
+    // Chat's TODAY is built from the same lines and is unchanged: five days, its own header.
+    const td = ev("agTodayContext('zulu')");
+    ok('sync: chat TODAY keeps its own header and five days', /^\nTODAY \(the app’s own read, right now/.test(td) && (td.match(/Next days: ([^\n]*)\./) || ['', ''])[1].split(', ').length === 5, td.slice(0, 300));
+
+    // --- the split with its numbers ---
+    ev("S.split.ZQ = {name:'Zz Sync Day', exercises:[{name:'Zz SY Row', sets:4}, 'Zz SY Press', {name:'Zz SY Curl', formFocus:true}]};");
+    const ctx = ev('agContext()');
+    const rr = ev("JSON.stringify(exRepMode('Zz SY Row'))"), r0 = JSON.parse(rr);
+    ok('sync: SPLIT lists each lift with its working sets and rep range',
+       ctx.indexOf('ZQ (Zz Sync Day): Zz SY Row 4x' + r0.lo + '-' + r0.hi + ', Zz SY Press 3x' + r0.lo + '-' + r0.hi + ', Zz SY Curl 3x12-20 form focus') >= 0,
+       (ctx.match(/ZQ \(Zz Sync Day\)[^\n]*/) || [''])[0] + ' / ' + rr);
+
+    // --- the plateau watch as Today shows it ---
+    ev("window.__syPW = plateauWatch; plateauWatch = function(){ return [" +
+       "{lift:'Zz PW Pulldown', lvl:'red', word:'stalled', sig:[{k:'stalled', lvl:'red', txt:'5 sessions at 165, reps flat'}]}," +
+       "{lift:'Zz PW Row', lvl:'amber', word:'slowing', sig:[{k:'slowing', lvl:'amber', txt:'gaining 0.5 lb/wk over the last 4 sessions, down from 2'}]}," +
+       "{lift:'Zz PW Squat', lvl:'green', word:'on track', sig:[]}]; };");
+    const intel = ev('intelSummary()');
+    ev('plateauWatch = window.__syPW; delete window.__syPW;');
+    ok('sync: the summary carries the plateau watch, red then amber, and leaves green out',
+       /Plateau watch \(the colours Today and the Hub show him\): red: Zz PW Pulldown \(stalled, 5 sessions at 165, reps flat\)\. amber: Zz PW Row \(slowing, gaining 0\.5 lb\/wk/.test(intel) && !/Zz PW Squat/.test(intel),
+       (intel.match(/Plateau watch[^\n]*/) || [''])[0]);
+
+    // --- his own read after recent sessions ---
+    ev('S.logs = ' + JSON.stringify([
+      {id: 897001, date: dk(-1), day: 'D1', entries: [{exercise: 'Zz SY Row', sets: [{w: 100, r: 8}]}]},
+      {id: 897002, date: dk(-30), day: 'D2', entries: [{exercise: 'Zz SY Row', sets: [{w: 100, r: 8}]}]}]) + '; S.sessionMeta = [];');
+    ev("sessionMetaSet(897001, {feel:2, note:'knee felt off on squats'}); sessionMetaSet(897002, {feel:5, note:'old note'});");
+    const dctx = ev("agBaseContext('delta')"), ectx = ev("agBaseContext('echo')"), zchat = ev("chatContext('zulu')");
+    ok('sync: DELTA and ZULU get his recent notes as his words; a month-old one is left out',
+       /HIS OWN READ AFTER RECENT SESSIONS[\s\S]*D1: 2\/5 "Heavy"; he wrote "knee felt off on squats"/.test(dctx) && !/old note/.test(dctx) && /knee felt off/.test(zchat));
+    ok('sync: ECHO does not get them', !/HIS OWN READ AFTER RECENT SESSIONS/.test(ectx));
+
+    // --- the chats know last night ---
+    ev("var _a = agState(); _a.status.delta = {summary:'Squat moved: 245x6.', at:new Date().toISOString()};" +
+       "_a.status.echo = {summary:'Old ECHO line.', at:new Date(Date.now() - 6*86400000).toISOString()};" +
+       "_a.brief = {text:'Train D3 as written.', at:new Date().toISOString(), date:todayKey()};");
+    const dchat = ev("chatContext('delta')"), zchat2 = ev("chatContext('zulu')");
+    ok('sync: a chat knows what it said last night', /LAST NIGHT’S CHECK[\s\S]*- You \([^)]*\): Squat moved: 245x6\./.test(dchat));
+    ok('sync: ZULU’s chat has the whole night and the brief, not a stale report',
+       /- DELTA \([^)]*\): Squat moved/.test(zchat2) && /This morning’s brief: Train D3 as written\./.test(zchat2) && !/Old ECHO line/.test(zchat2));
+  } catch (e) {
+    ok('agents in sync section', false, e.stack);
+  } finally {
+    ev('if(window.__syPW){ plateauWatch = window.__syPW; delete window.__syPW; }');
+    ev('if(window.__syS){ S = JSON.parse(window.__syS); delete window.__syS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  // A paid call's pre-pull asked exportedAt > changedAt without pushing first. With a local save not yet pushed,
+  // changedAt sat past a snapshot this device had never applied, so the cycle (or the brief) ran without the other
+  // device's session. bgSyncTick() and autoPullOnLoad() push first, and the push reconciles via syncSeenAt().
+  console.log('=== A PAID CALL’S PRE-PULL SEES THE OTHER DEVICE FIRST (2026-10-16) ===');
+  try {
+    w.__ppS = ev('JSON.stringify(S)');
+    w.__ppSeen = ev('localStorage.getItem(SYNC_SEEN_KEY)');
+    const realFetch = w.fetch;
+    for (const fn of ['agConfirmGateThenRun', 'agConfirmBriefThenWrite']) {
+      ev("S = JSON.parse(window.__ppS); S.settings.ghToken = 'tok'; S.settings.gistId = 'gist1'; S.settings.autoSync = true; S.settings.apiKey = '';" +
+         "S.meta.pushedAt = Date.now() - 600000; S.meta.changedAt = Date.now() - 1000; localStorage.setItem(SYNC_SEEN_KEY, String(S.meta.pushedAt));");
+      // The other device pushed 5 minutes ago with a session this one has never seen.
+      ev("window.__ppRemote = JSON.parse(JSON.stringify(S)); window.__ppRemote.logs = (window.__ppRemote.logs||[]).concat([{id:898001, date:todayKey(), day:'D1', t:Date.now() - 300000, " +
+         "entries:[{exercise:'Zz PP Press', sets:[{w:100, r:8}]}]}]);");
+      w.fetch = gistStub(null, () => ({app: 'ironhub', v: 1, exportedAt: ev('Date.now()') - 300000, data: ev('window.__ppRemote')}));
+      await ev(fn + '()');
+      w.fetch = realFetch;
+      ok('pre-pull (' + fn + '): the other device’s session is here before the paid call', ev('S.logs.some(function(l){ return l.id === 898001; })') === true);
+    }
+  } catch (e) {
+    ok('paid-call pre-pull section', false, e.stack);
+  } finally {
+    ev("if(window.__ppS){ S = JSON.parse(window.__ppS); delete window.__ppS; delete window.__ppRemote; } localStorage.setItem(LS_KEY, JSON.stringify(S));");
+    ev(w.__ppSeen === null ? 'localStorage.removeItem(SYNC_SEEN_KEY)' : 'localStorage.setItem(SYNC_SEEN_KEY, ' + JSON.stringify(w.__ppSeen) + ')');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
