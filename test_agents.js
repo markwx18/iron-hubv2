@@ -14681,6 +14681,91 @@ setTimeout(async () => {
     ev(w.__ppSeen === null ? 'localStorage.removeItem(SYNC_SEEN_KEY)' : 'localStorage.setItem(SYNC_SEEN_KEY, ' + JSON.stringify(w.__ppSeen) + ')');
   }
 
+  console.log('=== THE AGENTS REVIEW WHAT HAPPENED (2026-10-16) ===');
+  // He asked for the agents to look back at deloads, calorie stretches and dips and draw conclusions. Every number
+  // beside an event is the app's own; the fixture's numbers are worked out by hand below (fixed offsets, no randomness),
+  // with two weigh-ins in some weeks and noisy calories inside each week.
+  try {
+    w.__evS = ev('JSON.stringify(S)');
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const sd = k => ev('homeShortDate(' + JSON.stringify(k) + ')');
+    const base = ev('weekKeyOf(mesoAddDays(todayKey(), -77))');
+    const W = k => ev('mesoAddDays(' + JSON.stringify(base) + ', ' + (7 * k) + ')');
+    const at = (k, d) => ev('mesoAddDays(' + JSON.stringify(W(k)) + ', ' + d + ')');
+    // Sessions: squat and bench every 3 days, a deload on -48 and -45, an old one at -120. e1RM = w x 7/6 at 5 reps.
+    const sq = {'-66': 228, '-63': 234, '-60': 240, '-57': 240, '-54': 252, '-51': 246, '-42': 252, '-39': 258, '-36': 258, '-33': 264, '-30': 258, '-27': 264,
+                '-24': 270, '-21': 264, '-18': 270, '-15': 228, '-12': 270, '-9': 276, '-6': 270, '-3': 276};
+    const bp = {'-66': 144, '-63': 150, '-60': 150, '-57': 150, '-54': 156, '-51': 150, '-42': 156, '-39': 162, '-36': 162, '-33': 168, '-30': 162, '-27': 168,
+                '-24': 168, '-21': 174, '-18': 168, '-15': 174, '-12': 174, '-9': 180, '-6': 174, '-3': 180};
+    const logs = [];
+    Object.keys(sq).forEach((o, i) => logs.push({id: 899000 + i, date: dk(+o), day: 'D1', entries: [
+      {exercise: 'Zz EV Back Squat', sets: [{w: sq[o], r: 5}, {w: sq[o] - 20, r: 6}]}, {exercise: 'Zz EV Bench Press', sets: [{w: bp[o], r: 5}]}]}));
+    [-48, -45, -120, -117].forEach((o, i) => logs.push({id: 899100 + i, date: dk(o), day: 'D1', deload: true,
+      entries: [{exercise: 'Zz EV Back Squat', sets: [{w: 150, r: 8}, {w: 150, r: 8}]}]}));
+    // Bodyweight: +0.4 lb a week to week 3, +0.2 to week 6, +0.6 after the target change at week 7, so "the 3 weeks before"
+    // reads differently from any other three. Two weigh-ins averaging the value in odd weeks.
+    const A = k => Math.round((k <= 3 ? 159.4 + 0.4 * k : k <= 6 ? 160.6 + 0.2 * (k - 3) : 161.2 + 0.6 * (k - 6)) * 10) / 10;
+    const wts = [];
+    for (let k = 0; k <= 10; k++) {
+      if (k % 2) wts.push({date: at(k, 1), lbs: Math.round((A(k) - 0.1) * 10) / 10});
+      wts.push({date: at(k, 5), lbs: Math.round((A(k) + (k % 2 ? 0.1 : 0)) * 10) / 10});
+    }
+    // Calories: ~3300 a day (3250 and 3350 the two weeks before the low one, so both count), a ~2900 week (week 3),
+    // ~3700 from the target change.
+    const nut = [], noise = [-50, 50, 0, -20, 20], wkCal = {1: 3250, 2: 3350, 3: 2900};
+    for (let k = 0; k <= 10; k++) for (let d = 0; d < 5; d++) nut.push({date: at(k, d), cals: (wkCal[k] || (k >= 7 ? 3700 : 3300)) + noise[d], protein: 170});
+    // WHOOP: a steady week pattern (usual 65%), a three-day slump at -25..-23, and a row for today.
+    const rows = [], pat = [62, 63, 64, 65, 66, 67, 68], slump = {'-25': 35, '-24': 38, '-23': 32};
+    for (let o = -75; o <= 0; o++) rows.push({date: dk(o), recovery: slump[o] !== undefined ? slump[o] : pat[(o + 75) % 7], hrv: 60, rhr: 50, sleepHours: 7.5, strain: 12});
+    ev('S.logs = ' + JSON.stringify(logs) + '; S.weights = ' + JSON.stringify(wts) + '; S.nutrition = ' + JSON.stringify(nut) + ';' +
+       'S.targetHist = [{id:"tz1", kind:"cal", from:3300, to:3700, date:' + JSON.stringify(W(7)) + ', by:"test"}];' +
+       'S.whoop = {history:' + JSON.stringify(rows) + '}; S.prHistory = [{exercise:"Zz EV Back Squat", weight:276, reps:5, e1rm:322, prev:315, gain:7, date:' + JSON.stringify(dk(-9)) + '}];' +
+       'S.experiments = {active:null, declined:{}, lastEnded:"", history:[{template:"restMain", lift:"Zz EV Back Squat", startedAt:' + JSON.stringify(dk(-40)) +
+       ', endedAt:' + JSON.stringify(dk(-20)) + ', status:"done", result:{nExp:3, nBase:4, direction:"up", deltaPct:2.1, confidence:"moderate"}}]};' +
+       'S.meso = {template:null, active:null}; S.deload = null;');
+    const before = ev('JSON.stringify(S)');
+    const L = {};
+    for (const id of ['delta', 'echo', 'charlie', 'zulu']) L[id] = ev("agEventsLine('" + id + "')");
+    const has = (s, x) => s.indexOf(x) >= 0;
+    ok('events: a deload reads its main lifts before and after, as medians, in the app’s numbers',
+       has(L.delta, 'Deload ' + sd(dk(-48)) + '–' + sd(dk(-45)) + '. Main lifts, median e1RM of the 3 sessions before against the first 2 after: Zz EV Back Squat 287→298 (+3.7%); Zz EV Bench Press 175→186 (+6.0%).'),
+       (L.delta.match(/- Deload[^\n]*/) || [''])[0]);
+    ok('events: a dip names its size and base, and whether the next session got back',
+       /- Zz EV Back Squat dipped 16% on [^(]*\(e1RM 266 against ~315\);[^\n]*back to level the next session\./.test(L.delta), (L.delta.match(/- Zz EV Back Squat dipped[^\n]*/) || [''])[0]);
+    ok('events: a recovery slump against his usual, with what he trained inside it',
+       has(L.delta, 'Recovery slump ' + sd(dk(-25)) + '–' + sd(dk(-23)) + ': averaged 35% against his usual 65%; 1 session inside it; no dips during or just after.'),
+       (L.delta.match(/- Recovery slump[^\n]*/) || [''])[0]);
+    ok('events: PRs and DELTA’s own finished experiment',
+       has(L.delta, 'PR ' + sd(dk(-9)) + ': Zz EV Back Squat 276×5 (e1RM 322, +7).') && /Experiment Longer rest on a main lift \(Zz EV Back Squat\) ended [^:]*: \+2\.1% \(up, 3 sessions against 4/.test(L.delta));
+    ok('events: a target change reads the bodyweight pace before and since, and says when the weeks are too few',
+       has(L.echo, 'Calorie target 3300→3700 on ' + sd(W(7)) + '. Bodyweight pace +0.20 lb/wk over the 3 weeks before, +0.60 lb/wk over the 4 weeks since, too few to lean on.'),
+       (L.echo.match(/- Calorie target[^\n]*/) || [''])[0]);
+    ok('events: a low week reads what he ate against the two before, and the scale around it',
+       has(L.echo, 'Week of ' + sd(W(3)) + ' averaged ~2900 cal/day, 400 under the two weeks before (~3300). Bodyweight weekly average: 160.2 → 160.6 → 160.8 (week before, that week, week after).'),
+       (L.echo.match(/- Week of[^\n]*/) || [''])[0]);
+    ok('events: each agent sees its own kinds (ECHO no dips, slumps, PRs or DELTA’s experiment; DELTA no calorie lines; CHARLIE none)',
+       !/dipped|Recovery slump|- PR |Experiment/.test(L.echo) && /- Deload/.test(L.echo) && !/Calorie target|- Week of/.test(L.delta) && L.charlie === '');
+    ok('events: ZULU sees all of them', ['Deload', 'dipped', 'Recovery slump', 'PR ', 'Experiment', 'Calorie target', 'Week of'].every(x => has(L.zulu, x)));
+    ok('events: ten weeks only; the -120 deload is not in the prompt', !has(L.zulu, 'Deload ' + sd(dk(-120))));
+    ok('events: the section reaches the nightly prompt and the chat', /WHAT HAPPENED, LAST 10 WEEKS/.test(ev("agBaseContext('echo')")) && /WHAT HAPPENED/.test(ev("chatContext('delta')")) && !/WHAT HAPPENED/.test(ev("agBaseContext('charlie')")));
+    // The lookups: further back, filtered, and history only.
+    const ge = ev("agRunDataTool('get_events', {weeks: 26})");
+    ok('get_events: looks further back than the prompt', has(ge, 'Deload ' + sd(dk(-120))) && has(ge, 'Deload ' + sd(dk(-48))));
+    const gp = ev("agRunDataTool('get_events', {weeks: 52, kinds: ['pr', 'bogus']})");
+    ok('get_events: a kinds filter keeps only those', /^Events, last 52 weeks/.test(gp) && has(gp, '- PR ') && !/Deload|dipped|Calorie/.test(gp), gp.slice(0, 300));
+    const gr = ev("agRunDataTool('get_recovery', {days: 400})");
+    ok('get_recovery: capped at 180 days, with his usual, and never today’s row',
+       /^WHOOP history, last 180 days, newest first \(history, not today\); his 30-day usual: recovery 65%/.test(gr) && !has(gr, '  ' + dk(0) + ':') && has(gr, '  ' + dk(-1) + ': recovery') && has(gr, dk(-24) + ': recovery 38%'),
+       gr.slice(0, 260));
+    ok('events: nothing here writes (S is byte-identical after the digest and both lookups)', ev('JSON.stringify(S)') === before);
+    ev('S.logs = []; S.weights = []; S.nutrition = []; S.targetHist = []; S.whoop = {history:[]}; S.prHistory = []; S.experiments = {active:null, history:[], declined:{}, lastEnded:""};');
+    ok('events: with nothing to review, no section at all', ev("agEventsLine('zulu')") === '' && !/WHAT HAPPENED/.test(ev("agBaseContext('zulu')")));
+  } catch (e) {
+    ok('event review section', false, e.stack);
+  } finally {
+    ev('if(window.__evS){ S = JSON.parse(window.__evS); delete window.__evS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

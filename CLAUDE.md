@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3627 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3642 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -352,9 +352,37 @@ for a cache nothing reads.
 
 Agents have **read-only data tools** (`agDataToolDefs()`, executed by `agRunDataTool()`,
 looped by `callClaudeWithData()`): `list_lifts`, `get_lift_history`, `get_e1rm_series`,
-`get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`. ECHO also gets
+`get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`, `get_events` and `get_recovery` (the last
+two since 2026-10-16, his call). ECHO also gets
 `get_fuel_planner` and `plan_fuel_combos` (`fpToolDefs()`, through `opts.fuelTools`), in its
 nightly check and its chat, and so does ZULU's chat, which can change the pantry. Both are reads, and the second runs the tab's own `fpCombos()`.
+
+**The agents review what happened** (his ask, 2026-10-16: deloads, high and low calorie stretches, dips, and
+conclusions drawn from them).
+- **`agEvents(days, kinds)` holds the events**, with the app's own before/after numbers. The events are:
+  - the chart marks (`ckEventMarks()`);
+  - dips on the main lifts (`liftDips()` over `predLifts()`);
+  - PRs and finished experiments.
+
+  The numbers are:
+  - **deloads:** the median clean e1RM of the 3 sessions before against the first 2 after;
+  - **target changes:** the bodyweight pace for the 3 weeks before against the weeks since, "too few to lean on"
+    under `FVR_FIRM_WEEKS`;
+  - **a shifted week:** what he ate against the two weeks before, and the weekly bodyweight around it;
+  - **heavy weeks:** recovery and dips the week after;
+  - **slumps:** recovery against his usual, read from before the slump;
+  - **dips:** the top `plateauCauses(…, {asOf:true})` factor, and whether the next session got back.
+
+  `agEvents()` only reads. HOW SURE TO SOUND forbids an effect size the app has not computed, so the app computes the
+  ones worth asking about.
+- **`agEventsLine(id)` puts 10 weeks in the prompt** (nightly and chat), capped at `EV_MAX_CHARS`, with one rule: draw
+  a conclusion only when these numbers support it.
+  - It is filtered by `EV_FOR`: DELTA training events, ECHO calories and deloads, ZULU everything, CHARLIE none.
+  - An experiment goes only to its owner and ZULU.
+  - With no events there is no section.
+- **`get_events {weeks ≤52, kinds}` looks further back** through the same function.
+- **`get_recovery {days ≤180}` is WHOOP history**, plus his usual. It never includes a row dated today: history is
+  never today.
 There is no write tool and there must never be one: a tool call never changes state by itself.
 **The chats propose action cards** (Mark's call on 2026-10-06, replacing ECHO's queue-only
 `propose_fuel_food` from 2026-09-28). He asked for all four agents to be able to act from chat,

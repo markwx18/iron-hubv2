@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-16-v2">
+<meta name="ironhub-build" content="2026-10-16-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14924,6 +14924,15 @@ function agDataToolDefs(){
     {name:'get_weekly_volume', description:'Hard sets per muscle group for a completed week. Use for volume-balance questions rather than counting sets by hand.',
       input_schema:{type:'object', properties:{
         weeksAgo:{type:'number', description:'0 = last completed week, 1 = the week before, and so on. Default 0.'}
+      }}},
+    {name:'get_events', description:'What happened, further back than the summary: deloads, calorie target changes and weeks he ate well over or under, high-load weeks, recovery slumps, dips on his main lifts, PRs and finished experiments, each with the app\u2019s own before/after numbers. Newest first.',
+      input_schema:{type:'object', properties:{
+        weeks:{type:'number', description:'How many weeks back, up to 52. Default 26.'},
+        kinds:{type:'array', items:{type:'string', enum:['deload','cal','load','rec','dip','pr','exp']}, description:'Only these kinds. Default all.'}
+      }}},
+    {name:'get_recovery', description:'WHOOP history, one row a day: recovery, HRV, resting HR, sleep and strain, plus his 30-day usual. History only: today\u2019s reading is in the summary, never here.',
+      input_schema:{type:'object', properties:{
+        days:{type:'number', description:'How many days back, up to 180. Default 30.'}
       }}}
   ];
 }
@@ -15027,6 +15036,28 @@ function agRunDataTool(name, inp){
       if(!keys.length) return 'No volume recorded for that week.';
       return 'Hard sets per muscle group, '+start+' to '+end+':'+'\n'+
         keys.map(function(g){ return '  '+g+': '+vol[g]; }).join('\n');
+    }
+    if(name==='get_events'){
+      const wk = Math.max(1, Math.min(52, Math.round(+p.weeks||26)));
+      const ks = Array.isArray(p.kinds) ? p.kinds.filter(function(k){ return ['deload','cal','load','rec','dip','pr','exp'].indexOf(k) >= 0; }) : null;
+      const ev = agEvents(wk * 7, ks && ks.length ? ks : null);
+      if(!ev.length) return 'No events in the last '+wk+' weeks.';
+      return 'Events, last '+wk+' weeks, newest first (the app\u2019s own numbers; observations, not causes):\n'+ev.map(function(e){ return '- '+e.line; }).join('\n');
+    }
+    // History only, never today: whoopFresh() and the summary are the only readers of today's sections, and a
+    // history row dated today is left out here for the same reason.
+    if(name==='get_recovery'){
+      const n = Math.max(1, Math.min(180, Math.round(+p.days||30)));
+      const t = todayKey(), cut = mesoAddDays(t, -n);
+      const rows = whoopHistRows().filter(function(r){ return r && r.date >= cut && r.date < t; })
+        .slice().sort(function(a, b){ return b.date.localeCompare(a.date); });
+      if(!rows.length) return 'No WHOOP history in the last '+n+' days.';
+      const b = recoveryBaseline(t);
+      const f = function(v, u){ return (typeof v === 'number' && isFinite(v)) ? (Math.round(v * 10) / 10)+(u || '') : '?'; };
+      return 'WHOOP history, last '+n+' days, newest first (history, not today)'+
+        (b ? '; his 30-day usual: recovery '+Math.round(b.recovery)+'%, HRV '+f(b.hrv)+', RHR '+f(b.rhr)+(b.sleepHours ? ', sleep '+f(b.sleepHours, 'h') : '') : '')+':\n'+
+        rows.map(function(r){ return '  '+r.date+': recovery '+f(r.recovery, '%')+', HRV '+f(r.hrv)+', RHR '+f(r.rhr)+', sleep '+f(r.sleepHours, 'h')+
+          (typeof r.sleepPerf === 'number' ? ' ('+Math.round(r.sleepPerf)+'%)' : '')+', strain '+f(r.strain); }).join('\n');
     }
     // ECHO only (see callClaudeWithData). Both read; plan_fuel_combos runs the tab's own combiner.
     if(name==='get_fuel_planner') return fpPlannerText();
@@ -17047,6 +17078,145 @@ function ckEventMarks(from, kinds){
     flush();
   }
   return out;
+}
+/* ---- events, for the agents to review (2026-10-16) ----
+   He asked for the agents to look back at what happened -- deloads, high and low calorie stretches, dips -- and draw
+   conclusions. The events are the chart marks (ckEventMarks(), liftDips(), the PR log, finished experiments), and
+   every number beside one is the app's own: what the main lifts read before and after a deload, the bodyweight pace
+   before and after a target change, what followed a heavy week. "HOW SURE TO SOUND" forbids an effect size the app
+   has not computed, so this computes the ones worth asking about rather than leaving the model to estimate them.
+   Pure reads: nothing here writes, so it is safe in every prompt and behind a tool. */
+const EV_DAYS = 70, EV_MAX_CHARS = 1500, EV_LIFTS = 4;
+// Which events each agent is shown. CHARLIE's remit is the schedule and data health, so none; ZULU sees all.
+const EV_FOR = {delta:['deload','load','rec','dip','pr','exp'], echo:['cal','deload','exp'], charlie:[], zulu:null};
+function evMed(pts){ return pxMedian(pts.map(function(p){ return p.v; })); }
+function evPct(a, b){ return (a > 0 && b > 0) ? Math.round((b - a) / a * 1000) / 10 : null; }
+function evSg(v, d){ return (v >= 0 ? '+' : '−')+Math.abs(v).toFixed(d === undefined ? 1 : d); }
+function evPace(pts){ const r = pts.length >= 3 ? linreg(pts) : null; return r ? Math.round(r.slope * 7 * 100) / 100 : null; }
+function evDipsBetween(a, b, lifts){
+  const out = [];
+  (lifts || []).forEach(function(nm){ try{ liftDips(nm).forEach(function(d){ if(d.date >= a && d.date <= b) out.push(nm+' −'+d.pct+'% ('+homeShortDate(d.date)+')'); }); }catch(e){} });
+  return out;
+}
+function agEvents(days, kinds){
+  const t = todayKey(), from = mesoAddDays(t, -(days || EV_DAYS)), out = [];
+  const want = function(k){ return !kinds || kinds.indexOf(k) >= 0; };
+  let lifts = [];
+  try{ lifts = predLifts(); }catch(e){ lifts = []; }
+  const clean = {};
+  const ser = function(nm){ if(!clean[nm]) clean[nm] = e1rmSeries(nm, {excludeHome:true, excludeMod:true}); return clean[nm]; };
+  const add = function(kind, date, end, line, extra){ out.push(Object.assign({kind:kind, date:date, end:end || date, line:line}, extra || {})); };
+  // Deloads: the main lifts' median clean e1RM over the 3 sessions before, against the first 2 after.
+  if(want('deload')) try{
+    ckEventMarks(from, ['deload']).forEach(function(m){
+      let early = '';
+      try{ (mesoState().active ? mesoState().active.weeks : []).forEach(function(w){
+        const e = mesoDeloadEndedOn(w);
+        if(e && w.startKey <= m.end && w.endKey >= m.date) early = ', ended early on '+homeShortDate(e);
+      }); }catch(e){}
+      const rows = [], since = (S.logs || []).filter(function(l){ return l && l.date > m.end && !l.deload; }).length;
+      lifts.slice(0, EV_LIFTS).forEach(function(nm){
+        const s0 = ser(nm), b = s0.filter(function(p){ return p.date < m.date; }).slice(-3), a = s0.filter(function(p){ return p.date > m.end; }).slice(0, 2);
+        if(b.length < 2 || a.length < 2) return;
+        const mb = evMed(b), ma = evMed(a), pc = evPct(mb, ma);
+        if(pc !== null) rows.push(nm+' '+Math.round(mb)+'→'+Math.round(ma)+' ('+evSg(pc)+'%)');
+      });
+      add('deload', m.date, m.end, 'Deload '+homeShortDate(m.date)+(m.end !== m.date ? '–'+homeShortDate(m.end) : '')+early+'. '+
+        (rows.length ? 'Main lifts, median e1RM of the 3 sessions before against the first 2 after: '+rows.join('; ')+'.'
+                     : 'Too soon to read the lifts after it ('+since+' session'+(since === 1 ? '' : 's')+' since).'));
+    });
+  }catch(e){}
+  // Calories: a target change (bodyweight pace before and since), or a week he ate well away from the two before.
+  if(want('cal')) try{
+    const bw = bodyweightSeriesSmoothed();
+    ckEventMarks(from, ['cal']).forEach(function(m){
+      if(!m.end || m.end === m.date){
+        const r = fuelTargetHistory('cal').filter(function(x){ return String(x.date) === m.date && +x.from > 0; }).pop();
+        if(!r) return;
+        const pb = evPace(bw.filter(function(p){ return p.date <= m.date; }).slice(-3));
+        const after = bw.filter(function(p){ return p.date > m.date; }), pa = evPace(after);
+        add('cal', m.date, m.date, 'Calorie target '+Math.round(+r.from)+'→'+Math.round(+r.to)+' on '+homeShortDate(m.date)+'. Bodyweight pace '+
+          (pb === null ? 'unknown' : evSg(pb, 2)+' lb/wk')+' over the 3 weeks before, '+
+          (pa === null ? 'too soon to read since ('+after.length+' week'+(after.length === 1 ? '' : 's')+')'
+                       : evSg(pa, 2)+' lb/wk over the '+after.length+' weeks since'+(after.length < FVR_FIRM_WEEKS ? ', too few to lean on' : ''))+'.');
+        return;
+      }
+      const wk = function(k){ return (S.nutrition || []).filter(function(n){ return n && +n.cals > 0 && weekKeyOf(n.date) === k; }).map(function(n){ return +n.cals; }); };
+      const cur = pxMean(wk(m.date)), p1 = pxMean(wk(mesoAddDays(m.date, -7))), p2 = pxMean(wk(mesoAddDays(m.date, -14)));
+      if(cur === null || p1 === null || p2 === null) return;
+      const before = (p1 + p2) / 2, d = Math.round((cur - before) / 10) * 10;
+      const wAvg = function(k){ const x = bw.filter(function(p){ return weekKeyOf(p.date) === k; })[0]; return x ? x.v : null; };
+      const b0 = wAvg(mesoAddDays(m.date, -7)), b1 = wAvg(m.date), b2 = wAvg(mesoAddDays(m.date, 7));
+      add('cal', m.date, m.end, 'Week of '+homeShortDate(m.date)+' averaged ~'+Math.round(cur)+' cal/day, '+Math.abs(d)+(d < 0 ? ' under' : ' over')+
+        ' the two weeks before (~'+Math.round(before)+'). Bodyweight weekly average: '+[b0, b1, b2].map(function(v){ return v === null ? '?' : v; }).join(' → ')+
+        ' (week before, that week, week after).');
+    });
+  }catch(e){}
+  // A heavy week: how far over his norm, what recovery did the week after, and any dips that followed.
+  if(want('load')) try{
+    ckEventMarks(from, ['load']).forEach(function(m){
+      let ratio = null;
+      try{ const fi = fatigueIndex(m.end); if(fi && fi.ok) ratio = fi.ratio; }catch(e){}
+      const nx = mesoAddDays(m.end, 7), base = recoveryBaseline(m.date);
+      const rec = pxMean(whoopHistRows().filter(function(r){ return r && r.date > m.end && r.date <= nx && r.date < t && typeof r.recovery === 'number'; }).map(function(r){ return r.recovery; }));
+      const dips = evDipsBetween(m.date, nx, lifts);
+      add('load', m.date, m.end, 'High-load week of '+homeShortDate(m.date)+(ratio !== null ? ' ('+(+ratio).toFixed(2)+'× his 4-week norm)' : '')+'. '+
+        (rec !== null && base ? 'Recovery the week after averaged '+Math.round(rec)+'% against his usual '+Math.round(base.recovery)+'%. ' : '')+
+        (dips.length ? 'Dips within a week: '+dips.join(', ')+'.' : 'No dips within a week.'));
+    });
+  }catch(e){}
+  // A recovery slump: how low, what he trained inside it, and any dips during or just after.
+  if(want('rec')) try{
+    ckEventMarks(from, ['rec']).forEach(function(m){
+      const base = recoveryBaseline(m.date);
+      const rec = pxMean(whoopHistRows().filter(function(r){ return r && r.date >= m.date && r.date <= m.end && typeof r.recovery === 'number'; }).map(function(r){ return r.recovery; }));
+      const n = (S.logs || []).filter(function(l){ return l && l.date >= m.date && l.date <= m.end; }).length;
+      const dips = evDipsBetween(m.date, mesoAddDays(m.end, 3), lifts);
+      add('rec', m.date, m.end, 'Recovery slump '+homeShortDate(m.date)+'–'+homeShortDate(m.end)+(rec !== null && base ? ': averaged '+Math.round(rec)+'% against his usual '+Math.round(base.recovery)+'%' : '')+
+        '; '+n+' session'+(n === 1 ? '' : 's')+' inside it; '+(dips.length ? 'dips: '+dips.join(', ') : 'no dips during or just after')+'.');
+    });
+  }catch(e){}
+  // Dips on the main lifts: how far, the top likely factor the app reads for it, and whether the next session got back.
+  if(want('dip')) lifts.forEach(function(nm){
+    try{
+      const s0 = ser(nm);
+      liftDips(nm).filter(function(d){ return d.date >= from; }).forEach(function(d){
+        let c = null;
+        try{ c = (plateauCauses(nm, d.date, 14, {asOf:true}) || [])[0] || null; }catch(e){ c = null; }
+        const nx = s0.filter(function(p){ return p.date > d.date; })[0];
+        add('dip', d.date, d.date, nm+' dipped '+d.pct+'% on '+homeShortDate(d.date)+' (e1RM '+d.v+' against ~'+d.base+')'+
+          (c ? '; likely factor: '+c.title.toLowerCase()+' ('+c.conf+', '+c.txt+')' : '; no likely factor stood out')+'; '+
+          (!nx ? 'not trained since' : nx.v >= d.base * (1 - DIP_PCT / 2) ? 'back to level the next session' : 'still under the next session ('+nx.v+')')+'.');
+      });
+    }catch(e){}
+  });
+  if(want('pr')) try{
+    (S.prHistory || []).filter(function(p){ return p && p.date >= from; }).slice().sort(function(a, b){ return b.date.localeCompare(a.date); }).slice(0, 6)
+      .forEach(function(p){ add('pr', p.date, p.date, 'PR '+homeShortDate(p.date)+': '+p.exercise+' '+p.weight+'×'+p.reps+' (e1RM '+p.e1rm+(p.gain > 0 ? ', +'+p.gain : '')+').'); });
+  }catch(e){}
+  if(want('exp')) try{
+    ((S.experiments && S.experiments.history) || []).filter(function(x){ return x && x.endedAt && x.endedAt >= from; }).forEach(function(x){
+      const T = expT(x) || {};
+      add('exp', x.startedAt || x.endedAt, x.endedAt, 'Experiment '+(T.label || x.template)+(x.lift ? ' ('+x.lift+')' : '')+' ended '+homeShortDate(x.endedAt)+': '+expResultLine(x)+'.', {owner:T.owner || ''});
+    });
+  }catch(e){}
+  return out.sort(function(a, b){ return b.end.localeCompare(a.end) || b.date.localeCompare(a.date); });
+}
+/* The events one agent is shown in its prompt (nightly and chat): its own kinds, newest first, capped. */
+function agEventsLine(id){
+  if(!(id in EV_FOR)) return '';
+  const kinds = EV_FOR[id];
+  if(kinds && !kinds.length) return '';
+  let ev = [];
+  try{ ev = agEvents(EV_DAYS, kinds).filter(function(e){ return e.kind !== 'exp' || !kinds || id === 'zulu' || e.owner === id; }); }catch(e){ ev = []; }
+  if(!ev.length) return '';
+  const lines = [];
+  let n = 0;
+  ev.forEach(function(e){ if(n + e.line.length <= EV_MAX_CHARS){ lines.push('- '+e.line); n += e.line.length; } });
+  return '\nWHAT HAPPENED, LAST '+Math.round(EV_DAYS / 7)+' WEEKS (events, newest first, each with the app’s own before/after numbers; '+
+    'observations, not causes):\n'+lines.join('\n')+'\n'+
+    'Review them: you may draw a conclusion when these numbers support it, worded by HOW SURE TO SOUND. One event is an early '+
+    'pattern; the same thing twice is worth naming. Say it only if it is new, and for anything older, get_events looks further back.\n';
 }
 /* Progress › Strength, the A × C hero (V4 stage 5): one lift, its best, its status, the chart with what
    happened marked on it, the four-week range in words, why it moved, then every watched lift and the
@@ -20995,6 +21165,7 @@ function chatContext(id){
   const part = function(f){ try{ return f() || ''; }catch(e){ return ''; } };
   return part(coachMemContext)+part(trainingContext)+part(agContext)+
     ((id === 'delta' || id === 'echo' || id === 'zulu') ? part(intelSummary) : '')+
+    part(function(){ return agEventsLine(id); })+
     ((id === 'delta' || id === 'zulu') ? part(agFeelLine) : '')+
     part(function(){ return agLastNightLine(id); })+
     part(function(){ return agTrackLine(id); })+part(function(){ return qaContextLine(id); })+
@@ -21337,7 +21508,9 @@ function agBaseContext(id){
   if(id==='delta' || id==='echo' || id==='zulu'){ try{ intel = intelSummary(); }catch(e){ intel = ''; } }
   // The CALENDAR goes to all four (CHARLIE's whole remit is the schedule); his own reads after recent sessions to the
   // two that coach training. Both before DELTA's tail: pdContextLine() stays last, which the cost guard relies on.
-  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+intel+
+  let evl = '';
+  try{ evl = agEventsLine(id); }catch(e){ evl = ''; }
+  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+intel+evl+
     ((id==='delta' || id==='zulu') ? agFeelLine() : '')+agRecentSaid(id)+agTrackLine(id)+qaContextLine(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext()+pdContextLine(pdTargets()) : '');
 }
@@ -21469,7 +21642,7 @@ function agRecentSaid(id){
 
 function agToolNote(){
   return '\n'+'You have read-only tools for his full history: list_lifts, get_lift_history, '+
-    'get_e1rm_series, get_bodyweight, get_nutrition, get_readiness, get_weekly_volume. The summary '+
+    'get_e1rm_series, get_bodyweight, get_nutrition, get_readiness, get_weekly_volume, get_events, get_recovery. The summary '+
     'above is only the most recent slice -- if a claim depends on anything older or more precise, '+
     'LOOK IT UP rather than inferring. Never cite a number you have not seen. Exercise names must '+
     'come from list_lifts; a name that does not match one of those cannot be applied.'+'\n';
@@ -23180,6 +23353,7 @@ const HUB_FED_MS = 45 * 60000;
 const HUB_ROLE = {zulu:'Lead', charlie:'Logistics', delta:'Training', echo:'Fuel'};
 const HUB_TOOL_WORDS = {list_lifts:'lift list', get_lift_history:'lift history', get_e1rm_series:'e1RM trend',
   get_bodyweight:'bodyweight', get_nutrition:'nutrition', get_readiness:'readiness', get_weekly_volume:'weekly volume',
+  get_events:'past events', get_recovery:'WHOOP history',
   get_fuel_planner:'fuel planner', plan_fuel_combos:'meal combos'};
 /* Did this agent's report feed the last cycle? lastRunAt is stamped when the cycle ENDS (its
    finally), and agIngest() stamps status.at as each reply lands, so a report from that cycle sits
