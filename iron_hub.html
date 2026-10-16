@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-15-v1">
+<meta name="ironhub-build" content="2026-10-16-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2430,8 +2430,8 @@ function exRepMode(ex){
   const _xr = (typeof expRepRangeFor==='function') ? expRepRangeFor(ex) : null;
   if(_xr) return {lo:_xr.lo, hi:_xr.hi};
   if(isStrMode(ex)) return {lo:STR_LO, hi:STR_HI};   // explicit per-exercise strength mode always wins
-  const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
-  if(mw && mw.repLo>0 && mw.repHi>0) return {lo:mw.repLo, hi:mw.repHi};  // then the active phase
+  const mw = (typeof mesoCurrentWeek==='function') ? mesoPhaseOn(mesoCurrentWeek(), todayKey()) : null;
+  if(mw && mw.repLo>0 && mw.repHi>0) return {lo:mw.repLo, hi:mw.repHi};  // then the active phase (not a deload he ended)
   return {lo:S.settings.repLow, hi:S.settings.repHigh};
 }
 /* Every stored slot for one exercise, as the per-lift flag lookups should read them: the split IN
@@ -13036,7 +13036,7 @@ function deloadWindow(){
   if(S.deload && S.deload.until && S.deload.startedAt && t >= S.deload.startedAt && t <= S.deload.until)
     return {start:S.deload.startedAt, until:S.deload.until, source:'manual'};
   const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
-  if(mw && mw.type==='deload' && !mw.deloadEnded) return {start:mw.startKey, until:mw.endKey, source:'meso', week:mw.n};
+  if(mw && mesoDeloadOn(mw, t)) return {start:mw.startKey, until:mw.endKey, source:'meso', week:mw.n};
   return null;
 }
 function deloadActive(){ return !!deloadWindow(); }
@@ -13048,7 +13048,16 @@ function lastDeloadEndKey(){
   if(S.deload && S.deload.startedAt && S.deload.until && S.deload.startedAt <= t) take(S.deload.until <= t ? S.deload.until : t);
   try{
     const a = mesoState().active;
-    if(a) (a.weeks||[]).forEach(function(w){ if(w.type==='deload' && w.startKey <= t) take(w.endKey <= t ? w.endKey : t); });
+    if(a) (a.weeks||[]).forEach(function(w){
+      if(w.type !== 'deload' || w.startKey > t) return;
+      // Ended early: its last deload day is the day before he ended it, not its planned end. Read as
+      // the planned end, every day up to it was "the last deload ended today", and the sessions in
+      // between were left out of deloadCheck() and the forecast for good. Ended before it began
+      // (a later segment of the same block): it had no deload days at all.
+      const e = mesoDeloadEndedOn(w);
+      if(e){ if(e > w.startKey) take(mesoAddDays(e, -1)); return; }
+      take(w.endKey <= t ? w.endKey : t);
+    });
   }catch(e){}
   (S.logs||[]).forEach(function(l){ if(l && l.deload) take(l.date); });
   return best;
@@ -13065,8 +13074,18 @@ function startDeloadWeek(untilOverride, startOverride){
 }
 function endDeloadWeek(){
   S.deload = null;
+  const t = todayKey();
   const mw = (typeof mesoCurrentWeek==='function') ? mesoCurrentWeek() : null;
-  if(mw && mw.type==='deload') mw.deloadEnded = true;   // scoped to this week only
+  if(mw && mw.type==='deload'){
+    // The DAY it ended, not just the fact (see mesoDeloadEndedOn()). Still truthy, so an older copy
+    // of the app on his other device reads it as ended too.
+    mw.deloadEnded = t;
+    // A two-week deload is two segments of one block. End early ends the block; a later block's
+    // planned deload (another blockId) is left alone.
+    try{ (mesoState().active.weeks||[]).forEach(function(w){
+      if(w !== mw && w.type === 'deload' && w.blockId === mw.blockId && w.startKey > t) w.deloadEnded = t;
+    }); }catch(e){}
+  }
   save();
   if(typeof renderLive==='function') renderLive();
   if(document.getElementById('progress') && document.getElementById('progress').innerHTML.length>50) renderProgressV2();
@@ -15355,10 +15374,46 @@ function mesoWeekAt(key){
   return a.weeks.find(w=>key>=w.startKey && key<=w.endKey) || null;
 }
 function mesoCurrentWeek(){ return mesoWeekAt(todayKey()); }
+/* The day a deload segment stopped being a deload, or null while it runs as planned. End early
+   (endDeloadWeek()) used to set a bare `deloadEnded = true`, and only deloadWindow() read it: on
+   2026-10-15 he ended his block deload a day early, and the session after it was judged against the
+   deload's RPE 5-6 (rpeTargetFor() reads the segment by date), Today's eyebrow still said "deload
+   week", and every agent prompt was told "Deload week: loads ~60%" beside agContext()'s "no deload".
+   The flag now holds the day. A boolean from before has no day, so it is inferred from his logs: the
+   first non-deload session inside the segment, else the day after the last deload one, else the
+   segment's start -- never later than today, because the tap that set it was in the past. */
+function mesoDeloadEndedOn(w){
+  if(!w || w.type !== 'deload' || !w.deloadEnded) return null;
+  if(typeof w.deloadEnded === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(w.deloadEnded)) return w.deloadEnded;
+  const inSeg = (S.logs||[]).filter(function(l){ return l && l.date >= w.startKey && l.date <= w.endKey; });
+  const normal = inSeg.filter(function(l){ return !l.deload; }).map(function(l){ return l.date; }).sort();
+  const dl = inSeg.filter(function(l){ return l.deload; }).map(function(l){ return l.date; }).sort();
+  let e = normal.length ? normal[0] : dl.length ? mesoAddDays(dl[dl.length-1], 1) : w.startKey;
+  const t = todayKey();
+  if(e > t) e = t;
+  return e;
+}
+/* Whether a deload segment is still a deload on `key`: the days before he ended it were, the days
+   from the end on are plain training days with no phase (default RPE, the Settings rep range).
+   Anything asking "is this date a deload day?" of a plan segment goes through here. */
+function mesoDeloadOn(w, key){
+  if(!w || w.type !== 'deload') return false;
+  const e = mesoDeloadEndedOn(w);
+  return !e || (key || todayKey()) < e;
+}
+/* The phase a plan segment really sets on a date: the segment, or null on the days after a deload
+   he ended early. For readers of its rep/RPE range. */
+function mesoPhaseOn(w, key){
+  if(!w) return null;
+  if(w.type === 'deload' && !mesoDeloadOn(w, key)) return null;
+  return w;
+}
 function mesoNextDeload(){
   const a = mesoState().active; if(!a) return null;
   const t = todayKey();
-  return a.weeks.find(w=>w.type==='deload' && w.endKey>=t) || null;
+  // A deload he ended early is not the next one: it read "Next deload: this week" for the rest of the
+  // segment, and agDeloadBlock() refused any deload as "a planned deload starts" on the one he ended.
+  return a.weeks.find(w=>w.type==='deload' && w.endKey>=t && !mesoDeloadEndedOn(w)) || null;
 }
 function mesoWeeksUntil(w){
   if(!w) return null;
@@ -15641,11 +15696,18 @@ function mesoCoachContext(){
   if(!w) return 'PERIODIZATION: no active mesocycle \u2014 training is unstructured/day-to-day.\n\n';
   const nd = mesoNextDeload(); const ndIn = mesoWeeksUntil(nd);
   let s = 'PERIODIZATION: week '+w.n+' of the plan \u2014 '+w.name+' block (week '+w.blockWeek+' of '+w.blockLen+').\n';
-  if(w.repLo>0) s += '- Phase rep target: '+w.repLo+'\u2013'+w.repHi+(w.rpeLo>0?', RPE '+w.rpeLo+'\u2013'+w.rpeHi:'')+'.\n';
-  if(w.type==='hyp')    s += '- Goal this block is volume and size. e1RM holding flat here is normal and NOT a problem.\n';
-  if(w.type==='str')    s += '- Goal this block is absolute strength. e1RM should climb; accessories are intentionally trimmed.\n';
-  if(w.type==='deload') s += '- Deload week: loads ~60%, well shy of failure. Do not push intensity.\n';
-  if(w.type==='rest')   s += '- Rest/travel week: nothing scheduled. Do not prescribe training.\n';
+  // A deload he ended early: say so, and nothing about 60% or RPE 5-6. Those lines used to stay for the rest of
+  // the segment while agContext() said no deload was in force, so every prompt contradicted itself.
+  const ended = mesoDeloadEndedOn(w);
+  if(ended) s += '- He ended this deload early, on '+fmtDate(ended)+'. It is NOT a deload now: normal training since, '+
+    'with the normal effort target (RPE 7\u20138), and LIVE gives the normal plan.\n';
+  else {
+    if(w.repLo>0) s += '- Phase rep target: '+w.repLo+'\u2013'+w.repHi+(w.rpeLo>0?', RPE '+w.rpeLo+'\u2013'+w.rpeHi:'')+'.\n';
+    if(w.type==='hyp')    s += '- Goal this block is volume and size. e1RM holding flat here is normal and NOT a problem.\n';
+    if(w.type==='str')    s += '- Goal this block is absolute strength. e1RM should climb; accessories are intentionally trimmed.\n';
+    if(w.type==='deload') s += '- Deload week: loads ~60%, well shy of failure. Do not push intensity.\n';
+    if(w.type==='rest')   s += '- Rest/travel week: nothing scheduled. Do not prescribe training.\n';
+  }
   if(nd && ndIn!=null) s += '- Next deload: '+(ndIn===0?'this week':'in '+ndIn+' week'+(ndIn===1?'':'s'))+'.\n';
   const ms = (typeof mesoActiveSplit==='function') ? mesoActiveSplit() : null;
   if(ms) s += '- A generated strength split is ACTIVE this block (differs from the permanent split).\n';
@@ -15806,17 +15868,20 @@ function mesoCurrentCardHTML(){
   const ty = MESO_TYPES[w.type] || MESO_TYPES.custom;
   const pct = Math.round(100*w.blockWeek/w.blockLen);
   const nd = mesoNextDeload(); const ndIn = mesoWeeksUntil(nd);
+  const ended = mesoDeloadEndedOn(w);
   let h = '<div class="card meso-now" style="border-left:3px solid '+ty.accent+'">';
   h += '<div class="meso-now-top"><span class="pill" style="border-color:'+ty.accent+';color:'+ty.accent+'">Week '+w.n+' \u00b7 Now</span>'+
        '<span class="meso-now-name" style="color:'+ty.accent+'">'+esc(w.name)+'</span></div>';
   h += '<div class="meso-now-sub">'+fmtDate(w.startKey)+' \u2013 '+fmtDate(w.endKey)+'</div>';
   h += '<div class="meso-bar"><div class="meso-bar-fill" style="width:'+pct+'%;background:'+ty.accent+'"></div></div>';
   h += '<div class="meso-now-meta">Week '+w.blockWeek+' of '+w.blockLen+' in this block'+
-       (w.repLo>0 ? ' \u00b7 '+w.repLo+'\u2013'+w.repHi+' reps' : ' \u00b7 no rep target')+
-       (w.rpeLo>0 ? ' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi : '')+'</div>';
+       (ended ? ' \u00b7 normal training' : (w.repLo>0 ? ' \u00b7 '+w.repLo+'\u2013'+w.repHi+' reps' : ' \u00b7 no rep target')+
+       (w.rpeLo>0 ? ' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi : ''))+'</div>';
+  // Read off this segment, not mesoNextDeload(), which skips a deload he ended.
+  if(ended) h += '<div class="meso-now-meta" style="color:var(--violet)">Deload ended early. Normal training since '+fmtDate(ended)+'.</div>';
   if(nd && ndIn!=null){
     h += '<div class="meso-now-meta" style="color:var(--violet)">'+
-      (nd.startKey <= todayKey() ? (nd.deloadEnded ? 'Deload ended early.' : 'In the deload now, through '+fmtDate(nd.endKey)+'.')
+      (nd.startKey <= todayKey() ? 'In the deload now, through '+fmtDate(nd.endKey)+'.'
        : ndIn===0 ? 'Deload is this week.' : 'Next deload in '+ndIn+' week'+(ndIn===1?'':'s')+' ('+fmtDate(nd.startKey)+').')+'</div>';
   }
   if(w.type==='str'){
@@ -15849,7 +15914,8 @@ function mesoCalendarHTML(){
         (isNow?'<span class="meso-wk-now">NOW</span>':'')+
         '<span class="meso-wk-name" style="color:'+ty.accent+'">'+esc(w.name)+'</span></div>'+
       '<div class="meso-wk-date">'+fmtDate(w.startKey)+' \u2013 '+fmtDate(w.endKey)+'</div>'+
-      '<div class="meso-wk-meta">'+(w.repLo>0 ? w.repLo+'\u2013'+w.repHi+' reps'+(w.rpeLo>0?' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi:'') : 'no training target')+'</div>'+
+      '<div class="meso-wk-meta">'+(mesoDeloadEndedOn(w) ? 'ended early '+fmtDate(mesoDeloadEndedOn(w))
+        : w.repLo>0 ? w.repLo+'\u2013'+w.repHi+' reps'+(w.rpeLo>0?' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi:'') : 'no training target')+'</div>'+
       '<div class="meso-wk-bar"><div style="width:'+Math.round(100*w.blockWeek/w.blockLen)+'%;background:'+ty.accent+'"></div></div>'+
       '<div class="meso-wk-blk">wk '+w.blockWeek+' of '+w.blockLen+'</div>'+
       '</div>';
@@ -15959,13 +16025,17 @@ function planHeroHTML(){
   const a = mesoActive(), w = mesoCurrentWeek();
   if(!a || !w) return '';
   const t = todayKey(), ty = MESO_TYPES[w.type] || MESO_TYPES.custom;
+  // A deload he ended early reads as ended, not in violet with a rep range it no longer sets.
+  const ended = mesoDeloadEndedOn(w);
   const len = Math.max(1, daysBetween(w.startKey, w.endKey) + 1), day = Math.max(1, Math.min(len, daysBetween(w.startKey, t) + 1));
   const blocks = planBlocks(a), cur = blocks.findIndex(function(b){ return t >= b.start && t <= b.end; });
   const shown = blocks.slice(Math.max(0, cur - 1), Math.max(0, cur) + 3);
   let h = '<div class="plan-hero"><div class="plan-head"><span class="cc-eyebrow">Mesocycle \u00b7 since '+esc(homeShortDate(a.weeks[0].startKey))+
     (w.blockLen > 1 ? ' \u00b7 week '+w.blockWeek+' of '+w.blockLen : '')+'</span>'+
-    '<span class="plan-name" style="color:'+ty.accent+'">'+esc(w.name)+'</span>'+
-    '<div class="plan-day"><b>'+day+'</b><span>of '+len+' days</span>'+(w.repLo > 0 ? '<span class="str-chip" style="color:'+ty.accent+'">'+w.repLo+'\u2013'+w.repHi+' reps</span>' : '')+'</div></div>';
+    '<span class="plan-name" style="color:'+(ended ? 'var(--muted)' : ty.accent)+'">'+esc(w.name)+'</span>'+
+    '<div class="plan-day"><b>'+day+'</b><span>of '+len+' days</span>'+
+      (ended ? '<span class="str-chip plan-ended" style="color:var(--muted)">Ended early \u00b7 '+esc(homeShortDate(ended))+'</span>'
+       : w.repLo > 0 ? '<span class="str-chip" style="color:'+ty.accent+'">'+w.repLo+'\u2013'+w.repHi+' reps</span>' : '')+'</div></div>';
   // the timeline: blocks around this one, sized by their days
   h += '<div class="plan-tl" aria-label="Block timeline"><div class="plan-tl-bar">'+shown.map(function(b){
       const st = b === blocks[cur] ? 'now' : (b.end < t ? 'past' : (b.type === 'deload' ? 'deload' : 'next'));
@@ -16016,7 +16086,7 @@ function planHeroHTML(){
     '<div class="plan-edit"><div class="field"><label for="planLen">Length (days)</label><div class="lv-stepper"><button type="button" class="lv-step" aria-label="One day fewer" onclick="planLenStep(-1)">\u2212</button>'+
       '<input id="planLen" type="number" inputmode="numeric" min="1" max="60" value="'+(w.days || len)+'" onchange="mesoSetWeekDays('+w.n+',this.value)">'+
       '<button type="button" class="lv-step" aria-label="One day more" onclick="planLenStep(1)">+</button></div></div>'+
-    '<div class="field"><label>Rep range</label><div class="plan-rr">'+(w.repLo > 0 ? w.repLo+'\u2013'+w.repHi : 'none')+'</div></div></div>'+
+    '<div class="field"><label>Rep range</label><div class="plan-rr">'+(ended ? 'yours (deload ended)' : w.repLo > 0 ? w.repLo+'\u2013'+w.repHi : 'none')+'</div></div></div>'+
     '<div class="plan-types">'+MESO_TYPE_ORDER.map(function(k){
       return '<button type="button" class="lv-chip'+(k === w.type ? ' on' : '')+'" onclick="planSetType(\''+k+'\')">'+esc(MESO_TYPES[k].label)+'</button>';
     }).join('')+'</div>'+
@@ -16050,7 +16120,8 @@ function mesoOpenWeek(n){
   document.getElementById('mesoOvTitle').textContent = 'Week '+w.n;
   let h = '<p class="small" style="margin-bottom:4px">'+fmtDate(w.startKey)+' \u2013 '+fmtDate(w.endKey)+'</p>';
   h += '<p class="small" style="margin-bottom:12px;color:'+ty.accent+'"><b>'+esc(w.name)+'</b> \u00b7 week '+w.blockWeek+' of '+w.blockLen+
-       (w.repLo>0 ? ' \u00b7 '+w.repLo+'\u2013'+w.repHi+' reps' : '')+(w.rpeLo>0?' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi:'')+'</p>';
+       (w.repLo>0 ? ' \u00b7 '+w.repLo+'\u2013'+w.repHi+' reps' : '')+(w.rpeLo>0?' \u00b7 RPE '+w.rpeLo+'\u2013'+w.rpeHi:'')+
+       (mesoDeloadEndedOn(w) ? ' \u00b7 ended early '+fmtDate(mesoDeloadEndedOn(w)) : '')+'</p>';
   h += '<div class="field" style="margin-bottom:12px"><label>Change this week\u2019s phase</label>'+
        '<select onchange="mesoSetWeekType('+n+',this.value)">'+
        MESO_TYPE_ORDER.map(k=>'<option value="'+k+'"'+(k===w.type?' selected':'')+'>'+MESO_TYPES[k].label+'</option>').join('')+
@@ -16388,7 +16459,10 @@ function effRpe(lever){
 }
 /* The RPE a session is meant to land in: the meso phase's own range, else 7-8. */
 function rpeTargetFor(dateKey){
-  const w = (typeof mesoWeekAt==='function') ? mesoWeekAt(dateKey || todayKey()) : null;
+  const k = dateKey || todayKey();
+  // mesoPhaseOn(): a deload he ended early sets no target from that day on. Read straight off the
+  // segment, the session after End early was judged against the deload's 5-6 (2026-10-15).
+  const w = (typeof mesoWeekAt==='function') ? mesoPhaseOn(mesoWeekAt(k), k) : null;
   if(w && w.rpeLo > 0 && w.rpeHi > 0) return {lo:w.rpeLo, hi:w.rpeHi, src:'meso'};
   return {lo:7, hi:8, src:'default'};
 }
@@ -16726,7 +16800,7 @@ function pwPctPerWeek(pts){
 /* The block a session sat in. A change of block changes the rep range, and an e1RM read from 5s
    and one read from 12s are not the same ruler, so the slope comparison waits rather than call
    that "slowing". */
-function pwBlockAt(k){ try{ const w = mesoWeekAt(k); return w ? w.type : ''; }catch(e){ return ''; } }
+function pwBlockAt(k){ try{ const w = mesoPhaseOn(mesoWeekAt(k), k); return w ? w.type : ''; }catch(e){ return ''; } }
 function plateauRisk(nm, ctx){
   const pts = e1rmSeries(nm, {excludeHome:true, excludeMod:true});
   if(pts.length < PW_MIN) return null;
@@ -18992,7 +19066,7 @@ function wpInputLine(wp){
 }
 function wpSystem(wp){
   const lines = wpDates(wp.week).map(function(d){
-    const k = scheduledDayFor(d), mw = (typeof mesoWeekAt === 'function') ? mesoWeekAt(d) : null;
+    const k = scheduledDayFor(d), mw = (typeof mesoWeekAt === 'function') ? mesoPhaseOn(mesoWeekAt(d), d) : null;
     return '  '+fmtDate(d)+' ('+d+'): '+(k === 'REST' ? 'REST' : k+' '+dayName(k))+(mw ? ' \u00b7 meso '+mw.type+(mw.repLo ? ' '+mw.repLo+'-'+mw.repHi : '') : '');
   });
   let dl = '';
@@ -19017,7 +19091,7 @@ function wpSystem(wp){
 /* Only the proposals a week plan may make, and only where they cannot collide with something
    already deciding the same thing. */
 function wpFilterProposals(list, week){
-  const plannedDeload = wpDates(week).some(function(d){ const mw = (typeof mesoWeekAt === 'function') ? mesoWeekAt(d) : null; return mw && mw.type === 'deload'; });
+  const plannedDeload = wpDates(week).some(function(d){ const mw = (typeof mesoWeekAt === 'function') ? mesoWeekAt(d) : null; return mesoDeloadOn(mw, d); });
   return (Array.isArray(list) ? list : []).filter(function(pr){
     const fx = pr && pr.fix;
     if(!fx || WP_FIXES.indexOf(fx.type) < 0) return false;
@@ -20990,7 +21064,9 @@ function agTodayContext(id){
   });
   line(function(){
     const w = mesoCurrentWeek(); if(!w) return '';
-    return 'Plan: '+(w.name || w.type)+', day '+(daysBetween(w.startKey, t) + 1)+' of '+(daysBetween(w.startKey, w.endKey) + 1)+
+    const ended = mesoDeloadEndedOn(w);
+    return 'Plan: '+(w.name || w.type)+(ended ? ' (ended early on '+fmtDate(ended)+'; normal training now, not a deload)' : '')+
+      ', day '+(daysBetween(w.startKey, t) + 1)+' of '+(daysBetween(w.startKey, w.endKey) + 1)+
       ' ('+fmtDate(w.startKey)+' to '+fmtDate(w.endKey)+').';
   });
   line(function(){
@@ -22416,7 +22492,8 @@ function homeEyebrow(t){
   try{
     const w = mesoCurrentWeek();
     if(w && MESO_TYPES[w.type]){
-      const lab = {str:'strength block', hyp:'hypertrophy block', deload:'deload week', rest:'rest week', custom:'custom block'}[w.type] || '';
+      const lab = (w.type === 'deload' && mesoDeloadEndedOn(w)) ? 'deload ended'
+        : {str:'strength block', hyp:'hypertrophy block', deload:'deload week', rest:'rest week', custom:'custom block'}[w.type] || '';
       s += ' · Week '+w.n+(lab ? ' · '+lab : '');
     }
   }catch(e){}

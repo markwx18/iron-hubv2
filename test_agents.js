@@ -14503,6 +14503,88 @@ setTimeout(async () => {
     ev('if(window.__cvSaved){ S = JSON.parse(window.__cvSaved); delete window.__cvSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== A DELOAD ENDED EARLY IS OVER EVERYWHERE (2026-10-16) ===');
+  // He ended his block deload a day early. deloadWindow() honoured the flag, but the session after it was judged
+  // against the deload's RPE 5-6 (rpeTargetFor() reads the segment by date), Today's eyebrow and the Plan hero
+  // still said deload, and every agent prompt was told "Deload week: loads ~60%". The fixture is built around
+  // whatever today is, so the suite reads the same on any day.
+  try {
+    w.__deSaved = ev('JSON.stringify(S)');
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const seg = (o) => Object.assign({repLo: 8, repHi: 12, blockWeek: 1, blockLen: 1, days: 7}, o);
+    const weeks = [
+      seg({type: 'hyp', name: 'Hypertrophy', n: 7, blockId: 'h7', startKey: dk(-60), endKey: dk(-5), rpeLo: 7, rpeHi: 8, days: 56}),
+      // a two-segment deload block: ending it early ends both segments
+      seg({type: 'deload', name: 'Deload', n: 8, blockId: 'd8', blockLen: 2, startKey: dk(-4), endKey: dk(2), rpeLo: 5, rpeHi: 6}),
+      seg({type: 'deload', name: 'Deload', n: 9, blockId: 'd8', blockWeek: 2, blockLen: 2, startKey: dk(3), endKey: dk(9), rpeLo: 5, rpeHi: 6}),
+      seg({type: 'hyp', name: 'Hypertrophy', n: 10, blockId: 'h10', startKey: dk(10), endKey: dk(65), rpeLo: 7, rpeHi: 8, days: 56}),
+      // the next block's planned deload, which End early must not touch
+      seg({type: 'deload', name: 'Deload', n: 11, blockId: 'd11', startKey: dk(66), endKey: dk(72), rpeLo: 5, rpeHi: 6})
+    ];
+    ev('S.meso = {template:null, active:{startedAt:' + JSON.stringify(dk(-60)) + ', startKey:' + JSON.stringify(dk(-60)) + ', splits:{}, weeks:' + JSON.stringify(weeks) + '}};');
+    ev("S.deload = null; S.settings.repLow = 6; S.settings.repHigh = 10;");
+    // Two deload sessions in it so far, on a day key of their own.
+    const dlLog = (id, n) => ({id: id, date: dk(n), day: 'ZZD', deload: true, entries: [{exercise: 'Zz DE Press', sets: [{w: 60, r: 10, e: 'easy', ef: 90}, {w: 60, r: 10, e: 'easy', ef: 90}]}]});
+    ev('S.logs = ' + JSON.stringify([dlLog(896001, -4), dlLog(896002, -2)]) + ';');
+    // Before: the deload is on, and every reader says so.
+    ok('deload ended: before End early, the deload is in force', ev('deloadActive()') === true && ev('rpeTargetFor(todayKey()).lo') === 5);
+    ok('deload ended: before End early, Today’s eyebrow says deload week', /deload week/.test(ev("homeEyebrow({rest:false, dayKey:'ZZD'})")));
+
+    ev('endDeloadWeek()');
+    const wk = ev('JSON.stringify(S.meso.active.weeks.map(function(w){ return w.deloadEnded || null; }))');
+    ok('deload ended: the day is recorded, on this segment and the rest of its block, not the next block’s deload',
+       wk === JSON.stringify([null, dk(0), dk(0), null, null]), wk);
+    ok('deload ended: no longer in force', ev('deloadActive()') === false);
+    // The post-session review: RPE 8 from three effort taps is on target for normal training, two over a deload's 5-6.
+    const rt0 = ev('JSON.stringify(rpeTargetFor(todayKey()))'), rtY = ev('JSON.stringify(rpeTargetFor(mesoAddDays(todayKey(), -1)))');
+    ok('deload ended: from the end on, the RPE target is the normal 7-8', rt0 === JSON.stringify({lo: 7, hi: 8, src: 'default'}), rt0);
+    ok('deload ended: the deload days before it keep their 5-6', rtY === JSON.stringify({lo: 5, hi: 6, src: 'meso'}), rtY);
+    const after = {id: 896010, date: dk(0), day: 'ZZD', entries: [{exercise: 'Zz DE Press', sets: [{w: 100, r: 8, e: 'solid', ef: 50}, {w: 100, r: 8, e: 'solid', ef: 50}, {w: 100, r: 8, e: 'solid', ef: 50}]}]};
+    const fv = ev('JSON.stringify(feltVsPlan(' + JSON.stringify(after) + '))');
+    ok('deload ended: the session after it is judged against 7-8, not 5-6', fv === JSON.stringify({rpe: 8, lo: 7, hi: 8, delta: 0, n: 3}), fv);
+    ev('S.logs.push(' + JSON.stringify(after) + ');');
+    // Tomorrow's call reads how the last ZZD felt; against 5-6 it scored -1 and could tip the day to easy.
+    // On target adds nothing to the call (a 0 is not listed), so the path is proved live with the old 5-6 target swapped in.
+    const histQ = "JSON.stringify(dayCall(mesoAddDays(todayKey(), 1), 'ZZD').parts.filter(function(p){ return p.src === 'history'; }))";
+    const hist = ev(histQ);
+    ev("window.__deRT = rpeTargetFor; rpeTargetFor = function(){ return {lo:5, hi:6, src:'meso'}; };");
+    const histOld = ev(histQ);
+    ev("rpeTargetFor = window.__deRT; delete window.__deRT;");
+    ok('deload ended: the next day’s call does not mark the session down (it did against 5-6)',
+       hist === '[]' && /"pts":-1/.test(histOld) && /against 5–6/.test(histOld), hist + ' / ' + histOld);
+    const mcc = ev('mesoCoachContext()');
+    ok('deload ended: the agents’ PERIODIZATION line says it ended, and nothing about 60% or RPE 5-6',
+       /ended this deload early/.test(mcc) && !/loads ~60%/.test(mcc) && !/RPE 5/.test(mcc) && !/Next deload: this week/.test(mcc), mcc);
+    ok('deload ended: chat TODAY’s plan line says it ended', /Plan: Deload \(ended early on [^)]*not a deload\)/.test(ev("agTodayContext('zulu')")));
+    const eb = ev("homeEyebrow({rest:false, dayKey:'ZZD'})");
+    ok('deload ended: Today’s eyebrow no longer says deload week', !/deload week/.test(eb) && /deload ended/.test(eb), eb);
+    const ph = ev('planHeroHTML()');
+    ok('deload ended: the Plan hero says ended early and shows no deload rep range', /Ended early/.test(ph) && !/8–12 reps/.test(ph), (ph.match(/plan-day[\s\S]{0,300}/) || [''])[0]);
+    const mc = ev('mesoCurrentCardHTML()');
+    ok('deload ended: the Plan card says so, with no RPE 5-6 beside it', /Deload ended early\./.test(mc) && !/RPE 5/.test(mc), mc.slice(0, 900));
+    ok('deload ended: the next deload is the next block’s, not the one he ended', ev('(mesoNextDeload()||{}).n') === 11);
+    ok('deload ended: a deload proposal is no longer refused as "a planned deload starts"', ev('agDeloadBlock()') === '', ev('agDeloadBlock()'));
+    ok('deload ended: its last day is yesterday, not the planned end', ev('lastDeloadEndKey()') === dk(-1), ev('lastDeloadEndKey()'));
+    ok('deload ended: rep ranges come from Settings again', ev("JSON.stringify(exRepMode('Zz DE Press'))") === JSON.stringify({lo: 6, hi: 10}), ev("JSON.stringify(exRepMode('Zz DE Press'))"));
+    ok('deload ended: the plateau watch reads today as no block, the day before as the deload', ev('pwBlockAt(todayKey())') === '' && ev('pwBlockAt(mesoAddDays(todayKey(), -1))') === 'deload');
+    ok('deload ended: the Sunday plan may propose a deload for a week the ended block covered',
+       ev("wpFilterProposals([{title:'x', fix:{type:'deload', payload:{}}}], mesoAddDays(weekKeyOf(todayKey()), 7)).length") === 1);
+
+    // A flag set before 2026-10-16 is a bare true: the day comes from his logs.
+    ev("S.meso.active.weeks[1].deloadEnded = true; S.meso.active.weeks[2].deloadEnded = true;");
+    ev('S.logs = ' + JSON.stringify([dlLog(896001, -4), dlLog(896002, -3), Object.assign({}, after, {date: dk(-1)})]) + ';');
+    ok('deload ended (old flag): the first normal session inside it is the day it ended', ev('mesoDeloadEndedOn(S.meso.active.weeks[1])') === dk(-1));
+    ev('S.logs = ' + JSON.stringify([dlLog(896001, -4), dlLog(896002, -3)]) + ';');
+    ok('deload ended (old flag): with none, the day after the last deload session', ev('mesoDeloadEndedOn(S.meso.active.weeks[1])') === dk(-2));
+    ev('S.logs = [];');
+    ok('deload ended (old flag): with no sessions at all, its first day', ev('mesoDeloadEndedOn(S.meso.active.weeks[1])') === dk(-4));
+    ok('deload ended (old flag): never later than today', ev("S.logs = " + JSON.stringify([dlLog(896003, 0)]) + "; mesoDeloadEndedOn(S.meso.active.weeks[1])") === dk(0));
+  } catch (e) {
+    ok('deload ended early section', false, e.stack);
+  } finally {
+    ev('if(window.__deSaved){ S = JSON.parse(window.__deSaved); delete window.__deSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

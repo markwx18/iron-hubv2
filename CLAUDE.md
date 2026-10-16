@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3591 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3614 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -758,6 +758,25 @@ thrown when `S.deload` was null, and the agents' prompt would have failed with i
 `deloadWindow()` returns `{start, until, source}` from whichever source is in force, and
 `deloadActive()` is just `!!deloadWindow()`. `deloadCheck()` counts training weeks since
 `lastDeloadEndKey()`, not every week ever logged. The old count passed 6 once and never reset.
+
+**A deload he ended early is over everywhere, from the day he ended it** (2026-10-16). He ended his block deload a
+day early. Only `deloadWindow()` read the flag, so:
+- the next session was judged against the deload's RPE 5-6 (`rpeTargetFor()` reads the segment by date), which also
+  marked the next same-day call down;
+- Today's eyebrow and the Plan hero still said deload;
+- every agent prompt was told "Deload week: loads ~60%" beside "no deload in force".
+
+The fix has three parts:
+- **The flag is a day now.** `endDeloadWeek()` stores `deloadEnded = todayKey()`. It is still truthy, so an older copy
+  of the app reads "ended". It also ends the later segments of the same block, but never another block's deload.
+- **One helper answers it.** `mesoDeloadEndedOn(w)` returns the day. A legacy `true` is inferred from his logs: the
+  first non-deload session inside the segment, else the day after the last deload one, else its start, and never later
+  than today.
+- **Every reader asks by date.** `mesoDeloadOn(w, key)` and `mesoPhaseOn(w, key)` (null on the days after the end)
+  are what anything reading a segment's type or rep/RPE range by date must ask:
+  - `rpeTargetFor()`, `exRepMode()`, `pwBlockAt()`, the Sunday plan;
+  - `mesoNextDeload()` skips an ended deload, which also frees `agDeloadBlock()`;
+  - `lastDeloadEndKey()` takes the day before the end.
 
 **A sleep log is not a check-in.** `quickLogSleep()` writes a stub with `partial:true` and no
 tier. Older stubs carry a made-up `tier:'ok'` with empty soreness and energy. `rdComplete()`
