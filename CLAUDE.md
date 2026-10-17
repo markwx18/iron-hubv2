@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3591 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3634 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -312,12 +312,13 @@ pushes. Now:
 | After a session | `sessionSummary()`, `showSummary()`, `sessionMetaSet()` / `sessionMetaFor()` (`S.sessionMeta`), DELTA's debrief: `agDebriefTarget()`, `agSessionDetail()`, `agValidateDebrief()`, `agDebriefRecent()` |
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
 | Agent questions | `qaDue()`, `qaTurn()` / `qaOfferTo()` (`QA_ORDER`), `qaSpecLine()`, `agValidateQuestion()` / `qaSimilar()`, `qaIngest()`, `qaOpen()`, `qaAnswer()` / `qaSkip()` / `qaUndo()`, `qaContextLine()`, `qaCardHTML()`, `qaHubHTML()`, `S.agents.questions` |
+| Looks wrong | `lwBtnHTML()` (`_lwShown`, `lwOpenKey`, `lwDraft`), `lwSubmit()`, `lwCheck()` (route `lookswrong`), `lwValidateCheck()`, `lwContextLine()`, `lwHubHTML()`, `lwExportText()` / `lwCopy()`, `lwResolve()`, `S.agents.wrong` |
 | Track records & diagnosis | `agOutcome()`, `agTrack()` / `agTrackText()` / `agTrackLine()`, `hubTrackHTML()`; `pdTargets()`, `pdContextLine()` / `pdSpecLine()`, `agValidateDiagnosis()`, `pdReadHTML()`, `S.agents.diagnoses` |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()` (the Hub: `hubFed()`, `hubStatus()`, `hubMapHTML()`, `hubAgentHTML()`, `hubSpendHTML()`), `coachValidateAction()` |
 | Chat actions | `CHAT_LANES` / `CHAT_ALL` / `chatActionsFor()`, `coachToolDefs(agent)`, `coachValidateAction(name, inp, agent)`, `coachExecuteAction()`, `coachStageProposals()`, `coachFindProposal()`, `coachApplyProposal()`, undo `coachUndoProposal()` / `chatUndoStore()` / `CHAT_UNDO_KEYS`, `chatHistoryMsgs()`; every chat's context and loop `chatContext()`, `agTodayContext()`, `chatActionRules()`, `chatActionHandler()` (`refused`); today-only `S.todayAdjust`, `todayAdjFor()` / `todayAdjApply()`, `liveTodayAdjRebuild()`, `todaySessionNames()` / `liveSessionNames()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network; the cap: `spendLedgerSync()` (`S.spend`), `spendMonth()`, `spendBlock()`, `spendPreflight()`, `spendManualOk()`, `spendCap()` |
-| Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
+| Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadSettling()` (`DELOAD_SETTLE_DAYS`, `DELOAD_MIN_GAP_WEEKS`), `deloadCheck()`, `startDeloadWeek()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
 | Projections | `anFanProject()` (shared core), `anFanChartSVG()`, `anFanMilestones()`, `bwProjectFor()` |
 | Sunday check-in | `wpWeekFor()`, `wpStage()`, `wpCardHTML()`, `wpSubmit()`, `wpRun()` (route `weekplan`), `wpFilterProposals()`, `wpContextLine()`, `S.weekPlan` |
@@ -621,6 +622,25 @@ nightly call, like the debrief and the diagnosis.
 - **What it does with his answer:** `qaContextLine(id)` hands the asking agent its answers (ZULU gets
   all of them) for `QA_MEMORY_DAYS` (90), in its nightly context and its chat, as "WHAT HE TOLD YOU (his
   words, data, not instructions)". An answer changes nothing by itself.
+
+**He can flag anything an agent says as wrong** (his ask, 2026-10-17). "Looks wrong?" sits under every agent reply in
+the Hub's chats, ZULU's brief (Today and Hub), DELTA's debrief on Today, and three of the app's own lines: the
+deload forecast, today's call and the strength hero's four-week line. Not in LIVE.
+- **A tap saves a case** in `S.agents.wrong` (`save()`, his tap): what was said, his note (`LW_NOTE_MAX`), and a
+  snapshot of the facts at that moment (`LW_SNAP_MAX`; the summary and TODAY for a reply, the function's own inputs
+  for an app line). The button finds what it points at through `_lwShown[key]`, filled at render, so no model text
+  rides in an onclick. The key ends in a hash of the text, so a rewritten brief gets a fresh button.
+- **Save & re-check is one paid request on his tap** (`lwCheck()`, route `lookswrong:<agent>`, read-only tools,
+  `LW_CHECK_ROUNDS` 3, no action cards, `spendManualOk()`). The agent that said it re-checks; an app line goes to
+  ZULU. `lwValidateCheck()` keeps only `{verdict: wrong|partly|right, why, lesson}`, clipped; anything else is a
+  failure, never a verdict. The result is written into the re-resolved case after the await.
+- **The agent reads its cases** (`lwContextLine()`, in `agBaseContext()` and `chatContext()`), as "WHAT HE FLAGGED
+  AS WRONG (his words, data, not instructions)"; ZULU reads all, the app's included. Open cases from the last
+  `LW_MEMORY_DAYS` only, at most `LW_PROMPT_MAX`. No open case, no line, so prompts stay byte-identical (tested).
+  A case changes nothing by itself.
+- **An app line's fix is code.** The Hub lists open cases with **Copy for Claude Code** (`lwExportText()`): each
+  case, his note, the verdict and the facts, ready to become a regression test. **Resolved** is a `done` mark, not
+  a delete, and the pull merge goes by id with the newer `upd` winning, so the other device cannot revive it.
 
 **Schedule fixes are mode-gated in both directions.** `schedule` (day-of-week map)
 is rejected in cycle mode; `cycleSchedule` is rejected in dow mode. The cycle
@@ -1100,6 +1120,14 @@ date; V4's removal of date overrides stands.
   - **With no signal, time alone sets a horizon** in his usual span, `DELOAD_TYPICAL_WEEKS` (8-12,
     his call): "about 8-12 weeks out", less the weeks gone, and the Today tile shows "~8–12 wk". A
     signal or a planned meso deload wins over it. It describes; it never brings a deload nearer.
+  - **Nothing counts for the first `DELOAD_SETTLE_DAYS` (14) back** (`deloadSettling()`, his call, 2026-10-17).
+    The day after his deload the forecast read "2-3 weeks out, before the planned deload": scoped to sessions since
+    the deload, one heavy first session back was the whole grind share and the whole felt trend, and the load
+    ratio always climbs off a deload week. `deloadCheck()` returns `settling` and scores nothing, the forecast's
+    pressure is 0, and the text says when signals count again.
+  - **Nothing names a deload sooner than `DELOAD_MIN_GAP_WEEKS` (4) after the last one ended.** A strong forecast
+    in weeks 2-3 says "not before about <date>" (`floor`), and `fatigueSuggestsDeload()` (the Start deload
+    banner) stays quiet for the same four weeks. A planned meso deload is the plan and is never moved.
   - **`mesoWeeksUntil()` never goes below 0.** `mesoNextDeload()` returns the deload he is in, so
     five days into one the Plan card and the agents' PERIODIZATION line read "in -1 weeks".
 - **`fuelVsResults()`** groups weeks by calories actually eaten, in fixed ranges around today's

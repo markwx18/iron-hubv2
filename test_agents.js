@@ -14520,6 +14520,166 @@ setTimeout(async () => {
     ev('if(window.__cvSaved){ S = JSON.parse(window.__cvSaved); delete window.__cvSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  // =====================================================================================
+  console.log('=== AFTER A DELOAD, AND "LOOKS WRONG?" (2026-10-17) ===');
+  // His screenshot, the day after his deload ended: "Building slowly - probably 2-3 weeks out. That is
+  // before the planned deload on Thu, Dec 17". The Oct 15 fix scoped the signals to sessions since the
+  // deload, but one session back was then enough to score them.
+  try {
+    w.__lwSaved = ev('JSON.stringify(S)');
+    const dk = n => ev("mesoAddDays(todayKey(), " + n + ")");
+    ev("S.meso = {template:null, active:null}; S.deload = null; S.fatigueDismissed = null; S.readiness = []; S.whoop = null;");
+    const ex4 = ['Barbell Bench Press', 'Barbell Back Squat', 'Row Machine', 'Lat Pulldown'];
+    // Six weeks before it with uneven steps and mixed effort (a clean ladder would hide the ratio terms).
+    const pre = [];
+    for (let d = -50, k = 0; d <= -10; d += 2 + (k % 2), k++) pre.push({id: 895000 + k, date: dk(d), day: 'D1', entries: ex4.map((e, i) => ({exercise: e,
+      sets: [{w: 150 + i * 10 + (k % 3) * 5, r: 8, e: 'solid', ef: 55}, {w: 150 + i * 10, r: 8 - (k % 2), e: 'solid', ef: 48}, {w: 150 + i * 10, r: 7, e: 'grind', ef: 35}]}))});
+    const dl = [-7, -5, -3, -1].map((d, k) => ({id: 895200 + k, date: dk(d), day: 'D1', deload: true,
+      entries: ex4.map(e => ({exercise: e, sets: [{w: 95, r: 8, e: 'easy', ef: 90}, {w: 95, r: 8, e: 'easy', ef: 88}]}))}));
+    // The first session back: normal weights again, and it felt heavy. 12 sets, two thirds grinders.
+    const back = {id: 895300, date: dk(0), day: 'D1', entries: ex4.map((e, i) => ({exercise: e,
+      sets: [{w: 150 + i * 10, r: 8, e: 'solid', ef: 50}, {w: 150 + i * 10, r: 7, e: 'grind', ef: 30}, {w: 150 + i * 10, r: 6, e: 'grind', ef: 22}]}))};
+    ev('S.logs = ' + JSON.stringify(pre.concat(dl, [back])) + ';');
+    const sc = ev('deloadCheck()');
+    ok('after a deload: one heavy session back scores nothing, and says it is settling',
+       sc.score === 0 && sc.severity === 'clear' && sc.settling && sc.settling.since === dk(-1) && sc.settling.until === dk(13), JSON.stringify(sc));
+    const sf = ev('deloadForecast()');
+    ok('after a deload: the forecast names no deload in weeks, and says when signals count again',
+       sf && sf.weeks === null && sf.pressure === 0 && !/[0-9]\s*weeks? out|within about a week|Due now|Building slowly/.test(sf.text.replace(/about 8–12 weeks out/, '')) &&
+       sf.text.indexOf('Fatigue signals count again from ' + ev("fmtDate(" + JSON.stringify(dk(13)) + ")")) >= 0, JSON.stringify(sf));
+    ok('after a deload: the Fatigue card says he is back from one, not "Keep pushing"',
+       /Back from your deload/.test(ev('deloadCardHTML()')) && !/Keep pushing/.test(ev('deloadCardHTML()')));
+    ok('after a deload: Today’s tile does not read ~3 wk', !/~[0-3] wk|Due/.test(JSON.stringify(ev('todayDeloadTile()'))), JSON.stringify(ev('todayDeloadTile()')));
+    // With his planned meso deload nine weeks out, it is on course, never "before the planned deload".
+    ev("S.meso = {template:null, active:{startedAt:" + JSON.stringify(dk(-60)) + ", startKey:" + JSON.stringify(dk(-60)) + ", splits:{}, weeks:[" +
+       "{type:'hyp', name:'Hypertrophy', n:1, startKey:" + JSON.stringify(dk(-60)) + ", endKey:" + JSON.stringify(dk(60)) + ", repLo:8, repHi:12, rpeLo:7, rpeHi:8}," +
+       "{type:'deload', name:'Deload', n:2, startKey:" + JSON.stringify(dk(61)) + ", endKey:" + JSON.stringify(dk(67)) + ", repLo:8, repHi:12, rpeLo:5, rpeHi:6}]}};");
+    const sp = ev('deloadForecast()');
+    ok('after a deload: with a planned deload ahead it is on course, not "worth taking early"',
+       sp && sp.weeks === null && /On course for the planned deload/.test(sp.text) && !/before the planned deload/.test(sp.text), JSON.stringify(sp));
+    ev("S.meso = {template:null, active:null};");
+    // Two weeks on, the same heavy sessions count again, but nothing names a deload before week 4.
+    const later = [];
+    for (let d = -14, k = 0; d <= 0; d += 1 + (k % 2), k++) later.push({id: 895400 + k, date: dk(d), day: 'D1', entries: ex4.map((e, i) => ({exercise: e,
+      sets: [{w: 150 + i * 10, r: 8, e: 'grind', ef: 30}, {w: 150 + i * 10, r: 7, e: 'grind', ef: 24}, {w: 150 + i * 10, r: 5, e: 'fail', ef: 10}]}))});
+    const dl16 = [{id: 895500, date: dk(-16), day: 'D1', deload: true, entries: ex4.map(e => ({exercise: e, sets: [{w: 95, r: 8, e: 'easy', ef: 90}]}))}];
+    ev('S.logs = ' + JSON.stringify(pre.concat(dl16, later)) + ';');
+    const lc = ev('deloadCheck()');
+    ok('two weeks on: the signals count again (the settle is a window, not an off switch)', !lc.settling && lc.score >= 2 && lc.reasons.some(r => /grind/.test(r)), JSON.stringify(lc));
+    const lf = ev('deloadForecast()');
+    ok('two weeks on: a strong forecast is held to four weeks after the last deload',
+       lf && lf.weeksSince === 2 && lf.weeks === 2 && lf.floor === dk(12) && /not before about/.test(lf.text) && !/Due now|within about a week/.test(lf.text), JSON.stringify(lf));
+    ok('two weeks on: and Today’s tile reads ~2 wk, not Due', ev('todayDeloadTile()').big === '~2 wk', JSON.stringify(ev('todayDeloadTile()')));
+    // The same sessions with no deload on record still say due: the floor needs a deload to measure from.
+    ev('S.logs = ' + JSON.stringify(pre.concat(later)) + ';');
+    const nf = ev('deloadForecast()');
+    ok('no deload on record: the floor does not apply', nf && nf.floor === null && nf.weeks !== null && nf.weeks <= 1, JSON.stringify(nf));
+    // The fatigue banner (Start deload) waits out the same four weeks.
+    const heavy = [];
+    for (let d = -34, k = 0; d <= -8; d += 3, k++) heavy.push({id: 895600 + k, date: dk(d), day: 'D1', entries: [{exercise: 'Zz F Press', sets: [{w: 100, r: 8, e: 'solid'}, {w: 100, r: 8, e: 'solid'}, {w: 100, r: 8, e: 'solid'}]}]});
+    for (let d = -6, k = 0; d <= 0; d++, k++) heavy.push({id: 895700 + k, date: dk(d), day: 'D1', entries: [{exercise: 'Zz F Press', sets: Array(6 + (k % 3)).fill(0).map(() => ({w: 100, r: 8, e: 'grind'}))}]});
+    ev('S.logs = ' + JSON.stringify(heavy.concat([{id: 895800, date: dk(-20), day: 'D1', deload: true, entries: [{exercise: 'Zz F Press', sets: [{w: 60, r: 8, e: 'easy'}]}]}])) + ';');
+    ok('fatigue banner: overreached within four weeks of a deload offers no deload', ev('fatigueSuggestsDeload()') === null, JSON.stringify(ev('fatigueIndex()')));
+    ev('S.logs = S.logs.map(function(l){ if(l.id === 895800) l.date = ' + JSON.stringify(dk(-40)) + '; return l; });');
+    const fb = ev('fatigueSuggestsDeload()');
+    ok('fatigue banner: the same load with the deload six weeks back still offers one (the fixture is overreached)', fb && fb.status === 'overreached', JSON.stringify(ev('fatigueIndex()')));
+
+    // ---------------- "Looks wrong?" ----------------
+    ev('S.logs = ' + JSON.stringify(pre.concat(dl, [back])) + '; S.agents = {}; S.chat = []; lwOpenKey = null; lwDraft = {}; _lwChecking = {};');
+    const baseDelta = ev("agBaseContext('delta')"), baseZulu = ev("agBaseContext('zulu')"), chatD0 = ev("chatContext('delta')");
+    ev("S.chat = [{role:'user', content:'Is my bench stalled?'}, {role:'assistant', content:'Yes, bench has stalled: <b>no gain</b> in 4 sessions.'}];");
+    ev("agState().chats.delta = [{role:'user', content:'How is squat?'}, {role:'assistant', content:'Squat is climbing.'}];");
+    ev("agSelectChat('zulu'); renderOps();");
+    const zc = ev('agChatHTML()');
+    ok('looks wrong: one button per agent reply, none on his own messages', (zc.match(/Looks wrong\?/g) || []).length === 1, String((zc.match(/Looks wrong\?/g) || []).length));
+    ok('looks wrong: the reply text never rides in the handler', !/onclick="[^"]*stalled/.test(zc) && /data-lwk="chat:zulu::/.test(zc));
+    const key = (zc.match(/data-lwk="([^"]+)"/) || [])[1];
+    const s0 = ev('JSON.stringify(S)');
+    ev('renderHome(); agChatHTML();');
+    ok('looks wrong: drawing the buttons writes nothing', ev('JSON.stringify(S)') === s0);
+    ev('lwOpen(' + JSON.stringify(key) + ')');
+    ok('looks wrong: a tap opens the note and the two saves', /id="lwNote"/.test(ev('agChatHTML()')) && /Save &amp; re-check \(~\d+¢\)/.test(ev('agChatHTML()')) && /Save only/.test(ev('agChatHTML()')));
+    ev('S.meta.changedAt = 1;');
+    ev('lwDraft[' + JSON.stringify(key) + '] = "  bench went up   last week "; lwSubmit(' + JSON.stringify(key) + ', false);');
+    const cs = ev('agState().wrong');
+    ok('looks wrong: Save only keeps one case with what was said, his note and the facts', cs.length === 1 && cs[0].agent === 'zulu' && cs[0].src === 'chat' &&
+       cs[0].note === 'bench went up last week' && /bench has stalled/.test(cs[0].text) && /He asked: Is my bench stalled\?/.test(cs[0].snap) && cs[0].check === null && cs[0].day === ev('todayKey()'), JSON.stringify(cs));
+    ok('looks wrong: it is his tap, so it is a save() that touches and pushes, not save(false)', ev('S.meta.changedAt') > 1);
+    const zc2 = ev('agChatHTML()');
+    ok('looks wrong: the reply now says he flagged it, with a Re-check, and no second button', /You flagged this/.test(zc2) && /Re-check/.test(zc2) && !/Looks wrong\?/.test(zc2));
+    ok('looks wrong: ZULU reads it in its chat and its nightly context', /WHAT HE FLAGGED AS WRONG/.test(ev("chatContext('zulu')")) && /bench went up last week/.test(ev("agBaseContext('zulu')")));
+    ok('looks wrong: DELTA, with nothing of its own flagged, gets a byte-identical prompt', ev("agBaseContext('delta')") === baseDelta && ev("chatContext('delta')") === chatD0);
+    // The app's own line: the deload forecast carries the button, and its case is ZULU's to read.
+    const fl = ev('deloadForecastLineHTML()');
+    ok('looks wrong: the deload forecast line carries the button', /Looks wrong\?/.test(fl) && /data-lwk="app:app:deload:/.test(fl));
+    const fkey = (fl.match(/data-lwk="([^"]+)"/) || [])[1];
+    ev('lwOpen(' + JSON.stringify(fkey) + '); lwDraft[' + JSON.stringify(fkey) + '] = "I just finished one"; lwSubmit(' + JSON.stringify(fkey) + ', false);');
+    const ac = ev('agState().wrong').find(c => c.src === 'app');
+    ok('looks wrong: an app case has no agent and carries the forecast’s own inputs', ac && ac.agent === null && /lastDeloadEndKey/.test(ac.snap) && /deloadCheck/.test(ac.snap) && /deload/.test(ac.snap), JSON.stringify(ac));
+    ok('looks wrong: ZULU reads the app’s case; DELTA still does not', /the app’s Deload forecast said/.test(ev("agBaseContext('zulu')")) && ev("agBaseContext('delta')") === baseDelta);
+    // Today's brief, DELTA's debrief and today's call all carry it too.
+    ok('looks wrong: the morning brief carries it', /Looks wrong\?/.test(ev("homeBriefHTML({text:'Recovery is low, keep it light.', date:todayKey(), at:new Date().toISOString()})")));
+    ev("agState().debrief = {logId:895300, date:todayKey(), day:'D1', well:'Bench held.', change:'Rest longer.', next:'Add a rep.', at:new Date().toISOString()}; renderHome();");
+    ok('looks wrong: DELTA’s debrief on Today carries it', /Went well[\s\S]*Looks wrong\?/.test(ev("document.getElementById('home').innerHTML")));
+    // The re-check: one paid request on his tap, read-only tools, the answer written into the S that
+    // exists after the await (the suite swaps S mid-reply).
+    ev("window.__lwData = callClaudeWithData; window.__lwCall = null;");
+    ev("callClaudeWithData = async function(msgs, sys, mt, opts){ window.__lwCall = {msgs:msgs, sys:sys, mt:mt, opts:opts}; S = JSON.parse(JSON.stringify(S)); " +
+       "return {text:'Sure. {\"verdict\":\"wrong\",\"why\":\"Bench went up 5 lb last session, so it is not stalled.\",\"lesson\":\"Read the newest session before calling a stall.\"}', toolsUsed:1}; };");
+    const zid = ev('agState().wrong').find(c => c.agent === 'zulu').id;
+    await ev('lwCheck(' + JSON.stringify(zid) + ')');
+    const lc0 = ev('window.__lwCall');
+    ok('looks wrong: the re-check is one route, no action cards, a bounded loop and a safe max_tokens',
+       lc0 && lc0.opts.route === 'lookswrong:zulu' && !lc0.opts.actions && lc0.opts.maxRounds === 3 && lc0.mt >= 4000, JSON.stringify(lc0 && lc0.opts));
+    ok('looks wrong: it is shown what was said, his note and the facts', lc0 && /bench has stalled/.test(lc0.msgs[0].content) && /bench went up last week/.test(lc0.msgs[0].content) &&
+       /He asked:/.test(lc0.msgs[0].content) && /You are ZULU/.test(lc0.sys) && /HOW SURE TO SOUND/.test(lc0.sys));
+    const zcase = ev('agState().wrong').find(c => c.id === zid);
+    ok('looks wrong: the verdict lands in the live S after a mid-reply swap', zcase && zcase.check && zcase.check.verdict === 'wrong' && /not stalled/.test(zcase.check.why) && /newest session/.test(zcase.check.lesson), JSON.stringify(zcase));
+    ok('looks wrong: and the agent reads its lesson from then on', /Re-checked: it was wrong — Bench went up 5 lb/.test(ev("chatContext('zulu')")) && /Lesson: Read the newest session/.test(ev("agBaseContext('zulu')")));
+    ok('looks wrong: the feed says what happened', ev('agState().log').some(l => /Re-checked what he flagged/.test(l.text)));
+    // An unreadable reply is kept as a failure, never as a verdict.
+    ev("callClaudeWithData = async function(){ return {text:'{\"verdict\":\"maybe\",\"why\":\"x\"}', toolsUsed:0}; };");
+    const aid = ac.id;
+    await ev('lwCheck(' + JSON.stringify(aid) + ')');
+    const acase = ev('agState().wrong').find(c => c.id === aid);
+    ok('looks wrong: a verdict outside wrong/partly/right is refused', acase && !acase.check && /unreadable/.test(acase.checkErr), JSON.stringify(acase));
+    ok('looks wrong: the check keeps only its own shape', ev('lwValidateCheck(\'{"verdict":"right","why":""}\')') === null &&
+       ev('lwValidateCheck("no json")') === null && ev('lwValidateCheck(\'{"verdict":"partly","why":"' + 'x'.repeat(900) + '","lesson":7}\')').why.length <= 320 &&
+       ev('lwValidateCheck(\'{"verdict":"partly","why":"ok","lesson":7}\')').lesson === '');
+    ev("callClaudeWithData = window.__lwData; delete window.__lwData;");
+    // The Hub lists them, escapes what a model wrote, and copies them for Claude Code.
+    ev("agState().wrong.find(function(c){ return c.id === " + JSON.stringify(aid) + "; }).text = 'Due <img src=x onerror=alert(1)>';");
+    const hub = ev('lwHubHTML()');
+    ok('looks wrong: the Hub lists the open cases, escaped, with the app one marked as code', /Flagged as wrong/.test(hub) && /2 open/.test(hub) && !/<img/.test(hub) &&
+       /the fix is code/.test(hub) && /Copy for Claude Code/.test(hub));
+    const exp = ev('lwExportText()');
+    ok('looks wrong: the export carries each case, his note, the verdict and the facts', /flagged as wrong \(2 open\)/.test(exp) && /I just finished one/.test(exp) &&
+       /It was wrong\. Bench went up/.test(exp) && /lastDeloadEndKey/.test(exp) && /Build \d{4}-\d{2}-\d{2}-v\d+/.test(exp) && /test that fails without the fix/.test(exp), exp.slice(0, 400));
+    // Sync: a case raised here survives an older snapshot; a re-check made on the other device wins.
+    const snapOld = ev('JSON.parse(JSON.stringify(S))'); snapOld.agents.wrong = [];
+    ev('applyPulled(' + JSON.stringify(snapOld) + ', Date.now() + 5000)');
+    ok('looks wrong: a pull without the cases keeps them', ev('agState().wrong.length') === 2);
+    const snapNew = ev('JSON.parse(JSON.stringify(S))');
+    const nc = snapNew.agents.wrong.find(c => c.id === aid);
+    nc.check = {verdict: 'partly', why: 'Checked on the phone.', lesson: '', at: new Date().toISOString()}; nc.upd = new Date(Date.now() + 1000).toISOString(); delete nc.checkErr;
+    ev('applyPulled(' + JSON.stringify(snapNew) + ', Date.now() + 10000)');
+    ok('looks wrong: the newer write wins on a pull', (ev('agState().wrong').find(c => c.id === aid).check || {}).why === 'Checked on the phone.');
+    // Resolved: out of the prompts and the export, and an older snapshot cannot bring it back.
+    ev('lwResolve(' + JSON.stringify(zid) + '); lwResolve(' + JSON.stringify(aid) + ');');
+    ok('looks wrong: resolved cases leave the prompts, the export and the Hub', ev("lwContextLine('zulu')") === '' && ev('lwHubHTML()') === '' && /\(0 open\)/.test(ev('lwExportText()')) &&
+       ev("agBaseContext('zulu')") === baseZulu);
+    const snapStale = JSON.parse(JSON.stringify(snapNew));
+    snapStale.agents.wrong.forEach(c => { c.upd = new Date(Date.now() - 3600000).toISOString(); });   // written before the Resolved taps
+    ev('applyPulled(' + JSON.stringify(snapStale) + ', Date.now() + 15000)');
+    ok('looks wrong: an older snapshot does not revive a resolved case', ev('lwOpenCases().length') === 0, JSON.stringify(ev('agState().wrong').map(c => [c.id, c.done, c.upd])));
+    ok('looks wrong: once resolved, the reply shows the button again', /Looks wrong\?/.test(ev('agChatHTML()')));
+  } catch (e) {
+    ok('deload settle and looks wrong section', false, e.stack);
+  } finally {
+    ev("if(window.__lwData){ callClaudeWithData = window.__lwData; delete window.__lwData; } lwOpenKey = null; lwDraft = {}; _lwChecking = {};");
+    ev('if(window.__lwSaved){ S = JSON.parse(window.__lwSaved); delete window.__lwSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
