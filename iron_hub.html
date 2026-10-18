@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-18-v3">
+<meta name="ironhub-build" content="2026-10-18-v4">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -8561,18 +8561,28 @@ function famValid(o, kind){
   }
   return out;
 }
-function famBase(){ return location.href.split('#')[0]; }
+/* The page's own address with no query or fragment: a link built while the page sits on ?pantry=... must not
+   carry it along. */
+function famBase(){ return location.origin + location.pathname; }
 /* What goes out: what he likes plus anything already stocked, so they can tick it in or out. A food he
    said no to or hid goes only if it is somehow still stocked (they can then untick it). */
-function famShareLink(){
+function famShareObj(){
   const foods = fpFoods().filter(function(f){ return f.stocked || (f.pref === 'l'); });
   if(!foods.length) return null;
   const c = {};
   foods.forEach(function(f){ if(f.custom) c[f.id] = [String(f.n).slice(0, 60), f.cat]; });
   const o = {v:1, k:'p', at:new Date().toISOString(), f:foods.map(function(f){ return [f.id, f.stocked ? 1 : 0]; }), c:c};
   if(FAM_DROP_URL) o.b = famBoxId();
-  return famBase()+'#family='+famEnc(o);
+  return o;
 }
+function famShareLink(){
+  const o = famShareObj();
+  return o ? famBase()+'#family='+famEnc(o) : null;
+}
+/* The short link (2026-10-18): the list waits in the drop box and the link carries only the box. The long
+   #family= link reached his mom's iPhone without its fragment and opened the main app, because iOS can drop the
+   part after a # from a shared URL. A query string survives, and a short link survives any text app. */
+function famShortLink(box){ return famBase()+'?pantry='+box; }
 /* Share sheet where there is one (iOS, Android), else the clipboard, else the link on screen. */
 function famOut(url, title, text, msgEl){
   const say = function(t){ if(msgEl) msgEl.innerHTML = t; };
@@ -8591,10 +8601,19 @@ function famOut(url, title, text, msgEl){
 }
 function famShare(){
   const msg = document.getElementById('famShareMsg');
-  const url = famShareLink();
-  if(!url){ if(msg) msg.textContent = 'Like or stock a few foods first, so there is a list to check.'; return null; }
-  if(FAM_DROP_URL) save();   // the link made or re-dated the box, and the other device needs to know it
-  return famOut(url, 'Pantry check', 'Can you tick what we have in the house?', msg);
+  const o = famShareObj();
+  if(!o){ if(msg) msg.textContent = 'Like or stock a few foods first, so there is a list to check.'; return null; }
+  if(!FAM_DROP_URL || !o.b) return famOut(famBase()+'#family='+famEnc(o), 'Pantry check', 'Can you tick what we have in the house?', msg);
+  save();   // the link made or re-dated the box, and the other device needs to know it
+  // The share sheet opens now, inside his tap: iOS refuses one opened after an await. The list goes up beside
+  // it, long before anyone at home opens the link; if it does not, he is told to share again.
+  try{
+    famFetch(FAM_DROP_URL+'/box/'+o.b+'/list', {method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify(o)})
+      .then(function(r){ if(!r || !r.ok) throw new Error('not saved'); },
+            function(e){ throw e; })
+      .catch(function(){ const m = document.getElementById('famShareMsg'); if(m) m.textContent = 'The list did not save, so that link will not open it. Check your connection and share again.'; });
+  }catch(e){}
+  return famOut(famShortLink(o.b), 'Pantry check', 'Can you tick what we have in the house?', msg);
 }
 function famCardHTML(){
   return '<div class="card fam-card"><div class="k">Family pantry check</div>'+
@@ -8752,8 +8771,13 @@ function famHashPayload(kind){ const m = location.hash.match(new RegExp('^#'+kin
 function famHasState(){
   try{ const d = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); return !!(d && Array.isArray(d.logs) && d.logs.length); }catch(e){ return false; }
 }
+/* The box a short link names, or '' (a query is untrusted too: only a well-formed box id counts). */
+function famPantryParam(){
+  try{ const b = new URLSearchParams(location.search).get('pantry') || ''; return FAM_BOX_RE.test(b) ? b : ''; }catch(e){ return ''; }
+}
 function famRoute(){
   if(/^#family=/.test(location.hash)) return 'family';
+  if(famPantryParam() && !/^#famreply=/.test(location.hash)) return 'family';
   if(/^#famreply=/.test(location.hash)) return famHasState() ? 'reply' : 'reply-copy';
   return '';
 }
@@ -8775,12 +8799,34 @@ function famReviewFromHash(){
 }
 /* ---- their page: a tick-list of its own, never the app ---- */
 let _famShare = null, _famTick = {};
+/* A short link: fetch the list from the box, then the same page. Returns the promise, for the suite. */
+function famFamilyFetch(root, box){
+  root.innerHTML = '<main class="fam"><span class="cc-eyebrow">Iron Hub</span><h1>Pantry check</h1><p class="fam-lede">Getting the list…</p></main>';
+  const fail = function(t){ root.innerHTML = '<main class="fam"><h1>Pantry check</h1><p class="fam-lede">'+t+'</p></main>'; return false; };
+  if(!FAM_DROP_URL) return Promise.resolve(fail('This link needs a newer version of the page. Ask for a new one.'));
+  return famFetch(FAM_DROP_URL+'/box/'+box+'/list', {method:'GET'}).then(function(r){
+    if(r.status === 204) return fail('This list has expired or was never saved. Ask for a new link.');
+    if(!r.ok) throw new Error('http');
+    return r.json().then(function(j){
+      const o = famValid(j, 'p');
+      if(!o) return fail('This list did not come through whole. Ask for a new link.');
+      o.b = box;   // the box in the address is the one to answer to
+      famFamilyRender(root, o);
+      return true;
+    });
+  }).catch(function(){ return fail('Could not get the list. Check your connection and open the link again.'); });
+}
 function famFamilyPage(root){
   root = root || document.body;
   const o = famValid(famDec(famHashPayload('family')), 'p');
   try{ document.title = 'Pantry check'; }catch(e){}
   if(root === document.body) document.body.className = 'fam-body';
+  const box = !o && !famHashPayload('family') ? famPantryParam() : '';
+  if(box) return famFamilyFetch(root, box);
   if(!o){ root.innerHTML = '<main class="fam"><h1>Pantry check</h1><p class="fam-lede">This link did not come through whole. Ask for a new one.</p></main>'; return; }
+  famFamilyRender(root, o);
+}
+function famFamilyRender(root, o){
   _famShare = o; _famTick = {};
   o.f.forEach(function(x){ _famTick[x[0]] = x[1] === 1; });
   let name = '';

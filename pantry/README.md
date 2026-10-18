@@ -4,6 +4,8 @@ A tiny Cloudflare Pages project, at `https://ironhub-pantry.pages.dev`, that let
 check's **Submit** button reach the app directly. If it can't be reached, the family page falls back to
 texting a reply link back, which is how it worked before.
 
+- It also holds **his outgoing list** (`/box/<box>/list`), so the link he texts is short (`?pantry=<box>`) and has
+  nothing after a `#` for iOS to drop. Her page fetches the list from here.
 - It holds **one pantry update per box** (a random id the app makes on the first share) for up to 30 days.
 - The app checks the box when it is opened, while a share from the last 28 days is outstanding. An update
   shows as a bell notification and a Today card, and **nothing applies until you tap Apply**.

@@ -84,6 +84,27 @@ const run = (env, r) => W.handle(r, env, () => NOW);
   ok('CORS: another origin gets no allow header', r.headers.get('Access-Control-Allow-Origin') === null);
 }
 
+/* ---------- his list, parked for the short link ---------- */
+{
+  const env = { DROPS: fakeKV() };
+  const L = { v: 1, k: 'p', at: '2026-10-18T12:00:00Z', b: BOX, f: [['bagel', 1], ['eggs', 0]], c: {} };
+  let r = await run(env, req('GET', '/box/' + BOX + '/list'));
+  ok('list: none parked is a 204', r.status === 204);
+  r = await run(env, req('POST', '/box/' + BOX + '/list', JSON.stringify(L)));
+  ok('list: his list is parked, for 30 days, apart from the drop', r.status === 200 && env.DROPS.puts[0].k === 'list:' + BOX && env.DROPS.puts[0].o.expirationTtl === 30 * 86400 && !env.DROPS.m.has('box:' + BOX));
+  r = await run(env, req('GET', '/box/' + BOX + '/list'));
+  ok('list: and read back whole', r.status === 200 && JSON.stringify(await r.json()) === JSON.stringify(L));
+  r = await run(env, req('GET', '/box/' + BOX));
+  ok('list: a parked list is not a drop', r.status === 204);
+  const bad = async (name, body, status) => { const x = await run(env, req('POST', '/box/' + BOX + '/list', body)); ok(name, x.status === status, x.status); };
+  await bad('list: a reply is not a list', JSON.stringify(Object.assign({}, L, { k: 'r' })), 400);
+  await bad('list: an empty list is refused', JSON.stringify(Object.assign({}, L, { f: [] })), 400);
+  await bad('list: not JSON is refused', 'nope', 400);
+  await bad('list: oversized is refused', JSON.stringify(Object.assign({}, L, { pad: 'x'.repeat(W.MAX_BODY) })), 413);
+  r = await run(env, req('GET', '/box/abc/list'));
+  ok('list: a bad box is refused', r.status === 400);
+}
+
 /* ---------- the Pages entry point hands every /box/* request to the same handler ---------- */
 {
   const fn = await import(new URL('file:///' + path.join(here, 'functions', 'box', '[[path]].js').replace(/\\/g, '/')).href);

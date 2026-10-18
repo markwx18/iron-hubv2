@@ -36,15 +36,43 @@ export function dropShapeOk(o) {
     typeof o.id === 'string' && ID_RE.test(o.id) && Array.isArray(o.f) && o.f.length > 0 && o.f.length <= 300);
 }
 
+/* His outgoing list (kind 'p'), parked so the family link can be short (2026-10-18). A link with the whole list
+   after a # reached his mom's iPhone without it, and opened the main app: iOS can drop the fragment from a shared
+   URL. So the link is now ?pantry=<box>, and her page fetches the list from here. */
+export function listShapeOk(o) {
+  return !!(o && typeof o === 'object' && !Array.isArray(o) && o.v === 1 && o.k === 'p' &&
+    Array.isArray(o.f) && o.f.length > 0 && o.f.length <= 300);
+}
+
 export async function handle(request, env, now) {
   const origin = request.headers.get('Origin') || '';
   const url = new URL(request.url);
-  const m = url.pathname.match(/^\/box\/([^/]+)(\/clear)?$/);
+  const m = url.pathname.match(/^\/box\/([^/]+)(\/clear|\/list)?$/);
   if (request.method === 'OPTIONS') return reply(204, null, origin);
   if (!m) return reply(404, { ok: false, error: 'not found' }, origin);
-  const box = m[1], clear = !!m[2];
+  const box = m[1], clear = m[2] === '/clear', list = m[2] === '/list';
   if (!BOX_RE.test(box)) return reply(400, { ok: false, error: 'bad box' }, origin);
   const key = 'box:' + box;
+
+  if (list) {
+    const lkey = 'list:' + box;
+    if (request.method === 'GET') {
+      const v = await env.DROPS.get(lkey);
+      let o = null;
+      try { o = v ? JSON.parse(v) : null; } catch (e) { o = null; }
+      return o ? reply(200, o, origin) : reply(204, null, origin);
+    }
+    if (request.method !== 'POST') return reply(405, { ok: false, error: 'method' }, origin);
+    const llen = Number(request.headers.get('Content-Length') || 0);
+    if (llen > MAX_BODY) return reply(413, { ok: false, error: 'too big' }, origin);
+    const ltext = await request.text();
+    if (ltext.length > MAX_BODY) return reply(413, { ok: false, error: 'too big' }, origin);
+    let lo = null;
+    try { lo = JSON.parse(ltext); } catch (e) { return reply(400, { ok: false, error: 'not json' }, origin); }
+    if (!listShapeOk(lo)) return reply(400, { ok: false, error: 'bad shape' }, origin);
+    await env.DROPS.put(lkey, JSON.stringify(lo), { expirationTtl: TTL_S });
+    return reply(200, { ok: true }, origin);
+  }
 
   if (request.method === 'GET' && !clear) {
     const v = await env.DROPS.get(key);

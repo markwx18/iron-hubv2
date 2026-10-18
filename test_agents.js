@@ -13695,6 +13695,7 @@ setTimeout(async () => {
   console.log('=== FAMILY PANTRY CHECK (2026-10-05) ===');
   try {
     w.__fmSaved = ev('JSON.stringify(S)');
+    ev("window.__fmDrop = FAM_DROP_URL; FAM_DROP_URL = '';");   // the link-only flow: no drop box
     ev("window.__fmTK = todayKey; todayKey = function(){ return '2026-10-05'; }; fuelInit();");
     ev("S.fuel.foods = {chkbr: {s: 1}, bagel: {p: 'l'}, wmilk: {p: 'h'}, rotchk: {p: 'd'}, uzzM: {p: 'l'}};" +
        " S.fuel.custom = [{id: 'uzzM', n: 'Mom’s <b>pancakes</b>', cat: 'grain', sv: '2', cal: 300, p: 8, c: 50, f: 6, tags: []}]; S.fuel.stockWeek = '2026-09-28';");
@@ -13830,7 +13831,7 @@ setTimeout(async () => {
   } finally {
     ev("try{ famClose(); }catch(e){} try{ delete navigator.share; delete navigator.clipboard; }catch(e){} if(window.__fmAlK){ window.alert = window.__fmAlK; delete window.__fmAlK; }");
     ev("if(window.__fmDiv){ __fmDiv.remove(); delete window.__fmDiv; } if(window.__fmHash !== undefined){ location.hash = window.__fmHash || ''; delete window.__fmHash; } localStorage.removeItem(FAM_NAME_KEY);");
-    ev("if(window.__fmTK){ todayKey = window.__fmTK; delete window.__fmTK; }");
+    ev("if(window.__fmTK){ todayKey = window.__fmTK; delete window.__fmTK; } if(window.__fmDrop !== undefined){ FAM_DROP_URL = window.__fmDrop; delete window.__fmDrop; }");
     ev('if(window.__fmSaved){ S = JSON.parse(window.__fmSaved); delete window.__fmSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
@@ -13893,6 +13894,50 @@ setTimeout(async () => {
       const fb2 = await ev('famSubmit()');
       ok('submit: a box that answers with an error falls back too', fb2 === 'fallback:share' && !!ev('window.__fdShared') && ev("document.getElementById('famSubmitBtn').disabled") === false);
       ev("delete navigator.share; __fdDiv.remove(); delete window.__fdDiv; location.hash = window.__fdHash || ''; delete window.__fdHash;");
+      // --- the short link (2026-10-18): his mom's iPhone lost the #fragment and opened the main app ---
+      ev("var __m2 = document.body.appendChild(document.createElement('p')); __m2.id = 'famShareMsg'; window.__fdShared = null;" +
+         " Object.defineProperty(navigator, 'share', {configurable: true, value: function(o){ window.__fdShared = o; return Promise.resolve(); }});");
+      calls.length = 0; let upload = null;
+      respond = () => new Promise(r => { upload = r; });   // the upload hangs until we let it go
+      const how = ev('famShare()');
+      const sharedNow = ev('window.__fdShared && window.__fdShared.url');
+      ok('short: the share sheet gets a short link, ?pantry= and the box, nothing after a #', how === 'share' && sharedNow === 'https://example.com/?pantry=' + b1, sharedNow);
+      ok('short: and it opens inside his tap, before the list upload has even answered', upload !== null && calls.length === 1);
+      const up = calls[0] || {};
+      const parked = up.b ? JSON.parse(ev('JSON.stringify(famValid(' + up.b + ", 'p'))")) : null;
+      ok('short: the list goes to the box, as a list the family page accepts', up.m === 'POST' && up.u === 'https://drop.test/box/' + b1 + '/list' && !!parked && parked.b === b1 && parked.f.length > 0, JSON.stringify(up).slice(0, 200));
+      upload({status: 500, ok: false, json: () => Promise.resolve({})}); await new Promise(r => setTimeout(r, 20));
+      ok('short: a list that did not save says so, so he shares again', /did not save/.test(ev("document.getElementById('famShareMsg').textContent")));
+      ev("document.getElementById('famShareMsg').remove(); delete navigator.share;");
+      // her page: the route, the fetch, the list
+      ev("window.__fdHref = location.href; history.replaceState(null, '', '/?pantry=' + " + JSON.stringify(b1) + ");");
+      ok('short: a ?pantry= link is the family page', ev('famRoute()') === 'family');
+      ev("history.replaceState(null, '', '/?pantry=not-a-box');");
+      ok('short: a malformed box in the address is not', ev('famRoute()') === '');
+      ev("history.replaceState(null, '', '/?pantry=' + " + JSON.stringify(b1) + ");");
+      calls.length = 0; respond = json(200, parked);
+      ev("window.__fdDiv2 = document.body.appendChild(document.createElement('div'));");
+      await ev('famFamilyPage(__fdDiv2)');
+      ok('short: her page fetches the list and shows it, with Submit into the same box', calls.length === 1 && calls[0].u === 'https://drop.test/box/' + b1 + '/list' && calls[0].m === 'GET' &&
+         ev("__fdDiv2.querySelectorAll('.fam-item').length") === parked.f.length && ev("document.getElementById('famSubmitBtn') ? 1 : 0") === 1 && ev('_famShare.b') === b1);
+      respond = () => Promise.resolve({status: 204, ok: true, json: () => Promise.resolve(null)});
+      await ev('famFamilyPage(__fdDiv2)');
+      ok('short: a list that is gone says so', /expired or was never saved/.test(ev('__fdDiv2.textContent')) && ev("__fdDiv2.querySelectorAll('.fam-item').length") === 0);
+      respond = () => Promise.reject(new TypeError('Failed to fetch'));
+      await ev('famFamilyPage(__fdDiv2)');
+      ok('short: no connection says so', /Could not get the list/.test(ev('__fdDiv2.textContent')));
+      ev("__fdDiv2.remove(); delete window.__fdDiv2; history.replaceState(null, '', window.__fdHref); delete window.__fdHref;");
+      // a real load of the short link in a fresh browser: the tick-list, and the app never starts
+      const shortLoad = await new Promise((resolve) => {
+        const d = new JSDOM(html, {runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.com/?pantry=' + b1,
+          beforeParse(w2){ w2.fetch = () => Promise.resolve({status: 200, ok: true, json: () => Promise.resolve(parked)}); w2.alert = () => {}; w2.confirm = () => true;
+            w2.matchMedia = () => ({matches: false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}}); w2.Element.prototype.scrollIntoView = function(){}; }});
+        setTimeout(() => resolve(d), 500);
+      });
+      ok('short: opened fresh on her phone, it is only the tick-list, and nothing of his app starts', shortLoad.window.document.querySelectorAll('.fam-item').length === parked.f.length &&
+         shortLoad.window.localStorage.getItem('ironhub:v1') === null && !shortLoad.window.document.querySelector('#home .cc-wheel') && shortLoad.window.document.body.className === 'fam-body');
+      shortLoad.window.close();
+
       // --- his side: the inbox ---
       const D = (id, extra) => Object.assign({v: 1, k: 'r', id, from: 'Mom', at: new Date().toISOString(), f: [['bagel', 1], ['chkbr', 0], ['egghb', 1]]}, extra || {});
       const IDA = 'dropA_0123456789abcdef', IDB = 'dropB_0123456789abcdef';

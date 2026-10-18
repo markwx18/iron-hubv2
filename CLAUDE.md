@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3696 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3706 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -1059,6 +1059,14 @@ stock only, sent back by a reply link, and he reviews it before it applies.
     the `#family=` payload as `b`. Whoever holds the link can leave or clear an update, no more than a
     crafted reply link could always do, and the review still guards it. The Worker has no secrets, checks
     the shape, caps the body at 16 KB, and keeps each box for 30 days.
+  - **The link is short: `?pantry=<box>`** (2026-10-18). The `#family=` link reached his mom's iPhone without
+    its fragment and opened the main app: iOS can drop the part after a `#` from a shared URL
+    (WebKit bug 250317). `famShare()` now opens the share sheet with `famShortLink()` inside his tap (iOS refuses a
+    share opened after an await) and POSTs the list (`famShareObj()`) to `/box/<box>/list` beside it; a failed
+    upload tells him to share again. `famRoute()` reads `?pantry=` (`famPantryParam()`, a well-formed box only),
+    and `famFamilyPage()` fetches the list (`famFamilyFetch()`) before `famFamilyRender()`. The boot still never
+    runs there. `famBase()` is origin + path, so a link built on that page carries no query. Without a drop URL
+    the `#family=` link is unchanged, and old links still open.
   - **Their page:** with a box and a URL, the button is **Submit** (`famSubmit()`, one POST, 8 s timeout via
     `famFetch()`). Anything but a clear yes falls back to the reply link (`famOut()`), so a dead Worker costs
     them one step, never the update. A tick after sending re-enables it, and the newer update replaces the old one.
