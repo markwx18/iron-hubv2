@@ -127,6 +127,20 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 
 ---
 
-## Still to come
+## Ending a deload early, and agents that talk to each other (Oct 16)
 
-- **Cross-review**: ZULU double-checking the other agents' suggestions before they reach you (planned around Oct 12, after a week of spend data).
+- **End early now really ends the deload.** Before, only part of the app noticed. Your next session was judged against the deload's RPE 5–6 (which also marked the next same-day call down), Today and Plan still said "deload week", and the agents were told you were still deloading. Now the day you end it is recorded, and from that day everything treats it as normal training: RPE 7–8, your usual rep range, "deload ended" on Today, and an "Ended early" chip on Plan. The deload you already ended is handled too.
+- **The agents see what you see.** Every night they get the calendar (today, the next 7 days, where you are in the plan and what comes next), your split with its real sets and rep ranges, the plateau watch colours from Today, and your own notes after recent sessions. In chat, each one also knows what it told you last night.
+- **They look back at what happened.** The agents now review your recent deloads, calorie changes and low or high weeks, dips, recovery slumps, PRs and finished experiments. The app works out the before-and-after numbers for each (for example, your main lifts' estimated 1RM in the sessions before a deload against the first two after), and the agents draw conclusions only where those numbers support one. They can also look further back, up to a year of events and six months of WHOOP history.
+- **Each agent sounds like itself.** ZULU is a calm head coach, CHARLIE is dry and exact, DELTA is a blunt strength coach, and ECHO is practical about food. The facts and the "how sure to sound" rules haven't changed.
+- **A nightly roundtable.** Each agent reads what the others said the night before, and can agree or push back from its own area. ZULU closes the night with a line to each of them. In the Hub's activity log a night now reads as one conversation, under a "Nightly cycle" heading, with replies shown as D → E. It's commentary only: nothing changes unless you approve it.
+- **Fresher data before a paid run.** The 9 PM check and the morning brief now catch up with your other device first, even if this one has a change it hasn't sent yet.
+- No new API calls. The agents read a little more on each one, roughly 50¢ to $1 a month at most; check the spend card after a week.
+
+---
+
+## Volume last, and ZULU double-checks (Oct 18)
+
+- **No more extra sets on a lift that's stalling and grinding.** DELTA asked for a 4th set of Cable Row on a lift that had stopped moving, with a third of its sets at grind or fail. The app's own instructions had listed "more sets" as the first fix for a stall. Now they go in order: effort and recovery first, then the rep range or a smaller jump, then a variation, and extra sets last, only when the sets feel easy. An agent can't propose more sets on a stalled lift whose sets are already grinding, from the nightly check or from chat. Taking a set off is always allowed, and today-only changes are unaffected.
+- **ZULU double-checks the others.** Each night ZULU reviews the new requests from DELTA, ECHO and CHARLIE. A request it thinks is wrong is held back with a one-line reason, shown in the activity log and under your requests as "Held by ZULU". Tap Show anyway to see it: every check runs again first. No extra API calls; ZULU already reads the night.
+- Fixed: a set-count request for one lift used to replace a waiting one for a different lift.

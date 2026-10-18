@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3591 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3677 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -298,6 +298,9 @@ pushes. Now:
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
 | Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
+| What the agents see | nightly `agCalendarContext()` (shares `agCalDayLine()` / `agCalPlanLine()` / `agCalNextDays()` with chat's `agTodayContext()`), `agSplitLiftText()`, `agFeelLine()`, chat `agLastNightLine()`; events `agEvents()` / `agEventsLine()` (`EV_FOR`, `EV_DAYS`), tools `get_events` / `get_recovery` |
+| Cross-review & volume | `agVolumeLastBlock()` / `liftHardShare()` (`VOL_GRIND_PCT`); `agTonightRequests()`, `agHoldSpecLine()`, `agValidateHolds()`, `agApplyHolds()`, `agShowAnyway()`, `agHeld()` |
+| Roundtable & voices | `AG_VOICE`, `S.agents.roundtable` (`agRoundtable()`, `RT_*`), `agPeersOffered()` / `agPeersSaid()`, `agValidatePeer()`, `agValidateReplies()`; the feed `agLog(agent, text, {to})` + `_agLogRun`, `hubFeedHTML()` / `hubActHTML()` |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
@@ -352,9 +355,37 @@ for a cache nothing reads.
 
 Agents have **read-only data tools** (`agDataToolDefs()`, executed by `agRunDataTool()`,
 looped by `callClaudeWithData()`): `list_lifts`, `get_lift_history`, `get_e1rm_series`,
-`get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`. ECHO also gets
+`get_bodyweight`, `get_nutrition`, `get_readiness`, `get_weekly_volume`, `get_events` and `get_recovery` (the last
+two since 2026-10-16, his call). ECHO also gets
 `get_fuel_planner` and `plan_fuel_combos` (`fpToolDefs()`, through `opts.fuelTools`), in its
 nightly check and its chat, and so does ZULU's chat, which can change the pantry. Both are reads, and the second runs the tab's own `fpCombos()`.
+
+**The agents review what happened** (his ask, 2026-10-16: deloads, high and low calorie stretches, dips, and
+conclusions drawn from them).
+- **`agEvents(days, kinds)` holds the events**, with the app's own before/after numbers. The events are:
+  - the chart marks (`ckEventMarks()`);
+  - dips on the main lifts (`liftDips()` over `predLifts()`);
+  - PRs and finished experiments.
+
+  The numbers are:
+  - **deloads:** the median clean e1RM of the 3 sessions before against the first 2 after;
+  - **target changes:** the bodyweight pace for the 3 weeks before against the weeks since, "too few to lean on"
+    under `FVR_FIRM_WEEKS`;
+  - **a shifted week:** what he ate against the two weeks before, and the weekly bodyweight around it;
+  - **heavy weeks:** recovery and dips the week after;
+  - **slumps:** recovery against his usual, read from before the slump;
+  - **dips:** the top `plateauCauses(…, {asOf:true})` factor, and whether the next session got back.
+
+  `agEvents()` only reads. HOW SURE TO SOUND forbids an effect size the app has not computed, so the app computes the
+  ones worth asking about.
+- **`agEventsLine(id)` puts 10 weeks in the prompt** (nightly and chat), capped at `EV_MAX_CHARS`, with one rule: draw
+  a conclusion only when these numbers support it.
+  - It is filtered by `EV_FOR`: DELTA training events, ECHO calories and deloads, ZULU everything, CHARLIE none.
+  - An experiment goes only to its owner and ZULU.
+  - With no events there is no section.
+- **`get_events {weeks ≤52, kinds}` looks further back** through the same function.
+- **`get_recovery {days ≤180}` is WHOOP history**, plus his usual. It never includes a row dated today: history is
+  never today.
 There is no write tool and there must never be one: a tool call never changes state by itself.
 **The chats propose action cards** (Mark's call on 2026-10-06, replacing ECHO's queue-only
 `propose_fuel_food` from 2026-09-28). He asked for all four agents to be able to act from chat,
@@ -394,7 +425,24 @@ and wrote its reply in one round before any check ran.
   (`agTodayContext(id)`). TODAY states the day key and name, the plan segment and its day, the deload and
   that LIVE already gives 2 light sets, the split in force, what LIVE will give lift by lift (through the
   same `buildOneLiveExercise()`), what is logged or running, the locks per lift, and the next 5 days. Each
-  line is guarded and nothing in it writes. It is chat-only, so night prompts are byte-identical.
+  line is guarded and nothing in it writes. TODAY itself is chat-only; the night gets the CALENDAR below.
+
+**The nightly agents see what he sees** (his report, 2026-10-16: the agents did not always know the schedule, today,
+or data on his own screen). All of it is read-only context on calls that already run:
+- **The night has a CALENDAR** (`agCalendarContext()`, all four agents, through `agBaseContext()`). It covers today's
+  key and whether it is logged, a HOME day, the plan segment (with a deload ended early), the next 7 days and the
+  plan's next two segments. Its day, plan and next-days lines are the ones chat's TODAY uses (`agCalDayLine()`,
+  `agCalPlanLine()`, `agCalNextDays()`), so the two cannot disagree.
+- **SPLIT carries the numbers** (`agSplitLiftText()`): "Bench Press 3x5-8", from the slot's sets and `exRepMode()`
+  (Form Focus its own). DELTA used to propose a `setCount` without seeing the count.
+- **`intelSummary()` carries the plateau watch** as Today and the Hub colour it, red then amber, at most 8 lifts.
+- **His own read after sessions** (`agFeelLine()`, his last 5 notes within 21 days) goes to DELTA and ZULU, at night
+  and in chat.
+- **The chats know last night** (`agLastNightLine()`): each agent's own report, and for ZULU all four plus the
+  morning brief.
+- **A paid call's pre-pull pushes first.** `agConfirmGateThenRun()` and `agConfirmBriefThenWrite()` call
+  `pushUnconfirmedChanges()` before asking `exportedAt > changedAt`, exactly as `bgSyncTick()` does. Before this, an
+  unpushed local save hid an unseen snapshot, and the cycle or brief ran without the other device's session.
 - **One loop and one handler** (`chatActionHandler()`): ZULU's chat now uses `callClaudeWithData()` like the
   others, with lookups and the pantry tools. A call only stages a card. A refusal is told to the model
   ("Not proposed: …", plus "adjust_today works on any lift" where that applies) and kept on the reply as
@@ -487,7 +535,17 @@ Five rules it enforces:
     experiment;
   - no `setCount` increase or `addEx` next to a "sharp" flag from the last 14 days on that lift or one
     sharing a primary muscle (`agSharpNear()`); taking sets off is still allowed;
-  - no `liftReset` or `swapEx` on the experiment's lift.
+  - no `liftReset` or `swapEx` on the experiment's lift;
+  - **volume last** (`agVolumeLastBlock()`, his call, 2026-10-18): no `setCount` increase on a stalled lift
+    (`liftProfile().stalled3`, or the plateau watch red or amber) whose last 6 sessions have `VOL_GRIND_PCT` (30)%+ of
+    their tagged sets at grind or fail (`liftHardShare()`, the one grind-share measure, with at least
+    `VOL_GRIND_MIN_TAGS` tags). DELTA had queued a 4th set on a stalled Cable Row whose sets were a third grinders,
+    because the stall line listed "more sets" first. That line now orders the levers: effort and recovery, then the
+    rep range or a smaller jump, then a variation, and more sets last. It covers the queue, approval, chat `set_sets`
+    and the Sunday plan; `adjust_today` is exempt.
+
+  A `setCount` is one target per lift and day (`agFixTarget()`). It used to be plain `setCount`, so a set change for
+  one lift superseded a waiting one for another.
 
   These used to live only in the Sunday plan's filter or in prompt text. They apply at ingest and
   again at approval. ZULU's chat (`start_deload`, `add_exercise_permanent`,
@@ -543,6 +601,36 @@ hand without asking whether 205 meant a single. Four small changes, all prompt t
   that it is not a cause. Effort reads `effScoreText()`: "a grind (40/100)", because a bare "effort 40" came
   back as "40% effort".
 
+**The agents talk to each other, at no new cost** (his pick, 2026-10-16: "make the agents more unique, with
+discussions"). It all rides the calls that already run.
+- **Each agent has its own voice** (`AG_VOICE`, one line after the role brief in every prompt it writes in: nightly,
+  chat, and ZULU's letter and brief). His pick of three drafts was "as drafted":
+  - ZULU: a calm, decisive head coach;
+  - CHARLIE: dry and exact;
+  - DELTA: a blunt strength coach;
+  - ECHO: practical about food.
+
+  Every line ends with "Your voice never changes the facts". No voice text says "You are <another agent>", because
+  the suite's stubs route on that phrase.
+- **The roundtable** (`S.agents.roundtable {d, at, said, lines}`) is one object per cycle.
+  - It is written into the re-resolved `agState()` after the specialists, then again after ZULU (the suite swaps `S`
+    mid-reply to prove it), and merged newer-wins in `applyPulled()`.
+  - A night where every specialist failed leaves the last one standing.
+- **The specialists** read last night's roundtable (`agPeersSaid()`, within `RT_FRESH_DAYS`): the others' summaries
+  and any line addressed to them.
+  - They may answer ONE agent in an optional `"peer"` key, asked for only when there is a roundtable to answer, so a
+    first night is byte-identical. It sits before `qaSpecLine`, so the plateau diagnosis stays last.
+  - `agValidatePeer()` keeps only a string to an agent it was shown (never itself), clipped.
+  - `agRecentSaid()` is still own-only; this is a separate section.
+- **ZULU closes the night.** Its digest carries tonight's replies and each waiting request's reasoning. Its
+  `"replies"` key is one line to each specialist that reported (`agValidateReplies()`); a line for an agent that did
+  not report is never kept.
+- **The feed shows a night as one exchange.** `agLog(agent, text, {to})` tags every line of a cycle with `run` and
+  `n` (`_agLogRun`, module-scoped, cleared in `finally`), and `hubFeedHTML()` groups a run under "Nightly cycle" (or
+  "Cycle you ran") in the order said. A reply is drawn as author glyph, then `→ E`. Lines outside a cycle render
+  as before.
+- **The roundtable is commentary.** It changes nothing, and anything to apply still goes through proposals.
+
 These are prompts, so they are hints, not guarantees. The checks that would enforce them (a number in a reply
 traced to data, a principles list with sources) are planned and not built.
 
@@ -556,7 +644,15 @@ regardless. A bad night costs the tab its commentary, never its content.
 2026-10-04). On the ledger, the baseline before it was about $9 a month. The order:
 - week 1: track records (free) and plateau diagnosis (about $0.20 a month);
 - week 2: cross-review, ZULU's half. A held request goes to the feed with **Show anyway** (his
-  choice).
+  choice). **Built 2026-10-18.**
+  - ZULU's nightly call is shown tonight's new specialist requests (`agTonightRequests()`, by the cycle's `run` tag,
+    taken before its await), and `agHoldSpecLine()` adds an optional `"hold"` key only when there are any.
+  - `agValidateHolds()` keeps only those ids. `agApplyHolds()` writes into the re-resolved state: status `held`,
+    with `heldWhy`. A held request is out of `agPending()`.
+  - It shows in the feed (`{hold:id}`) and under Pending as "Held by ZULU". The id travels in `data-prop`.
+  - **Show anyway** (`agShowAnyway()`) re-runs `agValidateFix()`, then either queues the request or closes it,
+    naming the rule.
+  - `agIngest()` counts `held` as open for its de-duplication, and `agSweepExpired()` expires it.
 - week 3: per-lift specialists, the only addition that is a new request.
 
 Check the ledger before starting the next.
@@ -758,6 +854,25 @@ thrown when `S.deload` was null, and the agents' prompt would have failed with i
 `deloadWindow()` returns `{start, until, source}` from whichever source is in force, and
 `deloadActive()` is just `!!deloadWindow()`. `deloadCheck()` counts training weeks since
 `lastDeloadEndKey()`, not every week ever logged. The old count passed 6 once and never reset.
+
+**A deload he ended early is over everywhere, from the day he ended it** (2026-10-16). He ended his block deload a
+day early. Only `deloadWindow()` read the flag, so:
+- the next session was judged against the deload's RPE 5-6 (`rpeTargetFor()` reads the segment by date), which also
+  marked the next same-day call down;
+- Today's eyebrow and the Plan hero still said deload;
+- every agent prompt was told "Deload week: loads ~60%" beside "no deload in force".
+
+The fix has three parts:
+- **The flag is a day now.** `endDeloadWeek()` stores `deloadEnded = todayKey()`. It is still truthy, so an older copy
+  of the app reads "ended". It also ends the later segments of the same block, but never another block's deload.
+- **One helper answers it.** `mesoDeloadEndedOn(w)` returns the day. A legacy `true` is inferred from his logs: the
+  first non-deload session inside the segment, else the day after the last deload one, else its start, and never later
+  than today.
+- **Every reader asks by date.** `mesoDeloadOn(w, key)` and `mesoPhaseOn(w, key)` (null on the days after the end)
+  are what anything reading a segment's type or rep/RPE range by date must ask:
+  - `rpeTargetFor()`, `exRepMode()`, `pwBlockAt()`, the Sunday plan;
+  - `mesoNextDeload()` skips an ended deload, which also frees `agDeloadBlock()`;
+  - `lastDeloadEndKey()` takes the day before the end.
 
 **A sleep log is not a check-in.** `quickLogSleep()` writes a stub with `partial:true` and no
 tier. Older stubs carry a made-up `tier:'ok'` with empty soreness and energy. `rdComplete()`

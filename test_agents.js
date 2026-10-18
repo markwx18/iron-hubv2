@@ -9395,7 +9395,8 @@ setTimeout(async () => {
     const prr = ev("exRepMode('Preacher Curl Machine')");
     ok('stall line: the facts the call depends on',
        /70 lb for 4 sessions over 3\.4 wks, trained about every 8 days/.test(prl) && prl.indexOf('last session 10,9,8 reps vs range ' + prr.lo + '-' + prr.hi) >= 0 &&
-       /next jump \+5 lb = 7%/.test(prl) && /Options: more sets/.test(prl), prl);
+       /next jump \+5 lb = 7%/.test(prl) && /Levers, in this order: \(1\) effort and recovery/.test(prl) && /\(4\) more sets \(setCount\) LAST/.test(prl) &&
+       /% of tagged sets grind\/fail over its last 6 sessions/.test(prl), prl);
     ok('stall line: never offers a swap to a lift already in his split', prl && !/Rope Cable Curl \[/.test(prl) && !/Incline Dumbbell Curl \[/.test(prl), prl);
     ok('stall line: a lift gaining reps at one weight gets none, and the pattern line says so',
        !/ {2}Incline Dumbbell Curl: 30 lb for/.test(sum2) && /Incline Dumbbell Curl: [^\n]*same weight 3 sessions, reps climbing/.test(sum2), (sum2.match(/[^\n]*Incline Dumbbell Curl[^\n]*/g) || []).join(' | '));
@@ -14518,6 +14519,414 @@ setTimeout(async () => {
   } finally {
     ev("if(window.__cvData){ callClaudeWithData = window.__cvData; delete window.__cvData; delete window.__cvSys; }");
     ev('if(window.__cvSaved){ S = JSON.parse(window.__cvSaved); delete window.__cvSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== A DELOAD ENDED EARLY IS OVER EVERYWHERE (2026-10-16) ===');
+  // He ended his block deload a day early. deloadWindow() honoured the flag, but the session after it was judged
+  // against the deload's RPE 5-6 (rpeTargetFor() reads the segment by date), Today's eyebrow and the Plan hero
+  // still said deload, and every agent prompt was told "Deload week: loads ~60%". The fixture is built around
+  // whatever today is, so the suite reads the same on any day.
+  try {
+    w.__deSaved = ev('JSON.stringify(S)');
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const seg = (o) => Object.assign({repLo: 8, repHi: 12, blockWeek: 1, blockLen: 1, days: 7}, o);
+    const weeks = [
+      seg({type: 'hyp', name: 'Hypertrophy', n: 7, blockId: 'h7', startKey: dk(-60), endKey: dk(-5), rpeLo: 7, rpeHi: 8, days: 56}),
+      // a two-segment deload block: ending it early ends both segments
+      seg({type: 'deload', name: 'Deload', n: 8, blockId: 'd8', blockLen: 2, startKey: dk(-4), endKey: dk(2), rpeLo: 5, rpeHi: 6}),
+      seg({type: 'deload', name: 'Deload', n: 9, blockId: 'd8', blockWeek: 2, blockLen: 2, startKey: dk(3), endKey: dk(9), rpeLo: 5, rpeHi: 6}),
+      seg({type: 'hyp', name: 'Hypertrophy', n: 10, blockId: 'h10', startKey: dk(10), endKey: dk(65), rpeLo: 7, rpeHi: 8, days: 56}),
+      // the next block's planned deload, which End early must not touch
+      seg({type: 'deload', name: 'Deload', n: 11, blockId: 'd11', startKey: dk(66), endKey: dk(72), rpeLo: 5, rpeHi: 6})
+    ];
+    ev('S.meso = {template:null, active:{startedAt:' + JSON.stringify(dk(-60)) + ', startKey:' + JSON.stringify(dk(-60)) + ', splits:{}, weeks:' + JSON.stringify(weeks) + '}};');
+    ev("S.deload = null; S.settings.repLow = 6; S.settings.repHigh = 10;");
+    // Two deload sessions in it so far, on a day key of their own.
+    const dlLog = (id, n) => ({id: id, date: dk(n), day: 'ZZD', deload: true, entries: [{exercise: 'Zz DE Press', sets: [{w: 60, r: 10, e: 'easy', ef: 90}, {w: 60, r: 10, e: 'easy', ef: 90}]}]});
+    ev('S.logs = ' + JSON.stringify([dlLog(896001, -4), dlLog(896002, -2)]) + ';');
+    // Before: the deload is on, and every reader says so.
+    ok('deload ended: before End early, the deload is in force', ev('deloadActive()') === true && ev('rpeTargetFor(todayKey()).lo') === 5);
+    ok('deload ended: before End early, Today’s eyebrow says deload week', /deload week/.test(ev("homeEyebrow({rest:false, dayKey:'ZZD'})")));
+
+    ev('endDeloadWeek()');
+    const wk = ev('JSON.stringify(S.meso.active.weeks.map(function(w){ return w.deloadEnded || null; }))');
+    ok('deload ended: the day is recorded, on this segment and the rest of its block, not the next block’s deload',
+       wk === JSON.stringify([null, dk(0), dk(0), null, null]), wk);
+    ok('deload ended: no longer in force', ev('deloadActive()') === false);
+    // The post-session review: RPE 8 from three effort taps is on target for normal training, two over a deload's 5-6.
+    const rt0 = ev('JSON.stringify(rpeTargetFor(todayKey()))'), rtY = ev('JSON.stringify(rpeTargetFor(mesoAddDays(todayKey(), -1)))');
+    ok('deload ended: from the end on, the RPE target is the normal 7-8', rt0 === JSON.stringify({lo: 7, hi: 8, src: 'default'}), rt0);
+    ok('deload ended: the deload days before it keep their 5-6', rtY === JSON.stringify({lo: 5, hi: 6, src: 'meso'}), rtY);
+    const after = {id: 896010, date: dk(0), day: 'ZZD', entries: [{exercise: 'Zz DE Press', sets: [{w: 100, r: 8, e: 'solid', ef: 50}, {w: 100, r: 8, e: 'solid', ef: 50}, {w: 100, r: 8, e: 'solid', ef: 50}]}]};
+    const fv = ev('JSON.stringify(feltVsPlan(' + JSON.stringify(after) + '))');
+    ok('deload ended: the session after it is judged against 7-8, not 5-6', fv === JSON.stringify({rpe: 8, lo: 7, hi: 8, delta: 0, n: 3}), fv);
+    ev('S.logs.push(' + JSON.stringify(after) + ');');
+    // Tomorrow's call reads how the last ZZD felt; against 5-6 it scored -1 and could tip the day to easy.
+    // On target adds nothing to the call (a 0 is not listed), so the path is proved live with the old 5-6 target swapped in.
+    const histQ = "JSON.stringify(dayCall(mesoAddDays(todayKey(), 1), 'ZZD').parts.filter(function(p){ return p.src === 'history'; }))";
+    const hist = ev(histQ);
+    ev("window.__deRT = rpeTargetFor; rpeTargetFor = function(){ return {lo:5, hi:6, src:'meso'}; };");
+    const histOld = ev(histQ);
+    ev("rpeTargetFor = window.__deRT; delete window.__deRT;");
+    ok('deload ended: the next day’s call does not mark the session down (it did against 5-6)',
+       hist === '[]' && /"pts":-1/.test(histOld) && /against 5–6/.test(histOld), hist + ' / ' + histOld);
+    const mcc = ev('mesoCoachContext()');
+    ok('deload ended: the agents’ PERIODIZATION line says it ended, and nothing about 60% or RPE 5-6',
+       /ended this deload early/.test(mcc) && !/loads ~60%/.test(mcc) && !/RPE 5/.test(mcc) && !/Next deload: this week/.test(mcc), mcc);
+    ok('deload ended: chat TODAY’s plan line says it ended', /Plan: Deload \(ended early on [^)]*not a deload\)/.test(ev("agTodayContext('zulu')")));
+    const eb = ev("homeEyebrow({rest:false, dayKey:'ZZD'})");
+    ok('deload ended: Today’s eyebrow no longer says deload week', !/deload week/.test(eb) && /deload ended/.test(eb), eb);
+    const ph = ev('planHeroHTML()');
+    ok('deload ended: the Plan hero says ended early and shows no deload rep range', /Ended early/.test(ph) && !/8–12 reps/.test(ph), (ph.match(/plan-day[\s\S]{0,300}/) || [''])[0]);
+    const mc = ev('mesoCurrentCardHTML()');
+    ok('deload ended: the Plan card says so, with no RPE 5-6 beside it', /Deload ended early\./.test(mc) && !/RPE 5/.test(mc), mc.slice(0, 900));
+    ok('deload ended: the next deload is the next block’s, not the one he ended', ev('(mesoNextDeload()||{}).n') === 11);
+    ok('deload ended: a deload proposal is no longer refused as "a planned deload starts"', ev('agDeloadBlock()') === '', ev('agDeloadBlock()'));
+    ok('deload ended: its last day is yesterday, not the planned end', ev('lastDeloadEndKey()') === dk(-1), ev('lastDeloadEndKey()'));
+    ok('deload ended: rep ranges come from Settings again', ev("JSON.stringify(exRepMode('Zz DE Press'))") === JSON.stringify({lo: 6, hi: 10}), ev("JSON.stringify(exRepMode('Zz DE Press'))"));
+    ok('deload ended: the plateau watch reads today as no block, the day before as the deload', ev('pwBlockAt(todayKey())') === '' && ev('pwBlockAt(mesoAddDays(todayKey(), -1))') === 'deload');
+    ok('deload ended: the Sunday plan may propose a deload for a week the ended block covered',
+       ev("wpFilterProposals([{title:'x', fix:{type:'deload', payload:{}}}], mesoAddDays(weekKeyOf(todayKey()), 7)).length") === 1);
+
+    // A flag set before 2026-10-16 is a bare true: the day comes from his logs.
+    ev("S.meso.active.weeks[1].deloadEnded = true; S.meso.active.weeks[2].deloadEnded = true;");
+    ev('S.logs = ' + JSON.stringify([dlLog(896001, -4), dlLog(896002, -3), Object.assign({}, after, {date: dk(-1)})]) + ';');
+    ok('deload ended (old flag): the first normal session inside it is the day it ended', ev('mesoDeloadEndedOn(S.meso.active.weeks[1])') === dk(-1));
+    ev('S.logs = ' + JSON.stringify([dlLog(896001, -4), dlLog(896002, -3)]) + ';');
+    ok('deload ended (old flag): with none, the day after the last deload session', ev('mesoDeloadEndedOn(S.meso.active.weeks[1])') === dk(-2));
+    ev('S.logs = [];');
+    ok('deload ended (old flag): with no sessions at all, its first day', ev('mesoDeloadEndedOn(S.meso.active.weeks[1])') === dk(-4));
+    ok('deload ended (old flag): never later than today', ev("S.logs = " + JSON.stringify([dlLog(896003, 0)]) + "; mesoDeloadEndedOn(S.meso.active.weeks[1])") === dk(0));
+  } catch (e) {
+    ok('deload ended early section', false, e.stack);
+  } finally {
+    ev('if(window.__deSaved){ S = JSON.parse(window.__deSaved); delete window.__deSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== AGENTS IN SYNC: THE CALENDAR, THE SPLIT’S NUMBERS, WHAT HE SEES (2026-10-16) ===');
+  // He said the agents did not always know the schedule or today, or data he can see on his own screen. TODAY was
+  // chat-only, SPLIT was names only, the plateau watch reached DELTA alone, and the chats did not know last night.
+  try {
+    w.__syS = ev('JSON.stringify(S)');
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    // --- the nightly CALENDAR, for all four ---
+    ev('S.meso = {template:null, active:{startedAt:' + JSON.stringify(dk(-3)) + ', startKey:' + JSON.stringify(dk(-3)) + ', splits:{}, weeks:' + JSON.stringify([
+      {type: 'hyp', name: 'Hypertrophy', n: 1, blockId: 'hA', blockWeek: 1, blockLen: 1, days: 10, startKey: dk(-3), endKey: dk(6), repLo: 8, repHi: 12, rpeLo: 7, rpeHi: 8},
+      {type: 'str', name: 'Strength', n: 2, blockId: 'sB', blockWeek: 1, blockLen: 1, days: 4, startKey: dk(7), endKey: dk(10), repLo: 3, repHi: 5, rpeLo: 8, rpeHi: 9},
+      {type: 'deload', name: 'Deload', n: 3, blockId: 'dC', blockWeek: 1, blockLen: 1, days: 5, startKey: dk(11), endKey: dk(15), repLo: 8, repHi: 12, rpeLo: 5, rpeHi: 6}
+    ]) + '}}; S.deload = null; S.homeToday = {date: todayKey()};');
+    const next7 = ev("(function(){ var o = []; for(var i = 1; i <= 7; i++){ var k = mesoAddDays(todayKey(), i), d = scheduledDayFor(k); o.push(homeShortDate(k)+' '+(d === 'REST' ? 'rest' : d)); } return o.join(', '); })()");
+    const cal = {};
+    for (const id of ['charlie', 'delta', 'echo', 'zulu']) cal[id] = ev("agBaseContext('" + id + "')");
+    ok('sync: every nightly agent gets the CALENDAR, CHARLIE included',
+       ['charlie', 'delta', 'echo', 'zulu'].every(id => /\nCALENDAR \(the app’s own read tonight/.test(cal[id])));
+    ok('sync: the calendar lists the next 7 days from the schedule itself', cal.charlie.indexOf('Next 7 days: ' + next7 + '.') >= 0, (cal.charlie.match(/Next 7 days:[^\n]*/) || [''])[0] + ' / ' + next7);
+    ok('sync: the calendar names the plan segment and the two after it, with their lengths',
+       /Plan: Hypertrophy, day 4 of 10/.test(cal.charlie) && /Coming up in the plan: Strength [^\n]* \(4 days\), then Deload [^\n]* \(5 days\)\./.test(cal.charlie),
+       (cal.charlie.match(/CALENDAR[\s\S]*?\n\n|CALENDAR[\s\S]*$/) || [''])[0].slice(0, 600));
+    ok('sync: the calendar says when today is a HOME session', /HOME session today/.test(cal.delta));
+    // Chat's TODAY is built from the same lines and is unchanged: five days, its own header.
+    const td = ev("agTodayContext('zulu')");
+    ok('sync: chat TODAY keeps its own header and five days', /^\nTODAY \(the app’s own read, right now/.test(td) && (td.match(/Next days: ([^\n]*)\./) || ['', ''])[1].split(', ').length === 5, td.slice(0, 300));
+
+    // --- the split with its numbers ---
+    ev("S.split.ZQ = {name:'Zz Sync Day', exercises:[{name:'Zz SY Row', sets:4}, 'Zz SY Press', {name:'Zz SY Curl', formFocus:true}]};");
+    const ctx = ev('agContext()');
+    const rr = ev("JSON.stringify(exRepMode('Zz SY Row'))"), r0 = JSON.parse(rr);
+    ok('sync: SPLIT lists each lift with its working sets and rep range',
+       ctx.indexOf('ZQ (Zz Sync Day): Zz SY Row 4x' + r0.lo + '-' + r0.hi + ', Zz SY Press 3x' + r0.lo + '-' + r0.hi + ', Zz SY Curl 3x12-20 form focus') >= 0,
+       (ctx.match(/ZQ \(Zz Sync Day\)[^\n]*/) || [''])[0] + ' / ' + rr);
+
+    // --- the plateau watch as Today shows it ---
+    ev("window.__syPW = plateauWatch; plateauWatch = function(){ return [" +
+       "{lift:'Zz PW Pulldown', lvl:'red', word:'stalled', sig:[{k:'stalled', lvl:'red', txt:'5 sessions at 165, reps flat'}]}," +
+       "{lift:'Zz PW Row', lvl:'amber', word:'slowing', sig:[{k:'slowing', lvl:'amber', txt:'gaining 0.5 lb/wk over the last 4 sessions, down from 2'}]}," +
+       "{lift:'Zz PW Squat', lvl:'green', word:'on track', sig:[]}]; };");
+    const intel = ev('intelSummary()');
+    ev('plateauWatch = window.__syPW; delete window.__syPW;');
+    ok('sync: the summary carries the plateau watch, red then amber, and leaves green out',
+       /Plateau watch \(the colours Today and the Hub show him\): red: Zz PW Pulldown \(stalled, 5 sessions at 165, reps flat\)\. amber: Zz PW Row \(slowing, gaining 0\.5 lb\/wk/.test(intel) && !/Zz PW Squat/.test(intel),
+       (intel.match(/Plateau watch[^\n]*/) || [''])[0]);
+
+    // --- his own read after recent sessions ---
+    ev('S.logs = ' + JSON.stringify([
+      {id: 897001, date: dk(-1), day: 'D1', entries: [{exercise: 'Zz SY Row', sets: [{w: 100, r: 8}]}]},
+      {id: 897002, date: dk(-30), day: 'D2', entries: [{exercise: 'Zz SY Row', sets: [{w: 100, r: 8}]}]}]) + '; S.sessionMeta = [];');
+    ev("sessionMetaSet(897001, {feel:2, note:'knee felt off on squats'}); sessionMetaSet(897002, {feel:5, note:'old note'});");
+    const dctx = ev("agBaseContext('delta')"), ectx = ev("agBaseContext('echo')"), zchat = ev("chatContext('zulu')");
+    ok('sync: DELTA and ZULU get his recent notes as his words; a month-old one is left out',
+       /HIS OWN READ AFTER RECENT SESSIONS[\s\S]*D1: 2\/5 "Heavy"; he wrote "knee felt off on squats"/.test(dctx) && !/old note/.test(dctx) && /knee felt off/.test(zchat));
+    ok('sync: ECHO does not get them', !/HIS OWN READ AFTER RECENT SESSIONS/.test(ectx));
+
+    // --- the chats know last night ---
+    ev("var _a = agState(); _a.status.delta = {summary:'Squat moved: 245x6.', at:new Date().toISOString()};" +
+       "_a.status.echo = {summary:'Old ECHO line.', at:new Date(Date.now() - 6*86400000).toISOString()};" +
+       "_a.brief = {text:'Train D3 as written.', at:new Date().toISOString(), date:todayKey()};");
+    const dchat = ev("chatContext('delta')"), zchat2 = ev("chatContext('zulu')");
+    ok('sync: a chat knows what it said last night', /LAST NIGHT’S CHECK[\s\S]*- You \([^)]*\): Squat moved: 245x6\./.test(dchat));
+    ok('sync: ZULU’s chat has the whole night and the brief, not a stale report',
+       /- DELTA \([^)]*\): Squat moved/.test(zchat2) && /This morning’s brief: Train D3 as written\./.test(zchat2) && !/Old ECHO line/.test(zchat2));
+  } catch (e) {
+    ok('agents in sync section', false, e.stack);
+  } finally {
+    ev('if(window.__syPW){ plateauWatch = window.__syPW; delete window.__syPW; }');
+    ev('if(window.__syS){ S = JSON.parse(window.__syS); delete window.__syS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  // A paid call's pre-pull asked exportedAt > changedAt without pushing first. With a local save not yet pushed,
+  // changedAt sat past a snapshot this device had never applied, so the cycle (or the brief) ran without the other
+  // device's session. bgSyncTick() and autoPullOnLoad() push first, and the push reconciles via syncSeenAt().
+  console.log('=== A PAID CALL’S PRE-PULL SEES THE OTHER DEVICE FIRST (2026-10-16) ===');
+  try {
+    w.__ppS = ev('JSON.stringify(S)');
+    w.__ppSeen = ev('localStorage.getItem(SYNC_SEEN_KEY)');
+    const realFetch = w.fetch;
+    for (const fn of ['agConfirmGateThenRun', 'agConfirmBriefThenWrite']) {
+      ev("S = JSON.parse(window.__ppS); S.settings.ghToken = 'tok'; S.settings.gistId = 'gist1'; S.settings.autoSync = true; S.settings.apiKey = '';" +
+         "S.meta.pushedAt = Date.now() - 600000; S.meta.changedAt = Date.now() - 1000; localStorage.setItem(SYNC_SEEN_KEY, String(S.meta.pushedAt));");
+      // The other device pushed 5 minutes ago with a session this one has never seen.
+      ev("window.__ppRemote = JSON.parse(JSON.stringify(S)); window.__ppRemote.logs = (window.__ppRemote.logs||[]).concat([{id:898001, date:todayKey(), day:'D1', t:Date.now() - 300000, " +
+         "entries:[{exercise:'Zz PP Press', sets:[{w:100, r:8}]}]}]);");
+      w.fetch = gistStub(null, () => ({app: 'ironhub', v: 1, exportedAt: ev('Date.now()') - 300000, data: ev('window.__ppRemote')}));
+      await ev(fn + '()');
+      w.fetch = realFetch;
+      ok('pre-pull (' + fn + '): the other device’s session is here before the paid call', ev('S.logs.some(function(l){ return l.id === 898001; })') === true);
+    }
+  } catch (e) {
+    ok('paid-call pre-pull section', false, e.stack);
+  } finally {
+    ev("if(window.__ppS){ S = JSON.parse(window.__ppS); delete window.__ppS; delete window.__ppRemote; } localStorage.setItem(LS_KEY, JSON.stringify(S));");
+    ev(w.__ppSeen === null ? 'localStorage.removeItem(SYNC_SEEN_KEY)' : 'localStorage.setItem(SYNC_SEEN_KEY, ' + JSON.stringify(w.__ppSeen) + ')');
+  }
+
+  console.log('=== THE AGENTS REVIEW WHAT HAPPENED (2026-10-16) ===');
+  // He asked for the agents to look back at deloads, calorie stretches and dips and draw conclusions. Every number
+  // beside an event is the app's own; the fixture's numbers are worked out by hand below (fixed offsets, no randomness),
+  // with two weigh-ins in some weeks and noisy calories inside each week.
+  try {
+    w.__evS = ev('JSON.stringify(S)');
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const sd = k => ev('homeShortDate(' + JSON.stringify(k) + ')');
+    const base = ev('weekKeyOf(mesoAddDays(todayKey(), -77))');
+    const W = k => ev('mesoAddDays(' + JSON.stringify(base) + ', ' + (7 * k) + ')');
+    const at = (k, d) => ev('mesoAddDays(' + JSON.stringify(W(k)) + ', ' + d + ')');
+    // Sessions: squat and bench every 3 days, a deload on -48 and -45, an old one at -120. e1RM = w x 7/6 at 5 reps.
+    const sq = {'-66': 228, '-63': 234, '-60': 240, '-57': 240, '-54': 252, '-51': 246, '-42': 252, '-39': 258, '-36': 258, '-33': 264, '-30': 258, '-27': 264,
+                '-24': 270, '-21': 264, '-18': 270, '-15': 228, '-12': 270, '-9': 276, '-6': 270, '-3': 276};
+    const bp = {'-66': 144, '-63': 150, '-60': 150, '-57': 150, '-54': 156, '-51': 150, '-42': 156, '-39': 162, '-36': 162, '-33': 168, '-30': 162, '-27': 168,
+                '-24': 168, '-21': 174, '-18': 168, '-15': 174, '-12': 174, '-9': 180, '-6': 174, '-3': 180};
+    const logs = [];
+    Object.keys(sq).forEach((o, i) => logs.push({id: 899000 + i, date: dk(+o), day: 'D1', entries: [
+      {exercise: 'Zz EV Back Squat', sets: [{w: sq[o], r: 5}, {w: sq[o] - 20, r: 6}]}, {exercise: 'Zz EV Bench Press', sets: [{w: bp[o], r: 5}]}]}));
+    [-48, -45, -120, -117].forEach((o, i) => logs.push({id: 899100 + i, date: dk(o), day: 'D1', deload: true,
+      entries: [{exercise: 'Zz EV Back Squat', sets: [{w: 150, r: 8}, {w: 150, r: 8}]}]}));
+    // Bodyweight: +0.4 lb a week to week 3, +0.2 to week 6, +0.6 after the target change at week 7, so "the 3 weeks before"
+    // reads differently from any other three. Two weigh-ins averaging the value in odd weeks.
+    const A = k => Math.round((k <= 3 ? 159.4 + 0.4 * k : k <= 6 ? 160.6 + 0.2 * (k - 3) : 161.2 + 0.6 * (k - 6)) * 10) / 10;
+    const wts = [];
+    for (let k = 0; k <= 10; k++) {
+      if (k % 2) wts.push({date: at(k, 1), lbs: Math.round((A(k) - 0.1) * 10) / 10});
+      wts.push({date: at(k, 5), lbs: Math.round((A(k) + (k % 2 ? 0.1 : 0)) * 10) / 10});
+    }
+    // Calories: ~3300 a day (3250 and 3350 the two weeks before the low one, so both count), a ~2900 week (week 3),
+    // ~3700 from the target change.
+    const nut = [], noise = [-50, 50, 0, -20, 20], wkCal = {1: 3250, 2: 3350, 3: 2900};
+    for (let k = 0; k <= 10; k++) for (let d = 0; d < 5; d++) nut.push({date: at(k, d), cals: (wkCal[k] || (k >= 7 ? 3700 : 3300)) + noise[d], protein: 170});
+    // WHOOP: a steady week pattern (usual 65%), a three-day slump at -25..-23, and a row for today.
+    const rows = [], pat = [62, 63, 64, 65, 66, 67, 68], slump = {'-25': 35, '-24': 38, '-23': 32};
+    for (let o = -75; o <= 0; o++) rows.push({date: dk(o), recovery: slump[o] !== undefined ? slump[o] : pat[(o + 75) % 7], hrv: 60, rhr: 50, sleepHours: 7.5, strain: 12});
+    ev('S.logs = ' + JSON.stringify(logs) + '; S.weights = ' + JSON.stringify(wts) + '; S.nutrition = ' + JSON.stringify(nut) + ';' +
+       'S.targetHist = [{id:"tz1", kind:"cal", from:3300, to:3700, date:' + JSON.stringify(W(7)) + ', by:"test"}];' +
+       'S.whoop = {history:' + JSON.stringify(rows) + '}; S.prHistory = [{exercise:"Zz EV Back Squat", weight:276, reps:5, e1rm:322, prev:315, gain:7, date:' + JSON.stringify(dk(-9)) + '}];' +
+       'S.experiments = {active:null, declined:{}, lastEnded:"", history:[{template:"restMain", lift:"Zz EV Back Squat", startedAt:' + JSON.stringify(dk(-40)) +
+       ', endedAt:' + JSON.stringify(dk(-20)) + ', status:"done", result:{nExp:3, nBase:4, direction:"up", deltaPct:2.1, confidence:"moderate"}}]};' +
+       'S.meso = {template:null, active:null}; S.deload = null;');
+    const before = ev('JSON.stringify(S)');
+    const L = {};
+    for (const id of ['delta', 'echo', 'charlie', 'zulu']) L[id] = ev("agEventsLine('" + id + "')");
+    const has = (s, x) => s.indexOf(x) >= 0;
+    ok('events: a deload reads its main lifts before and after, as medians, in the app’s numbers',
+       has(L.delta, 'Deload ' + sd(dk(-48)) + '–' + sd(dk(-45)) + '. Main lifts, median e1RM of the 3 sessions before against the first 2 after: Zz EV Back Squat 287→298 (+3.7%); Zz EV Bench Press 175→186 (+6.0%).'),
+       (L.delta.match(/- Deload[^\n]*/) || [''])[0]);
+    ok('events: a dip names its size and base, and whether the next session got back',
+       /- Zz EV Back Squat dipped 16% on [^(]*\(e1RM 266 against ~315\);[^\n]*back to level the next session\./.test(L.delta), (L.delta.match(/- Zz EV Back Squat dipped[^\n]*/) || [''])[0]);
+    ok('events: a recovery slump against his usual, with what he trained inside it',
+       has(L.delta, 'Recovery slump ' + sd(dk(-25)) + '–' + sd(dk(-23)) + ': averaged 35% against his usual 65%; 1 session inside it; no dips during or just after.'),
+       (L.delta.match(/- Recovery slump[^\n]*/) || [''])[0]);
+    ok('events: PRs and DELTA’s own finished experiment',
+       has(L.delta, 'PR ' + sd(dk(-9)) + ': Zz EV Back Squat 276×5 (e1RM 322, +7).') && /Experiment Longer rest on a main lift \(Zz EV Back Squat\) ended [^:]*: \+2\.1% \(up, 3 sessions against 4/.test(L.delta));
+    ok('events: a target change reads the bodyweight pace before and since, and says when the weeks are too few',
+       has(L.echo, 'Calorie target 3300→3700 on ' + sd(W(7)) + '. Bodyweight pace +0.20 lb/wk over the 3 weeks before, +0.60 lb/wk over the 4 weeks since, too few to lean on.'),
+       (L.echo.match(/- Calorie target[^\n]*/) || [''])[0]);
+    ok('events: a low week reads what he ate against the two before, and the scale around it',
+       has(L.echo, 'Week of ' + sd(W(3)) + ' averaged ~2900 cal/day, 400 under the two weeks before (~3300). Bodyweight weekly average: 160.2 → 160.6 → 160.8 (week before, that week, week after).'),
+       (L.echo.match(/- Week of[^\n]*/) || [''])[0]);
+    ok('events: each agent sees its own kinds (ECHO no dips, slumps, PRs or DELTA’s experiment; DELTA no calorie lines; CHARLIE none)',
+       !/dipped|Recovery slump|- PR |Experiment/.test(L.echo) && /- Deload/.test(L.echo) && !/Calorie target|- Week of/.test(L.delta) && L.charlie === '');
+    ok('events: ZULU sees all of them', ['Deload', 'dipped', 'Recovery slump', 'PR ', 'Experiment', 'Calorie target', 'Week of'].every(x => has(L.zulu, x)));
+    ok('events: ten weeks only; the -120 deload is not in the prompt', !has(L.zulu, 'Deload ' + sd(dk(-120))));
+    ok('events: the section reaches the nightly prompt and the chat', /WHAT HAPPENED, LAST 10 WEEKS/.test(ev("agBaseContext('echo')")) && /WHAT HAPPENED/.test(ev("chatContext('delta')")) && !/WHAT HAPPENED/.test(ev("agBaseContext('charlie')")));
+    // The lookups: further back, filtered, and history only.
+    const ge = ev("agRunDataTool('get_events', {weeks: 26})");
+    ok('get_events: looks further back than the prompt', has(ge, 'Deload ' + sd(dk(-120))) && has(ge, 'Deload ' + sd(dk(-48))));
+    const gp = ev("agRunDataTool('get_events', {weeks: 52, kinds: ['pr', 'bogus']})");
+    ok('get_events: a kinds filter keeps only those', /^Events, last 52 weeks/.test(gp) && has(gp, '- PR ') && !/Deload|dipped|Calorie/.test(gp), gp.slice(0, 300));
+    const gr = ev("agRunDataTool('get_recovery', {days: 400})");
+    ok('get_recovery: capped at 180 days, with his usual, and never today’s row',
+       /^WHOOP history, last 180 days, newest first \(history, not today\); his 30-day usual: recovery 65%/.test(gr) && !has(gr, '  ' + dk(0) + ':') && has(gr, '  ' + dk(-1) + ': recovery') && has(gr, dk(-24) + ': recovery 38%'),
+       gr.slice(0, 260));
+    ok('events: nothing here writes (S is byte-identical after the digest and both lookups)', ev('JSON.stringify(S)') === before);
+    ev('S.logs = []; S.weights = []; S.nutrition = []; S.targetHist = []; S.whoop = {history:[]}; S.prHistory = []; S.experiments = {active:null, history:[], declined:{}, lastEnded:""};');
+    ok('events: with nothing to review, no section at all', ev("agEventsLine('zulu')") === '' && !/WHAT HAPPENED/.test(ev("agBaseContext('zulu')")));
+  } catch (e) {
+    ok('event review section', false, e.stack);
+  } finally {
+    ev('if(window.__evS){ S = JSON.parse(window.__evS); delete window.__evS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== THE ROUNDTABLE: VOICES, REPLIES, ZULU CLOSING THE NIGHT (2026-10-16) ===');
+  // His pick: the agents discuss at no new cost. A specialist reads last night's roundtable and may answer one agent
+  // in an optional "peer" key; ZULU closes with a line to each specialist that reported. Commentary only.
+  try {
+    w.__rtS = ev('JSON.stringify(S)');
+    ev("S.settings.apiKey = 'sk-test'; agState().roundtable = null; agState().log = []; agState().lastRun = ''; agState().proposals = [];");
+    // Records each prompt, answers per agent, and on ZULU's call swaps S the way a sync pull landing mid-reply does.
+    ev("window.__rtReal = callClaudeWithData; window.__rtSys = {}; window.__rtAns = {};" +
+       "callClaudeWithData = async function(msgs, sys){ var who = /You are CHARLIE/.test(sys) ? 'charlie' : /You are DELTA/.test(sys) ? 'delta' : /You are ECHO/.test(sys) ? 'echo' : 'zulu';" +
+       " if(/weekly coach letter/.test(sys)) return {text:'A letter.', toolsUsed:0};" +
+       " window.__rtSys[who] = String(sys); if(who === 'zulu') S = JSON.parse(JSON.stringify(S));" +
+       " return {text: JSON.stringify(window.__rtAns[who]), toolsUsed:0}; };");
+    const night = (ans) => { ev('window.__rtAns = ' + JSON.stringify(ans) + '; window.__rtSys = {};'); return ev('agRunAll(false)'); };
+    await night({
+      charlie: {summary: 'Schedule clean: D3 tomorrow.', proposals: []},
+      delta: {summary: 'Squat moved: 245x6.', proposals: [], peer: {to: 'ECHO', text: 'nothing offered yet'}},
+      echo: {summary: 'Scale up 0.4 lb/wk.', proposals: []},
+      zulu: {summary: 'Good week.', proposals: [], replies: {charlie: 'Noted.', delta: 'Own 250 for two sets.', echo: 'Keep the pace.', bogus: 'x'}}
+    });
+    const s1 = ev('window.__rtSys');
+    ok('roundtable: a first night has no section to answer and no "peer" key in the spec',
+       ['charlie', 'delta', 'echo'].every(k => !/LAST NIGHT’S ROUNDTABLE/.test(s1[k] || '') && !/"peer"/.test(s1[k] || '')), Object.keys(s1).join(','));
+    ok('roundtable: ZULU is asked to close the night with a line to each specialist that reported',
+       /"replies":\{"charlie":"\.\.\.","delta":"\.\.\.","echo":"\.\.\."\}/.test(s1.zulu || ''), (s1.zulu || '').slice(0, 200));
+    const rt1 = ev('JSON.stringify(agState().roundtable)'), r1 = JSON.parse(rt1 || 'null');
+    ok('roundtable: stored in the S that exists after ZULU’s reply (S was swapped mid-reply), with every report and ZULU’s replies',
+       !!r1 && r1.d === ev('todayKey()') && r1.said.charlie === 'Schedule clean: D3 tomorrow.' && r1.said.zulu === 'Good week.' &&
+       JSON.stringify(r1.lines) === JSON.stringify([{from: 'zulu', to: 'charlie', text: 'Noted.'}, {from: 'zulu', to: 'delta', text: 'Own 250 for two sets.'}, {from: 'zulu', to: 'echo', text: 'Keep the pace.'}]), rt1);
+    ok('roundtable: a reply to nobody it was shown is not kept (first night)', !ev("agState().log.some(function(e){ return e.agent === 'delta' && e.to; })"));
+    const lg1 = ev('JSON.stringify(agState().log)'), L1 = JSON.parse(lg1);
+    ok('roundtable: every line of the cycle carries its run and its order', L1.length >= 7 && L1.every(e => e.run && e.run === L1[0].run && e.n > 0) &&
+       L1.find(e => e.to === 'delta').n > L1.find(e => e.text === 'Good week.').n, lg1.slice(0, 400));
+
+    // The next night: the section is there, replies go out, and bad ones are dropped.
+    ev("agState().roundtable.d = mesoAddDays(todayKey(), -1); agState().roundtable.at = new Date(Date.now() - 86400000).toISOString(); agState().lastRun = '';");
+    await night({
+      charlie: {summary: 'Still clean.', proposals: [], peer: {to: 'DELTA', text: 42}},
+      delta: {summary: 'Squat held.', proposals: [], peer: {to: 'echo', text: 'Agreed <b>on</b> the pace: the squat moved in your best-fed week.'}},
+      echo: {summary: 'Pace holding.', proposals: [], peer: {to: 'ECHO', text: 'talking to myself'}},
+      zulu: {summary: 'Steady.', proposals: [], replies: {delta: 'Good catch.'}}
+    });
+    const s2 = ev('window.__rtSys');
+    ok('roundtable: DELTA reads what the others said last night, and ZULU’s line to it',
+       /LAST NIGHT’S ROUNDTABLE[^\n]*\n- ZULU: Good week\.\n- CHARLIE: Schedule clean: D3 tomorrow\.\n- ECHO: Scale up 0\.4 lb\/wk\.\n- ZULU, to you: Own 250 for two sets\./.test(s2.delta || ''),
+       ((s2.delta || '').match(/LAST NIGHT’S ROUNDTABLE[\s\S]{0,300}/) || [''])[0]);
+    ok('roundtable: and may answer one of them, never itself', /"peer":\{"to":"ZULU\|CHARLIE\|ECHO","text":"<=200 chars"\}/.test(s2.delta || ''));
+    const spec = ev("agJsonSpec('delta')");
+    ok('roundtable: the plateau diagnosis stays last in DELTA’s spec', ev("(function(){ var r = pdSpecLine; pdSpecLine = function(){ return 'X'; }; var t = agJsonSpec('delta'); pdSpecLine = r; return t.slice(-1); })()") === 'X' && /"peer"/.test(spec));
+    ok('roundtable: tonight’s replies reach ZULU', /Squat held\.\n  DELTA, to ECHO: Agreed <b>on<\/b> the pace/.test(s2.zulu || ''));
+    const L2 = JSON.parse(ev('JSON.stringify(agState().log)'));
+    ok('roundtable: a reply is logged under its author, to its recipient', L2.some(e => e.agent === 'delta' && e.to === 'echo' && /^Agreed <b>on<\/b> the pace/.test(e.text)));
+    ok('roundtable: a reply to itself, or that is not text, is dropped', !L2.some(e => e.agent === 'echo' && e.to) && !L2.some(e => e.agent === 'charlie' && e.to));
+    // The feed: the night as one block, the reply drawn author -> recipient, its text escaped.
+    ev("setMode('review'); showMainTab('ops');");
+    const feed = ev("(function(){ var b = document.querySelector('#ops .hub-run'); if(!b) return null; var r = b.querySelector('.hub-act.reply'); return {h:b.querySelector('.hub-run-h').textContent, to:r ? r.querySelector('.hub-act-to').textContent : '', x:r ? r.querySelector('.hub-act-x').innerHTML : '', g:r ? r.querySelector('.cc-glyph').textContent : '', rows:b.querySelectorAll('.hub-act').length}; })()");
+    ok('roundtable: the Hub shows the night as one block, the reply as D → E with its text escaped',
+       !!feed && /^Nightly cycle · today, /.test(feed.h) && feed.g === 'D' && feed.to === '→ E' && /^Agreed &lt;b&gt;on&lt;\/b&gt; the pace/.test(feed.x) && feed.rows >= 5, JSON.stringify(feed));
+    // The chats read the roundtable too.
+    ok('roundtable: DELTA’s chat knows what ZULU told it', /- ZULU, to you: Good catch\./.test(ev("chatContext('delta')")));
+    // Voices: each prompt carries its own, and no prompt names another agent as "You are".
+    const s2all = ev('window.__rtSys');
+    ok('voices: each nightly prompt carries its own voice and no other agent’s "You are"',
+       ['charlie', 'delta', 'echo', 'zulu'].every(k => (s2all[k] || '').indexOf(ev('AG_VOICE.' + k)) >= 0 &&
+         ((s2all[k] || '').match(/You are (CHARLIE|DELTA|ECHO|ZULU)/g) || []).every(m => m === 'You are ' + k.toUpperCase())));
+    // A pull carrying an older roundtable does not replace tonight's.
+    ev("window.__rtSnap = JSON.parse(JSON.stringify(S)); window.__rtSnap.agents.roundtable = {d: mesoAddDays(todayKey(), -3), at: new Date(Date.now() - 3*86400000).toISOString(), said:{delta:'old'}, lines:[]};");
+    ev("applyPulled(window.__rtSnap, Date.now())");
+    ok('roundtable: a pull with an older roundtable keeps the newer one', ev('agState().roundtable.said.delta') === 'Squat held.');
+  } catch (e) {
+    ok('roundtable section', false, e.stack);
+  } finally {
+    ev("if(window.__rtReal){ callClaudeWithData = window.__rtReal; delete window.__rtReal; delete window.__rtSys; delete window.__rtAns; delete window.__rtSnap; }");
+    ev('if(window.__rtS){ S = JSON.parse(window.__rtS); delete window.__rtS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== VOLUME LAST, AND ZULU’S CROSS-REVIEW (2026-10-18) ===');
+  // DELTA queued a 4th set on Cable Row: stalled, a third of its tagged sets grind or fail. The stall line listed
+  // "more sets" first. Now more sets on a stalled, grinding lift is refused everywhere agConflict() runs, and ZULU
+  // may hold a specialist's new request it judges wrong, which he can still Show anyway.
+  try {
+    w.__vlS = ev('JSON.stringify(S)');
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const sess = (id, o, nm, w0, reps, tags) => ({id: id, date: dk(o), day: 'D2', entries: [{exercise: nm, sets: reps.map((r, i) => ({w: w0, r: r, e: tags[i]}))}]});
+    const L = [];
+    // Stalled and grinding: 120 x 10,9,8 four times, one grind in three sets (33%).
+    [-24, -16, -8, -1].forEach((o, i) => L.push(sess(897100 + i, o, 'Zz VL Row', 120, [10, 9, 8], i % 2 ? ['solid', 'grind', 'solid'] : ['grind', 'solid', 'solid'])));
+    // Stalled, but the sets read easy to solid.
+    [-24, -16, -8, -1].forEach((o, i) => L.push(sess(897200 + i, o, 'Zz VL Row Easy', 120, [10, 9, 8], ['solid', 'easy', 'solid'])));
+    // Grinding, but climbing: not a stall.
+    [-24, -16, -8, -1].forEach((o, i) => L.push(sess(897300 + i, o, 'Zz VL Climb', 100 + 5 * i, [10, 9, 8], ['grind', 'grind', 'solid'])));
+    ev('S.logs = ' + JSON.stringify(L) + "; S.split.D2 = S.split.D2 || {name:'Pull', exercises:[]};" +
+       "S.split.D2.exercises = (S.split.D2.exercises||[]).concat(['Zz VL Row', 'Zz VL Row Easy', 'Zz VL Climb']); S.overrides = {}; S.agents.proposals = [];");
+    const sc = (nm, n) => ev("agConflict({type:'setCount', payload:{exercise:" + JSON.stringify(nm) + ", day:'D2', sets:" + n + "}})");
+    ok('volume last: the hard share is read off his tags', ev("JSON.stringify(liftHardShare('Zz VL Row'))") === JSON.stringify({tagged: 12, hard: 4, pct: 33}));
+    ok('volume last: a 4th set on a stalled lift whose sets grind is refused, with the reason', /^volume last: Zz VL Row has stalled with 33% of its recent sets at grind or fail/.test(sc('Zz VL Row', 4)), sc('Zz VL Row', 4));
+    ok('volume last: taking a set off is still allowed', sc('Zz VL Row', 2) === '');
+    ok('volume last: a stalled lift whose sets read easy may still get one', sc('Zz VL Row Easy', 4) === '', sc('Zz VL Row Easy', 4));
+    ok('volume last: a lift that is climbing is untouched, grinding or not', sc('Zz VL Climb', 4) === '', sc('Zz VL Climb', 4));
+    ok('volume last: the queue refuses it and names the rule',
+       ev("agValidateFix({type:'setCount', payload:{exercise:'Zz VL Row', day:'D2', sets:4}}, 'delta')") === null &&
+       /^volume last/.test(ev("agRejectReason({type:'setCount', payload:{exercise:'Zz VL Row', day:'D2', sets:4}}, 'delta')")));
+    const cv = ev("JSON.stringify(coachValidateAction('set_sets', {exercise:'Zz VL Row', day:'D2', sets:4}, 'delta'))");
+    ok('volume last: a chat card for it is refused too', /"ok":false/.test(cv) && /volume last/.test(cv), cv);
+
+    // --- cross-review ---
+    ev("S.settings.apiKey = 'sk-test'; agState().roundtable = null; agState().log = []; agState().lastRun = '';" +
+       "agState().proposals = [{id:'agold1', agent:'delta', title:'Old one', reasoning:'', fix:{type:'setCount', payload:{exercise:'Zz VL Row Easy', day:'D2', sets:2}}, created:" + JSON.stringify(dk(-2)) + ", expires:" + JSON.stringify(dk(5)) + ", status:'pending'}];");
+    ev("window.__vlReal = callClaudeWithData; window.__vlSys = {};" +
+       "callClaudeWithData = async function(msgs, sys){ var who = /You are CHARLIE/.test(sys) ? 'charlie' : /You are DELTA/.test(sys) ? 'delta' : /You are ECHO/.test(sys) ? 'echo' : 'zulu';" +
+       " if(/weekly coach letter/.test(sys)) return {text:'A letter.', toolsUsed:0};" +
+       " window.__vlSys[who] = String(sys); var ans = {summary: who + ' report.', proposals: []};" +
+       " if(who === 'delta') ans.proposals = [{title:'Add a set to Zz VL Climb', reasoning:'Back is low on volume.', fix:{type:'setCount', payload:{exercise:'Zz VL Climb', day:'D2', sets:4}}}];" +
+       " if(who === 'zulu'){ S = JSON.parse(JSON.stringify(S)); var m = String(sys).match(/id (ag[a-z0-9]+) — DELTA/);" +
+       "   ans.hold = [{id: m ? m[1] : 'none', why: 'Its sets already grind; fix effort before adding volume.'}, {id:'agold1', why:'not tonight'}, {id:'agnope', why:'x'}]; }" +
+       " return {text: JSON.stringify(ans), toolsUsed:0}; };");
+    await ev('agRunAll(false)');
+    const zsys = ev('window.__vlSys.zulu') || '';
+    ok('cross-review: ZULU is shown tonight’s new request, with its reasoning, and may hold it',
+       /TONIGHT’S NEW REQUESTS FROM THE SPECIALISTS[\s\S]*DELTA: Add a set to Zz VL Climb \[[^\]]*\] because: Back is low on volume\./.test(zsys) && /"hold"/.test(zsys) && !/id agold1/.test(zsys));
+    const P = JSON.parse(ev('JSON.stringify(agState().proposals)'));
+    const held = P.filter(p => p.status === 'held');
+    ok('cross-review: the hold lands in the S that exists after ZULU’s reply (S was swapped mid-reply)',
+       held.length === 1 && held[0].title === 'Add a set to Zz VL Climb' && held[0].heldWhy === 'Its sets already grind; fix effort before adding volume.', JSON.stringify(P.map(p => [p.id, p.status])));
+    ok('cross-review: an older request, or an id that was never shown, cannot be held', P.find(p => p.id === 'agold1').status === 'pending');
+    ok('cross-review: a held request is not in his queue', !ev('agPending()').some(p => p.status === 'held') && ev('agPending()').length === 1);
+    ok('cross-review: the feed says so, under ZULU', ev("agState().log.some(function(e){ return e.agent === 'zulu' && e.hold === " + JSON.stringify(held[0] && held[0].id) + " && /^Held DELTA’s “Add a set to Zz VL Climb”: Its sets already grind/.test(e.text); })"));
+    ev("setMode('review'); showMainTab('ops');");
+    const ui = ev("(function(){ var b = document.querySelectorAll('#ops [data-prop]'); return {n:b.length, rows:document.querySelectorAll('#ops .ag-held-row').length, txt:(document.querySelector('#ops .ag-held') || {}).textContent || ''}; })()");
+    ok('cross-review: Show anyway is offered in the feed and under Pending', ui.n === 2 && ui.rows === 1 && /Held by ZULU \(1\)/.test(ui.txt) && /ZULU: Its sets already grind/.test(ui.txt), JSON.stringify(ui));
+    // The next night DELTA raises the identical request again: no second copy beside the held one.
+    ev("agState().lastRun = '';");
+    await ev('agRunAll(false)');
+    const P2 = JSON.parse(ev('JSON.stringify(agState().proposals)'));
+    ok('cross-review: a re-raise does not stack a copy beside the held one', P2.filter(p => p.title === 'Add a set to Zz VL Climb').length === 1, JSON.stringify(P2.map(p => [p.title, p.status])));
+    ok('cross-review: with no new requests, ZULU’s prompt has no hold section', !/TONIGHT’S NEW REQUESTS/.test(ev('window.__vlSys.zulu') || ''));
+    // His tap brings it back, through every check again.
+    ev("document.querySelector('#ops .ag-held-row [data-prop]').click();");
+    ok('cross-review: Show anyway puts it in his queue', ev('agPending()').some(p => p.title === 'Add a set to Zz VL Climb') && ev('agHeld()').length === 0);
+  } catch (e) {
+    ok('volume last / cross-review section', false, e.stack);
+  } finally {
+    ev("if(window.__vlReal){ callClaudeWithData = window.__vlReal; delete window.__vlReal; delete window.__vlSys; }");
+    ev('if(window.__vlS){ S = JSON.parse(window.__vlS); delete window.__vlS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
