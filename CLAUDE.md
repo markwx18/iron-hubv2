@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3706 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3723 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -991,23 +991,33 @@ from what he has stocked and likes. Cal AI has no sync path, so it never reads l
 - **Snack options** (`fpSnackCombos()`, `res.snacks`): up to three, one or two `fpSnacky()` foods, one serving each,
   sized to `FP_SNACK_CAL` / `FP_SNACK_PRO` with a 50 cal / 10 g ceiling. ECHO's `fpCombosText()` lists them. The tab
   no longer shows `fpCombos()` itself; it shows the day plan below, built on the same `fpBuild()`.
-- **The tab plans the rest of today** (his ask, 2026-10-17: "a few food options stacked on top of each other, and
-  it only shows the same ones"). `fpDayPlan(gapCal, gapPro, opts, nowMin, workout)` is pure; the clock and the
-  workout are parameters, so the suite never reads the time of day.
-  - **Slots** (`fpDaySlots()`): breakfast 8:00, lunch 12:30, a 3:30 snack, dinner 6:30, an evening snack 9:00, from
-    `nowMin` less `FP_SLOT_GRACE` (30 min). On a training day with a workout time and nothing logged yet
-    (`fpWorkoutToday()`): a pre-workout meal 2 h 45 m before, a top-up an hour before and a post-workout meal after,
-    and the usual slots go when within 2 h of those or inside the workout. Late with food left: one "Before bed".
-  - **Shares:** the gap is split by `FP_SLOT_W` (meal 1, snack 0.4), capped by `FP_SLOT_MAX`. A snack worth under
-    ~120 cal is dropped until the rest are real snacks. With no snack food in the pantry there are no snack slots at
-    all (a lone late one is planned as a meal), or they would say "nothing fits" and keep a share the meals miss.
-  - **Options:** six candidates a slot, then three. Meals leave out sweets and keep options with a main (meat, eggs,
-    a made meal) when there are any, breakfast excepted; anything under 55% of the slot goes when better ones exist.
-    Shown heaviest first (his ask: "still resemble the high to low cal options").
-  - **The pick** ("Fits your day", `fit`) is the option nearest the slot, plus 150 for each food an earlier pick
-    used (so lunch and dinner are not one plate) and, before training, a fat cost. `planCal` / `planP` sum the picks.
-    Pre-workout slots also build with `lim.lowFat`, and post-workout with protein weighted 1.5 (`lim.pw`).
-  - `fpShown` is every option, slot by slot, so "I'll eat this" names one by index.
+- **The tab plans the whole day, one editable plate a slot** (his asks, 2026-10-17 and 10-18: "a few food options
+  stacked on top of each other, and it only shows the same ones"; then "I don't see breakfast or pre-lunch snack,
+  these are very high servings, a default serving and a drop-down to switch"). `fpDayPlan(gapCal, gapPro, opts,
+  nowMin, workout, ateSome)` is pure; the clock, the workout and whether he has logged food are parameters.
+  - **Slots** (`fpDaySlots()`): breakfast 8:00, a morning snack 10:30, lunch 12:30, a 3:30 snack, dinner 6:30, an
+    evening snack 9:00, ALWAYS all of them, each marked `past` once `FP_SLOT_GRACE` (30 min) after it. On a training day
+    with a workout time and nothing logged yet (`fpWorkoutToday()`): a pre-workout meal 2 h 45 m before, a top-up an
+    hour before and a post-workout meal after; the usual slots go when within 2 h of those or inside the workout.
+  - **What counts:** with nothing typed into Already eaten, the gap is the day's target and every slot shares it
+    (earlier ones fold on screen but still have plates). Once he types food (`ateSome`), past slots are `eaten`
+    (no plate, no share) and the rest share what is left; with every slot past, one "Before bed".
+  - **Shares:** `FP_SLOT_W` (meal 1, snack 0.6, his "more snacks"), capped by `FP_SLOT_MAX` (meal 950, snack 550). A
+    snack worth under ~120 cal is dropped; no snack food in the pantry means no snack slots.
+  - **One serving of each food** (`lim.one`; snacks up to 3 foods). Breakfast draws only on `fpBreakfasty()` foods
+    (the first plan put tacos at 8 AM). Meals skip sweets and keep a main when one exists, breakfast excepted.
+  - **The plate** is the candidate nearest the slot, where protein under the slot costs 8 a gram and over it 2 (a
+    bulk), plus 150 for each food an earlier plate uses, and before training 30 a gram of fat over 20 (snacks: 4 over 6).
+    Candidates lose the earlier candidate's anchor but only rank its sides lower: barred from every side, the lean
+    mains were left with grapes and lost to nuggets. The protein ceiling in `fpBuild()` applies only to foods with 10 g+
+    (rice beside chicken is a side). Pre-workout builds `lim.lowFat`, post-workout weights protein 1.5.
+  - **His changes** live in `localStorage['ironhub:fpday']` (`FP_DAY_KEY`, `{date, slots:{key:[{id,q}]}}`), today
+    only and per device, never `S`. Each food is a drop-down of pantry foods in the same `fpRole()` (a main for a
+    main), with a portion drop-down (`FP_QTYS`: ½, 1, 1½, 2), ✕ to take it off, + Add a food, and Back to the plan.
+    Handlers read `data-slot`/`data-i`, never strings in an onclick. `fpDayShown` is what was drawn, so an edit
+    changes what he saw; `fpDayOpen` (module-scoped) keeps an opened earlier slot open across the 30 s repaint.
+  - `fpServingFor()` takes halves: "3 oz cooked", "1/2 sandwich", and "½ × 1/4 chicken" where the half cannot be
+    written as an amount. `fpShown` is each slot's plate, so "I'll eat this" names one by index.
 - **A plate row shows the amount its numbers are for** (`fpServingFor()`): "12 oz cooked", not
   "2× … 6 oz cooked" beside a two-serving total, which read as 106 g protein in 6 oz of chicken.
   A compound or bracketed serving becomes "2 × 1 can (5 oz)" rather than being rewritten. ECHO's

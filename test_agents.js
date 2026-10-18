@@ -9597,62 +9597,106 @@ setTimeout(async () => {
        JSON.stringify(his.snacks.map(c => [c.items.map(i => i.id), c.cal])));
     ok('snacks: ECHO hears them', /Snack options/.test(ev("fpCombosText(fpCombos(2300, 92, {}), {})")));
 
-    // --- the rest of today, slot by slot (his ask, 2026-10-17). Clock and workout are passed in, never read. ---
+    // --- the whole day, slot by slot (his asks, 2026-10-17 and 10-18). The clock, the workout and whether he has
+    // logged food are passed in, never read. ---
     ev("S.fuel.foods = {rotchk:{s:1}, chkbr:{s:1}, chknug:{s:1}, wheymlk:{s:1}, chips:{s:1}, pbcup:{s:1}, gkyog:{s:1}, grapes:{s:1}, pretzel:{s:1}," +
        " bagel:{s:1}, rice:{s:1}, eggsand:{s:1}, banana:{s:1}, pasta:{s:1}, tacos:{s:1}};");
-    const keys = (now, wo) => ev('fpDaySlots(' + now + ', ' + JSON.stringify(wo) + ').map(function(s){ return s.key; }).join()');
-    ok('day: at noon on a rest day it is lunch, a snack, dinner and an evening snack', keys(720, null) === 'lunch,pm,dinner,late', keys(720, null));
-    ok('day: a slot that started under half an hour ago is still now, one older is gone', keys(779, null).indexOf('lunch') === 0 && keys(781, null).indexOf('lunch') < 0);
+    const slotsAt = (now, wo) => JSON.parse(ev('JSON.stringify(fpDaySlots(' + now + ', ' + JSON.stringify(wo) + '))'));
+    const keys = (now, wo) => slotsAt(now, wo).map(x => x.key).join();
+    ok('day: the whole day, always: breakfast, a morning snack, lunch, an afternoon snack, dinner, an evening snack', keys(720, null) === 'breakfast,am,lunch,pm,dinner,late', keys(720, null));
+    ok('day: at noon breakfast and the morning snack are marked earlier, lunch is not', slotsAt(720, null).map(x => x.past ? 1 : 0).join('') === '110000');
+    ok('day: a slot that started under half an hour ago is still now, one older is earlier', slotsAt(779, null)[2].past === false && slotsAt(781, null)[2].past === true);
     const WO = {start:1185, len:75};   // his 7:45 PM workout
     ok('day: a 7:45 PM workout brings a 5 PM meal, a 6:45 top-up and a 9:30 post-workout meal, and pushes out what crowds them',
-       keys(720, WO) === 'lunch,pre,top,post', keys(720, WO));
-    ok('day: late at night with food left, one slot for now', keys(1400, null) === 'now');
-    const day = JSON.parse(ev('JSON.stringify(fpDayPlan(2300, 92, {}, 720, null))'));
+       keys(720, WO) === 'breakfast,am,lunch,pre,top,post', keys(720, WO));
+    // Nothing logged yet: the whole day shares the whole target.
+    const day = JSON.parse(ev('JSON.stringify(fpDayPlan(3900, 150, {}, 720, null, false))'));
     const sl = (k) => day.slots.find(x => x.key === k);
-    ok('day: what is left is shared out, a snack about four tenths of a meal', sl('lunch').cal === sl('dinner').cal && Math.abs(sl('pm').cal - 0.4*sl('lunch').cal) <= 2 &&
-       Math.abs(day.slots.reduce((a, x) => a + x.cal, 0) - 2300) <= 4, JSON.stringify(day.slots.map(x => [x.key, x.cal, x.p])));
-    ok('day: each slot shows its options heaviest first, with exactly one picked', day.slots.every(x => x.options.length >= 1 &&
-       x.options.every((c, i) => !i || x.options[i-1].cal >= c.cal) && x.options.filter(c => c.fit).length === 1));
-    ok('day: the picks add up to about what is left', Math.abs(day.planCal - 2300) <= 0.15*2300, day.planCal);
-    const fits = (k) => sl(k).options.find(c => c.fit).items.map(i => i.id);
-    ok('day: lunch and dinner are not the same plate', fits('lunch').every(id => fits('dinner').indexOf(id) < 0), JSON.stringify([fits('lunch'), fits('dinner')]));
+    ok('day: with nothing logged every slot gets a plate, earlier ones included', day.slots.length === 6 && day.slots.every(x => x.plate && x.plate.items.length && !x.eaten));
+    ok('day: the target is shared out, a snack six tenths of a meal', sl('lunch').cal === sl('dinner').cal && Math.abs(sl('pm').cal - 0.6*sl('lunch').cal) <= 2 &&
+       Math.abs(day.slots.reduce((a, x) => a + x.cal, 0) - 3900) <= 6, JSON.stringify(day.slots.map(x => [x.key, x.cal, x.p])));
+    ok('day: a normal serving of each food, never two', day.slots.every(x => x.plate.items.every(i => i.qty === 1)));
+    ok('day: the plates add up to about the day', Math.abs(day.planCal - 3900) <= 0.15*3900, day.planCal);
+    const ids = (k) => sl(k).plate.items.map(i => i.id);
+    ok('day: lunch and dinner are not the same plate', ids('lunch').every(id => ids('dinner').indexOf(id) < 0), JSON.stringify([ids('lunch'), ids('dinner')]));
     const catOf = (id) => ev('fpFood(' + JSON.stringify(id) + ').cat');
-    ok('day: a meal is never dessert, and has a main', ['lunch', 'dinner'].every(k => sl(k).options.every(c => c.items.every(i => catOf(i.id) !== 'sweet') &&
-       c.items.some(i => ['meat', 'meal', 'eggs'].indexOf(catOf(i.id)) >= 0))));
-    ok('day: snacks stay snack-sized', ['pm', 'late'].every(k => sl(k).options.every(c => c.items.length <= 2 && c.cal <= 400 + 50)));
-    const wday = JSON.parse(ev('JSON.stringify(fpDayPlan(2300, 92, {}, 720, ' + JSON.stringify(WO) + '))'));
-    const pre = wday.slots.find(x => x.key === 'pre'), preFit = pre.options.find(c => c.fit);
-    ok('day: before training the pick is the leanest that fits, never fried nuggets', preFit.items.every(i => i.id !== 'chknug') &&
-       preFit.f <= Math.max.apply(null, pre.options.map(c => c.f)), JSON.stringify(pre.options.map(c => [c.items.map(i => i.id), c.f, !!c.fit])));
-    const small = JSON.parse(ev('JSON.stringify(fpDayPlan(400, 25, {}, 720, null))'));
-    ok('day: with little left, snacks too small to matter are dropped', small.slots.every(x => x.kind === 'meal'), JSON.stringify(small.slots.map(x => [x.key, x.cal])));
-    ok('day: nothing left is nothing to plan', ev('fpDayPlan(100, 5, {}, 720, null).done') === true);
-    // A small pantry, where a thin option exists: chicken breast alone (280 cal) is not an answer to an 820-cal lunch.
+    ok('day: a meal is never dessert, and has a main', ['lunch', 'dinner'].every(k => ids(k).every(id => catOf(id) !== 'sweet') &&
+       ids(k).some(id => ['meat', 'meal', 'eggs'].indexOf(catOf(id)) >= 0)), JSON.stringify([ids('lunch'), ids('dinner')]));
+    ok('day: breakfast is breakfast food, never tacos', ids('breakfast').every(id => ev('fpBreakfasty(fpFood(' + JSON.stringify(id) + '))')) && ids('breakfast').indexOf('tacos') < 0, JSON.stringify(ids('breakfast')));
+    ok('day: snacks stay snack-sized', ['am', 'pm', 'late'].every(k => sl(k).plate.items.length <= 3 && sl(k).plate.cal <= 550 + 50));
+    // He has logged what he ate: the slots that are over count as eaten, and the rest share what is left.
+    const later = JSON.parse(ev('JSON.stringify(fpDayPlan(2300, 92, {}, 900, null, true))'));
+    ok('day: once he has logged food, the earlier slots count as eaten and the rest share what is left',
+       later.slots.filter(x => x.eaten).map(x => x.key).join() === 'breakfast,am,lunch' && later.slots.filter(x => !x.eaten).every(x => x.plate && x.cal > 0) &&
+       later.slots.filter(x => x.eaten).every(x => !x.plate && x.cal === 0), JSON.stringify(later.slots.map(x => [x.key, !!x.eaten, x.cal])));
+    ok('day: late at night with food left and logged, one slot for now', ev("fpDayPlan(600, 30, {}, 1400, null, true).slots.filter(function(s){ return !s.eaten; }).map(function(s){ return s.key; }).join()") === 'now');
+    ok('day: late at night with nothing logged, the day is still all there', ev("fpDayPlan(3900, 150, {}, 1400, null, false).slots.filter(function(s){ return s.plate; }).length") === 6);
+    const wday = JSON.parse(ev('JSON.stringify(fpDayPlan(3900, 150, {}, 720, ' + JSON.stringify(WO) + ', false))'));
+    const pre = wday.slots.find(x => x.key === 'pre');
+    ok('day: before training the plate is not fried nuggets', pre.plate && pre.plate.items.every(i => i.id !== 'chknug'), JSON.stringify(pre.plate && pre.plate.items.map(i => i.id)));
+    const small = JSON.parse(ev('JSON.stringify(fpDayPlan(400, 25, {}, 720, null, false))'));
+    ok('day: with little to eat, snacks too small to matter are dropped', small.slots.every(x => x.kind === 'meal'), JSON.stringify(small.slots.map(x => [x.key, x.cal])));
+    ok('day: nothing left is nothing to plan', ev('fpDayPlan(100, 5, {}, 720, null, true).done') === true);
+    // A small pantry, where a thin plate exists: chicken breast alone (280 cal) is not an answer to an 820-cal lunch.
     ev("window.__fpDayKeep = S.fuel.foods; S.fuel.foods = {chkbr:{s:1}, rotchk:{s:1}, rice:{s:1}, bagel:{s:1}, gkyog:{s:1}};");
-    const thin = JSON.parse(ev('JSON.stringify(fpDayPlan(2300, 92, {}, 720, null))'));
-    ok('day: an option well under its slot is not offered when a fuller one is', thin.slots.filter(x => x.kind === 'meal').every(x => x.options.length &&
-       x.options.every(c => c.cal >= 0.55*x.cal)), JSON.stringify(thin.slots.map(x => [x.key, x.cal, x.options.map(c => c.cal)])));
-    // No snack foods at all: no snack slots saying "nothing fits", and the meals carry the whole gap.
+    const thin = JSON.parse(ev('JSON.stringify(fpDayPlan(2300, 92, {}, 900, null, true))'));
+    ok('day: a plate well under its slot is not chosen when a fuller one exists', thin.slots.filter(x => x.kind === 'meal' && !x.eaten).every(x => x.plate && x.plate.cal >= 0.55*x.cal),
+       JSON.stringify(thin.slots.map(x => [x.key, x.cal, x.plate && x.plate.cal])));
+    // No snack foods at all: no snack slots, and the meals carry the whole day.
     ev("S.fuel.foods = {chkbr:{s:1}, rotchk:{s:1}, chknug:{s:1}, rice:{s:1}};");
-    const nosnack = JSON.parse(ev('JSON.stringify(fpDayPlan(1700, 80, {}, 720, null))'));
-    ok('day: with nothing to snack on, the day is meals only, sharing all of it', nosnack.slots.map(x => x.key).join() === 'lunch,dinner' &&
-       nosnack.slots[0].cal === 850 && nosnack.slots.every(x => x.options.length), JSON.stringify(nosnack.slots.map(x => [x.key, x.cal, x.options.length])));
-    ok('day: late at night with no snack foods, the one slot is planned as a meal', ev("fpDayPlan(600, 30, {}, 1400, null).slots.map(function(s){ return s.kind + ':' + s.options.length; }).join()") === 'meal:' + ev("fpDayPlan(600, 30, {}, 1400, null).slots[0].options.length") &&
-       ev("fpDayPlan(600, 30, {}, 1400, null).slots[0].options.length") > 0);
+    const nosnack = JSON.parse(ev('JSON.stringify(fpDayPlan(1700, 80, {}, 720, null, false))'));
+    ok('day: with nothing to snack on, the day is meals only, sharing all of it', nosnack.slots.map(x => x.key).join() === 'breakfast,lunch,dinner' &&
+       nosnack.slots[0].cal === 567 && nosnack.slots.every(x => x.plate), JSON.stringify(nosnack.slots.map(x => [x.key, x.cal, !!x.plate])));
+    ok('day: late at night with no snack foods, the one slot left is planned as a meal', ev("(function(){ var r = fpDayPlan(600, 30, {}, 1400, null, true).slots.filter(function(s){ return !s.eaten; }); return r.length === 1 && r[0].kind === 'meal' && !!r[0].plate; })()") === true);
     // Before training a plate is built lean: two foods alike but for fat, the fatty one first in the list, so
-    // only lim.lowFat can pick the lean one (the pick's own fat cost is a separate rule).
+    // only lim.lowFat can pick the lean one (the plate's own fat cost is a separate rule).
     ev("window.__fpDayCust = S.fuel.custom; S.fuel.custom = [{id:'uzzF', n:'Zz Fatty plate', cat:'meal', sv:'1', cal:500, p:30, c:39, f:25, tags:['meal']}," +
        "{id:'uzzL', n:'Zz Lean plate', cat:'meal', sv:'1', cal:500, p:30, c:84, f:5, tags:['meal']}]; S.fuel.foods = {uzzF:{s:1}, uzzL:{s:1}};");
     const leanOf = (lim) => ev('fpBuild(fpPool({}), 500, 30, {}, ' + lim + ').items[0].id');
     ok('day: before training the plate is built lean (and without the rule the list order would pick the fatty one)', leanOf('{lowFat:true}') === 'uzzL' && leanOf('{}') === 'uzzF', [leanOf('{lowFat:true}'), leanOf('{}')].join());
     ev("S.fuel.custom = window.__fpDayCust; delete window.__fpDayCust;");
     ev("S.fuel.foods = window.__fpDayKeep; delete window.__fpDayKeep;");
-    // On screen, at a fixed clock: the slots, their times, the pick, and the workout named.
-    const scr = ev('fpCombOutHTML(720, ' + JSON.stringify(WO) + ')');
-    ok('day: Fuel shows each slot with its time, and the plan is named around the workout', /12:30 PM/.test(scr) && /Pre-workout meal/.test(scr) &&
-       /5:00 PM/.test(scr) && /Post-workout meal/.test(scr) && /built around your/.test(scr) && (scr.match(/Fits your day/g) || []).length === wday.slots.length);
-    const snackAt = ev("(function(){ fpCombOutHTML(720, null); for(var i = 0; i < fpShown.length; i++){ if(fpShown[i].snack) return i; } return -1; })()");
-    ok('day: I’ll eat this on a snack slot notes that snack', snackAt > 0 && (function(){ const sig = ev('fpShown[' + snackAt + '].sig'); ev('fpAccept(' + snackAt + ')'); return ev('fpPlanned.sig') === sig; })());
+    // Portions in halves.
+    const sv2h = (a, q) => ev('fpServingFor(' + JSON.stringify(a) + ', ' + q + ')');
+    ok('portion: a half or one and a half is written as an amount when it can be, else as "½ ×"', sv2h('6 oz cooked', 0.5) === '3 oz cooked' && sv2h('2 cups cooked', 1.5) === '3 cups cooked' &&
+       sv2h('1 sandwich', 0.5) === '1/2 sandwich' && sv2h('1/4 chicken', 0.5) === '½ × 1/4 chicken' && sv2h('1 scoop + 16 oz milk', 1.5) === '1½ × 1 scoop + 16 oz milk',
+       [sv2h('6 oz cooked', 0.5), sv2h('2 cups cooked', 1.5), sv2h('1 sandwich', 0.5), sv2h('1/4 chicken', 0.5), sv2h('1 scoop + 16 oz milk', 1.5)].join(' | '));
+    // On screen, at a fixed clock (noon, nothing logged, his workout): every slot, earlier ones folded.
+    ev("localStorage.removeItem(FP_DAY_KEY); fpDayOpen = {}; fpEaten = {date:todayKey(), cal:0, pro:0};");
+    ev("window.__fpDiv = document.body.appendChild(document.createElement('div'));");
+    const draw = () => ev("__fpDiv.innerHTML = fpCombOutHTML(720, " + JSON.stringify(WO) + "); __fpDiv.innerHTML");
+    let scr = draw();
+    ok('screen: every slot with its time, the workout named, earlier ones folded with no drop-downs', /8:00 AM/.test(scr) && /Breakfast/.test(scr) && /Morning snack/.test(scr) &&
+       /5:00 PM/.test(scr) && /Pre-workout meal/.test(scr) && /built around your/.test(scr) &&
+       ev("__fpDiv.querySelectorAll('.fp-slot.fp-past').length") === 2 && ev("__fpDiv.querySelectorAll('.fp-past .fp-sel').length") === 0);
+    ok('screen: a drop-down for every food on the plates ahead', ev("__fpDiv.querySelectorAll('.fp-sel').length") === ev("(function(){ var n = 0; Object.keys(fpDayShown).forEach(function(k){ if(k !== 'breakfast' && k !== 'am') n += fpDayShown[k].length; }); return n; })()"));
+    ev("fpDayFold(__fpDiv.querySelector('.fp-fold[data-slot=\"breakfast\"]'));"); scr = draw();
+    ok('screen: an earlier slot opens on a tap and stays open across the repaint', ev("__fpDiv.querySelectorAll('.fp-sel[data-slot=\"breakfast\"]').length") > 0);
+    const roles = ev("(function(){ var sel = __fpDiv.querySelector('.fp-sel[data-slot=\"lunch\"]'); var cur = fpFood(sel.value); return Array.prototype.every.call(sel.options, function(o){ return fpRole(fpFood(o.value)) === fpRole(cur); }); })()");
+    ok('screen: a food swaps only for one in the same role (a main for a main)', roles === true);
+    // His changes: swap, portion, remove, add, back to the plan. They stay for today on this device.
+    const lunch0 = ev("fpDayShown.lunch.map(function(x){ return x.id; }).join()");
+    const alt = ev("(function(){ var sel = __fpDiv.querySelector('.fp-sel[data-slot=\"lunch\"][data-i=\"0\"]'); return sel.options.length > 1 ? sel.options[1].value : ''; })()");
+    ev("(function(){ var sel = __fpDiv.querySelector('.fp-sel[data-slot=\"lunch\"][data-i=\"0\"]'); sel.value = " + JSON.stringify(alt) + "; fpDayPick(sel); })()");
+    draw();
+    ok('edit: a food swapped from the drop-down is on the plate, and the plate re-adds', alt && ev("fpDayShown.lunch[0].id") === alt && ev("JSON.parse(localStorage.getItem(FP_DAY_KEY)).slots.lunch[0].id") === alt);
+    ev("(function(){ var q = __fpDiv.querySelector('.fp-q[data-slot=\"lunch\"][data-i=\"0\"]'); q.value = '0.5'; fpDayQty(q); })()"); draw();
+    const halfCal = ev("Math.round(fpFood(" + JSON.stringify(alt) + ").cal*0.5)");
+    ok('edit: a half portion halves that food on the plate', ev("fpDayShown.lunch[0].q") === 0.5 && new RegExp('~' + halfCal + ' · ').test(ev("__fpDiv.querySelector('.fp-slot .fp-sel[data-slot=\"lunch\"]').closest('.fp-it').textContent")));
+    const n0 = ev("fpDayShown.lunch.length");
+    ev("fpDayRemove(__fpDiv.querySelector('.fp-skip[data-slot=\"lunch\"][data-i=\"0\"]'));"); draw();
+    ok('edit: ✕ takes a food off this plate only', ev("fpDayShown.lunch.length") === n0 - 1);
+    const addId = ev("__fpDiv.querySelector('.fp-add[data-slot=\"lunch\"]').options[1].value");
+    ev("(function(){ var a = __fpDiv.querySelector('.fp-add[data-slot=\"lunch\"]'); a.value = " + JSON.stringify(addId) + "; fpDayAdd(a); })()"); draw();
+    ok('edit: + Add a food puts it on the plate', ev("fpDayShown.lunch.some(function(x){ return x.id === " + JSON.stringify(addId) + "; })") === true);
+    ok('edit: a changed plate offers Back to the plan', /Back to the plan/.test(ev("__fpDiv.querySelector('.fp-sel[data-slot=\"lunch\"]').closest('.fp-slot').textContent")));
+    ev("fpDayReset(__fpDiv.querySelector('.fp-eat[data-slot=\"lunch\"]'));"); draw();
+    ok('edit: Back to the plan puts the planned plate back', ev("fpDayShown.lunch.map(function(x){ return x.id; }).join()") === lunch0);
+    ev("localStorage.setItem(FP_DAY_KEY, JSON.stringify({date:'2026-01-01', slots:{lunch:[{id:'bagel', q:2}]}}));"); draw();
+    ok('edit: changes from another day are ignored', ev("fpDayShown.lunch.map(function(x){ return x.id; }).join()") === lunch0);
+    const at = ev("(function(){ for(var i = 0; i < fpShown.length; i++){ if(fpShown[i].items.length) return i; } return -1; })()");
+    ok('edit: I’ll eat this on a plate notes that plate', at >= 0 && (function(){ const sig = ev('fpShown[' + at + '].sig'); ev('fpAccept(' + at + ')'); return ev('fpPlanned.sig') === sig; })());
+    ev("__fpDiv.remove(); delete window.__fpDiv; localStorage.removeItem(FP_DAY_KEY); fpDayOpen = {};");
     // Today's workout: a time set, a training day, nothing logged today.
     ev("window.__fpCDK = currentDayKey; S.fuel.workoutTime = '19:45'; S.fuel.sessionLen = 75;");
     ev("currentDayKey = function(){ return 'D2'; }"); const w1 = JSON.stringify(ev('fpWorkoutToday()'));
@@ -9688,9 +9732,12 @@ setTimeout(async () => {
     ok('learning: a tie goes to list order before any picks', first() === 'uzzA');
     ev("fpSetEaten('cal', calTarget()-500); fpSetEaten('pro', proTarget()-30);");
     // At 7 PM on a rest day the 500 left is one dinner; the clock is passed in so this is green at any hour.
-    ev("document.getElementById('fpCombOut').innerHTML = fpCombOutHTML(1140, null);");
-    ok('learning: the second plate on screen is B', ev('fpShown[1] && fpShown[1].items[0].id') === 'uzzB', ev('JSON.stringify(fpShown.map(function(c){ return c.sig; }))'));
-    ev('fpAccept(1)');
+    // At 7 PM, food logged, the 500 left is dinner: a plate of A (a tie goes to list order). He switches it to B.
+    ev("localStorage.removeItem(FP_DAY_KEY); document.getElementById('fpCombOut').innerHTML = fpCombOutHTML(1140, null);");
+    ok('learning: the plate on screen is A', ev('fpShown[0] && fpShown[0].items[0].id') === 'uzzA', ev('JSON.stringify(fpShown.map(function(c){ return c.sig; }))'));
+    ev("(function(){ var o = fpDayEdits(); o.slots.dinner = [{id:'uzzB', q:1}]; fpDayEditsSave(o); })(); document.getElementById('fpCombOut').innerHTML = fpCombOutHTML(1140, null);");
+    ok('learning: switched to B, the plate on screen is B', ev('fpShown[0].items[0].id') === 'uzzB');
+    ev('fpAccept(0); localStorage.removeItem(FP_DAY_KEY);');
     ok('learning: "I’ll eat this" counts the pick and dates it',
        ev('S.fuel.foods.uzzB.a') === 1 && ev('S.fuel.foods.uzzB.at') === ev('todayKey()'));
     ok('learning: one pick breaks the tie in its favour', first() === 'uzzB', first());
