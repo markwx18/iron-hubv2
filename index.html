@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-18-v2">
+<meta name="ironhub-build" content="2026-10-18-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1274,6 +1274,23 @@
   .fp-it .nm{flex:1; min-width:0; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .fp-it .sv{color:var(--dim); font-size:12px;}
   .fp-it .mm{flex:none; font-family:var(--mono); font-size:11px; color:var(--muted); white-space:nowrap;}
+  /* The rest of today (fpDayPlan): a card per slot, its options inside, the plan's pick outlined. */
+  .fp-sh{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; min-width:0;}
+  .fp-st{font-family:var(--disp); font-weight:700; font-size:15px; color:var(--amber); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .fp-sg{margin-left:auto; color:var(--dim); font-size:12px; white-space:nowrap;}
+  .fp-opt{margin-top:10px; padding:8px 10px 10px; border-radius:var(--r-ctl); background:var(--panel2); border:1px solid transparent;}
+  .fp-opt.fit{border-color:color-mix(in srgb, var(--good) 55%, transparent);}
+  .fp-oh{display:flex; align-items:baseline; gap:8px; margin-bottom:2px;}
+  .fp-oh .fp-tot{margin-left:0;}
+  .fp-fit{margin-left:auto; color:var(--good); font-size:11px; font-family:var(--disp); letter-spacing:.05em; text-transform:uppercase; white-space:nowrap;}
+  .fp-opt .fp-it:first-of-type{border-top:0;}
+  .fp-eat{flex:none; min-height:32px; padding:0 10px; border-radius:var(--r-ctl); border:1px solid var(--line); background:transparent; color:var(--text); font-family:var(--disp); font-size:12px; letter-spacing:.04em; text-transform:uppercase; cursor:pointer; white-space:nowrap;}
+  .fp-fit + .fp-eat{margin-left:8px;}
+  .fp-oh .fp-tot + .fp-eat{margin-left:auto;}
+  /* At 360px and under the label takes its own line, so the button stays beside the total. */
+  @media (max-width:360px){ .fp-oh .fp-fit{order:3; flex-basis:100%; margin-left:0;} .fp-oh .fp-fit + .fp-eat{margin-left:auto;} }
+  .fp-eat.done{border-color:transparent; color:var(--good); display:inline-flex; align-items:center; cursor:default;}
+  .fp-oh{align-items:center; flex-wrap:wrap; row-gap:4px; min-width:0;}
   .fp-buy{flex:none; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--warn); border:1px solid currentColor; border-radius:999px; padding:1px 6px;}
   .fp-skip{flex:none; background:none; border:none; color:var(--dim); font-size:14px; min-width:32px; min-height:32px; padding:0;}
   .fp-row{display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--line); min-width:0;}
@@ -7765,7 +7782,9 @@ function fpBuild(pool, gapCal, gapPro, used, lim){
       // One main per plate. Rotisserie chicken AND nuggets is two dinners, not a meal and a side.
       const main = function(f){ return f.cat === 'meat' || f.cat === 'meal'; };
       if(!have && main(fd) && items.some(function(i){ return main(i.fd); })) return;
-      let v = (rc > 0 ? Math.min(fd.cal, rc)/nC : 0) + 1.2*(rp > 0 ? Math.min(fd.p, rp)/nP : 0);
+      let v = (rc > 0 ? Math.min(fd.cal, rc)/nC : 0) + (lim.pw || 1.2)*(rp > 0 ? Math.min(fd.p, rp)/nP : 0);
+      // Before training: fat slows digestion, so a fattier food has to earn its place (the pre-workout window's own advice).
+      if(lim.lowFat) v -= 0.06*Math.max(0, fd.f - 5)/5;
       const over = fd.cal - Math.max(rc, 0) - 250;
       if(over > 0) v -= 1.5*over/nC;
       v -= have ? 0.02 : (lim.snack ? 0.02 : 0.04);
@@ -7817,6 +7836,124 @@ function fpCombos(gapCal, gapPro, opts){
     pool = pool.filter(function(fd){ return fd.id !== anchor; });
   }
   res.snacks = fpSnackCombos(gapCal, gapPro, opts);
+  return res;
+}
+/* ---- the rest of today, slot by slot (his ask, 2026-10-17) ----
+   The options above answer "what is one meal"; this answers "what do I eat for the rest of the day". What is
+   left is split over the meals and snacks still ahead, and each slot keeps a few options, heaviest first, all
+   from the pantry. On a training day with a workout time set, the slots come from the workout instead: a main
+   meal about 2 h 45 m before, a light top-up an hour before, and the post-workout meal after. Pure: the clock
+   (nowMin) and the workout are parameters, so the suite does not depend on the time of day. */
+const FP_DAY_SLOTS = [
+  {key:'breakfast', at:480, kind:'meal', title:'Breakfast'},
+  {key:'lunch', at:750, kind:'meal', title:'Lunch'},
+  {key:'pm', at:930, kind:'snack', title:'Afternoon snack'},
+  {key:'dinner', at:1110, kind:'meal', title:'Dinner'},
+  {key:'late', at:1260, kind:'snack', title:'Evening snack'}
+];
+const FP_SLOT_W = {meal:1, snack:0.4};
+const FP_SLOT_MAX = {meal:[950, 60], snack:[400, 25]};
+const FP_SLOT_GRACE = 30;   // a slot that started up to half an hour ago is still "now"
+/* Where today's slots fall. workout: {start, len} in minutes past midnight, or null. */
+function fpDaySlots(nowMin, workout){
+  let slots;
+  if(workout){
+    const W = workout.start, end = W + (workout.len || 60);
+    slots = [
+      {key:'pre', at:W - 165, kind:'meal', title:'Pre-workout meal', pre:true},
+      {key:'top', at:W - 60, kind:'snack', title:'Pre-workout top-up', pre:true},
+      {key:'post', at:end + 30, kind:'meal', title:'Post-workout meal', post:true}
+    ];
+    // The usual slots stay unless they crowd the workout's own: nothing within 2 hours of one, or between
+    // the top-up and the post-workout meal.
+    FP_DAY_SLOTS.forEach(function(s){
+      const clash = slots.some(function(w){ return Math.abs(w.at - s.at) < 120; }) || (s.at > W - 60 && s.at < end + 30);
+      if(!clash) slots.push(Object.assign({}, s));
+    });
+  } else slots = FP_DAY_SLOTS.map(function(s){ return Object.assign({}, s); });
+  slots = slots.filter(function(s){ return s.at >= 0 && s.at < 1440 && s.at >= nowMin - FP_SLOT_GRACE; })
+    .sort(function(a, b){ return a.at - b.at; });
+  // Late at night with food still to eat, one slot for now rather than none.
+  if(!slots.length) slots = [{key:'now', at:Math.min(Math.max(nowMin, 0), 1439), kind:'snack', title:'Before bed'}];
+  return slots;
+}
+/* Today's workout for the plan: a workout time set, a training day, and nothing logged yet today. */
+function fpWorkoutToday(){
+  const m = /^(\d{1,2}):(\d{2})$/.exec((S.fuel && S.fuel.workoutTime) || '');
+  if(!m) return null;
+  let dk = null; try{ dk = currentDayKey(); }catch(e){}
+  if(!dk || dk === 'REST') return null;
+  const t = todayKey();
+  if((S.logs || []).some(function(l){ return l && l.date === t; })) return null;
+  return {start:(+m[1])*60 + (+m[2]), len:(S.fuel && +S.fuel.sessionLen) || 60};
+}
+function fpDayPlan(gapCal, gapPro, opts, nowMin, workout){
+  gapCal = Math.max(0, Math.round(+gapCal||0)); gapPro = Math.max(0, Math.round(+gapPro||0));
+  const res = {gapCal:gapCal, gapPro:gapPro, done:false, pool:0, slots:[], planCal:0, planP:0};
+  if(gapCal <= FP_DONE_CAL && gapPro <= FP_DONE_PRO){ res.done = true; return res; }
+  const all = fpPool(opts);
+  res.pool = all.length;
+  let slots = fpDaySlots(nowMin, workout);
+  // Snack slots need snack foods. With none in the pantry they would only say "nothing fits" and keep a share
+  // of the gap the meals then fall short of, so they go, and a lone one (late at night) is planned as a meal.
+  const snackFood = function(fd){ return fpSnacky(fd) || ((fd.cat === 'drink' || fd.cat === 'dairy') && fd.tags.indexOf('meal') < 0); };
+  if(!all.some(snackFood)){
+    const meals = slots.filter(function(s){ return s.kind !== 'snack'; });
+    slots = meals.length ? meals : slots.map(function(s){ return Object.assign({}, s, {kind:'meal'}); });
+  }
+  // A snack slot worth less than ~120 cal is noise: drop snacks until each one is worth a real snack.
+  const share = function(list){ const w = list.reduce(function(a, s){ return a + FP_SLOT_W[s.kind]; }, 0); return function(s){ return FP_SLOT_W[s.kind]/w; }; };
+  while(slots.length > 1 && slots.some(function(s){ return s.kind === 'snack' && gapCal*share(slots)(s) < 120; })){
+    const i = slots.map(function(s){ return s.kind; }).lastIndexOf('snack');
+    if(i < 0) break;
+    slots = slots.filter(function(_, j){ return j !== i; });
+  }
+  const f = share(slots), dayUsed = {};
+  slots.forEach(function(s){
+    const mx = FP_SLOT_MAX[s.kind];
+    const sc = Math.min(Math.round(gapCal*f(s)), mx[0]), sp = Math.min(Math.round(gapPro*f(s)), mx[1]);
+    const snack = s.kind === 'snack';
+    // A meal is not dessert: sweets wait for a snack slot.
+    let pool = snack ? all.filter(snackFood) : all.filter(function(fd){ return fd.cat !== 'sweet'; });
+    const lim = snack ? {items:2, snack:true} : {};
+    if(s.pre) lim.lowFat = true;       // before training: easy to digest
+    if(s.post) lim.pw = 1.5;           // after training: protein leads
+    // local keeps this slot's options apart; dayUsed (foods the earlier slots' picks use) only ranks lower, so a
+    // food eaten at lunch can still be dinner when nothing else fits.
+    let out = []; const seen = {}, local = {};
+    // Six candidates, so the filters below still leave three to choose from.
+    for(let k = 0; k < 6 && pool.length && sc >= 80; k++){
+      const fresh = pool.filter(function(fd){ return !local[fd.id]; });
+      const c = fpBuild(fresh.length ? fresh : pool, sc, sp, Object.assign({}, dayUsed, local), lim);
+      if(!c.items.length) break;
+      if(!seen[c.sig]){ seen[c.sig] = 1; if(snack) c.snack = true; out.push(c); }
+      c.items.forEach(function(i){ local[i.id] = 1; });
+      const anchor = c.items.slice().sort(function(a, b){ return b.cal - a.cal || (a.id < b.id ? -1 : 1); })[0].id;
+      pool = pool.filter(function(fd){ return fd.id !== anchor; });
+    }
+    // An option well under the slot is not an answer to it ("chicken breast, 280 cal" for an 820-cal dinner).
+    const big = out.filter(function(c){ return c.cal >= 0.55*sc; });
+    if(big.length) out = big;
+    // A meal has a main (meat, eggs or a made meal) when one can be had: "a whey shake and rice" is not dinner.
+    // Breakfast is left alone, where oats and a shake is a normal plate.
+    if(!snack && s.key !== 'breakfast'){
+      const mained = out.filter(function(c){ return c.items.some(function(i){ const fd = fpFood(i.id); return fd && (fd.cat === 'meat' || fd.cat === 'meal' || fd.cat === 'eggs'); }); });
+      if(mained.length) out = mained;
+    }
+    // How far an option is from the slot, plus a cost for each food an earlier slot's pick already uses, so
+    // lunch and dinner are not the same plate. The three best, then heaviest first, the way he reads them.
+    // Before training, fat counts against an option too (fried food sits in the stomach).
+    const miss = function(c){ return Math.abs(c.cal - sc) + 8*Math.abs(c.p - sp) + 150*c.items.filter(function(i){ return dayUsed[i.id]; }).length + (s.pre ? 4*Math.max(0, c.f - (snack ? 6 : 20)) : 0); };
+    out = out.slice().sort(function(a, b){ return miss(a) - miss(b) || (a.sig < b.sig ? -1 : 1); }).slice(0, 3);
+    // Heaviest first, the way he reads them. The one nearest the slot is the plan's pick: it is what the day's
+    // total adds up, and later slots steer around its foods so the day is not chicken three times.
+    out.sort(function(a, b){ return b.cal - a.cal || (a.sig < b.sig ? -1 : 1); });
+    let fit = null;
+    out.forEach(function(c){ c.miss = miss(c); if(!fit || c.miss < fit.miss) fit = c; });
+    if(fit){ fit.fit = true; fit.items.forEach(function(i){ dayUsed[i.id] = 1; }); res.planCal += fit.cal; res.planP += fit.p; }
+    res.slots.push({key:s.key, at:s.at, title:s.title, kind:s.kind, cal:sc, p:sp, options:out});
+  });
+  res.shortCal = Math.max(0, gapCal - res.planCal); res.shortP = Math.max(0, gapPro - res.planP);
   return res;
 }
 /* Snack-type foods: the snack shelves, plus anything tagged snack that is not also a meal. */
@@ -8072,17 +8209,19 @@ function fpCombinerHTML(){
       '<button class="fp-tog'+(o.includeLiked?' on':'')+'" aria-pressed="'+o.includeLiked+'" onclick="fpToggleOpt(\'includeLiked\')">Include liked (to buy)</button>'+
     '</div></div><div id="fpCombOut">'+fpCombOutHTML()+'</div>';
 }
-function fpCombOutHTML(){
+/* nowMin and workout are parameters for the suite; the tab passes the clock and today's workout. */
+function fpCombOutHTML(nowMin, workout){
   const e = fpEatenToday(), o = fpOptsNow(), ct = calTarget(), pt = proTarget();
-  const r = fpCombos(ct - e.cal, pt - e.pro, {quickOnly:o.quickOnly, includeLiked:o.includeLiked, skip:fpSkipsToday()});
-  // One list, so "I'll eat this" on a snack (index after the meals) notes the snack.
-  fpShown = r.combos.concat(r.snacks || []);
+  if(nowMin === undefined){ const d = new Date(); nowMin = d.getHours()*60 + d.getMinutes(); }
+  if(workout === undefined){ try{ workout = fpWorkoutToday(); }catch(er){ workout = null; } }
+  const r = fpDayPlan(ct - e.cal, pt - e.pro, {quickOnly:o.quickOnly, includeLiked:o.includeLiked, skip:fpSkipsToday()}, nowMin, workout);
+  // One flat list of every option shown, so "I'll eat this" can name one by its index.
+  fpShown = [];
+  r.slots.forEach(function(sl){ sl.options.forEach(function(c){ fpShown.push(c); }); });
   let h = '<div class="fp-gap"><span><b>'+r.gapCal.toLocaleString()+'</b> cal</span><span><b>'+r.gapPro+'</b>g protein</span>'+
     '<span class="fp-of">left of '+ct.toLocaleString()+' · '+pt+'g</span></div>';
-  if(!r.done && (r.gapCal > r.plateCal || r.gapPro > r.plateP))
-    h += '<p class="small" style="color:var(--dim);margin:0 0 8px">Each option is one meal (~'+r.plateCal+' cal · '+r.plateP+'g). Eat one, log it in “Already eaten”, and the next is sized to what’s left.</p>';
   if(r.done) return h+'<div class="card"><p class="dash-quiet">You’re there for today. Nothing left to close.</p></div>';
-  if(!r.combos.length){
+  if(!fpShown.length){
     const anyLiked = fpFoods().some(function(f){ return f.pref === 'l' && !f.stocked; });
     const why = !r.pool
       ? (o.includeLiked ? 'Nothing stocked or liked fits'+(o.quickOnly ? ' the quick filter' : '')+'. Mark foods in the Pantry below.'
@@ -8091,11 +8230,36 @@ function fpCombOutHTML(){
       : 'Nothing that fits could be put together from what’s left.';
     return h+'<div class="card"><p class="small" style="line-height:1.55">'+why+'</p></div>';
   }
-  h += r.combos.map(fpComboHTML).join('');
-  if((r.snacks || []).length){
-    h += '<div class="dash-sec">Snacks</div>'+r.snacks.map(function(c, j){ return fpComboHTML(c, r.combos.length + j, j); }).join('');
-  }
+  h += '<p class="small" style="color:var(--dim);margin:0 0 8px;line-height:1.5">The rest of today'+(workout ? ', built around your '+esc(fuelClockFrom(S.fuel.workoutTime, 0))+' workout' : '')+
+    '. Each slot has options, heaviest first; the outlined one is the plan. '+
+    (r.shortCal > FP_DONE_CAL ? 'The picks leave about '+r.shortCal.toLocaleString()+' cal, so take a bigger option somewhere.' : 'The picks add up to about '+r.planCal.toLocaleString()+' cal · '+r.planP+'g.')+'</p>';
+  let idx = 0;
+  h += r.slots.map(function(sl){
+    const base = idx; idx += sl.options.length;
+    return fpSlotHTML(sl, base);
+  }).join('');
   return h+'<p class="small" style="color:var(--dim);line-height:1.5">~ Macros are approximate. ✕ means “not this”: it drops out for today and ranks lower from then on.</p>';
+}
+/* "17:00" style key for a slot's minutes, for fuelClockFrom(). */
+function fpHHMM(m){ return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
+/* One slot of the day: when, what for, and its options. base is the first option's index in fpShown. */
+function fpSlotHTML(sl, base){
+  let h = '<div class="card fp-slot"><div class="fp-sh"><span class="fp-st">'+esc(fuelClockFrom(fpHHMM(sl.at), 0))+'</span>'+
+    '<span class="fp-ct">'+esc(sl.title)+'</span><span class="fp-sg">~'+sl.cal.toLocaleString()+' cal · '+sl.p+'g</span></div>';
+  if(!sl.options.length) return h+'<p class="small" style="color:var(--dim);margin-top:8px">Nothing in the pantry fits this one.</p></div>';
+  return h+sl.options.map(function(c, j){
+    const i = base + j, planned = fpPlanned.date === todayKey() && fpPlanned.sig === c.sig;
+    // The tap sits in the option's own header, so an option is its foods and nothing else (four slots of
+    // three options were a long scroll with a button row under each).
+    return '<div class="fp-opt'+(c.fit ? ' fit' : '')+'"><div class="fp-oh"><span class="fp-tot">~'+c.cal.toLocaleString()+' cal · '+c.p+'g P</span>'+
+      (c.fit ? '<span class="fp-fit">Fits your day</span>' : '')+
+      (planned ? '<span class="fp-eat done">✓ Noted</span>' : '<button class="fp-eat" onclick="fpAccept('+i+')">I’ll eat this</button>')+'</div>'+
+      c.items.map(function(it){
+        return '<div class="fp-it"><span class="nm">'+esc(it.n)+' <span class="sv">'+esc(it.amt || it.sv)+'</span></span>'+
+          (it.buy ? '<span class="fp-buy">buy</span>' : '')+'<span class="mm">~'+it.cal+' · '+it.p+'g</span>'+
+          '<button class="fp-skip" aria-label="Not '+esc(it.n)+'" onclick="fpSkip(\''+jsq(it.id)+'\')">✕</button></div>';
+      }).join('')+'</div>';
+  }).join('')+'</div>';
 }
 /* i is the index into fpShown (meals, then snacks); j, for a snack, is its own number. */
 function fpComboHTML(c, i, j){
@@ -8111,7 +8275,7 @@ function fpComboHTML(c, i, j){
         '<span class="nm">'+esc(it.n)+' <span class="sv">'+esc(it.amt || it.sv)+'</span></span>'+
         (it.buy ? '<span class="fp-buy">buy</span>' : '')+
         '<span class="mm">~'+it.cal+' · '+it.p+'g</span>'+
-        '<button class="fp-skip" aria-label="Not '+esc(it.n)+'" onclick="fpSkip(\''+esc(it.id)+'\')">✕</button></div>';
+        '<button class="fp-skip" aria-label="Not '+esc(it.n)+'" onclick="fpSkip(\''+jsq(it.id)+'\')">✕</button></div>';
     }).join('')+
     '<div style="margin-top:10px">'+(planned
       ? '<span class="small" style="color:var(--good)">✓ Noted — these rank higher next time</span>'
