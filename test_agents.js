@@ -9378,7 +9378,8 @@ setTimeout(async () => {
     const prr = ev("exRepMode('Preacher Curl Machine')");
     ok('stall line: the facts the call depends on',
        /70 lb for 4 sessions over 3\.4 wks, trained about every 8 days/.test(prl) && prl.indexOf('last session 10,9,8 reps vs range ' + prr.lo + '-' + prr.hi) >= 0 &&
-       /next jump \+5 lb = 7%/.test(prl) && /Options: more sets/.test(prl), prl);
+       /next jump \+5 lb = 7%/.test(prl) && /Levers, in this order: \(1\) effort and recovery/.test(prl) && /\(4\) more sets \(setCount\) LAST/.test(prl) &&
+       /% of tagged sets grind\/fail over its last 6 sessions/.test(prl), prl);
     ok('stall line: never offers a swap to a lift already in his split', prl && !/Rope Cable Curl \[/.test(prl) && !/Incline Dumbbell Curl \[/.test(prl), prl);
     ok('stall line: a lift gaining reps at one weight gets none, and the pattern line says so',
        !/ {2}Incline Dumbbell Curl: 30 lb for/.test(sum2) && /Incline Dumbbell Curl: [^\n]*same weight 3 sessions, reps climbing/.test(sum2), (sum2.match(/[^\n]*Incline Dumbbell Curl[^\n]*/g) || []).join(' | '));
@@ -14839,6 +14840,76 @@ setTimeout(async () => {
   } finally {
     ev("if(window.__rtReal){ callClaudeWithData = window.__rtReal; delete window.__rtReal; delete window.__rtSys; delete window.__rtAns; delete window.__rtSnap; }");
     ev('if(window.__rtS){ S = JSON.parse(window.__rtS); delete window.__rtS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== VOLUME LAST, AND ZULU’S CROSS-REVIEW (2026-10-18) ===');
+  // DELTA queued a 4th set on Cable Row: stalled, a third of its tagged sets grind or fail. The stall line listed
+  // "more sets" first. Now more sets on a stalled, grinding lift is refused everywhere agConflict() runs, and ZULU
+  // may hold a specialist's new request it judges wrong, which he can still Show anyway.
+  try {
+    w.__vlS = ev('JSON.stringify(S)');
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const sess = (id, o, nm, w0, reps, tags) => ({id: id, date: dk(o), day: 'D2', entries: [{exercise: nm, sets: reps.map((r, i) => ({w: w0, r: r, e: tags[i]}))}]});
+    const L = [];
+    // Stalled and grinding: 120 x 10,9,8 four times, one grind in three sets (33%).
+    [-24, -16, -8, -1].forEach((o, i) => L.push(sess(897100 + i, o, 'Zz VL Row', 120, [10, 9, 8], i % 2 ? ['solid', 'grind', 'solid'] : ['grind', 'solid', 'solid'])));
+    // Stalled, but the sets read easy to solid.
+    [-24, -16, -8, -1].forEach((o, i) => L.push(sess(897200 + i, o, 'Zz VL Row Easy', 120, [10, 9, 8], ['solid', 'easy', 'solid'])));
+    // Grinding, but climbing: not a stall.
+    [-24, -16, -8, -1].forEach((o, i) => L.push(sess(897300 + i, o, 'Zz VL Climb', 100 + 5 * i, [10, 9, 8], ['grind', 'grind', 'solid'])));
+    ev('S.logs = ' + JSON.stringify(L) + "; S.split.D2 = S.split.D2 || {name:'Pull', exercises:[]};" +
+       "S.split.D2.exercises = (S.split.D2.exercises||[]).concat(['Zz VL Row', 'Zz VL Row Easy', 'Zz VL Climb']); S.overrides = {}; S.agents.proposals = [];");
+    const sc = (nm, n) => ev("agConflict({type:'setCount', payload:{exercise:" + JSON.stringify(nm) + ", day:'D2', sets:" + n + "}})");
+    ok('volume last: the hard share is read off his tags', ev("JSON.stringify(liftHardShare('Zz VL Row'))") === JSON.stringify({tagged: 12, hard: 4, pct: 33}));
+    ok('volume last: a 4th set on a stalled lift whose sets grind is refused, with the reason', /^volume last: Zz VL Row has stalled with 33% of its recent sets at grind or fail/.test(sc('Zz VL Row', 4)), sc('Zz VL Row', 4));
+    ok('volume last: taking a set off is still allowed', sc('Zz VL Row', 2) === '');
+    ok('volume last: a stalled lift whose sets read easy may still get one', sc('Zz VL Row Easy', 4) === '', sc('Zz VL Row Easy', 4));
+    ok('volume last: a lift that is climbing is untouched, grinding or not', sc('Zz VL Climb', 4) === '', sc('Zz VL Climb', 4));
+    ok('volume last: the queue refuses it and names the rule',
+       ev("agValidateFix({type:'setCount', payload:{exercise:'Zz VL Row', day:'D2', sets:4}}, 'delta')") === null &&
+       /^volume last/.test(ev("agRejectReason({type:'setCount', payload:{exercise:'Zz VL Row', day:'D2', sets:4}}, 'delta')")));
+    const cv = ev("JSON.stringify(coachValidateAction('set_sets', {exercise:'Zz VL Row', day:'D2', sets:4}, 'delta'))");
+    ok('volume last: a chat card for it is refused too', /"ok":false/.test(cv) && /volume last/.test(cv), cv);
+
+    // --- cross-review ---
+    ev("S.settings.apiKey = 'sk-test'; agState().roundtable = null; agState().log = []; agState().lastRun = '';" +
+       "agState().proposals = [{id:'agold1', agent:'delta', title:'Old one', reasoning:'', fix:{type:'setCount', payload:{exercise:'Zz VL Row Easy', day:'D2', sets:2}}, created:" + JSON.stringify(dk(-2)) + ", expires:" + JSON.stringify(dk(5)) + ", status:'pending'}];");
+    ev("window.__vlReal = callClaudeWithData; window.__vlSys = {};" +
+       "callClaudeWithData = async function(msgs, sys){ var who = /You are CHARLIE/.test(sys) ? 'charlie' : /You are DELTA/.test(sys) ? 'delta' : /You are ECHO/.test(sys) ? 'echo' : 'zulu';" +
+       " if(/weekly coach letter/.test(sys)) return {text:'A letter.', toolsUsed:0};" +
+       " window.__vlSys[who] = String(sys); var ans = {summary: who + ' report.', proposals: []};" +
+       " if(who === 'delta') ans.proposals = [{title:'Add a set to Zz VL Climb', reasoning:'Back is low on volume.', fix:{type:'setCount', payload:{exercise:'Zz VL Climb', day:'D2', sets:4}}}];" +
+       " if(who === 'zulu'){ S = JSON.parse(JSON.stringify(S)); var m = String(sys).match(/id (ag[a-z0-9]+) — DELTA/);" +
+       "   ans.hold = [{id: m ? m[1] : 'none', why: 'Its sets already grind; fix effort before adding volume.'}, {id:'agold1', why:'not tonight'}, {id:'agnope', why:'x'}]; }" +
+       " return {text: JSON.stringify(ans), toolsUsed:0}; };");
+    await ev('agRunAll(false)');
+    const zsys = ev('window.__vlSys.zulu') || '';
+    ok('cross-review: ZULU is shown tonight’s new request, with its reasoning, and may hold it',
+       /TONIGHT’S NEW REQUESTS FROM THE SPECIALISTS[\s\S]*DELTA: Add a set to Zz VL Climb \[[^\]]*\] because: Back is low on volume\./.test(zsys) && /"hold"/.test(zsys) && !/id agold1/.test(zsys));
+    const P = JSON.parse(ev('JSON.stringify(agState().proposals)'));
+    const held = P.filter(p => p.status === 'held');
+    ok('cross-review: the hold lands in the S that exists after ZULU’s reply (S was swapped mid-reply)',
+       held.length === 1 && held[0].title === 'Add a set to Zz VL Climb' && held[0].heldWhy === 'Its sets already grind; fix effort before adding volume.', JSON.stringify(P.map(p => [p.id, p.status])));
+    ok('cross-review: an older request, or an id that was never shown, cannot be held', P.find(p => p.id === 'agold1').status === 'pending');
+    ok('cross-review: a held request is not in his queue', !ev('agPending()').some(p => p.status === 'held') && ev('agPending()').length === 1);
+    ok('cross-review: the feed says so, under ZULU', ev("agState().log.some(function(e){ return e.agent === 'zulu' && e.hold === " + JSON.stringify(held[0] && held[0].id) + " && /^Held DELTA’s “Add a set to Zz VL Climb”: Its sets already grind/.test(e.text); })"));
+    ev("setMode('review'); showMainTab('ops');");
+    const ui = ev("(function(){ var b = document.querySelectorAll('#ops [data-prop]'); return {n:b.length, rows:document.querySelectorAll('#ops .ag-held-row').length, txt:(document.querySelector('#ops .ag-held') || {}).textContent || ''}; })()");
+    ok('cross-review: Show anyway is offered in the feed and under Pending', ui.n === 2 && ui.rows === 1 && /Held by ZULU \(1\)/.test(ui.txt) && /ZULU: Its sets already grind/.test(ui.txt), JSON.stringify(ui));
+    // The next night DELTA raises the identical request again: no second copy beside the held one.
+    ev("agState().lastRun = '';");
+    await ev('agRunAll(false)');
+    const P2 = JSON.parse(ev('JSON.stringify(agState().proposals)'));
+    ok('cross-review: a re-raise does not stack a copy beside the held one', P2.filter(p => p.title === 'Add a set to Zz VL Climb').length === 1, JSON.stringify(P2.map(p => [p.title, p.status])));
+    ok('cross-review: with no new requests, ZULU’s prompt has no hold section', !/TONIGHT’S NEW REQUESTS/.test(ev('window.__vlSys.zulu') || ''));
+    // His tap brings it back, through every check again.
+    ev("document.querySelector('#ops .ag-held-row [data-prop]').click();");
+    ok('cross-review: Show anyway puts it in his queue', ev('agPending()').some(p => p.title === 'Add a set to Zz VL Climb') && ev('agHeld()').length === 0);
+  } catch (e) {
+    ok('volume last / cross-review section', false, e.stack);
+  } finally {
+    ev("if(window.__vlReal){ callClaudeWithData = window.__vlReal; delete window.__vlReal; delete window.__vlSys; }");
+    ev('if(window.__vlS){ S = JSON.parse(window.__vlS); delete window.__vlS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

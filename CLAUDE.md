@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3657 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3673 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -299,6 +299,7 @@ pushes. Now:
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
 | Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
 | What the agents see | nightly `agCalendarContext()` (shares `agCalDayLine()` / `agCalPlanLine()` / `agCalNextDays()` with chat's `agTodayContext()`), `agSplitLiftText()`, `agFeelLine()`, chat `agLastNightLine()`; events `agEvents()` / `agEventsLine()` (`EV_FOR`, `EV_DAYS`), tools `get_events` / `get_recovery` |
+| Cross-review & volume | `agVolumeLastBlock()` / `liftHardShare()` (`VOL_GRIND_PCT`); `agTonightRequests()`, `agHoldSpecLine()`, `agValidateHolds()`, `agApplyHolds()`, `agShowAnyway()`, `agHeld()` |
 | Roundtable & voices | `AG_VOICE`, `S.agents.roundtable` (`agRoundtable()`, `RT_*`), `agPeersOffered()` / `agPeersSaid()`, `agValidatePeer()`, `agValidateReplies()`; the feed `agLog(agent, text, {to})` + `_agLogRun`, `hubFeedHTML()` / `hubActHTML()` |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
@@ -534,7 +535,17 @@ Five rules it enforces:
     experiment;
   - no `setCount` increase or `addEx` next to a "sharp" flag from the last 14 days on that lift or one
     sharing a primary muscle (`agSharpNear()`); taking sets off is still allowed;
-  - no `liftReset` or `swapEx` on the experiment's lift.
+  - no `liftReset` or `swapEx` on the experiment's lift;
+  - **volume last** (`agVolumeLastBlock()`, his call, 2026-10-18): no `setCount` increase on a stalled lift
+    (`liftProfile().stalled3`, or the plateau watch red or amber) whose last 6 sessions have `VOL_GRIND_PCT` (30)%+ of
+    their tagged sets at grind or fail (`liftHardShare()`, the one grind-share measure, with at least
+    `VOL_GRIND_MIN_TAGS` tags). DELTA had queued a 4th set on a stalled Cable Row whose sets were a third grinders,
+    because the stall line listed "more sets" first. That line now orders the levers: effort and recovery, then the
+    rep range or a smaller jump, then a variation, and more sets last. It covers the queue, approval, chat `set_sets`
+    and the Sunday plan; `adjust_today` is exempt.
+
+  A `setCount` is one target per lift and day (`agFixTarget()`). It used to be plain `setCount`, so a set change for
+  one lift superseded a waiting one for another.
 
   These used to live only in the Sunday plan's filter or in prompt text. They apply at ingest and
   again at approval. ZULU's chat (`start_deload`, `add_exercise_permanent`,
@@ -633,7 +644,15 @@ regardless. A bad night costs the tab its commentary, never its content.
 2026-10-04). On the ledger, the baseline before it was about $9 a month. The order:
 - week 1: track records (free) and plateau diagnosis (about $0.20 a month);
 - week 2: cross-review, ZULU's half. A held request goes to the feed with **Show anyway** (his
-  choice).
+  choice). **Built 2026-10-18.**
+  - ZULU's nightly call is shown tonight's new specialist requests (`agTonightRequests()`, by the cycle's `run` tag,
+    taken before its await), and `agHoldSpecLine()` adds an optional `"hold"` key only when there are any.
+  - `agValidateHolds()` keeps only those ids. `agApplyHolds()` writes into the re-resolved state: status `held`,
+    with `heldWhy`. A held request is out of `agPending()`.
+  - It shows in the feed (`{hold:id}`) and under Pending as "Held by ZULU". The id travels in `data-prop`.
+  - **Show anyway** (`agShowAnyway()`) re-runs `agValidateFix()`, then either queues the request or closes it,
+    naming the rule.
+  - `agIngest()` counts `held` as open for its de-duplication, and `agSweepExpired()` expires it.
 - week 3: per-lift specialists, the only addition that is a new request.
 
 Check the ledger before starting the next.

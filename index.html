@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-16-v4">
+<meta name="ironhub-build" content="2026-10-18-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1851,6 +1851,13 @@
   .hub-act-t{font-family:var(--mono); font-size:10.5px; letter-spacing:.04em; color:var(--dim); width:58px; flex:none; padding-top:3px;}
   .hub-act .cc-glyph{width:22px; height:22px; border-radius:7px; font-size:11px;}
   .hub-act-x{font-size:14px; line-height:1.4; min-width:0; flex:1; overflow-wrap:anywhere;}
+  /* A held row's button goes under its text: beside it, at 320px the text was squeezed to one word a line. */
+  .hub-act.held{flex-wrap:wrap; row-gap:8px;}
+  .hub-act.held .hub-act-x{flex:1 1 calc(100% - 100px);}
+  .hub-act-btn{flex:none; margin-left:100px;}
+  .ag-held-row{padding:8px 0; border-top:1px solid var(--panel2); display:flex; flex-direction:column; gap:6px; align-items:flex-start; min-width:0;}
+  .ag-held-row:first-of-type{border-top:0;}
+  .ag-held-t{overflow-wrap:anywhere;}
   .hub-act-to{flex:none; font-family:var(--disp); font-size:12px; font-weight:700; letter-spacing:.02em; padding-top:3px; white-space:nowrap;}
   .hub-run{margin:10px 0 4px; padding-left:10px; border-left:2px solid var(--panel2);}
   .hub-run-h{font-family:var(--disp); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); padding:4px 0 2px;}
@@ -13712,9 +13719,7 @@ function investigateLift(nm){
   findings.push('e1RM trend over last '+recent.length+' sessions ('+Math.round(spanWks*10)/10+' wks): '+(slope>=0?'+':'')+slope.toFixed(1)+' lb/wk. Current e1RM: '+Math.round(cur)+' lb.');
   // grind/fail density over last 6 sessions of this lift
   const hist = historyFor(nm).slice(0,6);
-  let tagged=0, hard=0;
-  hist.forEach(h=>h.sets.forEach(s=>{ const b=effBucket(s); if(b){tagged++; if(b==='grind'||b==='fail')hard++;} }));
-  const hardPct = tagged? Math.round(100*hard/tagged) : null;
+  const hardPct = liftHardShare(nm).pct;
   if(hardPct!=null) findings.push('Effort mix (last '+hist.length+' sessions): '+hardPct+'% of tagged sets were grind/fail.');
   // stall length: sessions at same top weight without ceiling
   const declinePct = recent.length>=2 ? (cur - Math.max(...recent.map(p=>p.v)))/Math.max(...recent.map(p=>p.v)) : 0;
@@ -17697,17 +17702,23 @@ function intelSummary(){
       const rr = exRepMode(p.name), inc = incForExercise(p.name), str = isStrMode(p.name);
       const hits = p.lastReps.filter(function(r){ return r >= rr.hi; }).length;
       const wks = p.flatSince && p.flatRun > 1 ? Math.round((Date.parse(p.lastDate) - Date.parse(p.flatSince)) / 86400000 / 7 * 10) / 10 : null;
-      let opts = 'Options: more sets (setCount), a rep-range experiment if one can start, a smaller increment (his setting, so say it in the summary)';
+      // In order, volume last (2026-10-18): "more sets" used to come first, and DELTA took it on a lift that was grinding.
+      const hs = liftHardShare(p.name);
+      let opts = 'Levers, in this order: (1) effort and recovery: are its sets grinding, is he sleeping and eating; '+
+        '(2) a rep-range experiment if one can start, or a smaller increment (his setting, so say it in the summary); ';
       if(isSwapEligible(p.name)){
         const cs = swapCandidates(p.name, {exclude:[...programmed], limit:2});
-        opts += ', or a swap ('+(cs.length ? 'candidates not already in his split: '+cs.map(function(c){ return c.name+' [tier '+c.tier+']'; }).join(', ')
-                                          : 'no candidate outside his current split')+')';
-      } else opts += '; a main lift, so not a swap candidate';
+        opts += '(3) a swap ('+(cs.length ? 'candidates not already in his split: '+cs.map(function(c){ return c.name+' [tier '+c.tier+']'; }).join(', ')
+                                          : 'no candidate outside his current split')+'); ';
+      } else opts += '(3) a main lift, so not a swap: a variation of its rep scheme instead; ';
+      opts += '(4) more sets (setCount) LAST, only if its sets read easy to solid and its muscle group is low on volume'+
+        (hs.pct !== null && hs.tagged >= VOL_GRIND_MIN_TAGS && hs.pct >= VOL_GRIND_PCT ? '; not here, its sets grind, and the app refuses it' : '');
       L.push('  '+p.name+': '+p.topW+' lb for '+p.flatRun+' sessions'+(wks ? ' over '+wks+' wks' : '')+
         (p.everyDays ? ', trained about every '+p.everyDays+' days' : '')+
         '; last session '+p.lastReps.join(',')+' reps vs '+(str ? 'strength ' : '')+'range '+rr.lo+'-'+rr.hi+' ('+hits+' of '+p.lastReps.length+' sets at '+rr.hi+')'+
         (inc > 0 && p.topW > 0 ? '; next jump +'+inc+' lb = '+Math.round(inc / p.topW * 100)+'%' : '')+
-        (p.effortNow !== null ? '; top-set effort '+effScoreText(p.effortNow) : '')+'. '+opts+'.');
+        (p.effortNow !== null ? '; top-set effort '+effScoreText(p.effortNow) : '')+
+        (hs.pct !== null ? '; '+hs.pct+'% of tagged sets grind/fail over its last 6 sessions' : '')+'. '+opts+'.');
     });
   }catch(e){}
   /* The plateau watch as he sees it on Today and the Hub (2026-10-16). Only DELTA was ever shown it, and only two
@@ -19474,14 +19485,13 @@ function olSignals(){
     const perWeek = reg ? reg.slope*7 : 0;
     const maxed = isMaxed(nm);
     // grind/fail density over this lift's last 6 sessions — the same measure investigateLift uses
-    let tagged=0, hard=0;
-    historyFor(nm).slice(0,6).forEach(h=>h.sets.forEach(st=>{ const b=effBucket(st); if(b){ tagged++; if(b==='grind'||b==='fail') hard++; } }));
+    const hs = liftHardShare(nm);
     const f = flags.find(x=>x.key === 'lift:'+nm) || null;
     const s = {
       lift:nm, sessions:pts.length, cur: pts.length ? Math.max(...pts.map(p=>p.v)) : 0,
       perWeek, r2: reg ? anR2(recent, reg) : 0, maxed, hypBlock,
       dir: maxed ? 'flat' : perWeek > OL_FLAT_BAND ? 'up' : perWeek < -OL_FLAT_BAND ? 'down' : 'flat',
-      hardPct: tagged ? Math.round(100*hard/tagged) : null,
+      hardPct: hs.pct,
       flag: f ? {severity:f.severity, title:f.title} : null,
       lastDate: pts.length ? pts[pts.length-1].date : null
     };
@@ -20154,6 +20164,7 @@ function agLog(agent, text, opts){
   const a = agState();
   const e = {id:agUid(), agent, text, at:new Date().toISOString()};
   if(opts && opts.to) e.to = opts.to;   // a reply, to that agent
+  if(opts && opts.hold) e.hold = opts.hold;   // a held request: the feed row offers Show anyway
   if(_agLogRun){ e.run = _agLogRun.id; e.n = ++_agLogRun.n; }
   a.log.unshift(e);
   if(a.log.length > 120) a.log.length = 120; // bounded \u2014 this syncs to the gist
@@ -20164,7 +20175,7 @@ function agSweepExpired(){
   const a = agState(); let n=0;
   const today = new Date(todayKey());
   a.proposals.forEach(p=>{
-    if(p.status!=='pending') return;
+    if(p.status!=='pending' && p.status!=='held') return;
     if(new Date(p.expires) < today){ p.status='expired'; n++; }
   });
   return n;
@@ -20311,6 +20322,29 @@ function agSharpNear(name){
   }
   return '';
 }
+/* Grind/fail share of a lift's tagged sets over its last n sessions (gym, non-deload: historyFor()). The one
+   measure investigateLift(), olSignals(), the stall line and the volume rule below all read. */
+function liftHardShare(nm, n){
+  let tagged = 0, hard = 0;
+  historyFor(nm).slice(0, n || 6).forEach(function(h){ (h.sets||[]).forEach(function(st){ const b = effBucket(st); if(b){ tagged++; if(b === 'grind' || b === 'fail') hard++; } }); });
+  return {tagged:tagged, hard:hard, pct: tagged ? Math.round(100*hard/tagged) : null};
+}
+/* Volume last (his call, 2026-10-18). DELTA queued a 4th set on Cable Row: stalled 3 sessions, a third of its
+   tagged sets grind or fail. The app's own stall line had listed "more sets" first. On a lift that has stopped
+   moving while its sets are already hard, more of the same sets is the last lever, not the first: effort and
+   recovery, the rep range, a smaller jump or a variation come before it. Refuses only an INCREASE, only on a
+   stalled lift (the summary's stall, or the plateau watch red/amber), and only with enough tags to say. */
+const VOL_GRIND_PCT = 30, VOL_GRIND_MIN_TAGS = 6;
+function agVolumeLastBlock(nm){
+  let stalled = false;
+  try{ const lp = liftProfile(nm); stalled = !!(lp && lp.stalled3); }catch(e){}
+  if(!stalled) try{ const pr = plateauRisk(nm); stalled = !!(pr && pr.lvl !== 'green'); }catch(e){}
+  if(!stalled) return '';
+  const hs = liftHardShare(nm);
+  if(hs.tagged < VOL_GRIND_MIN_TAGS || hs.pct < VOL_GRIND_PCT) return '';
+  return 'volume last: '+nm+' has stalled with '+hs.pct+'% of its recent sets at grind or fail, so effort and recovery, '+
+    'the rep range or a variation come before more sets of the same lift';
+}
 function agExpOn(name){
   const x = expActive();
   return !!(x && x.lift && name && invNormName(x.lift) === invNormName(name));
@@ -20324,9 +20358,10 @@ function agConflict(fx){
     if(invOverrideFor(nm)) return nm+' is under a reset, which decides its sets until it hands back';
     if(invActiveFlags().some(function(fl){ return fl.key === 'lift:'+nm; })) return nm+' has an open Investigation flag, and its fix goes through Investigation';
     if(agExpOn(nm)) return 'an experiment is running on '+nm+', and changing its sets would confound it';
-    const sh = (+p.sets > exSlotSets(p.day, nm)) ? agSharpNear(nm) : '';
+    const up = +p.sets > exSlotSets(p.day, nm);
+    const sh = up ? agSharpNear(nm) : '';
     if(sh) return 'no added volume on '+nm+': '+sh+' was flagged sharp in the last 14 days';
-    return '';
+    return up ? agVolumeLastBlock(nm) : '';
   }
   if(fx.type === 'addEx'){
     const sh = agSharpNear(p.name);
@@ -20614,6 +20649,9 @@ function agFixTarget(fx){
   if(fx.type==='addEx')     return 'addEx:'+String(p.name||'').toLowerCase()+'|'+p.day;
   if(fx.type==='swapEx')    return 'swapEx:'+String(p.from||'').toLowerCase();
   if(fx.type==='fuelFood')  return 'fuelFood:'+fpNorm(p.name);   // one food, whatever its numbers
+  // One lift on one day (2026-10-18). It used to fall through to plain 'setCount', so a set change for one lift
+  // retired a waiting one for another as "same call, updated numbers".
+  if(fx.type==='setCount')  return 'setCount:'+String(p.exercise||'').toLowerCase()+'|'+p.day;
   return fx.type;   // cal, pro, deload, schedule, cycleSchedule -- one setting apiece
 }
 /* Identity including the numbers: same target AND same payload is the very same proposal.
@@ -21466,7 +21504,7 @@ const AG_FIX_MENU = {
     '  {"type":"deload","payload":{}}'+'\n'+
     '  {"type":"addEx","payload":{"name":"...","day":"D1".."D6"}}'+'\n'+
     '  {"type":"swapEx","payload":{"from":"...","to":"..."}}'+'\n'+
-    '  {"type":"setCount","payload":{"exercise":"<exact name>","day":"D1".."D6","sets":2..5}}  -- working sets for that exercise on that day (default 3). For volume: more where a muscle group gets few sets and is not moving, fewer where it gets many, sessions grind, and nothing is moving.',
+    '  {"type":"setCount","payload":{"exercise":"<exact name>","day":"D1".."D6","sets":2..5}}  -- working sets for that exercise on that day (default 3). Fewer where a muscle group gets many sets, sessions grind, and nothing is moving. More sets is the LAST lever for a stalled lift, after effort and recovery, the rep range and a variation; and the app refuses more sets on a stalled lift whose sets already grind.',
   echo:
     // The two lines below take DIFFERENT shapes, which is a trap worth naming rather than
     // leaving to be inferred: cal is a change, pro is a target.
@@ -21712,6 +21750,59 @@ function agValidateReplies(raw, okIds){
   (okIds || []).forEach(function(k){ const t = rtClip(raw[k] !== undefined ? raw[k] : raw[(AGENTS[k] || {}).name], RT_REPLY_MAX); if(t) out[k] = t; });
   return out;
 }
+/* ---- cross-review, ZULU's half (his call, 2026-10-18) ----
+   The code half (agConflict) refuses what collides with a rule. This half is judgement: ZULU, already reading the
+   night, may HOLD a specialist's new request it thinks is wrong, with one line why. A held request is not in his
+   queue; it sits in the feed and under Pending with Show anyway, and showing it re-runs every check. ZULU can only
+   hold tonight's new requests from the others, never an older one or its own, and a hold changes nothing in his plan. */
+const RT_HOLD_MAX = 160;
+function agTonightRequests(runId){
+  if(!runId) return [];
+  return agState().proposals.filter(function(q){ return q && q.run === runId && q.status === 'pending' && q.agent !== 'zulu'; })
+    .map(function(q){ return {id:q.id, agent:q.agent, title:q.title, fix:q.fix, reasoning:q.reasoning}; });
+}
+function agHoldSpecLine(reqs){
+  if(!reqs || !reqs.length) return '';
+  return 'TONIGHT\u2019S NEW REQUESTS FROM THE SPECIALISTS (cross-review: you may HOLD any of these):\n'+reqs.map(function(q){
+    return '  id '+q.id+' \u2014 '+(AGENTS[q.agent]||{}).name+': '+q.title+' ['+agFixSummary(q.fix)+']'+(q.reasoning ? ' because: '+rtClip(String(q.reasoning), 220) : '');
+  }).join('\n')+'\n'+
+  'ALSO, optionally, a top-level "hold" key: [{"id":"<id above>","why":"<='+RT_HOLD_MAX+' chars, to him"}]. Hold a request only '+
+  'when it breaks a sound training or nutrition principle (for example more sets on a lift whose sets already grind, a '+
+  'jump on a lift that is missing reps) or contradicts another agent\u2019s numbers. Never hold for style or wording. A '+
+  'held request waits for him with your reason, and he can still see it.\n';
+}
+function agValidateHolds(raw, ids){
+  if(!Array.isArray(raw) || !Array.isArray(ids)) return [];
+  const out = [];
+  raw.forEach(function(h){
+    if(!h || typeof h !== 'object') return;
+    const id = String(h.id || ''), why = rtClip(h.why, RT_HOLD_MAX);
+    if(ids.indexOf(id) < 0 || !why || out.some(function(x){ return x.id === id; })) return;
+    out.push({id:id, why:why});
+  });
+  return out;
+}
+function agApplyHolds(a, holds){
+  (holds || []).forEach(function(h){
+    const q = a.proposals.find(function(x){ return x && x.id === h.id && x.status === 'pending'; });
+    if(!q) return;
+    q.status = 'held'; q.heldWhy = h.why; q.heldAt = new Date().toISOString();
+    agLog('zulu', 'Held '+((AGENTS[q.agent]||{}).name || q.agent)+'\u2019s \u201c'+q.title+'\u201d: '+h.why, {hold:q.id});
+  });
+}
+/* His tap: show a held request anyway. Every check runs again, as an approval would; one that no longer passes
+   is closed with the rule that stopped it rather than shown. */
+function agShowAnyway(pid){
+  const a = agState();
+  const q = a.proposals.find(function(x){ return x && x.id === pid && x.status === 'held'; });
+  if(!q) return;
+  const ok = agValidateFix(q.fix, q.agent);
+  if(ok){ q.status = 'pending'; q.fix = ok; agLog('zulu', 'Showing \u201c'+q.title+'\u201d anyway, as you asked. It is in your requests.'); }
+  else { q.status = 'expired'; q.closed = todayKey(); agLog('zulu', '\u201c'+q.title+'\u201d can no longer be applied ('+agRejectReason(q.fix, q.agent)+'), so it is closed.'); }
+  save();
+  try{ renderOps(); }catch(e){}
+}
+function agHeld(){ return agState().proposals.filter(function(p){ return p.status === 'held'; }); }
 /* What this agent has already told him, so it can stop telling him again. Its OWN summaries
    only: the point is self-repetition, and handing DELTA what ECHO said would just invite it to
    comment on nutrition. */
@@ -21829,7 +21920,8 @@ function agIngest(a2, id, blk){
        lists the pending queue to every agent, but that is the hint; this is the guarantee. */
     const key = agFixKey(fix), tgt = agFixTarget(fix);
     const sameTarget = a2.proposals.filter(function(q){
-      return q.status === 'pending' && agFixTarget(q.fix) === tgt;
+      // A request ZULU held is still open: a re-raise must not stack a copy beside it (cross-review, 2026-10-18).
+      return (q.status === 'pending' || q.status === 'held') && agFixTarget(q.fix) === tgt;
     });
     // Byte-for-byte the same call: drop it silently. The entry he has not decided on yet IS
     // this proposal, and a log line every night saying so would be its own kind of nagging.
@@ -21847,13 +21939,13 @@ function agIngest(a2, id, blk){
       agLog(id, 'Replacing my earlier \u201c'+q.title+'\u201d with \u201c'+String(pr.title)+
         '\u201d \u2014 same call, updated numbers. Only the newer one is in the queue.');
     });
-    a2.proposals.unshift({
+    a2.proposals.unshift(Object.assign({
       id:agUid(), agent:id, title:String(pr.title),
       reasoning:String(pr.reasoning||''), fix,
       created:todayKey(),
       expires:dateKeyOf(new Date(Date.now()+AG_PROP_TTL*86400000)),
       status:'pending'
-    });
+    }, _agLogRun ? {run:_agLogRun.id} : {}));
     raised++;
   });
   return raised;
@@ -21990,9 +22082,13 @@ async function agRunAll(manual){
     const zdigest = digest.concat(down);
     if(digest.length){
       try{
-        const zres = await agRunLead(zdigest, manual, okIds);
+        // Tonight's new requests from the specialists, the only ones ZULU may hold: taken before its await.
+        const newReqs = agTonightRequests(_agLogRun && _agLogRun.id);
+        const zres = await agRunLead(zdigest, manual, okIds, newReqs);
         const a3 = agState();
         raised += agIngest(a3, 'zulu', zres);
+        // Its holds, into the S that exists NOW (a pull during its call replaced S).
+        try{ agApplyHolds(a3, agValidateHolds(zres && zres.hold, newReqs.map(function(q){ return q.id; }))); }catch(e){}
         if(zres && zres._qaAsk){ try{ qaIngest(a3, 'zulu', zres.question); }catch(e){} }
         // ZULU's line to each specialist, then the roundtable into the S that exists NOW: a pull during ZULU's call
         // replaced S, and a reference taken before it would be an orphan that save() never writes.
@@ -22082,7 +22178,7 @@ async function agRunAll(manual){
 
 /* ZULU reads the other three and writes the synthesis plus the morning Daily Brief. It sees
    their conclusions rather than re-deriving them, which is the whole point of a lead. */
-async function agRunLead(digest, manual, okIds){
+async function agRunLead(digest, manual, okIds, newReqs){
   // With its reasoning (clipped), so ZULU can weigh a request rather than only see its title.
   const pend = agPending().map(function(p){ return AGENTS[p.agent].name+': '+p.title+(p.reasoning ? ' ('+rtClip(String(p.reasoning), 160)+')' : ''); });
   const reported = (okIds || AG_ORDER).filter(function(k){ return AGENTS[k]; });
@@ -22110,6 +22206,7 @@ async function agRunLead(digest, manual, okIds){
       'say what you want watched. He reads these in the activity log. '+
       '"replies":{'+reported.map(function(k){ return '"'+k+'":"..."'; }).join(',')+'}. Leave an agent out when there is nothing worth '+
       'saying to it; never invent a finding for one that did not report.'+'\n' : '')+
+    agHoldSpecLine(newReqs)+
     qaSpecLine('zulu')+
     'Do not describe anything as already changed. Nothing takes effect until he taps Approve.'+'\n'+
     '\n'+'WHAT THE SPECIALISTS REPORTED TONIGHT:'+'\n'+digest.join('\n')+
@@ -23540,10 +23637,14 @@ function hubActHTML(e){
   const d = new Date(e.at), today = isFinite(d) && dateKeyOf(d) === todayKey();
   const when = !isFinite(d) ? '' : today ? homeClock(e.at) : d.toLocaleString([], {month:'short', day:'numeric'});
   const T = e.to ? AGENTS[e.to] : null;
-  return '<div class="hub-act'+(T ? ' reply' : '')+'"><span class="hub-act-t">'+esc(when)+'</span>'+
+  const _held = !!(e.hold && agHeld().some(function(p){ return p.id === e.hold; }));
+  return '<div class="hub-act'+(T ? ' reply' : '')+(_held ? ' held' : '')+'"><span class="hub-act-t">'+esc(when)+'</span>'+
     '<span class="cc-glyph" style="color:'+A.col+'" title="'+esc(A.name)+'" aria-label="'+esc(A.name)+'">'+esc(A.name.charAt(0))+'</span>'+
     (T ? '<span class="hub-act-to" style="color:'+T.col+'" title="to '+esc(T.name)+'" aria-label="to '+esc(T.name)+'">\u2192\u2009'+esc(T.name.charAt(0))+'</span>' : '')+
-    '<span class="hub-act-x">'+esc(e.text)+'</span></div>';
+    '<span class="hub-act-x">'+esc(e.text)+'</span>'+
+    (_held
+      ? '<button class="btn ghost sm hub-act-btn" data-prop="'+esc(e.hold)+'" onclick="agShowAnyway(this.dataset.prop)">Show anyway</button>' : '')+
+    '</div>';
 }
 function hubFeedHTML(rows){
   const groups = [];
@@ -23700,6 +23801,15 @@ function renderOps(){
   h += '<h2>Pending proposals'+(pend.length?' ('+pend.length+')':'')+'</h2>';
   h += pend.length ? pend.map(agPropHTML).join('')
                    : '<div class="card"><p class="ag-empty">Nothing awaiting your approval.</p></div>';
+  // Cross-review: what ZULU held back, with its reason, one tap from the queue.
+  try{
+    const held = agHeld();
+    if(held.length) h += '<div class="card ag-held"><div class="small" style="color:var(--dim);margin-bottom:6px">Held by ZULU ('+held.length+')</div>'+
+      held.map(function(p){ const A = AGENTS[p.agent] || {name:p.agent, col:'var(--muted)'};
+        return '<div class="ag-held-row"><div class="ag-held-t"><b style="color:'+A.col+'">'+esc(A.name)+'</b> '+esc(p.title)+'</div>'+
+          '<div class="small">ZULU: '+esc(p.heldWhy || '')+'</div>'+
+          '<button class="btn ghost sm" data-prop="'+esc(p.id)+'" onclick="agShowAnyway(this.dataset.prop)">Show anyway</button></div>'; }).join('')+'</div>';
+  }catch(e){}
 
   try{ const _xh = expCardHTML(); if(_xh) h += '<h2>Experiments</h2>'+_xh; }catch(e){ console.warn('experiments card failed', e); }
   try{

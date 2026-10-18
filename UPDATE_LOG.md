@@ -139,6 +139,8 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 
 ---
 
-## Still to come
+## Volume last, and ZULU double-checks (Oct 18)
 
-- **Cross-review**: ZULU double-checking the other agents' suggestions before they reach you (planned around Oct 12, after a week of spend data).
+- **No more extra sets on a lift that's stalling and grinding.** DELTA asked for a 4th set of Cable Row on a lift that had stopped moving, with a third of its sets at grind or fail. The app's own instructions had listed "more sets" as the first fix for a stall. Now they go in order: effort and recovery first, then the rep range or a smaller jump, then a variation, and extra sets last, only when the sets feel easy. An agent can't propose more sets on a stalled lift whose sets are already grinding, from the nightly check or from chat. Taking a set off is always allowed, and today-only changes are unaffected.
+- **ZULU double-checks the others.** Each night ZULU reviews the new requests from DELTA, ECHO and CHARLIE. A request it thinks is wrong is held back with a one-line reason, shown in the activity log and under your requests as "Held by ZULU". Tap Show anyway to see it: every check runs again first. No extra API calls; ZULU already reads the night.
+- Fixed: a set-count request for one lift used to replace a waiting one for a different lift.
