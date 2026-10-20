@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-18-v5">
+<meta name="ironhub-build" content="2026-10-19-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19577,16 +19577,43 @@ function wpForDate(d){
 }
 /* What the Today card should offer now: 'ask' (the form), 'waiting' (input saved, reply pending or
    retryable), or '' (nothing: not Sun/Mon, already planned, or skipped). */
+/* Changing it (his ask, 2026-10-19: "there's a few adjustments I want to make"). Once planned or skipped, a week used to be
+   final. Change reopens the form with what he said, any day from the Sunday before the week to its last day, and Plan
+   my week is one more call. wpEditing is the week being changed, module-scoped like wpDraft so the repaint keeps it. */
+let wpEditing = '';
+function wpEditableWeek(){
+  const wp = S.weekPlan, t = todayKey();
+  return (wp && wp.week && t >= mesoAddDays(wp.week, -1) && t <= mesoAddDays(wp.week, 6)) ? wp.week : null;
+}
+/* The week the form is for: the one being changed, else the one Sunday or Monday asks about. */
+function wpFormWeek(){
+  if(wpEditing && wpEditing === wpEditableWeek()) return wpEditing;
+  return wpWeekFor(todayKey());
+}
 function wpStage(){
-  const week = wpWeekFor(todayKey());
-  if(!week) return '';
-  const wp = S.weekPlan;
-  if(!wp || wp.week !== week) return 'ask';
-  if(wp.skipped || wp.reply || wp.closed) return '';
-  return 'waiting';
+  if(wpEditing && wpEditing === wpEditableWeek() && !_wpRunning) return 'ask';
+  const week = wpWeekFor(todayKey()), wp = S.weekPlan;
+  if(week && (!wp || wp.week !== week)) return 'ask';
+  // A plan still owed its reply, for the week it covers. Mid-week that is a change whose call failed; it keeps its retry.
+  if(wpEditableWeek() && !wp.skipped && !wp.reply && !wp.closed) return 'waiting';
+  return '';
+}
+function wpEdit(){
+  const week = wpEditableWeek();
+  if(!week || _wpRunning) return;
+  const inp = S.weekPlan.input || {}, days = {};
+  Object.keys(inp.days || {}).forEach(function(d){ days[d] = (inp.days[d] || []).slice(); });
+  wpEditing = week;
+  wpDraft = {week:week, days:days, text:inp.text || ''};
+  try{ renderHome(); }catch(e){}
+}
+function wpEditCancel(){
+  wpEditing = '';
+  wpDraft = {week:'', days:{}, text:''};
+  try{ renderHome(); }catch(e){}
 }
 function wpToggle(date, tag){
-  const week = wpWeekFor(todayKey());
+  const week = wpFormWeek();
   if(!week || !WP_TAGS[tag]) return;
   if(wpDraft.week !== week) wpDraft = {week:week, days:{}, text:''};
   const a = wpDraft.days[date] || (wpDraft.days[date] = []);
@@ -19601,10 +19628,12 @@ function wpSkip(){
   S.weekPlan = {week:week, skipped:true, at:new Date().toISOString()};
   save(); try{ renderHome(); }catch(e){}
 }
-/* Save what he said FIRST (it is his input, worth keeping even if the call fails), then ask. */
+/* Save what he said FIRST (it is his input, worth keeping even if the call fails), then ask. A change replaces the
+   week's plan whole: the reply was written for what he said before. */
 function wpSubmit(){
-  const week = wpWeekFor(todayKey());
-  if(!week) return;
+  const week = wpFormWeek();
+  if(!week || _wpRunning) return;
+  wpEditing = '';
   const tEl = document.getElementById('wpText');
   const text = String((tEl && tEl.value) || wpDraft.text || '').replace(/\s+/g, ' ').trim().slice(0, WP_TEXT_MAX);
   const days = {};
@@ -19724,20 +19753,25 @@ function wpStripHTML(week, days){
   }).join('')+'</div>';
 }
 function wpCardHTML(){
-  const stage = wpStage(), week = wpWeekFor(todayKey());
+  const stage = wpStage(), week = wpFormWeek(), t0 = todayKey();
   if(stage === 'ask'){
+    const editing = !!wpEditing && wpEditing === week;
     if(wpDraft.week !== week) wpDraft = {week:week, days:{}, text:''};
     let h = '<div class="dash-sec">Plan the week</div><div class="card wp-card">'+
       '<div class="wp-head"><b>'+esc(homeRange(week, mesoAddDays(week, 6)))+'</b></div>'+wpStripHTML(week, wpDraft.days)+
-      '<p class="small" style="margin-top:10px">Anything coming up? Tap what applies, add a line if you want, and ZULU plans around it. Optional; the schedule itself doesn\u2019t change.</p>';
-    wpDates(week).forEach(function(d){
+      '<p class="small" style="margin-top:10px">'+(editing
+        ? 'Change what applies and ZULU plans the rest of the week again (one more call). The schedule itself doesn\u2019t change.'
+        : 'Anything coming up? Tap what applies, add a line if you want, and ZULU plans around it. Optional; the schedule itself doesn\u2019t change.')+'</p>';
+    // A change mid-week offers only the days still ahead; what he said about the days gone stays as it was.
+    wpDates(week).filter(function(d){ return !editing || d >= t0; }).forEach(function(d){
       const k = scheduledDayFor(d), on = wpDraft.days[d] || [];
       h += '<div class="rd3-group" style="margin-top:10px"><span class="rd3-gl">'+esc(fmtDate(d))+' \u00b7 '+esc(k === 'REST' ? 'Rest' : k)+'</span><div class="rd3-pills">'+
         Object.keys(WP_TAGS).map(function(t){ return '<button class="rd3-pill'+(on.indexOf(t) >= 0 ? ' on' : '')+'" style="min-width:0;padding:8px 4px;font-size:12px" onclick="wpToggle(\''+d+'\',\''+t+'\')">'+WP_TAGS[t]+'</button>'; }).join('')+
         '</div></div>';
     });
     h += '<input id="wpText" class="s-feel-note" style="width:100%;box-sizing:border-box;margin-top:10px" maxlength="'+WP_TEXT_MAX+'" placeholder="Anything else (exams, a trip, a game)" value="'+esc(wpDraft.text||'')+'" oninput="wpDraft.text=this.value">'+
-      '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn sm" onclick="wpSubmit()">Plan my week</button><button class="btn ghost sm" onclick="wpSkip()">Not this week</button></div></div>';
+      '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn sm" onclick="wpSubmit()">Plan my week</button>'+
+      (editing ? '<button class="btn ghost sm" onclick="wpEditCancel()">Cancel</button>' : '<button class="btn ghost sm" onclick="wpSkip()">Not this week</button>')+'</div></div>';
     return h;
   }
   if(stage === 'waiting'){
@@ -19746,17 +19780,25 @@ function wpCardHTML(){
       (_wpRunning ? 'ZULU is planning your week\u2026' : esc(wp.err || 'Your notes are saved.'))+'</p>'+
       (_wpRunning ? '' : '<button class="btn sm" style="margin-top:8px" onclick="wpRun()">Plan my week</button>')+'</div>';
   }
-  // The plan itself, for the week it covers, plus today's note.
-  const wp = wpForDate(todayKey());
+  // The plan itself, for the week it covers, plus today's note. Change is offered all week (wpEdit()).
+  const chg = wpEditableWeek() && !_wpRunning ? '<button class="btn ghost sm" style="margin-top:8px" onclick="wpEdit()">Change</button>' : '';
+  const sk = S.weekPlan;
+  if(sk && sk.skipped && wpEditableWeek() && !_wpRunning)
+    return '<div class="dash-sec">This week</div><div class="card"><p class="small">You skipped the check-in for the week of '+esc(fmtDate(sk.week))+'.</p>'+
+      '<button class="btn ghost sm" style="margin-top:8px" onclick="wpEdit()">Plan it now</button></div>';
+  // On Sunday the plan is for the week from tomorrow, which wpForDate(today) does not cover.
+  const wp = wpForDate(todayKey()) || (wpEditableWeek() ? S.weekPlan : null);
   if(!wp || wp.skipped || !wp.reply) return '';
   const t = todayKey(), note = (wp.reply.days||[]).find(function(d){ return d.date === t; });
   const tags = (wp.input && wp.input.days && wp.input.days[t]) || [];
-  if(!note && !tags.length && wpWeekFor(t) !== wp.week) return '';
+  // A quiet day keeps one line, so Change is still in reach.
+  if(!note && !tags.length && wpWeekFor(t) !== wp.week)
+    return chg ? '<div class="dash-sec">This week</div><div class="card"><p class="small">Nothing planned around today. ZULU · week of '+esc(fmtDate(wp.week))+'</p>'+chg+'</div>' : '';
   let h = '<div class="dash-sec">This week</div><div class="card">';
   if(note || tags.length) h += '<p class="small"><b>Today'+(tags.length ? ' \u00b7 '+esc(tags.map(function(k){ return WP_TAGS[k]; }).join(', ')) : '')+':</b> '+esc(note ? note.note : 'as planned')+'</p>';
   if(tags.indexOf('nogym') >= 0 && !homeActiveToday()) h += '<button class="btn ghost sm" style="margin-top:8px" onclick="toggleHomeToday();renderHome()">Turn on HOME for today</button>';
   if(wpWeekFor(t) === wp.week && wp.reply.summary) h += '<p class="small" style="margin-top:8px">'+esc(wp.reply.summary)+'</p>';
-  return h+'<p class="small" style="color:var(--dim);margin-top:6px">ZULU \u00b7 week of '+esc(fmtDate(wp.week))+'</p></div>';
+  return h+'<p class="small" style="color:var(--dim);margin-top:6px">ZULU \u00b7 week of '+esc(fmtDate(wp.week))+'</p>'+chg+'</div>';
 }
 
 /* One line for the agents: how much the engine's own numbers deserve to be trusted lately. */
@@ -21578,6 +21620,7 @@ function chatContext(id){
     ((id === 'delta' || id === 'echo' || id === 'zulu') ? part(intelSummary) : '')+
     part(function(){ return agEventsLine(id); })+
     ((id === 'delta' || id === 'zulu') ? part(agFeelLine) : '')+
+    (id === 'charlie' ? part(function(){ return svContextLine(); }) : '')+
     part(function(){ return agLastNightLine(id); })+
     part(function(){ return agTrackLine(id); })+part(function(){ return qaContextLine(id); })+
     part(function(){ return agTodayContext(id); });
@@ -21772,10 +21815,182 @@ function agCalendarContext(){
   if(!L.length) return '';
   return '\nCALENDAR (the app\u2019s own read tonight; trust it over working it out from the schedule):\n- '+L.join('\n- ')+'\n';
 }
+/* CHARLIE, the supervisor (his ask, 2026-10-19: "make sure I am not slacking, falling behind logistically"). Its nightly
+   call had the schedule to look at and one kind of fix, a schedule rewrite he almost never wants, so most nights it said
+   the schedule was fine. svSheet() works out what a supervisor checks, from what the app already holds:
+   - showing up: the last SV_DAYS against the plan, this week so far, the streak, and a weekday he keeps missing;
+   - timing: when he starts against his set workout time, and sessions running long against that day's own usual;
+   - the books: weigh-ins, intake days, check-ins and effort taps on sessions, sessions never ended, WHOOP days;
+   - what is waiting on him: requests, the agents' question, the stock check, the Sunday check-in, and how the week he
+     described on Sunday is going;
+   - the plumbing: the relay's note, this device's last sync, the month's spend against the cap.
+   Pure: it reads and returns facts, so the suite checks each one. Today is never a miss (he may still be about to
+   train). A past day he trained is judged by what was scheduled when he trained it (`scheduled`, since 2026-09-28); a
+   day with no log can only be judged by the schedule as it stands now. */
+const SV_DAYS = 14, SV_LATE_MIN = 45, SV_LONG_PCT = 20;
+function svSheet(t){
+  t = t || todayKey();
+  const logs = (S.logs || []).filter(function(l){ return l && l.date; });
+  const by = {};
+  logs.forEach(function(l){ (by[l.date] = by[l.date] || []).push(l); });
+  const sched = function(d){ const g = by[d], s = g && g[0] && g[0].scheduled; return s || scheduledDayFor(d); };
+  const o = {t:t, from:mesoAddDays(t, -SV_DAYS), planned:0, done:0, missed:[], extra:[], swapped:[], recovered:0, dowMiss:[]};
+  for(let d = o.from; d < t; d = mesoAddDays(d, 1)){
+    const k = sched(d), got = by[d] || [];
+    if(k !== 'REST'){ o.planned++; if(got.length) o.done++; else o.missed.push({date:d, day:k}); }
+    else if(got.length) o.extra.push({date:d, day:got[0].day});
+    got.forEach(function(l){
+      if(k !== 'REST' && l.day && l.day !== k) o.swapped.push({date:d, did:l.day, was:k});
+      if(l.recovered) o.recovered++;
+    });
+  }
+  // A weekday that keeps failing, over four weeks: the one finding a schedule fix answers.
+  const dm = {};
+  for(let d = mesoAddDays(t, -28); d < t; d = mesoAddDays(d, 1)){
+    if(sched(d) === 'REST') continue;
+    const w = new Date(d+'T12:00:00').getDay(), r = dm[w] || (dm[w] = {dow:w, planned:0, missed:0});
+    r.planned++; if(!by[d]) r.missed++;
+  }
+  Object.keys(dm).forEach(function(w){ const r = dm[w]; if(r.missed >= 2 && r.missed * 2 >= r.planned) o.dowMiss.push(r); });
+  const mon = mesoMondayOf(t);
+  o.week = {start:mon, planned:0, done:0, today:sched(t), todayDone:!!by[t], left:0};
+  for(let i = 0; i < 7; i++){
+    const d = mesoAddDays(mon, i), k = sched(d);
+    if(k === 'REST') continue;
+    if(d < t){ o.week.planned++; if(by[d]) o.week.done++; }
+    else if(d > t) o.week.left++;
+  }
+  try{ o.streak = streakStats(); }catch(e){ o.streak = null; }
+  const since28 = mesoAddDays(t, -28);
+  const wm = /^(\d{1,2}):(\d{2})$/.exec((S.fuel && S.fuel.workoutTime) || '');
+  const timed = logs.filter(function(l){ return l.date >= since28 && l.date <= t && +l.startedAt > 0 && !l.recovered; });
+  if(timed.length >= 3){
+    const mins = timed.map(function(l){ const d = new Date(+l.startedAt); return d.getHours() * 60 + d.getMinutes(); });
+    const set = wm ? (+wm[1]) * 60 + (+wm[2]) : null;
+    o.start = {n:mins.length, median:pxMedian(mins), set:set,
+      late:set == null ? 0 : mins.filter(function(m){ return m - set > SV_LATE_MIN; }).length};
+  }
+  // Length against that day's own usual, the density card's rule: a leg day is not compared with an arm day.
+  const dens = logs.slice().sort(function(a, b){ return a.date.localeCompare(b.date); })
+    .map(function(l){ return sessionDensity(l); }).filter(Boolean);
+  const pcts = [];
+  dens.forEach(function(x, i){
+    if(x.date < since28 || x.date > t) return;
+    const prior = dens.slice(0, i).filter(function(y){ return y.day === x.day; }).map(function(y){ return y.mins; });
+    if(prior.length >= 2) pcts.push(x.mins / pxMedian(prior) * 100 - 100);
+  });
+  const lastP = pcts.slice(-4);
+  if(lastP.length >= 2) o.length = {n:lastP.length, pct:Math.round(lastP.reduce(function(a, b){ return a + b; }, 0) / lastP.length)};
+  const wd = (S.weights || []).filter(function(x){ return x && x.date && x.date <= t && +x.lbs > 0; }).map(function(x){ return x.date; }).sort();
+  o.weighDays = wd.length ? daysBetween(wd[wd.length - 1], t) : null;
+  const wk7 = mesoAddDays(t, -7);
+  o.intakeDays = new Set((S.nutrition || []).filter(function(n){ return n && n.date >= wk7 && n.date < t; }).map(function(n){ return n.date; })).size;
+  const tr7 = logs.filter(function(l){ return l.date >= wk7 && l.date <= t && !l.recovered; });
+  o.trained7 = tr7.length;
+  o.noCheckin = tr7.filter(function(l){ return !(S.readiness || []).some(function(r){ return r && r.date === l.date && rdComplete(r); }); }).length;
+  o.noEffort = logs.filter(function(l){ return l.date >= o.from && l.date <= t && !l.deload; }).filter(function(l){
+    let n = 0, e = 0;
+    (l.entries || []).forEach(function(en){ (en.sets || []).forEach(function(st){ n++; if(st && (st.ef != null || st.e)) e++; }); });
+    return n >= 4 && e * 2 < n;
+  }).length;
+  const wh = whoopHistRows();
+  if(wh.length) o.whoopDays = new Set(wh.filter(function(r){ return r && r.date >= wk7 && r.date < t && r.recovery != null; }).map(function(r){ return r.date; })).size;
+  try{
+    const pend = agPending();
+    o.pending = pend.length;
+    o.pendingOldest = pend.reduce(function(m, p){ return p.created && (!m || p.created < m) ? p.created : m; }, null);
+  }catch(e){ o.pending = 0; }
+  try{ o.question = !!qaOpen(); }catch(e){}
+  try{ o.stockDue = !!fpStockDue(t); }catch(e){}
+  const cw = wpWeekFor(t);
+  if(cw && !(S.weekPlan && S.weekPlan.week === cw)) o.checkinDue = cw;
+  const wp = wpForDate(t);
+  if(wp && !wp.skipped && wp.input) o.weekTags = Object.keys(wp.input.days || {}).sort().map(function(d){
+    return {date:d, tags:wp.input.days[d], day:sched(d), trained:!!by[d]};
+  });
+  try{ const f = whoopRelayFault(0); if(f) o.relay = {kind:f.kind, reauth:!!f.reauth}; }catch(e){}
+  if(!syncReady()) o.sync = 'off';
+  else if(S.meta && S.meta.lastSync) o.syncAgoH = Math.round((Date.now() - S.meta.lastSync) / 3600000);
+  try{ o.spend = {usd:Math.round(spendMonth(t.slice(0, 7)) * 100) / 100, cap:spendCap()}; }catch(e){}
+  return o;
+}
+function svClock(m){ const h = Math.floor(m / 60) % 24, mm = Math.round(m % 60); return (h % 12 || 12)+':'+String(mm).padStart(2, '0')+(h >= 12 ? ' PM' : ' AM'); }
+/* The sheet in CHARLIE's prompt, nightly and in its chat. Each line guarded on its own, like the calendar. */
+function svContextLine(t){
+  let s; try{ s = svSheet(t); }catch(e){ return ''; }
+  const L = [], line = function(f){ try{ const x = f(); if(x) L.push(x); }catch(e){} };
+  const dd = homeShortDate, pl = function(n, w){ return n+' '+w+(n === 1 ? '' : 's'); };
+  const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  line(function(){
+    return 'Last '+SV_DAYS+' days (today not counted): trained '+s.done+' of '+s.planned+' planned days'+
+      (s.missed.length ? '; missed '+s.missed.map(function(m){ return dd(m.date)+' ('+m.day+')'; }).join(', ') : '; none missed')+
+      (s.extra.length ? '; also trained on rest days '+s.extra.map(function(x){ return dd(x.date)+' ('+x.day+')'; }).join(', ') : '')+'.';
+  });
+  line(function(){
+    return s.swapped.length ? 'Trained a different day than scheduled: '+s.swapped.map(function(x){ return dd(x.date)+' '+x.did+' instead of '+x.was; }).join(', ')+'.' : '';
+  });
+  line(function(){
+    return s.dowMiss.length ? 'A pattern over 4 weeks: '+s.dowMiss.map(function(r){ return 'missed '+r.missed+' of '+r.planned+' '+DOW[r.dow]+'s'; }).join('; ')+
+      '. A weekday that keeps failing is the one thing a schedule fix answers.' : '';
+  });
+  line(function(){
+    const w = s.week;
+    return 'This week (from Mon '+dd(w.start)+'): '+w.done+' of '+w.planned+' planned days done before today; today is '+
+      (w.today === 'REST' ? 'a rest day' : w.today+', '+(w.todayDone ? 'logged' : 'not logged yet'))+'; '+pl(w.left, 'training day')+' left after today.';
+  });
+  line(function(){ return s.streak ? 'Streak: '+s.streak.current+' scheduled sessions in a row (longest '+s.streak.longest+').' : ''; });
+  line(function(){
+    if(!s.start) return '';
+    return 'Start time: median '+svClock(s.start.median)+' over the last '+s.start.n+' sessions'+
+      (s.start.set == null ? ' (no workout time set)' : ' against a set workout time of '+svClock(s.start.set)+
+        (s.start.late ? '; '+s.start.late+' started more than '+SV_LATE_MIN+' min late' : '; none more than '+SV_LATE_MIN+' min late'))+'.';
+  });
+  line(function(){
+    if(!s.length) return '';
+    const p = s.length.pct;
+    return 'Session length: the last '+s.length.n+' timed sessions ran '+(p >= 0 ? '+' : '')+p+'% against each day’s usual'+
+      (p >= SV_LONG_PCT ? ' (running long)' : p <= -SV_LONG_PCT ? ' (running short)' : '')+'.';
+  });
+  line(function(){
+    const b = [];
+    b.push(s.weighDays == null ? 'no weigh-in ever logged' : s.weighDays === 0 ? 'weighed in today' : 'last weigh-in '+pl(s.weighDays, 'day')+' ago');
+    b.push('intake logged on '+s.intakeDays+' of the last 7 days');
+    if(s.trained7) b.push('no pre-session check-in on '+s.noCheckin+' of '+pl(s.trained7, 'session')+' in the last 7 days');
+    if(s.noEffort) b.push(pl(s.noEffort, 'session')+' in '+SV_DAYS+' days with effort tapped on under half the sets');
+    if(s.recovered) b.push(pl(s.recovered, 'session')+' never ended (saved at the next open)');
+    if(s.whoopDays != null) b.push('WHOOP recovery on '+s.whoopDays+' of the last 7 days');
+    return 'The books: '+b.join('; ')+'.';
+  });
+  line(function(){
+    const b = [];
+    if(s.pending) b.push(pl(s.pending, 'request')+(s.pendingOldest ? ', the oldest from '+dd(s.pendingOldest) : ''));
+    if(s.question) b.push('an open question from the agents');
+    if(s.stockDue) b.push('this week’s stock check');
+    if(s.checkinDue) b.push('the Sunday check-in for the week of '+dd(s.checkinDue));
+    return b.length ? 'Waiting on him: '+b.join('; ')+'.' : 'Nothing is waiting on him.';
+  });
+  line(function(){
+    if(!s.weekTags || !s.weekTags.length) return '';
+    return 'The week he described on Sunday: '+s.weekTags.map(function(x){
+      return dd(x.date)+' '+x.tags.map(function(k){ return (WP_TAGS[k] || k).toLowerCase(); }).join('/')+
+        (x.date > s.t ? ' (ahead)' : x.day === 'REST' ? ' (a rest day)' : x.trained ? ' (trained)' : x.date === s.t ? ' (today, not logged yet)' : ' (not trained)');
+    }).join(', ')+'.';
+  });
+  line(function(){
+    const b = [];
+    if(s.relay) b.push('the WHOOP relay’s last run failed'+(s.relay.reauth ? ' and WHOOP needs re-authorizing' : ''));
+    if(s.sync === 'off') b.push('sync is not connected on the device running this check');
+    else if(s.syncAgoH != null && s.syncAgoH >= 24) b.push('last sync '+s.syncAgoH+' h ago');
+    if(s.spend) b.push('API spend $'+s.spend.usd.toFixed(2)+' of the $'+s.spend.cap+' monthly cap');
+    return b.length ? 'The plumbing: '+b.join('; ')+'.' : '';
+  });
+  if(!L.length) return '';
+  return '\nSUPERVISOR’S SHEET (the app’s own count tonight; trust it over counting the logs yourself):\n- '+L.join('\n- ')+'\n';
+}
 function agSharedBrief(){
   return 'You are the agent team inside Iron Hub, a training app built by and for Mark (18, lean bulking, '+
     'trains 5\u20136x/week, interested in a federal law-enforcement career). Four agents:\n'+
-    '- CHARLIE: app logistics, data hygiene and the weekly training SCHEDULE (which day falls on which weekday, rest-day placement).\n'+
+    '- CHARLIE: the supervisor — showing up against the plan, keeping the logs, what is waiting on him, app logistics, and the weekly training SCHEDULE.\n'+
     '- DELTA: exercise selection, volume, rep ranges and progressive overload.\n'+
     '- ECHO: bodyweight trend, rate of gain, calorie and protein targets.\n'+
     '- ZULU: lead \u2014 oversight, coaching, and cross-domain synthesis.\n\n'+
@@ -21825,9 +22040,18 @@ function chatVoiceRules(){
    its own call with only its own remit, and one agent failing costs only that agent. */
 const AG_ROLE_BRIEF = {
   charlie:
-    'You are CHARLIE. Your remit is app logistics, data hygiene and the training SCHEDULE -- '+
-    'which day falls where, rest-day placement, missed or duplicated sessions, gaps in the log. '+
-    'Progression, exercise selection and nutrition belong to DELTA and ECHO; do not comment on them.',
+    // The supervisor (his ask, 2026-10-19). It used to have the schedule alone, and most nights said it was fine.
+    'You are CHARLIE, the supervisor. Your job is to keep him honest and organised: did he show up for the days on the '+
+    'plan, does he start when he said he would, are the books kept (weigh-ins, intake logged, check-ins, effort taps, '+
+    'sessions ended), is anything waiting on him (requests, a question, the stock check, the Sunday check-in), is the '+
+    'week going the way he said it would, and is the plumbing working (relay, sync, spend). You also own the training '+
+    'SCHEDULE: which day falls where and rest-day placement. Read the SUPERVISOR’S SHEET first; it is the count. '+
+    'Call a slip a slip, once, with the dates, and say what to do about it; when the week is clean, say so in one line '+
+    'and give him the credit. A day he tagged busy, travel or no gym on Sunday is not slacking: judge the week against '+
+    'what he told you. Do not repeat a slip you raised last night unless it got worse. If the same weekday keeps '+
+    'failing, a schedule fix that moves it is yours to propose; nothing else on the sheet is a reason for one. '+
+    'Progression, exercise selection and what he eats belong to DELTA and ECHO: whether he LOGGED his food is yours, '+
+    'what is in it is not.',
   delta:
     'You are DELTA. Your remit is exercise selection, volume, rep ranges, progressive overload, '+
     'stalls and progression. The schedule itself is CHARLIE\u2019s and bodyweight '+
@@ -21941,7 +22165,7 @@ function agBaseContext(id){
   let evl = '';
   try{ evl = agEventsLine(id); }catch(e){ evl = ''; }
   return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+intel+evl+
-    ((id==='delta' || id==='zulu') ? agFeelLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+qaContextLine(id)+
+    ((id==='delta' || id==='zulu') ? agFeelLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+qaContextLine(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext()+pdContextLine(pdTargets()) : '');
 }
 /* His own read after recent sessions (S.sessionMeta), for the agents that coach training (2026-10-16). It reached

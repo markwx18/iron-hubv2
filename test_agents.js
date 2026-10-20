@@ -15084,6 +15084,155 @@ setTimeout(async () => {
     ev('if(window.__vlS){ S = JSON.parse(window.__vlS); delete window.__vlS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  // ============ CHARLIE THE SUPERVISOR, AND CHANGING THE WEEK (2026-10-19) ============
+  console.log('=== CHARLIE THE SUPERVISOR, AND CHANGING THE WEEK (2026-10-19) ===');
+  ev('window.__svS = JSON.stringify(S); window.__svToday = todayKey; window.__svSched = scheduledDayFor; window.__svCall = callClaude; window.__svCcwd = callClaudeWithData;');
+  try {
+    // Named dates only. 2026-10-15 is a Thursday. Mon-Fri train (D1..D5), weekends rest.
+    ev("todayKey = function(){ return '2026-10-15'; };" +
+       "scheduledDayFor = function(d){ return ['REST','D1','D2','D3','D4','D5','REST'][new Date(d+'T12:00:00').getDay()]; };");
+    // Messy on purpose: two missed Thursdays, a rest-day session, a session trained as a different day, one recorded as
+    // a day the schedule has since changed, a session never ended, a session with no effort taps, Wednesdays that run
+    // long against their own usual, and Fridays that are always shorter.
+    ev(`(function(){
+      var set = function(ts, ef){ return {w:100, r:8, ef:ef, e:ef == null ? undefined : 'ok', ts:ts}; };
+      var mk = function(date, day, o){
+        o = o || {};
+        var p = date.split('-'), base = new Date(+p[0], +p[1]-1, +p[2], 19, 45).getTime();
+        var ts = function(i){ return o.mins ? base + Math.round(o.mins * 60000 * i / 3) : undefined; };
+        var l = {id:'sv'+date, date:date, day:day, entries:[{exercise:'Zz Sv Lift', sets:[0,1,2,3].map(function(i){ return set(ts(i), o.noEf ? undefined : 60); })}]};
+        if(o.start) l.startedAt = new Date(+p[0], +p[1]-1, +p[2], o.start[0], o.start[1]).getTime();
+        if(o.sched) l.scheduled = o.sched;
+        if(o.recovered) l.recovered = true;
+        return l;
+      };
+      var L = [];
+      for(var d = '2026-09-14'; d <= '2026-10-14'; d = mesoAddDays(d, 1)){
+        var k = scheduledDayFor(d);
+        if(k === 'REST' || d === '2026-10-01' || d === '2026-10-08' || d === '2026-10-12' || d === '2026-10-13') continue;
+        var o = {};
+        if(k === 'D3') o.mins = {'2026-10-07':75, '2026-10-14':81}[d] || 60;
+        // Shorter Fridays, steady at their own 40: judged against every day instead, both days would read off.
+        if(k === 'D5' && d <= '2026-10-02') o.mins = 40;
+        if(d === '2026-10-05') o.start = [19, 40];
+        if(d === '2026-10-06') o.start = [19, 50];
+        if(d === '2026-10-07') o.start = [20, 45];
+        if(d === '2026-10-09') o.recovered = true;
+        if(d === '2026-10-14') o.noEf = true;
+        L.push(mk(d, k, o));
+      }
+      L.push(mk('2026-10-11', 'D1', {}));                                 // a Sunday, rest
+      L.push(mk('2026-10-12', 'D5', {sched:'D5', start:[21, 0]}));        // was scheduled D5 that day
+      L.push(mk('2026-10-13', 'D3', {sched:'D2', start:[19, 45]}));       // trained D3 on a D2 day
+      S.logs = L;
+      S.fuel.workoutTime = '19:45'; S.fuel.foods = {};
+      S.weights = [{date:'2026-10-02', lbs:170.2}, {date:'2026-10-10', lbs:171.4}];
+      S.nutrition = ['2026-10-07','2026-10-08','2026-10-09','2026-10-12','2026-10-13','2026-10-14','2026-10-15'].map(function(d){ return {date:d, cals:3500, protein:160}; });
+      S.readiness = [{date:'2026-10-12', tier:'ok', sore:'none', energy:'good'}, {date:'2026-10-13', tier:'ok', sore:'none', energy:'good'},
+                     {date:'2026-10-14', partial:true, sleep:7}];
+      S.whoop = {history:['2026-10-07','2026-10-08','2026-10-11','2026-10-12','2026-10-13','2026-10-14','2026-10-15'].map(function(d){ return {date:d, recovery:60}; }),
+                 relayError:{at:'2026-10-15T10:00:00Z', kind:'auth', reauth:true, message:'invalid_request'}};
+      S.settings.ghToken = '';
+      agState().proposals = [{id:'svp1', agent:'delta', title:'a', status:'pending', created:'2026-10-12'},
+                             {id:'svp2', agent:'echo', title:'b', status:'pending', created:'2026-10-09'},
+                             {id:'svp3', agent:'echo', title:'c', status:'rejected', created:'2026-10-01'}];
+      agState().questions = [];
+      S.weekPlan = {week:'2026-10-12', input:{days:{'2026-10-13':['busy'], '2026-10-15':['lowenergy'], '2026-10-16':['travel']}, text:''},
+                    reply:{summary:'Old plan.', days:[], at:'x'}, at:'x'};
+    })()`);
+    const s = ev("svSheet('2026-10-15')");
+    ok('sheet: planned against done over 14 days, today never counted as a miss',
+       s.planned === 10 && s.done === 8 && JSON.stringify(s.missed) === JSON.stringify([{date:'2026-10-01', day:'D4'}, {date:'2026-10-08', day:'D4'}]), JSON.stringify([s.planned, s.done, s.missed]));
+    ok('sheet: a rest-day session is extra, not a miss', JSON.stringify(s.extra) === JSON.stringify([{date:'2026-10-11', day:'D1'}]));
+    ok('sheet: a day is judged by what was scheduled when he trained it (Oct 12 was D5 then), and a real swap is named',
+       JSON.stringify(s.swapped) === JSON.stringify([{date:'2026-10-13', did:'D3', was:'D2'}]), JSON.stringify(s.swapped));
+    ok('sheet: a weekday that keeps failing (2 of the last 4 Thursdays), and only that one',
+       s.dowMiss.length === 1 && s.dowMiss[0].dow === 4 && s.dowMiss[0].missed === 2 && s.dowMiss[0].planned === 4, JSON.stringify(s.dowMiss));
+    ok('sheet: this week from Monday: 3 of 3 before today, today D4 not logged, 1 left',
+       JSON.stringify(s.week) === JSON.stringify({start:'2026-10-12', planned:3, done:3, today:'D4', todayDone:false, left:1}), JSON.stringify(s.week));
+    ok('sheet: start times against the set workout time (median 7:50 PM, 2 over 45 min late)',
+       s.start && s.start.n === 5 && s.start.median === 19 * 60 + 50 && s.start.set === 19 * 60 + 45 && s.start.late === 2, JSON.stringify(s.start));
+    ok('sheet: length against that day’s own usual (Wed +0, Fri +0, Wed +25, Wed +35 = +15)', s.length && s.length.n === 4 && s.length.pct === 15, JSON.stringify(s.length));
+    ok('sheet: the books (weigh-in 5 days ago, intake 5 of 7, check-in missing on 2 of 4, 1 without effort, 1 never ended, WHOOP 5 of 7)',
+       s.weighDays === 5 && s.intakeDays === 5 && s.trained7 === 4 && s.noCheckin === 2 && s.noEffort === 1 && s.recovered === 1 && s.whoopDays === 5,
+       JSON.stringify([s.weighDays, s.intakeDays, s.trained7, s.noCheckin, s.noEffort, s.recovered, s.whoopDays]));
+    ok('sheet: what is waiting on him (2 requests, the oldest Oct 9; no check-in due on a Thursday)',
+       s.pending === 2 && s.pendingOldest === '2026-10-09' && !s.checkinDue && !s.stockDue, JSON.stringify([s.pending, s.pendingOldest, s.checkinDue, s.stockDue]));
+    ok('sheet: the week he described, each tagged day against what happened',
+       JSON.stringify(s.weekTags.map(x => [x.date, x.trained])) === JSON.stringify([['2026-10-13', true], ['2026-10-15', false], ['2026-10-16', false]]));
+    ok('sheet: the plumbing (relay note, sync off on this device, spend against the cap)',
+       s.relay && s.relay.reauth === true && s.sync === 'off' && s.spend && typeof s.spend.usd === 'number');
+    ok('sheet: on Sunday with next week not planned, the check-in is waiting on him', ev("svSheet('2026-10-18').checkinDue") === '2026-10-19');
+    const line = ev("svContextLine('2026-10-15')");
+    ok('sheet text: the count, the misses with dates, the pattern, and the week he described',
+       /^\nSUPERVISOR’S SHEET/.test(line) && /trained 8 of 10 planned days; missed Oct 1 \(D4\), Oct 8 \(D4\); also trained on rest days Oct 11 \(D1\)\./.test(line) &&
+       /Oct 13 D3 instead of D2/.test(line) && /missed 2 of 4 Thursdays/.test(line) && /median 7:50 PM over the last 5 sessions against a set workout time of 7:45 PM; 2 started more than 45 min late/.test(line) &&
+       /the last 4 timed sessions ran \+15% against each day’s usual\./.test(line) && /last weigh-in 5 days ago; intake logged on 5 of the last 7 days/.test(line) &&
+       /Waiting on him: 2 requests, the oldest from Oct 9\./.test(line) && /Oct 15 low energy \(today, not logged yet\), Oct 16 travel \(ahead\)/.test(line) &&
+       /WHOOP needs re-authorizing; sync is not connected/.test(line), line);
+
+    // Where it goes: CHARLIE's nightly prompt and its chat, nobody else's.
+    ev("window.__svSys = {}; callClaudeWithData = async function(msgs, sys){ var who = /You are CHARLIE/.test(sys) ? 'charlie' : /You are DELTA/.test(sys) ? 'delta' : /You are ECHO/.test(sys) ? 'echo' : 'zulu'; window.__svSys[who] = sys; return {text:'{\"summary\":\"ok\",\"proposals\":[]}', toolsUsed:0, stop:'end_turn'}; };");
+    await ev("agRunSpecialist('charlie', true)");
+    await ev("agRunSpecialist('echo', true)");
+    const cs = ev('window.__svSys.charlie') || '';
+    ok('prompt: CHARLIE’s nightly call carries the sheet and the supervisor brief', /SUPERVISOR’S SHEET/.test(cs) && /missed 2 of 4 Thursdays/.test(cs) && /You are CHARLIE, the supervisor/.test(cs), cs.slice(0, 300));
+    ok('prompt: ECHO’s does not (no one else pays for it)', !/SUPERVISOR’S SHEET/.test(ev('window.__svSys.echo') || 'x'));
+    ok('prompt: DELTA’s and ZULU’s base context do not carry it either', !/SUPERVISOR’S SHEET/.test(ev("agBaseContext('delta')")) && !/SUPERVISOR’S SHEET/.test(ev("agBaseContext('zulu')")));
+    ok('chat: CHARLIE’s chat carries it, DELTA’s does not', /SUPERVISOR’S SHEET/.test(ev("chatContext('charlie')")) && !/SUPERVISOR’S SHEET/.test(ev("chatContext('delta')")));
+    ok('brief: the team brief names CHARLIE the supervisor', /CHARLIE: the supervisor/.test(ev('agSharedBrief()')));
+
+    // --- changing the week ---
+    const script = reply => ev("window.__wpCalls = 0; callClaude = async function(m, sys){ window.__wpCalls++; window.__wpSys = sys; " + reply + " };");
+    ev("todayKey = function(){ return '2026-10-14'; }; _wpRunning = false; wpEditing = ''; wpDraft = {week:'', days:{}, text:''}; S.settings.apiKey = 'sk-test'; agState().proposals = [];");
+    const quiet = ev('wpCardHTML()');
+    ok('change: on a quiet Wednesday of a planned week, Change is still offered', /onclick="wpEdit\(\)"[^>]*>Change</.test(quiet), quiet);
+    ev('wpEdit()');
+    const form = ev('wpCardHTML()');
+    ok('change: it reopens the form, for the days still ahead only, with what he said ticked',
+       ev('wpStage()') === 'ask' && (form.match(/class="rd3-group"/g) || []).length === 5 && /wpToggle\('2026-10-16','travel'\)/.test(form) &&
+       /rd3-pill on[^>]*wpToggle\('2026-10-16','travel'\)/.test(form) && !/wpToggle\('2026-10-13'/.test(form), form.slice(0, 600));
+    ok('change: Cancel instead of "Not this week"', /wpEditCancel\(\)/.test(form) && !/wpSkip\(\)/.test(form));
+    ev("wpToggle('2026-10-15', 'nogym');");
+    ev('renderHome()');
+    ok('change: the taps survive the repaint', /rd3-pill on[^>]*wpToggle\('2026-10-15','nogym'\)/.test(ev('wpCardHTML()')));
+    script("return JSON.stringify({summary:'New plan.', days:[{date:'2026-10-15', note:'Home session.'}], proposals:[]});");
+    await ev('wpSubmit()');
+    const wp2 = ev('S.weekPlan');
+    ok('change: Plan my week makes one call and replaces the plan, keeping what he said about days gone',
+       ev('window.__wpCalls') === 1 && wp2.reply && wp2.reply.summary === 'New plan.' && JSON.stringify(wp2.input.days['2026-10-13']) === '["busy"]' &&
+       JSON.stringify(wp2.input.days['2026-10-15']) === '["lowenergy","nogym"]' && JSON.stringify(wp2.input.days['2026-10-16']) === '["travel"]' && ev('wpEditing') === '', JSON.stringify(wp2));
+    ok('change: the new input reaches the model', /oct 15: low energy, no gym/i.test(ev('window.__wpSys') || '') || /Thu, Oct 15: low energy, no gym/.test(ev('window.__wpSys') || ''), (ev('window.__wpSys') || '').slice(-400));
+    ok('change: and the agents are told the new week', /low energy, no gym/.test(ev('agContext()')));
+    // Cancel leaves it as it was.
+    const before = ev('JSON.stringify(S.weekPlan)');
+    ev("wpEdit(); wpToggle('2026-10-17', 'busy'); wpEditCancel();");
+    ok('change: Cancel changes nothing', ev('JSON.stringify(S.weekPlan)') === before && ev('wpStage()') === '' && ev('wpEditing') === '');
+    // A change whose call never got a reply keeps its retry mid-week.
+    script("throw new TypeError('Failed to fetch — no reply on any of 3 tries');");
+    ev("wpEdit(); wpToggle('2026-10-17', 'busy');");
+    await ev('wpSubmit()');
+    ok('change: a failed call mid-week still offers the retry', ev('wpStage()') === 'waiting' && /onclick="wpRun\(\)"/.test(ev('wpCardHTML()')) && ev("S.weekPlan.input.days['2026-10-17'][0]") === 'busy');
+    // A skipped week can be planned after all.
+    ev("S.weekPlan = {week:'2026-10-12', skipped:true, at:'x'};");
+    ok('skipped: the card offers Plan it now', /onclick="wpEdit\(\)"[^>]*>Plan it now</.test(ev('wpCardHTML()')));
+    script("return JSON.stringify({summary:'Planned late.', days:[], proposals:[]});");
+    ev("wpEdit(); wpToggle('2026-10-16', 'busy');");
+    await ev('wpSubmit()');
+    ok('skipped: planning it after all makes the plan', !ev('S.weekPlan.skipped') && ev('S.weekPlan.reply.summary') === 'Planned late.' && ev('window.__wpCalls') === 1);
+    // On Sunday, the plan for the week from tomorrow can be changed too.
+    ev("todayKey = function(){ return '2026-10-18'; }; S.weekPlan = {week:'2026-10-19', input:{days:{'2026-10-21':['busy']}, text:''}, reply:{summary:'Next week.', days:[], at:'x'}, at:'x'};");
+    ok('Sunday: the plan just made for next week shows, with Change', /Next week\./.test(ev('wpCardHTML()')) && /wpEdit\(\)/.test(ev('wpCardHTML()')));
+    // Outside the week, nothing to change.
+    ev("todayKey = function(){ return '2026-10-27'; }; wpEdit();");
+    ok('outside the week: no Change, and wpEdit does nothing', ev('wpEditing') === '' && !/wpEdit\(\)/.test(ev('wpCardHTML()')));
+  } catch (e) {
+    ok('supervisor / week change section', false, e.stack);
+  } finally {
+    ev('todayKey = window.__svToday; scheduledDayFor = window.__svSched; callClaude = window.__svCall; callClaudeWithData = window.__svCcwd; _wpRunning = false; wpEditing = ""; wpDraft = {week:"", days:{}, text:""};');
+    ev('S = JSON.parse(window.__svS); delete window.__svS; localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

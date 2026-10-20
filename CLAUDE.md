@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3723 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3754 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -297,7 +297,7 @@ pushes. Now:
 | Recap | `recapSlides()`, `recapYear()` / `recapFinal()` / `recapTitle()`, `recapRender()` / `recapOpen()` / `recapGo()` / `recapClose()`, `recapCardHTML()` |
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
 | Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
-| Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE) |
+| Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE, which gets `svSheet()` / `svContextLine()` instead) |
 | What the agents see | nightly `agCalendarContext()` (shares `agCalDayLine()` / `agCalPlanLine()` / `agCalNextDays()` with chat's `agTodayContext()`), `agSplitLiftText()`, `agFeelLine()`, chat `agLastNightLine()`; events `agEvents()` / `agEventsLine()` (`EV_FOR`, `EV_DAYS`), tools `get_events` / `get_recovery` |
 | Cross-review & volume | `agVolumeLastBlock()` / `liftHardShare()` (`VOL_GRIND_PCT`); `agTonightRequests()`, `agHoldSpecLine()`, `agValidateHolds()`, `agApplyHolds()`, `agShowAnyway()`, `agHeld()` |
 | Roundtable & voices | `AG_VOICE`, `S.agents.roundtable` (`agRoundtable()`, `RT_*`), `agPeersOffered()` / `agPeersSaid()`, `agValidatePeer()`, `agValidateReplies()`; the feed `agLog(agent, text, {to})` + `_agLogRun`, `hubFeedHTML()` / `hubActHTML()` |
@@ -323,7 +323,7 @@ pushes. Now:
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
 | Projections | `anFanProject()` (shared core), `anFanChartSVG()`, `anFanMilestones()`, `bwProjectFor()` |
-| Sunday check-in | `wpWeekFor()`, `wpStage()`, `wpCardHTML()`, `wpSubmit()`, `wpRun()` (route `weekplan`), `wpFilterProposals()`, `wpContextLine()`, `S.weekPlan` |
+| Sunday check-in | `wpWeekFor()`, `wpStage()`, `wpCardHTML()`, `wpSubmit()`, change: `wpEdit()` / `wpEditCancel()` / `wpEditableWeek()` / `wpFormWeek()`, `wpRun()` (route `weekplan`), `wpFilterProposals()`, `wpContextLine()`, `S.weekPlan` |
 | Experiments | `EXP_TEMPLATES`, `expState()` (`S.experiments`), `expValidate()`, `expStart()`, `expSessions()`, `expScore()` / `expTrend()`, `expEvaluate()`, `expTick()`, `expStop()`, `expAnswer()`, `expMenuLine()`, `expCardHTML()` |
 | Prediction record | `predTick()` (`S.predictions`), `predLifts()`, `predTopsets()`, `predResolve()`, `predRecord()`, `predRecordCardHTML()`, `predIntelLine()` |
 | Overload status | `olSignals()`, `olBaselineVerdict()`, `olValidateReport()`, `renderAnOverload()` |
@@ -341,9 +341,25 @@ pushes. Now:
 | Discord view | `discordView()`, `discordViewFile()`, `syncFiles()`, `DISCORD_VIEW_FILE`; Worker in `discord/src/` |
 | Schedule doc | `gdocWeekModel()`, `gdocDay()`, `gdocStatusFor()`, `gdocPush()`, `gdocCfg()`, `gdocCardHTML()`; Apps Script in `scripts/gdoc/workout-schedule.gs` |
 
-**Agent system:** four agents — ZULU (lead), CHARLIE (logistics/schedule/data health),
-DELTA (training), ECHO (nutrition/bodyweight). Model: `claude-sonnet-5`, declared once as
+**Agent system:** four agents — ZULU (lead), CHARLIE (the supervisor: showing up, logging, logistics,
+schedule), DELTA (training), ECHO (nutrition/bodyweight). Model: `claude-sonnet-5`, declared once as
 `AI_MODEL`.
+
+**CHARLIE is the supervisor** (his ask, 2026-10-19: "make sure I am not slacking, falling behind logistically"). It
+used to have the schedule alone, with one fix shape he almost never wants, so most nights it said the schedule was
+fine. `svSheet(t)` is pure and computes what a supervisor checks; `svContextLine()` puts it in CHARLIE's nightly
+prompt and its chat only ("SUPERVISOR'S SHEET"), so no other agent pays for it:
+- the last `SV_DAYS` (14) against the plan, today never a miss; a day he trained is judged by its log's `scheduled`
+  (what was planned then), a missed day by the schedule as it stands now; rest-day sessions; a day trained as another;
+- a weekday missed at least twice and half the time over 4 weeks, the one finding a schedule fix answers;
+- this week from Monday, the streak, start times against `S.fuel.workoutTime` (`SV_LATE_MIN`), and length against
+  each day's own usual (the density rule);
+- the books: last weigh-in, intake days, check-ins and effort taps on sessions, sessions never ended, WHOOP days;
+- what waits on him (requests and the oldest, the question, the stock check, the Sunday check-in), the week he
+  described against what happened, and the plumbing (the relay's note, this device's sync, the month's spend).
+
+It changes no fix shape: CHARLIE still proposes only `schedule` / `cycleSchedule`. The brief says a day he tagged on
+Sunday is not slacking, and a slip is raised once.
 
 Nightly at 9 PM, CHARLIE/DELTA/ECHO run **in parallel**, each with its own prompt and its
 own allowed fix shapes (`AG_ROLE_BRIEF`, `AG_FIX_MENU`), then ZULU runs on their output and
@@ -1180,7 +1196,13 @@ date; V4's removal of date overrides stands.
 - Sunday (for the week from Monday) and Monday (catch-up for the current week), a Today card:
   chips per day (Busy / Travel / No gym / Low energy) and a line of text. The taps live in the
   module-scoped `wpDraft`, so the 30-second repaint cannot wipe them. "Not this week" makes no call.
-- His input is saved BEFORE the call. **One call a week** (`wpRun()`, route `weekplan`, no tools,
+- **He can change it all week** (his ask, 2026-10-19; it used to be final once planned or skipped). **Change**
+  (`wpEdit()`) is on the This week card from the Sunday before the week to its last day (`wpEditableWeek()`); a quiet
+  day keeps a one-line card so it stays in reach, and a skipped week shows **Plan it now**. The form (`wpFormWeek()`,
+  `wpEditing`, module-scoped) opens with what he said, offers only the days still ahead, and keeps what he said about
+  the days gone. Plan my week replaces the week's plan whole and is one more call; Cancel changes nothing. A change
+  whose call got no reply keeps its retry mid-week.
+- His input is saved BEFORE the call. **One call per plan** (`wpRun()`, route `weekplan`, no tools,
   effort medium, about $0.03). A retry is allowed only when no reply ever arrived
   (`agIsNetworkErr`); a reply that came back unusable was billed and closes the week. `S` is
   re-resolved after the await, and `_wpRunning` is released in `finally`.
