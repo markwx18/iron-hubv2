@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3754 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3789 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -291,7 +291,7 @@ pushes. Now:
 | Per-lift flags | `exSlotsFor()` (split in force, else the permanent split), `isMaxed()`, `incForExercise()`, `slotInc()`, `isFormFocus()`, `isStrMode()`, `toggleRepMode()` |
 | Forecasts & insights | `deloadForecast()`, `fuelVsResults()`, `recoveryEffectCardHTML()`, `anReadinessFactors()`, `sessionDensity()` / `densityByDay()`, `streakStats()`, `fatigueIndex(endKey)` |
 | Train (A × C) | Plan `planHeroHTML()`, `planBlocks()`, `planLenStep()`, `planSetType()`; Log `logHeroHTML()`, `logChipsHTML()`, `logRowHTML()`, `logPRsOn()` (`logFilter`, `logOpen`); Library `libLifts()`, `libMatches()`, `libFilterRows()`, `libCardHTML()`, `libFlag()`, `libRename()`; `exRenameFlow()` (the one rename flow) |
-| Body (A × C) | Weight `bwHeroHTML()`, `bwWeeklyRows()`, `bwHeadingHTML()`, `bwWeeksHTML()`, `BW_BAND_CHIP`; Fuel `fuelHeroHTML()` / `fuelRingHTML()`, `nutLogHTML()`, `nutHistFold()`; Ready `rdHeroHTML()`, `rdBarsHTML()`, `rdCheckinsHTML()` |
+| Body (A × C) | Weight `bwHeroHTML()`, the chart `bwChartCardHTML()` (range `bwView`, `bwViewPreset()` / `bwViewSet()`, `bwRangeSummary()`; hover and drag-to-zoom through the kit's `ckHovWrap()`), `bwWeeklyRows()`, `bwHeadingHTML()`, `bwWeeksHTML()`, `BW_BAND_CHIP`; Fuel `fuelHeroHTML()` / `fuelRingHTML()`, `nutLogHTML()`, `nutHistFold()`; Ready `rdHeroHTML()`, `rdBarsHTML()`, `rdCheckinsHTML()` |
 | Settings (A × C) | `setGlance()` / `setGlanceHTML()` (`SET_TONE`), `setOpenGroup()`, `setGearHTML()`, `settingsSummaries()` |
 | Winter Arc | `winterState()`, `waPhase()`, `waCardHTML()`; his dates `waEditHTML()` / `waReadDates()` / `waSaveTargets()`, `waStartTime()` / `waEndTime()`, `waWallMs()` / `waEndMs()`; the countdown `waGoLiveMs()`, `waSeasonRead()`, `waCountState()` / `waCountHTML()`, `waCountTick()` (`#waCount`), `waLaunchHTML()` |
 | Recap | `recapSlides()`, `recapYear()` / `recapFinal()` / `recapTitle()`, `recapRender()` / `recapOpen()` / `recapGo()` / `recapClose()`, `recapCardHTML()` |
@@ -304,7 +304,7 @@ pushes. Now:
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
-| Home / strip | `renderHome()` (`todayKeyLifts()`, `todayPlanShape()`, `nextPrForecast()`, `agStripState()`, `homeWheelHTML()`), `renderStatusStrip()`, `readinessNow()`, `renderNotif()` (`notifDismiss()` one item, `notifClear()` all) |
+| Home / strip | `renderHome()` (`todayKeyLifts()`, `todayPlanShape()`, `nextPrForecast()` = the soonest of `nextPrForecasts()`, stepped with `nextPrStep()` / `nextPrPick`, `agStripState()`, `homeWheelHTML()`), `renderStatusStrip()`, `readinessNow()`, `renderNotif()` (`notifDismiss()` one item, `notifClear()` all) |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
 | WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`; a failed run: `S.whoop.relayError`, `whoopRelayFault()`, `whoopRunFailText()`; `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`, `spendRefresh()`, `relayErrorRecord()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
@@ -322,7 +322,7 @@ pushes. Now:
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network; the cap: `spendLedgerSync()` (`S.spend`), `spendMonth()`, `spendBlock()`, `spendPreflight()`, `spendManualOk()`, `spendCap()` |
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
-| Projections | `anFanProject()` (shared core), `anFanChartSVG()`, `anFanMilestones()`, `bwProjectFor()` |
+| Projections | `anFanProject()` (shared core), `anFanChartSVG()` (curves via `ckSmoothD()`, key `fanLegendHTML()`), `anFanMilestones()`, `bwProjectFor()` |
 | Sunday check-in | `wpWeekFor()`, `wpStage()`, `wpCardHTML()`, `wpSubmit()`, change: `wpEdit()` / `wpEditCancel()` / `wpEditableWeek()` / `wpFormWeek()`, `wpRun()` (route `weekplan`), `wpFilterProposals()`, `wpContextLine()`, `S.weekPlan` |
 | Experiments | `EXP_TEMPLATES`, `expState()` (`S.experiments`), `expValidate()`, `expStart()`, `expSessions()`, `expScore()` / `expTrend()`, `expEvaluate()`, `expTick()`, `expStop()`, `expAnswer()`, `expMenuLine()`, `expCardHTML()` |
 | Prediction record | `predTick()` (`S.predictions`), `predLifts()`, `predTopsets()`, `predResolve()`, `predRecord()`, `predRecordCardHTML()`, `predIntelLine()` |
@@ -1778,6 +1778,11 @@ How they draw:
 - `anFanChartSVG()` takes `opts.histDays`, `opts.marks`, `opts.modDates` (a reshaped session is a
   hollow dot) and `opts.noMeter`. `lineChart()` takes `opts.marks`; the bodyweight chart uses deloads
   and calorie changes. Called without opts, both draw exactly as before.
+**A chart can be read point by point** (the bodyweight chart, 2026-10-20). `lineChart(…, {hover:key})` keeps what it drew in
+`_ckHov[key]`, and `ckHovWrap()` moves a crosshair and tooltip in place, with no repaint. A sideways drag of at least
+`CK_BRUSH_MIN` hands two dates to the function named in `data-brush`; `touch-action:pan-y` keeps a vertical swipe scrolling.
+Positions go back to dates in UTC (`ckUtcKey()`), because the axis is `new Date('YYYY-MM-DD')`. Without `hover` a chart draws
+as before. Fan lines are monotone curves through the model's own points (`ckSmoothD()`), so a restyle cannot add a peak.
 Full-width charts draw on a 380-wide viewBox (`CK_W`). They used to draw on 700, which a phone card
 shrinks to about half, so their 10-unit axis text rendered near 5px. The fan chart scales its
 type with the width it is given. Each `ckArea()` takes its own gradient id; a shared id would
@@ -1796,7 +1801,9 @@ group. The suite checks every section is reachable from exactly one group. The e
 folded into Operations).
 
 **A view can merge sections** (slice 4). A view entry lists them in `show[]`, in reading order.
-Progress is four views over seven sections: Overview = `progress` + `an_over`; Strength =
+Progress is four views over eight sections: Overview = `progress` + `an_over` + `pg_more` (the year review sits under the
+squat, above the Fatigue check, his ask 2026-10-20; `pg_more` is drawn by `renderProgressMore()` from `renderProgressV2()`, because
+the photo handlers repaint through it); Strength =
 `an_pred` + `an_strength` + `road` (the hero lives in `an_pred`, so it reads first since V4 stage 5);
 Overload; Fatigue. Each section keeps its id and its
 renderer. `showMainTab()` lights every part, orders them with CSS `order`, and sets the later

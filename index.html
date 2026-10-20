@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-19-v1">
+<meta name="ironhub-build" content="2026-10-20-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1505,6 +1505,12 @@
   .cc-x-k{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;}
   .cc-x-v{font-family:var(--disp); font-weight:700; font-size:28px; line-height:.95; letter-spacing:.02em;}
   .cc-x-s{font-size:12.5px; color:var(--muted); line-height:1.35;}
+  .cc-pr-k{display:flex; align-items:center; gap:6px; min-height:22px;}
+  .cc-pr-nav{display:inline-flex; align-items:center; gap:2px; margin-left:auto; color:var(--dim);}
+  .cc-pr-n{font-size:10px; letter-spacing:.04em; white-space:nowrap;}
+  .cc-pr-b{width:30px; height:30px; margin:-6px 0; border:0; border-radius:9px; background:var(--panel2); color:var(--text);
+    font-size:20px; line-height:1; padding:0 0 2px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;}
+  .cc-pr-b:hover{color:var(--amber);}
   .cc-pips{display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:3px;}
   .cc-pips i{height:8px; border-radius:2px; background:var(--line2);}
   .cc-pips i.on{background:var(--warn);}
@@ -1647,6 +1653,37 @@
   @media (max-width:360px){ .bw-log{grid-template-columns:repeat(2,minmax(0,1fr));} .bw-log .btn{grid-column:1 / -1;} }
   .bw-tip{margin:0 0 12px; font-size:12px; color:var(--dim); text-align:center;}
   .bw-verdict{margin:4px 0 14px; font-size:15px; line-height:1.5; text-align:center;}
+  /* the bodyweight chart's range: presets, then the two dates (one row on desktop, two on a phone) */
+  .bw-rng{display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-bottom:12px;}
+  .bw-pre{display:grid; grid-template-columns:repeat(4, 1fr); gap:3px; padding:3px; border-radius:12px; background:var(--panel2);}
+  .bw-pre button{height:32px; min-width:44px; padding:0 8px; border:0; border-radius:9px; background:none; color:var(--muted);
+    font-family:var(--disp); font-size:14px; letter-spacing:.06em; cursor:pointer;}
+  .bw-pre button.on{background:var(--base); color:var(--amber);}
+  .bw-dates{display:flex; align-items:center; gap:6px; min-width:0; flex:1 1 220px; justify-content:flex-end;}
+  .bw-dates input{flex:1 1 0; min-width:0; max-width:160px; height:34px; padding:0 8px; font-size:13px;}
+  .bw-dates span{font-size:12px; color:var(--dim);}
+  .bw-rng-sum{margin:10px 2px 0; font-size:12.5px; line-height:1.5; color:var(--muted);}
+  .bw-rng-sum b{color:var(--text); font-weight:600;}
+  .bw-rng-tip{display:block; margin-top:2px; font-size:11.5px; color:var(--dim);}
+  /* a chart read point by point (ckHovWrap): the tooltip sits over the point, inside the card */
+  .ck-hov{position:relative; touch-action:pan-y; user-select:none; -webkit-user-select:none; cursor:crosshair;}
+  .ck-tip{position:absolute; transform:translate(-50%, -100%); pointer-events:none; padding:5px 9px; border-radius:9px;
+    background:var(--base); box-shadow:0 4px 14px rgba(0,0,0,.45); white-space:nowrap; display:flex; flex-direction:column; align-items:center; line-height:1.2;}
+  .ck-tip[hidden]{display:none;}
+  .ck-tip b{font-family:var(--disp); font-size:17px; color:var(--text); letter-spacing:.02em;}
+  .ck-tip span{font-size:11px; color:var(--dim);}
+  /* the key under a fan chart (fanLegendHTML) */
+  .fan-key{display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px; margin-top:12px;}
+  .fan-k{display:flex; flex-direction:column; gap:3px; min-width:0; padding:8px 10px; border-radius:var(--r-ctl); background:var(--panel2);}
+  .fan-k-l{display:flex; align-items:baseline; gap:6px; font-size:11px; line-height:1.25; color:var(--muted); min-width:0;}
+  .fan-k-l i{flex:none; width:12px; height:0; border-top:2px solid; transform:translateY(-3px);}
+  .fan-k b{font-family:var(--disp); font-size:21px; font-weight:700; color:var(--text); letter-spacing:.02em; line-height:1;}
+  .fan-k b small{font-size:11px; font-weight:600; color:var(--dim); margin-left:3px; letter-spacing:.04em;}
+  .fan-k.mid{box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--amber) 40%, transparent);}
+  .fan-k-s{font-size:11px; color:var(--dim); white-space:nowrap;}
+  .fan-hist{margin:8px 2px 0; font-size:11.5px; color:var(--muted);}
+  .fan-hist i{display:inline-block; vertical-align:middle; width:14px; height:0; margin-right:6px; border-top:2px solid var(--muted);}
+  .fan-hist span{color:var(--dim);}
   .bw-head2{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px;}
   .bw-stat{display:flex; flex-direction:column; gap:2px; min-width:0;}
   .bw-stat b{font-family:var(--disp); font-size:34px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums;}
@@ -2117,6 +2154,7 @@
         <section id="log"></section>
         <section id="settings"></section>
         <section id="an_over" data-title="This year"></section>
+        <section id="pg_more" data-title="Fatigue &amp; volume"></section>
         <section id="an_strength" data-title="PR history"></section>
         <section id="an_fatigue"></section>
         <section id="an_recovery"></section>
@@ -4728,6 +4766,11 @@ function renderProgress(){
     html += '<div class="card flat" style="padding:0;border:none">'+milestoneBarGraphic(barCur, cfg.milestones)+'</div>';
     html += '<div class="card">'+lineChart(pts, dayColorForLift(lift))+'</div>';
   }
+  el.innerHTML = html;
+}
+/* Best sets, as the raw fold. It closes Overview, so it is drawn into pg_more, the part under the year
+   review (his ask, 2026-10-20), and keeps its pref key so a fold he opened stays open. */
+function progressBestSetsFold(){
   const bests = {};
   S.logs.forEach(l=>l.entries.forEach(e=>e.sets.forEach(s=>{
     const w = +s.w||0, r = +s.r||0;
@@ -4742,8 +4785,7 @@ function renderProgress(){
     const b=bests[k];
     bestHTML += '<div class="h-ex" style="padding:3px 0"><b>'+esc(k)+'</b> — '+b.w+' lb × '+b.r+' <span class="small">(e1RM '+Math.round(b.v)+', '+fmtDate(b.date)+')</span></div>';
   });
-  html += rawFold('progress', 'Best sets, all exercises', keys.length+' lift'+(keys.length===1?'':'s'), bestHTML+'</div>');
-  el.innerHTML = html;
+  return rawFold('progress', 'Best sets, all exercises', keys.length+' lift'+(keys.length===1?'':'s'), bestHTML+'</div>');
 }
 function dayColorForLift(l){ return l.includes('Squat') ? '#dfae36' : '#d23b3b'; }
 /* ================= CHART KIT (V3, Forge x Ember) =================
@@ -4840,6 +4882,29 @@ function ckArea(d, x0, x1, baseY, col){
     '<stop offset="0" style="stop-color:'+col+';stop-opacity:.26"/><stop offset="1" style="stop-color:'+col+';stop-opacity:0"/>'+
     '</linearGradient></defs><path d="'+d+' L'+(+x1).toFixed(1)+' '+(+baseY).toFixed(1)+' L'+(+x0).toFixed(1)+' '+(+baseY).toFixed(1)+' Z" fill="url(#'+id+')" stroke="none"/>';
 }
+/* A smooth line through every point, for a forecast drawn from a few samples. Monotone cubic
+   (Fritsch-Carlson): the curve passes through each point and never overshoots between two of
+   them, so a restyle cannot invent a peak or a dip the numbers do not have. */
+function ckSmoothD(xy){
+  const n = xy.length;
+  if(n < 3) return ckD(xy);
+  const dx = [], m = [], t = [];
+  for(let i = 0; i < n - 1; i++){ dx[i] = xy[i+1][0] - xy[i][0]; m[i] = dx[i] ? (xy[i+1][1] - xy[i][1]) / dx[i] : 0; }
+  t[0] = m[0]; t[n-1] = m[n-2];
+  for(let i = 1; i < n - 1; i++) t[i] = (m[i-1] * m[i] <= 0) ? 0 : (m[i-1] + m[i]) / 2;
+  for(let i = 0; i < n - 1; i++){
+    if(m[i] === 0){ t[i] = 0; t[i+1] = 0; continue; }
+    const a = t[i] / m[i], b = t[i+1] / m[i], q = a*a + b*b;
+    if(q > 9){ const k = 3 / Math.sqrt(q); t[i] = k * a * m[i]; t[i+1] = k * b * m[i]; }
+  }
+  let d = 'M'+xy[0][0].toFixed(1)+' '+xy[0][1].toFixed(1);
+  for(let i = 0; i < n - 1; i++){
+    const g = dx[i] / 3;
+    d += ' C'+(xy[i][0] + g).toFixed(1)+' '+(xy[i][1] + t[i]*g).toFixed(1)+' '+(xy[i+1][0] - g).toFixed(1)+' '+(xy[i+1][1] - t[i+1]*g).toFixed(1)+
+         ' '+xy[i+1][0].toFixed(1)+' '+xy[i+1][1].toFixed(1);
+  }
+  return d;
+}
 function ckDot(cx, cy, col, r){
   return '<circle cx="'+(+cx).toFixed(1)+'" cy="'+(+cy).toFixed(1)+'" r="'+(r||3)+'" fill="'+col+'" stroke="var(--panel)" stroke-width="2"/>';
 }
@@ -4919,13 +4984,112 @@ function lineChart(pts, color, opts){
   [vmin,(vmin+vmax)/2,vmax].forEach(v=>{ svg += ckGrid(L, R, y(v)) + ckText(L-7, y(v)+4, Math.round(v), {anchor:'end'}); });
   const mk = ckMarks(opts.marks, k=>x(new Date(k).getTime()), y, T, B, L, R);
   svg += mk.under;
+  // opts.hover: the chart can be read point by point (ckHov*). Every point gets a dot while they can
+  // still read as points, and the crosshair, its dot and the drag band are drawn hidden for the
+  // handlers to move. Without it the chart draws exactly as before.
+  const hov = opts.hover;
+  if(hov) svg += '<rect class="ck-br" x="'+L+'" y="'+T+'" width="0" height="'+(B-T)+'" rx="3" fill="var(--text)" opacity=".07" visibility="hidden"/>';
   svg += ckArea(d, xy[0][0], last[0], B, color) + ckPath(d, color);
-  if(xy.length <= CK_DOTS_MAX) xy.slice(0,-1).forEach(p=>{ svg += ckDot(p[0], p[1], color, 3); });
+  if(hov){ if(xy.length <= CK_HOV_DOTS_MAX) xy.slice(0,-1).forEach(p=>{ svg += ckDot(p[0], p[1], color, xy.length > CK_DOTS_MAX ? 2.2 : 3); }); }
+  else if(xy.length <= CK_DOTS_MAX) xy.slice(0,-1).forEach(p=>{ svg += ckDot(p[0], p[1], color, 3); });
   svg += ckDot(last[0], last[1], color, 5);
   svg += ckText(last[0]-9, last[1]-11, Math.round(pts[pts.length-1].v), {anchor:'end', num:true, size:15, weight:700, fill:'var(--text)'});
   svg += mk.over + mk.labels;
   svg += ckText(L, H-8, fmtDate(pts[0].date)) + ckText(R, H-8, fmtDate(pts[pts.length-1].date), {anchor:'end'});
+  if(hov){
+    // A middle date, so a zoomed-in stretch can be read against the calendar.
+    if(t1 - t0 >= 14*86400000) svg += ckText((L+R)/2, H-8, fmtDate(ckUtcKey((t0+t1)/2)), {anchor:'middle'});
+    svg += '<line class="ck-hx" x1="0" x2="0" y1="'+T+'" y2="'+B+'" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3" visibility="hidden"/>'+
+      '<circle class="ck-hd" cx="0" cy="0" r="5.5" fill="'+color+'" stroke="var(--text)" stroke-width="2" visibility="hidden"/>';
+    _ckHov[hov] = {W:W, H:H, L:L, R:R, T:T, B:B, t0:t0, t1:t1, unit:opts.unit || '',
+      pts:xy.map((p,i)=>({x:p[0], y:p[1], date:pts[i].date, v:pts[i].v}))};
+  }
   return svg+'</svg>';
+}
+/* ---- reading a chart point by point (his ask, 2026-10-20, the bodyweight chart) ----
+   lineChart(…, {hover:key}) leaves what it drew in _ckHov[key]; ckHovWrap() puts the chart in a box whose
+   pointer handlers move the crosshair and a tooltip to the nearest point, in place, with no repaint. A
+   drag across the chart (data-brush names the function) hands back the two dates it covered. On a phone
+   touch-action:pan-y keeps a vertical swipe scrolling the page, so only a sideways drag selects. */
+const CK_HOV_DOTS_MAX = 160;
+const _ckHov = {};
+function ckHovWrap(key, svg, brushFn){
+  return '<div class="ck-hov" data-hov="'+esc(key)+'"'+(brushFn ? ' data-brush="'+esc(brushFn)+'"' : '')+
+    ' onpointerdown="ckHovDown(event,this)" onpointermove="ckHovMove(event,this)" onpointerup="ckHovUp(event,this)"'+
+    ' onpointerleave="ckHovLeave(event,this)" onpointercancel="ckHovEnd(this)">'+svg+'<div class="ck-tip" hidden></div></div>';
+}
+/* Where the pointer is, in the chart's own units. */
+function ckHovAt(ev, wrap){
+  const d = _ckHov[wrap.getAttribute('data-hov')], svg = wrap.querySelector('svg');
+  if(!d || !svg || !d.pts.length) return null;
+  const r = svg.getBoundingClientRect();
+  if(!(r.width > 0)) return null;
+  return {d:d, svg:svg, r:r, vx:Math.max(d.L, Math.min(d.R, (ev.clientX - r.left) / r.width * d.W))};
+}
+function ckHovNear(d, vx){
+  let best = d.pts[0];
+  d.pts.forEach(function(p){ if(Math.abs(p.x - vx) < Math.abs(best.x - vx)) best = p; });
+  return best;
+}
+/* The date at a point along the x axis. */
+function ckHovDate(d, vx){ return ckUtcKey(d.t0 + (vx - d.L) / Math.max(1, d.R - d.L) * (d.t1 - d.t0)); }
+/* lineChart's x axis is new Date('YYYY-MM-DD'), which is UTC midnight, so a position on it goes back to a
+   day key in UTC too. Read through the local clock, Eastern time would make every date a day early. */
+function ckUtcKey(ms){ return new Date(Math.round(ms / 86400000) * 86400000).toISOString().slice(0, 10); }
+function ckHovShow(a, wrap){
+  const p = ckHovNear(a.d, a.vx), svg = a.svg, tip = wrap.querySelector('.ck-tip');
+  const hx = svg.querySelector('.ck-hx'), hd = svg.querySelector('.ck-hd');
+  if(hx){ hx.setAttribute('x1', p.x.toFixed(1)); hx.setAttribute('x2', p.x.toFixed(1)); hx.setAttribute('visibility', 'visible'); }
+  if(hd){ hd.setAttribute('cx', p.x.toFixed(1)); hd.setAttribute('cy', p.y.toFixed(1)); hd.setAttribute('visibility', 'visible'); }
+  if(tip){
+    tip.innerHTML = '<b>'+esc(String(Math.round(p.v * 10) / 10))+(a.d.unit ? ' '+esc(a.d.unit) : '')+'</b><span>'+esc(fmtDate(p.date))+'</span>';
+    tip.hidden = false;
+    const sx = a.r.width / a.d.W, sy = a.r.height / a.d.H;
+    // Kept inside the card: a point at either edge would otherwise put half the tooltip off it.
+    tip.style.left = Math.max(44, Math.min(a.r.width - 44, p.x * sx)).toFixed(0)+'px';
+    tip.style.top = Math.max(0, p.y * sy - 12).toFixed(0)+'px';
+  }
+  return p;
+}
+function ckHovDown(ev, wrap){
+  const a = ckHovAt(ev, wrap); if(!a) return;
+  if(wrap.getAttribute('data-brush') && !(ev.button > 0)){   // a right or middle press never starts a zoom
+    wrap._brush = a.vx;
+    try{ wrap.setPointerCapture(ev.pointerId); }catch(e){}
+  }
+  ckHovShow(a, wrap);
+}
+function ckHovMove(ev, wrap){
+  const a = ckHovAt(ev, wrap); if(!a) return;
+  ckHovShow(a, wrap);
+  const br = a.svg.querySelector('.ck-br');
+  if(wrap._brush != null && br){
+    const x0 = Math.min(wrap._brush, a.vx), x1 = Math.max(wrap._brush, a.vx);
+    br.setAttribute('x', x0.toFixed(1)); br.setAttribute('width', (x1 - x0).toFixed(1));
+    br.setAttribute('visibility', x1 - x0 > 2 ? 'visible' : 'hidden');
+  }
+}
+/* A drag that covered more than a sliver zooms to it; anything shorter was a tap, which leaves the
+   tooltip up (on a phone that is how a point is read). */
+function ckHovUp(ev, wrap){
+  const a = ckHovAt(ev, wrap), from = wrap._brush, fn = wrap.getAttribute('data-brush');
+  ckHovEnd(wrap);
+  if(!a || from == null || !fn || Math.abs(a.vx - from) < CK_BRUSH_MIN) return;
+  const k0 = ckHovDate(a.d, Math.min(from, a.vx)), k1 = ckHovDate(a.d, Math.max(from, a.vx));
+  if(typeof window[fn] === 'function') window[fn](k0, k1);
+}
+const CK_BRUSH_MIN = 12;
+function ckHovLeave(ev, wrap){
+  if(wrap._brush != null) return;   // captured: the drag is still going
+  if(ev && ev.pointerType && ev.pointerType !== 'mouse') return;   // a finger lifting keeps the reading up
+  const svg = wrap.querySelector('svg'), tip = wrap.querySelector('.ck-tip');
+  if(svg) ['.ck-hx', '.ck-hd'].forEach(function(s){ const n = svg.querySelector(s); if(n) n.setAttribute('visibility', 'hidden'); });
+  if(tip) tip.hidden = true;
+}
+function ckHovEnd(wrap){
+  wrap._brush = null;
+  const br = wrap.querySelector('.ck-br');
+  if(br) br.setAttribute('visibility', 'hidden');
 }
 
 /* ================= ROAD TAB ================= */
@@ -7130,6 +7294,60 @@ function nutWeekCard(){
 const BW_BAND_CHIP = {losing:['losing', 'var(--bad)'], flat:['flat', 'var(--warn)'], under:['under the band', 'var(--warn)'],
                       pocket:['in the band', 'var(--good)'], hot:['over the band', 'var(--warn)']};
 const BW_WEEKS_SHOWN = 4, BW_HEAD_DAYS = 56;
+/* The bodyweight chart can be narrowed to any stretch of dates (his ask, 2026-10-20: "Aug 20 - Sept 15"):
+   by a preset, by the two date boxes, or by dragging across the chart. Each weigh-in is a point that
+   shows its date and weight under the pointer or a tap. The range is module-scoped, like every other
+   on-screen choice, so the 30 s repaint keeps it; it is a view, never saved. */
+const BW_VIEW_PRESETS = [{k:'1m', label:'1M', days:30}, {k:'3m', label:'3M', days:91}, {k:'6m', label:'6M', days:182}, {k:'all', label:'All', days:0}];
+let bwView = {k:'all', from:null, to:null};
+function bwViewRange(w){
+  const last = w.length ? w[w.length - 1].date : todayKey();
+  const p = BW_VIEW_PRESETS.find(function(x){ return x.k === bwView.k; });
+  if(p) return {from: p.days ? mesoAddDays(last, -p.days) : null, to: null};
+  return {from: bwView.from || null, to: bwView.to || null};
+}
+function bwViewPreset(k){ bwView = {k:k, from:null, to:null}; REVIEW_RENDER.bulk(); }
+/* A typed or dragged range. Backwards dates are swapped rather than refused. */
+function bwViewSet(from, to){
+  from = from || null; to = to || null;
+  if(from && to && from > to){ const t = from; from = to; to = t; }
+  bwView = (from || to) ? {k:'custom', from:from, to:to} : {k:'all', from:null, to:null};
+  REVIEW_RENDER.bulk();
+}
+function bwChartCardHTML(w, marks){
+  const rg = bwViewRange(w);
+  const inR = function(k){ return (!rg.from || k >= rg.from) && (!rg.to || k <= rg.to); };
+  const pts = w.filter(function(p){ return inR(p.date); }).map(function(p){ return {date:p.date, v:p.lbs}; });
+  let h = '<div class="card bw-chart"><div class="bw-rng"><div class="bw-pre">'+
+    BW_VIEW_PRESETS.map(function(p){ return '<button class="'+(bwView.k === p.k ? 'on' : '')+'" onclick="bwViewPreset(\''+p.k+'\')">'+p.label+'</button>'; }).join('')+
+    '</div><div class="bw-dates"><input type="date" id="bwFrom" aria-label="From" value="'+esc(rg.from || w[0].date)+'" min="'+esc(w[0].date)+'" max="'+esc(w[w.length - 1].date)+'"'+
+    ' onchange="bwViewSet(this.value, document.getElementById(\'bwTo\').value)"><span>to</span>'+
+    '<input type="date" id="bwTo" aria-label="To" value="'+esc(rg.to || w[w.length - 1].date)+'" min="'+esc(w[0].date)+'" max="'+esc(w[w.length - 1].date)+'"'+
+    ' onchange="bwViewSet(document.getElementById(\'bwFrom\').value, this.value)"></div></div>';
+  if(!pts.length) return h+'<p class="small" style="color:var(--dim);margin:14px 0 4px">No weigh-ins between those dates.</p></div>';
+  // A band that began before the range still shows from its first day inside it.
+  const mk = (marks || []).filter(function(m){ return (!rg.to || m.date <= rg.to) && (!rg.from || (m.end || m.date) >= rg.from); })
+    .map(function(m){ return (rg.from && m.date < rg.from) ? Object.assign({}, m, {date:rg.from}) : m; });
+  h += ckHovWrap('bw', lineChart(pts, '#3da25f', {marks:mk, hover:'bw', unit:'lb'}), 'bwViewSet');
+  h += '<p class="bw-rng-sum">'+bwRangeSummary(pts)+'</p>';
+  return h+'</div>';
+}
+/* What the stretch on screen says: first to last weigh-in, the low and the high, and the pace. The pace is
+   bulkRate() over the weeks in the range, ending on its last day (the ONE bodyweight rate), and only with
+   3 weeks in it, as everywhere else. */
+function bwRangeSummary(pts){
+  const a = pts[0], b = pts[pts.length - 1];
+  const vs = pts.map(function(p){ return +p.v; }), lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+  const ch = Math.round((b.v - a.v) * 10) / 10;
+  let s = '<b>'+esc(homeShortDate(a.date))+(a.date !== b.date ? ' – '+esc(homeShortDate(b.date)) : '')+'</b> · '+pts.length+' weigh-in'+(pts.length === 1 ? '' : 's');
+  if(pts.length > 1) s += ' · '+a.v+' → '+b.v+' lb ('+(ch >= 0 ? '+' : '')+ch+') · low '+lo+', high '+hi;
+  try{
+    const wk = bodyweightSeriesSmoothed().filter(function(p){ return p.date >= a.date && p.date <= b.date; }).length;
+    const br = wk >= 3 ? bulkRate(wk, b.date) : null;
+    if(br && isFinite(br.rate)) s += ' · '+(br.rate >= 0 ? '+' : '')+br.rate.toFixed(2)+' lb/wk over '+br.weeks+' weeks';
+  }catch(e){}
+  return s+'<span class="bw-rng-tip">Drag across the chart to zoom in; tap or hover a point for its weight.</span>';
+}
 function bwHeroHTML(w, br){
   const last = w.length ? w[w.length - 1] : null, t = todayKey();
   const chip = br ? BW_BAND_CHIP[bulkBand(br.rate)] : null;
@@ -7197,7 +7415,7 @@ function renderBulk(){
   // Deloads and calorie changes marked on it (V4 stage 5), the events most likely to move the scale.
   let bwMarks = [];
   try{ if(w.length) bwMarks = ckEventMarks(w[0].date, ['deload', 'cal']); }catch(e){ bwMarks = []; }
-  if(w.length) html += '<div class="card">'+lineChart(w.map(p=>({date:p.date, v:p.lbs})), '#3da25f', {marks:bwMarks})+'</div>';
+  if(w.length) html += bwChartCardHTML(w, bwMarks);
   if(verdict) html += '<p class="bw-verdict">'+verdict+'</p>';
   try{ html += bwHeadingHTML(); }catch(e){}
   try{ html += bwWeeksHTML(); }catch(e){}
@@ -9664,7 +9882,9 @@ const NAV_MODEL = [
   // Seven sections, four views. A merged view lists its sections in show[], in reading order;
   // each keeps its own renderer and its own id, so nothing that draws them had to change.
   {id:'progress', label:'Progress', ic:'progress', subs:[
-    {id:'progress',    label:'Overview', show:['progress','an_over']},
+    // The year review sits under the squat and above the Fatigue check (his ask, 2026-10-20), so the
+    // cards that used to close #progress are their own part, pg_more, after it.
+    {id:'progress',    label:'Overview', show:['progress','an_over','pg_more']},
     // The hero lives in an_pred, so it reads first (V4 stage 5).
     {id:'strength',    label:'Strength', show:['an_pred','an_strength','road']},
     {id:'an_overload', label:'Overload'},
@@ -9691,7 +9911,7 @@ const NAV_BOTTOM = ['home','train','live','progress','body'];
 const NAV_LEGACY = {
   home:['home','home'],
   meso:['train','meso'], log:['train','log'], library:['train','library'],
-  progress:['progress','progress'], an_over:['progress','progress'],
+  progress:['progress','progress'], an_over:['progress','progress'], pg_more:['progress','progress'],
   strength:['progress','strength'], an_strength:['progress','strength'], an_pred:['progress','strength'],
   road:['progress','strength'], an_overload:['progress','an_overload'],
   an_fatigue:['progress','an_fatigue'],
@@ -12175,19 +12395,11 @@ function bwProjectionCardHTML(){
     '</select></div>';
   const fw = ckW();
   h += anFanChartSVG(res, fw, ckH(fw, 230), {bandFill:'rgba(84,194,164,.12)'});
-  h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
-  h += '<div style="display:flex;align-items:center;gap:6px">'+
-    '<span style="width:9px;height:2px;background:var(--muted);display:inline-block"></span>'+
-    '<span class="small">Weekly average</span></div>';
-  AN_ENS_PCTS.forEach(pc=>{
+  h += fanLegendHTML(AN_ENS_PCTS.map(pc=>{
     const arr = res.series[pc.p], last = arr[arr.length-1];
     const rate = (last.v - res.cur)/(bwProjRange/7);
-    h += '<div style="display:flex;align-items:center;gap:6px">'+
-      '<span style="width:9px;height:9px;border-radius:50%;background:'+pc.col+';display:inline-block"></span>'+
-      '<span class="small">'+BW_PACE_LABEL[pc.p]+': <span class="mono" style="color:'+pc.col+'">'+last.v.toFixed(1)+' lb</span> '+
-      '<span style="color:var(--dim)">('+(rate>=0?'+':'')+rate.toFixed(2)+' lb/wk)</span></span></div>';
-  });
-  h += '</div>';
+    return {p:pc.p, col:pc.col, label:BW_PACE_LABEL[pc.p], val:last.v.toFixed(1), sub:(rate>=0?'+':'')+rate.toFixed(2)+' lb/wk'};
+  }), 'Weekly average');
   const pw = res.perWeek;
   // sd of 0 means the weekly averages sit exactly on the trend line. The three paces then
   // coincide, which is the honest reading of noiseless data — but say so, or three identical
@@ -12990,7 +13202,7 @@ function splitSwapPick(i){
   sdSetOpen(s.dk, true);   // remembered, so the next repaint does not close it again
 }
 
-/* Progress: body map + ported progress + Trends(volume) + Fatigue check */
+/* Progress: body map + ported progress, then (after the year review) Fatigue check + volume + photos */
 function renderProgressV2(){
   renderProgress();
   const sec=document.getElementById('progress'); if(!sec) return;
@@ -12998,18 +13210,21 @@ function renderProgressV2(){
     const wrap=document.createElement('div'); wrap.innerHTML=bodyMapCardHTML('progress');
     sec.insertBefore(wrap.firstElementChild, sec.firstChild); initBodyMap('progress');
   }
-  if(!sec.querySelector('.p2-extras')){
-    const extras=document.createElement('div'); extras.className='p2-extras';
-    const vol=volumeSeries();
-    extras.innerHTML = deloadCardHTML() + (vol.length>=1 ? subSection('Volume trend', '<div class="chart-h" style="font-size:11px">Weekly tonnage (lb lifted)</div>'+lineChart(vol,'#46CDBA'), false) : '');
-    sec.appendChild(extras);
-  }
-  // Repainted on every render rather than built once, because its contents change as blobs
-  // arrive and as photos are added or removed.
-  let phWrap = sec.querySelector('.p2-photos');
-  if(!phWrap){ phWrap = document.createElement('div'); phWrap.className = 'p2-photos'; sec.appendChild(phWrap); }
-  phWrap.innerHTML = photoCardHTML();
-  rawFoldsLast(sec);
+  renderProgressMore();
+}
+/* The part of Overview under the year review (an_over). He asked for the year review right under the
+   squat (2026-10-20); sections are ordered whole, so what used to close #progress moved to its own
+   section. Drawn here, not from REVIEW_RENDER alone, because the photo handlers repaint through
+   renderProgressV2() and the photos live in this part now. */
+function renderProgressMore(){
+  const sec = document.getElementById('pg_more'); if(!sec) return;
+  const vol = volumeSeries();
+  let h = '<div class="p2-extras">'+deloadCardHTML()+
+    (vol.length>=1 ? subSection('Volume trend', '<div class="chart-h" style="font-size:11px">Weekly tonnage (lb lifted)</div>'+lineChart(vol,'#46CDBA'), false) : '')+'</div>';
+  // Repainted on every render, because its contents change as blobs arrive and as photos are added or removed.
+  h += '<div class="p2-photos">'+photoCardHTML()+'</div>';
+  h += progressBestSetsFold();
+  sec.innerHTML = h;
 }
 /* The V2 wrappers append cards after the base renderer has run, which would put them below its raw
    fold. Raw data goes last in a view, so move any raw fold back to the end once they are done. */
@@ -13044,6 +13259,7 @@ function renderBulkV2(){
 }
 /* re-point the review render map to the V2 wrappers + library */
 REVIEW_RENDER.progress = renderProgressV2;
+REVIEW_RENDER.pg_more = function(){};   // renderProgressV2() draws it, so the photo handlers reach it too
 REVIEW_RENDER.road = renderRoadV2;
 REVIEW_RENDER.bulk = renderBulkV2;
 REVIEW_RENDER.library = renderLibrary;
@@ -18767,18 +18983,22 @@ function anFanChartSVG(res, w, h, opts){
   // Callers draw the fan at the width it is shown at (ckW), so its type is fixed units: an
   // 11-unit label is an 11px label on a phone card and on a desktop one alike.
   const fs = n => n.toFixed(1);
+  // The forecast lines are drawn as smooth curves through exactly the points the model gave
+  // (ckSmoothD, monotone, so a curve never bulges past a point). Straight segments made the first
+  // step off today's reading look like a kink (his note, 2026-10-20: "a little sloppy").
+  const xyOf = arr => arr.map(p=>[px(p.date), py(p.v)]);
   let s = '<svg class="ck" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Projection: history, then a likely range" style="width:100%;height:auto;display:block">';
-  s += ckGrid(L, R, py(hi)) + ckGrid(L, R, py(lo));
+  const mid = (hi+lo)/2;
+  s += ckGrid(L, R, py(hi)) + ckGrid(L, R, py(mid)) + ckGrid(L, R, py(lo));
   // Real events behind the line (V4 stage 5): bands first, so the lines and dots draw over them.
   const mk = ckMarks(opts.marks, px, py, py(hi), h-24, L, R);
   s += mk.under;
-  // shaded p10\u2013p90 envelope
-  s += '<polygon points="'+
-    res.series[90].map(p=>px(p.date).toFixed(1)+','+py(p.v).toFixed(1)).join(' ')+' '+
-    res.series[10].slice().reverse().map(p=>px(p.date).toFixed(1)+','+py(p.v).toFixed(1)).join(' ')+
-    '" fill="'+(opts.bandFill||'rgba(242,138,58,.12)')+'"/>';
+  // shaded p10\u2013p90 envelope, its edges the same curves as the two lines
+  s += '<path class="ck-fan" d="'+ckSmoothD(xyOf(res.series[90]))+' '+ckSmoothD(xyOf(res.series[10].slice().reverse())).replace(/^M/, 'L')+' Z"'+
+    ' fill="'+(opts.bandFill||'rgba(242,138,58,.12)')+'" stroke="none"/>';
   // y labels
   s += ckText(L-7, py(hi)+4, Math.round(hi), {anchor:'end', size:fs(11)});
+  s += ckText(L-7, py(mid)+4, Math.round(mid), {anchor:'end', size:fs(11)});
   s += ckText(L-7, py(lo)+4, Math.round(lo), {anchor:'end', size:fs(11)});
 
   if(hist.length){
@@ -18802,14 +19022,18 @@ function anFanChartSVG(res, w, h, opts){
          '" stroke="var(--line2)" stroke-width="1" stroke-dasharray="2 3"/>';
   }
 
-  AN_ENS_PCTS.forEach(pc=>{
-    const dash = pc.p===50 ? '' : ' stroke-dasharray="4 3"';
-    s += '<path d="'+pathFor(res.series[pc.p])+'" fill="none" stroke="'+pc.col+'" stroke-width="'+(pc.p===50?2.5:1.5)+'" stroke-linejoin="round" stroke-linecap="round"'+dash+'/>';
+  // the outer paces first and thinner, so the expected line reads on top
+  AN_ENS_PCTS.slice().sort((a, b)=>(a.p===50) - (b.p===50)).forEach(pc=>{
+    const dash = pc.p===50 ? '' : ' stroke-dasharray="4 4"';
+    s += '<path d="'+ckSmoothD(xyOf(res.series[pc.p]))+'" fill="none" stroke="'+pc.col+'" stroke-width="'+(pc.p===50?2.5:1.4)+'" stroke-linejoin="round" stroke-linecap="round"'+dash+(pc.p===50?'':' opacity=".85"')+'/>';
     const last = res.series[pc.p][n-1];
     s += ckDot(px(last.date), py(last.v), pc.col, pc.p===50?4.5:3);
-    // the expected value is the one number this chart exists to give: label it in ink
-    if(pc.p===50) s += ckText(px(last.date)-8, py(last.v)-10, '~'+Math.round(last.v), {anchor:'end', num:true, size:fs(15), weight:700, fill:'var(--text)'});
+    // The expected value is the one number this chart exists to give: label it in ink. It used to read
+    // "~168", and in the condensed numeral face the tilde looked like a minus sign.
+    if(pc.p===50) s += ckText(px(last.date)-9, py(last.v)-11, Math.round(last.v)+' lb', {anchor:'end', num:true, size:fs(15), weight:700, fill:'var(--text)'});
   });
+  // where all three start: today's value, ringed, so the fan visibly grows out of one point
+  if(n) s += ckDot(px(s50[0].date), py(s50[0].v), 'var(--text)', 3.5);
 
   s += mk.over + mk.labels;
   // confidence meter, on the chart itself (the Strength hero says it in words instead, and needs the
@@ -18831,6 +19055,18 @@ function anFanChartSVG(res, w, h, opts){
   s += '</svg>';
   return s;
 }
+/* The key under a fan chart: one tile per line, its swatch drawn the way the line is (solid for the
+   expected one, dashed for the other two), the number in ink and the rate under it. It was one wrapping
+   row of coloured monospace, which the kit's own rule (labels in ink) already said not to do. histLabel
+   names the grey line of real points. */
+function fanLegendHTML(items, histLabel){
+  let h = '<div class="fan-key">';
+  items.forEach(it=>{
+    h += '<div class="fan-k'+(it.p===50?' mid':'')+'"><span class="fan-k-l"><i style="border-top-color:'+it.col+(it.p===50?'':';border-top-style:dashed')+'"></i>'+esc(it.label)+'</span>'+
+      '<b>'+esc(it.val)+'<small>lb</small></b>'+(it.sub ? '<span class="fan-k-s">'+esc(it.sub)+'</span>' : '')+'</div>';
+  });
+  return h+'</div><p class="fan-hist"><i></i>'+esc(histLabel)+'<span>, its fitted trend dashed</span></p>';
+}
 /* kept as the lift-flavoured entry point so existing callers/tests keep their name */
 function anEnsembleChartSVG(res, w, h){ return anFanChartSVG(res, w, h); }
 function anEnsembleCardHTML(){
@@ -18850,17 +19086,10 @@ function anEnsembleCardHTML(){
   if(!res.ok){ h += '<p class="small" style="color:var(--dim)">'+esc(res.why)+'</p></div>'; return h; }
   const ew = ckW(true);
   h += anEnsembleChartSVG(res, ew, ckH(ew, 230));
-  h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">';
-  h += '<div style="display:flex;align-items:center;gap:6px">'+
-    '<span style="width:9px;height:2px;background:var(--muted);display:inline-block"></span>'+
-    '<span class="small">Logged e1RM</span></div>';
-  AN_ENS_PCTS.forEach(pc=>{
+  h += fanLegendHTML(AN_ENS_PCTS.map(pc=>{
     const last = res.series[pc.p][res.series[pc.p].length-1];
-    h += '<div style="display:flex;align-items:center;gap:6px">'+
-      '<span style="width:9px;height:9px;border-radius:50%;background:'+pc.col+';display:inline-block"></span>'+
-      '<span class="small">'+pc.label+': <span class="mono" style="color:'+pc.col+'">'+Math.round(last.v)+' lb</span></span></div>';
-  });
-  h += '</div>';
+    return {p:pc.p, col:pc.col, label:pc.label, val:String(Math.round(last.v)), sub:''};
+  }), 'Logged e1RM');
   h += '<p class="small" style="margin-top:10px;color:var(--dim)">Trend confidence: '+res.conf+' (R\u00b2 '+res.r2.toFixed(2)+
     ', shown on the chart as the dashed fit line through your real points and the meter top-left) \u00b7 currently '+
     (res.perWeek<0.15?'holding flat':('+'+(Math.round(res.perWeek*10)/10)+' lb/wk on the median line'))+
@@ -23492,22 +23721,47 @@ function todayPlanShape(dk){
    optimistic line (p90) first passes his best and closes where the expected one (p50) does: a range,
    never a date, and nothing at all when no line gets there. */
 function nextPrForecast(){
-  let best = null;
-  try{
-    predLifts().forEach(function(nm){
+  return nextPrForecasts().find(function(c){ return !c.none; }) || null;
+}
+/* Every lift with a forecast, soonest PR first (his ask, 2026-10-20: "it only does Lat Pulldown"). The
+   tile showed only the soonest of predLifts()' six, so one lift held it for weeks. The lifts are those
+   plus every loaded lift the plateau watch follows. A lift whose expected line never passes his best in
+   the window comes after the rest with none:true, so stepping to it says so rather than skipping it.
+   Each lift is guarded on its own: one bad series must not take the others down with it. */
+function nextPrForecasts(){
+  const out = [], none = [], seen = {};
+  let names = [];
+  try{ names = predLifts(); }catch(e){}
+  try{ names = names.concat(pwLifts()); }catch(e){}
+  names.forEach(function(nm){
+    if(!nm || seen[nm]) return;
+    seen[nm] = 1;
+    try{
       const res = anEnsembleFor(nm, NEXT_PR_DAYS);
       if(!res || !res.ok) return;
       const pr = bestE1RM(nm);
       if(!(pr > 0)) return;
       const p50 = res.series[50] || [], p90 = res.series[90] || [];
       const h50 = p50.find(function(pt){ return pt.v > pr; });
-      if(!h50) return;
+      if(!h50){ none.push({lift:nm, none:true, pr:pr, conf:res.conf}); return; }
       const h90 = p90.find(function(pt){ return pt.v > pr; }) || h50;
-      const c = {lift:nm, from:(h90.date < h50.date ? h90.date : h50.date), to:h50.date, pr:pr, target:Math.floor(pr) + 1, conf:res.conf};
-      if(!best || c.to < best.to) best = c;
-    });
-  }catch(e){}
-  return best;
+      out.push({lift:nm, from:(h90.date < h50.date ? h90.date : h50.date), to:h50.date, pr:pr, target:Math.floor(pr) + 1, conf:res.conf});
+    }catch(e){}
+  });
+  // Stable: two lifts with the same window keep the order they were offered in (main lifts first).
+  out.sort(function(a, b){ return a.to < b.to ? -1 : a.to > b.to ? 1 : 0; });
+  return out.concat(none);
+}
+/* The lift the Next PR tile shows. A name, not an index, so a repaint that reorders the list keeps
+   the lift he stepped to. Module-scoped, like every other on-screen choice the 30 s repaint must keep. */
+let nextPrPick = null;
+function nextPrStep(d){
+  const all = nextPrForecasts();
+  if(!all.length) return;
+  let i = all.findIndex(function(c){ return c.lift === nextPrPick; });
+  if(i < 0) i = 0;
+  nextPrPick = all[(i + d + all.length) % all.length].lift;
+  try{ renderHome(); }catch(e){}
 }
 function todayDeloadTile(){
   try{
@@ -23633,14 +23887,23 @@ function homeBriefHTML(brief){
   return '';
 }
 function homeExpectHTML(){
-  const pr = nextPrForecast(), dl = todayDeloadTile(), bw = todayBodyTile();
+  let prs = [];
+  try{ prs = nextPrForecasts(); }catch(e){}
+  // The soonest real forecast leads; a lift he stepped to stays picked.
+  const pr = prs.find(function(c){ return c.lift === nextPrPick; }) || prs.find(function(c){ return !c.none; }) || null;
+  const dl = todayDeloadTile(), bw = todayBodyTile();
   if(!pr && !dl && !bw) return '';
   let h = '<div class="cc-head"><span class="dash-sec">What to expect</span><span class="cc-note">ranges, not promises</span></div><div class="cc-expect">';
   if(pr){
     let trust = '';
     try{ const r = predRecord().e1rm28; if(r && r.n >= 3) trust = ' · forecasts like this held '+r.hits+' of '+r.n; }catch(e){}
-    h += '<div class="cc-x"><span class="cc-x-k" style="color:var(--amber)">Next PR</span><span class="cc-x-v">'+esc(homeRange(pr.from, pr.to))+'</span>'+
-      '<span class="cc-x-s">'+esc(pr.lift)+' e1RM past '+Math.round(pr.pr)+' · '+esc(pr.conf)+esc(trust)+'</span></div>';
+    const n = prs.length, at = prs.indexOf(pr);
+    const nav = n > 1 ? '<span class="cc-pr-nav"><button class="cc-pr-b" onclick="nextPrStep(-1)" aria-label="Previous lift">‹</button>'+
+      '<span class="cc-pr-n">'+(at + 1)+' of '+n+'</span><button class="cc-pr-b" onclick="nextPrStep(1)" aria-label="Next lift">›</button></span>' : '';
+    h += '<div class="cc-x"><span class="cc-x-k cc-pr-k"><span style="color:var(--amber)">Next PR</span>'+nav+'</span>'+
+      '<span class="cc-x-v">'+esc(pr.none ? 'Not in '+Math.round(NEXT_PR_DAYS/7)+' wk' : homeRange(pr.from, pr.to))+'</span>'+
+      '<span class="cc-x-s">'+esc(pr.lift)+(pr.none ? ' · the expected line stays under '+Math.round(pr.pr)+' · '+pr.conf
+        : ' e1RM past '+Math.round(pr.pr)+' · '+pr.conf+trust)+'</span></div>';
   }
   if(dl){
     let pips = '';

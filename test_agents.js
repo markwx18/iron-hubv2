@@ -11934,10 +11934,10 @@ setTimeout(async () => {
     ev("S.prHistory = (S.prHistory || []).concat([{exercise: 'Zz Raw PR', date: mesoAddDays(todayKey(), -2), e1rm: 157.5, weight: 135, reps: 5, t: 5}]);");
     ev("S.nutrition = [{date: mesoAddDays(todayKey(), -1), cals: 3600, protein: 160}];");
     ev("setMode('review'); showMainTab('progress', 'progress');");
-    const pf = "document.querySelector('#progress [data-pref=\"open.raw.progress\"]')";
+    const pf = "document.querySelector('#pg_more [data-pref=\"open.raw.progress\"]')";
     ok('raw: Best sets fold to the bottom of Overview, remembered per device', !!ev('!!' + pf) && ev(pf + ".parentElement.classList.contains('open')") === false);
     ok('raw: folded, its rows are still in the page', /Zz Raw Lift/.test(ev(pf + ".parentElement.querySelector('.sub-body').textContent")));
-    ok('raw: and nothing comes after it in the section', ev("(function(){ var s = document.querySelector('#progress'); var f = " + pf + ".parentElement; return f === s.lastElementChild; })()") === true);
+    ok('raw: and nothing comes after it in the section', ev("(function(){ var s = document.querySelector('#pg_more'); var f = " + pf + ".parentElement; return f === s.lastElementChild; })()") === true);
     ev("uiPrefSet('open.raw.progress', true); subOpen = {}; showMainTab('progress', 'progress');");
     ok('raw: a fold he opened stays open', ev(pf + ".parentElement.classList.contains('open')") === true);
 
@@ -15231,6 +15231,129 @@ setTimeout(async () => {
   } finally {
     ev('todayKey = window.__svToday; scheduledDayFor = window.__svSched; callClaude = window.__svCall; callClaudeWithData = window.__svCcwd; _wpRunning = false; wpEditing = ""; wpDraft = {week:"", days:{}, text:""};');
     ev('S = JSON.parse(window.__svS); delete window.__svS; localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  // ============ PROGRESS ORDER, BODYWEIGHT RANGE, CLEANER FANS, EVERY LIFT'S NEXT PR (2026-10-20) ============
+  console.log('=== PROGRESS ORDER, BODYWEIGHT RANGE, CLEANER FANS, EVERY LIFT’S NEXT PR (2026-10-20) ===');
+  ev('window.__pgS = JSON.stringify(S); window.__pgK = {predLifts: predLifts, pwLifts: pwLifts, anEnsembleFor: anEnsembleFor, bestE1RM: bestE1RM, renderHome: renderHome};');
+  try {
+    // --- Overview: the year review sits between the squat and the Fatigue check ---
+    ev("setMode('review'); showMainTab('progress', 'progress');");
+    const ord = ev("['progress','an_over','pg_more'].map(function(id){ var s = document.getElementById(id); return id + ':' + (s.classList.contains('on') ? s.style.order : 'off'); })");
+    ok('overview: the squat part, then the year review, then the Fatigue check part', JSON.stringify(ord) === JSON.stringify(['progress:0', 'an_over:1', 'pg_more:2']), JSON.stringify(ord));
+    ok('overview: the Fatigue check, volume and photos left #progress for the part after the year review',
+       /Fatigue check/.test(ev("document.getElementById('pg_more').textContent")) && !/Fatigue check/.test(ev("document.getElementById('progress').textContent")) &&
+       !!ev("!!document.querySelector('#pg_more .p2-photos')") && !ev("!!document.querySelector('#progress .p2-photos')"));
+    ok('overview: the new part is reachable from Progress and set apart like the others',
+       JSON.stringify(ev("NAV_LEGACY.pg_more")) === '["progress","progress"]' && ev("document.getElementById('pg_more').classList.contains('stacked')") === true);
+    ok('overview: a photo repaint (renderProgressV2) still reaches the photos', /renderProgressMore\(\)/.test(ev('renderProgressV2.toString()')));
+
+    // --- Next PR: every lift with a forecast, soonest first, and the tile steps through them ---
+    const ser = function(v0, dv){ var o = []; for(var i = 0; i <= 14; i++) o.push({date: '2026-11-' + String(1 + i * 2).padStart(2, '0'), v: v0 + dv * i}); return o; };
+    w.__npE = {
+      'Np Main':  {ok: true, conf: 'steady trend', series: {50: ser(190, 1.0), 90: ser(192, 1.5)}, pr: 200},
+      'Np Acc':   {ok: true, conf: 'noisy trend',  series: {50: ser(98, 1.0),  90: ser(99, 1.5)},  pr: 100},
+      'Np Never': {ok: true, conf: 'noisy trend',  series: {50: ser(80, 0.0),  90: ser(81, 0.1)},  pr: 90},
+      // a real forecast whose best e1RM read throws: it must cost only itself
+      'Np Boom':  {ok: true, conf: 'steady trend', series: {50: ser(150, 1.0), 90: ser(151, 1.5)}, pr: 0}
+    };
+    ev("predLifts = function(){ return ['Np Main']; }; pwLifts = function(){ return ['Np Never', 'Np Boom', 'Np Acc', 'Np Main']; };" +
+       "anEnsembleFor = function(nm){ return window.__npE[nm]; };" +
+       "bestE1RM = function(nm){ if(nm === 'Np Boom') throw new Error('bad series'); return window.__npE[nm].pr; };" +
+       "renderHome = function(){}; nextPrPick = null;");
+    const all = ev('nextPrForecasts()');
+    ok('next PR: a lift outside the main six is offered too, soonest first',
+       JSON.stringify(all.map(function(c){ return c.lift; })) === JSON.stringify(['Np Acc', 'Np Main', 'Np Never']), JSON.stringify(all));
+    ok('next PR: a lift that never gets there comes last, marked, and one bad lift costs nobody else',
+       all[2].none === true && !all[0].none && !all[1].none && all.length === 3);
+    ok('next PR: the soonest is still what the notification and the default tile use', ev('nextPrForecast().lift') === 'Np Acc');
+    const tile = function(){ return ev('homeExpectHTML()'); };
+    ok('next PR tile: says which of how many, with a way to step', /1 of 3/.test(tile()) && /nextPrStep\(1\)/.test(tile()) && /Np Acc/.test(tile()));
+    ev('nextPrStep(1);');
+    ok('next PR tile: stepping shows the next lift', /2 of 3/.test(tile()) && /Np Main e1RM past 200/.test(tile()) && ev('nextPrPick') === 'Np Main');
+    ev('nextPrStep(1);');
+    ok('next PR tile: a lift with no PR in the window says so', /Not in 6 wk/.test(tile()) && /Np Never/.test(tile()));
+    ev('nextPrStep(1);');
+    ok('next PR tile: and it wraps around', ev('nextPrPick') === 'Np Acc' && /1 of 3/.test(tile()));
+    ev("nextPrPick = 'Np Main'; pwLifts = function(){ return ['Np Main', 'Np Acc']; };");
+    ok('next PR tile: the pick is a lift, so a reordered list keeps it', /Np Main e1RM past 200/.test(tile()));
+    ev("nextPrPick = null; ['predLifts', 'pwLifts', 'anEnsembleFor', 'bestE1RM', 'renderHome'].forEach(function(k){ window[k] = window.__pgK[k]; });");
+    delete w.__npE;
+
+    // --- the bodyweight chart: a range, a drag to zoom, and each point readable ---
+    // Messy on purpose (fixed offsets, never random): gaps, and a scale that bounces.
+    ev(`(function(){
+      var offs = [0.6, -0.4, 0.2, -0.7, 0.3, 0.9, -0.2];
+      S.weights = [];
+      for(var i = 0; i < 106; i++){
+        if(i % 3 === 2) continue;
+        S.weights.push({date: mesoAddDays('2026-07-01', i), lbs: Math.round((150 + i * 0.1 + offs[i % 7]) * 10) / 10, t: 1});
+      }
+    })();`);
+    const lastW = ev("S.weights[S.weights.length - 1].date");
+    ev("bwViewPreset('all');");
+    const nAll = ev('_ckHov.bw.pts.length');
+    ok('bw chart: All draws every weigh-in, each one readable', nAll === ev('S.weights.length') && !!ev("!!document.querySelector('#bulk .ck-hov svg .ck-hx')"));
+    ev("bwViewPreset('1m');");
+    const p1 = ev('_ckHov.bw.pts.map(function(p){ return p.date; })');
+    ok('bw chart: 1M keeps only the last 30 days of weigh-ins', p1.length > 5 && p1.length < nAll && p1[0] >= ev("mesoAddDays('" + lastW + "', -30)") && p1[p1.length - 1] === lastW, JSON.stringify([p1[0], p1.length]));
+    ev("bwViewSet('2026-08-20', '2026-09-15');");
+    const pr = ev('_ckHov.bw.pts.map(function(p){ return p.date; })');
+    ok('bw chart: a typed range, Aug 20 to Sep 15, shows only that stretch', pr[0] >= '2026-08-20' && pr[pr.length - 1] <= '2026-09-15' && pr.length === ev("S.weights.filter(function(x){ return x.date >= '2026-08-20' && x.date <= '2026-09-15'; }).length"));
+    const sum = ev("document.querySelector('#bulk .bw-rng-sum').textContent");
+    ok('bw chart: the range is summed up in words', new RegExp(pr.length + ' weigh-ins').test(sum) && /low /.test(sum) && /high /.test(sum) && /lb\/wk over \d weeks/.test(sum), sum);
+    const wk = ev("bodyweightSeriesSmoothed().filter(function(p){ return p.date >= '" + pr[0] + "' && p.date <= '" + pr[pr.length - 1] + "'; }).length");
+    ok('bw chart: and its pace is bulkRate() over those weeks, not a fifth rate', sum.indexOf(ev("(function(){ var r = bulkRate(" + wk + ", '" + pr[pr.length - 1] + "').rate; return (r >= 0 ? '+' : '') + r.toFixed(2); })()")) >= 0);
+    ev("bwViewSet('2026-09-15', '2026-08-20');");
+    ok('bw chart: dates typed backwards are swapped, not refused', ev('bwView.from') === '2026-08-20' && ev('bwView.to') === '2026-09-15');
+    ok('bw chart: the boxes show the range', ev("document.getElementById('bwFrom').value") === '2026-08-20' && ev("document.getElementById('bwTo').value") === '2026-09-15');
+    // jsdom has no layout, so the box is stubbed at 1px per unit; this checks which point the handlers pick.
+    ev("(function(){ var d = _ckHov.bw, s = document.querySelector('#bulk .ck-hov svg'); s.getBoundingClientRect = function(){ return {left:0, top:0, width:d.W, height:d.H}; }; })();");
+    const P = ev('_ckHov.bw.pts');
+    const wrap = "document.querySelector('#bulk .ck-hov')";
+    ev("ckHovMove({clientX: " + (P[4].x + 1) + ", pointerId: 1, pointerType: 'mouse'}, " + wrap + ");");
+    const tip = ev(wrap + ".querySelector('.ck-tip').textContent");
+    ok('bw chart: hovering shows the nearest weigh-in and its date', !ev(wrap + ".querySelector('.ck-tip').hidden") && tip.indexOf(String(P[4].v) + ' lb') === 0 && tip.indexOf(ev("fmtDate('" + P[4].date + "')")) > 0, tip);
+    ok('bw chart: with the crosshair on that point', ev(wrap + ".querySelector('.ck-hx').getAttribute('x1')") === P[4].x.toFixed(1) && ev(wrap + ".querySelector('.ck-hd').getAttribute('visibility')") === 'visible');
+    ev("ckHovLeave({pointerType: 'mouse'}, " + wrap + ");");
+    ok('bw chart: and the mouse leaving hides it', ev(wrap + ".querySelector('.ck-tip').hidden") === true);
+    ev("ckHovDown({clientX: " + P[2].x + ", pointerId: 1, pointerType: 'mouse'}, " + wrap + "); ckHovUp({clientX: " + (P[2].x + 5) + ", pointerId: 1, pointerType: 'mouse'}, " + wrap + ");");
+    ok('bw chart: a tap or a short drag does not zoom', ev('bwView.from') === '2026-08-20');
+    ev("ckHovDown({clientX: " + P[1].x + ", pointerId: 1, pointerType: 'mouse', button: 2}, " + wrap + "); ckHovUp({clientX: " + P[8].x + ", pointerId: 1, pointerType: 'mouse', button: 2}, " + wrap + ");");
+    ok('bw chart: a right-button drag does not zoom either', ev('bwView.from') === '2026-08-20');
+    ev("ckHovDown({clientX: " + P[3].x + ", pointerId: 1, pointerType: 'mouse'}, " + wrap + ");");
+    ev("ckHovMove({clientX: " + P[9].x + ", pointerId: 1, pointerType: 'mouse'}, " + wrap + ");");
+    ok('bw chart: dragging shows the band being selected', ev(wrap + ".querySelector('.ck-br').getAttribute('visibility')") === 'visible');
+    ev("ckHovUp({clientX: " + P[9].x + ", pointerId: 1, pointerType: 'mouse'}, " + wrap + ");");
+    ok('bw chart: a drag zooms to exactly the days it covered', ev('bwView.k') === 'custom' && ev('bwView.from') === P[3].date && ev('bwView.to') === P[9].date,
+       JSON.stringify([ev('bwView'), P[3].date, P[9].date]));
+    ok('bw chart: a range with no weigh-ins says so instead of a blank chart', (ev("bwViewSet('2026-01-01', '2026-01-09')"), /No weigh-ins between those dates/.test(ev("document.getElementById('bulk').textContent"))));
+    ok('bw chart: All brings everything back', (ev("bwViewPreset('all')"), ev('_ckHov.bw.pts.length') === nAll));
+    ok('line chart: without hover it draws as it did, with no crosshair', !/ck-hx|ck-br/.test(ev("lineChart([{date:'2026-06-15',v:164},{date:'2026-07-06',v:171}], 'var(--good)')")));
+
+    // --- fan charts: smooth through the same points, labelled in ink without a "~" that reads as minus ---
+    const sm = ev("ckSmoothD([[0,0],[30,90],[60,60],[90,60],[120,20]])");
+    const nums = sm.replace(/[MC]/g, ' ').trim().split(/\s+/).map(Number);
+    const ends = [[nums[0], nums[1]]]; for(let i = 2; i + 5 < nums.length + 1; i += 6) ends.push([nums[i + 4], nums[i + 5]]);
+    ok('fan: the smooth line passes through every point it was given', JSON.stringify(ends) === JSON.stringify([[0,0],[30,90],[60,60],[90,60],[120,20]]), sm);
+    let within = true;
+    const pts5 = [[0,0],[30,90],[60,60],[90,60],[120,20]];
+    for(let s = 0, i = 2; s < 4; s++, i += 6){ const ylo = Math.min(pts5[s][1], pts5[s + 1][1]), yhi = Math.max(pts5[s][1], pts5[s + 1][1]); if(nums[i + 1] < ylo - 0.05 || nums[i + 1] > yhi + 0.05 || nums[i + 3] < ylo - 0.05 || nums[i + 3] > yhi + 0.05) within = false; }
+    ok('fan: and never bulges past a point (a peak stays the peak, a flat step stays flat)', within, sm);
+    const fres = "(function(){ var d=function(n){ return mesoAddDays(todayKey(), n); }; var s=function(v0,dv){ return [0,7,14,21,28].map(function(n,i){ return {date:d(n), v:v0+dv*i}; }); };" +
+      "return {series:{10:s(160,0.1), 50:s(160,0.4), 90:s(160,0.7)}, hist:[{date:d(-28),v:157},{date:d(-21),v:158.2},{date:d(-14),v:158.1},{date:d(-7),v:159.4},{date:d(0),v:160}], r2:0.9, conf:'steady trend', reg:null, cur:160}; })()";
+    const fsvg = ev("anFanChartSVG(" + fres + ", 380, 230)");
+    ok('fan: the expected value is labelled "N lb" in ink, with no tilde', />161.6 lb</.test(fsvg) === false && />162 lb</.test(fsvg) && !/>~\d/.test(fsvg), (fsvg.match(/>[^<]*lb</g) || []).join(','));
+    ok('fan: the band and lines are curves through the model’s points', /class="ck-fan" d="M[^"]* C/.test(fsvg) && !/<polygon/.test(fsvg));
+    ok('fan: three gridlines with a middle value, so the scale reads', (fsvg.match(/stroke="var\(--line\)"/g) || []).length >= 3);
+    const bwCard = ev('bwProjectionCardHTML()');
+    ok('fan key: one tile per pace, the numbers in ink rather than the line colour',
+       (bwCard.match(/class="fan-k( mid)?"/g) || []).length === 3 && !/class="mono" style="color:var/.test(bwCard) && /Weekly average/.test(bwCard));
+  } catch (e) {
+    ok('progress order / bw range / fans / next PR section', false, e.stack);
+  } finally {
+    ev("['predLifts', 'pwLifts', 'anEnsembleFor', 'bestE1RM', 'renderHome'].forEach(function(k){ window[k] = window.__pgK[k]; }); nextPrPick = null; bwView = {k:'all', from:null, to:null};");
+    ev('S = JSON.parse(window.__pgS); delete window.__pgS; delete window.__pgK; localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
