@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-20-v1">
+<meta name="ironhub-build" content="2026-10-21-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1840,6 +1840,11 @@
   .str-chip{align-self:center; max-width:100%; padding:4px 12px; border-radius:999px; background:color-mix(in srgb, currentColor 15%, transparent);
     font-family:var(--disp); font-weight:700; font-size:13px; letter-spacing:.03em; text-transform:uppercase; text-align:center;}
   .str-say{margin:0; font-size:15px; line-height:1.5; text-align:center;}
+  .ck-key{display:flex; flex-wrap:wrap; justify-content:center; gap:4px 14px; margin-top:-6px; font-size:11.5px; color:var(--dim);}
+  .ck-key-i{display:inline-flex; align-items:center; gap:6px;}
+  .ck-key-i i{display:inline-block; width:14px; height:3px; border-radius:2px; background:var(--kc);}
+  .ck-key-i i.ck-key-deload{height:10px; width:10px; border-radius:3px; background:var(--panel2); box-shadow:inset 0 0 0 1px var(--line2);}
+  .ck-key-i i.ck-key-dip{width:9px; height:9px; border-radius:50%; background:none; box-shadow:inset 0 0 0 2px var(--kc);}
   .str-say span{color:var(--dim);}
   .str-sec{display:flex; flex-direction:column; gap:12px; padding-top:16px; border-top:1px solid var(--line);}
   .str-sec-h{display:flex; align-items:baseline; gap:8px; font-family:var(--disp); font-weight:700; font-size:18px; text-transform:uppercase; letter-spacing:.03em;}
@@ -1913,6 +1918,24 @@
   .hub-tools{display:flex; flex-wrap:wrap; gap:6px;}
   .hub-tools span{padding:4px 9px; border-radius:10px; background:var(--panel2); font-size:12px; color:var(--muted);}
   .hub-act{display:flex; gap:10px; padding:11px 0; border-top:1px solid var(--panel2); align-items:flex-start;}
+  .desk{display:flex; flex-direction:column; gap:0;}
+  .desk-rt{padding-bottom:10px; margin-bottom:2px; border-bottom:1px solid var(--panel2);}
+  .desk-rt-h, .desk-ch-l{font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; color:var(--dim); text-transform:uppercase;}
+  .desk-rt-l{display:flex; gap:8px; align-items:flex-start; font-size:13.5px; line-height:1.4; margin-top:8px;}
+  .desk-rt-l .cc-glyph, .desk-i .cc-glyph{width:22px; height:22px; border-radius:7px; font-size:11px; flex:none;}
+  .desk-i{padding:12px 0; border-top:1px solid var(--panel2); min-width:0;}
+  .desk-i:first-child{border-top:0;}
+  .desk-i.re{margin-left:22px; padding-left:12px; border-top:0; border-left:2px solid var(--panel2); padding-top:4px;}
+  .desk-i-h{display:flex; align-items:center; gap:8px; min-width:0;}
+  .desk-i-who{font-family:var(--disp); font-size:13px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .desk-i-when{font-family:var(--mono); font-size:10.5px; color:var(--dim); margin-left:auto; flex:none;}
+  .desk-hide{flex:none; width:32px; height:32px; margin:-6px -6px -6px 0; border:0; background:none; color:var(--dim); font-size:18px; border-radius:8px; cursor:pointer;}
+  .desk-i-t{display:block; margin-top:6px; font-size:14.5px;}
+  .desk-i-x{margin:4px 0 0; font-size:14px; line-height:1.45; overflow-wrap:anywhere;}
+  .desk-ev{display:inline-block; margin-top:8px; padding:3px 10px; border-radius:999px; font-size:12px; background:color-mix(in srgb, currentColor 14%, transparent);}
+  .desk-ch{margin-top:8px; max-width:340px;}
+  .desk-spark{width:100%; height:auto; display:block; margin-top:4px;}
+  .desk-nodata{color:var(--dim); margin:4px 0 0;}
   .hub-act-t{font-family:var(--mono); font-size:10.5px; letter-spacing:.04em; color:var(--dim); width:58px; flex:none; padding-top:3px;}
   .hub-act .cc-glyph{width:22px; height:22px; border-radius:7px; font-size:11px;}
   .hub-act-x{font-size:14px; line-height:1.4; min-width:0; flex:1; overflow-wrap:anywhere;}
@@ -3278,11 +3301,102 @@ function musclesFor(ex){
   // classified as Back — miscounting his chest volume on D5 and making it rank as a
   // replacement for Lat Pulldown. Unanchored /ab/ matches "cABle" and "ABductor" the same way.
   if(/\brows?\b|pulldown|pull-?ups?|chin-?ups?|\blats?\b/.test(n)) return {p:['Back'],s:['Biceps']};
+  // A fly bends no elbow, so it is no triceps work (2026-10-21: "Low-to-High Cable Fly" came out Chest + Triceps from
+  // the rule below). A reverse fly is the rear delts. Same shape as Cable Fly and Pec Deck Fly in the map above.
+  if(/\breverse fly|\breverse flye|face pull/.test(n)) return {p:['Shoulders'],s:['Back']};
+  if(/\bfly\b|\bflyes?\b|\bflies\b|crossover|pec deck/.test(n)) return {p:['Chest'],s:[]};
   if(/bench|chest|fly|\bpec\b|press/.test(n)) return {p:['Chest'],s:['Triceps']};
   if(/\babs?\b|abdominal|crunch|leg raise|core/.test(n)) return {p:['Abs'],s:[]};
   return {p:[],s:[]};
 }
 const MUSCLE_GROUPS = ['Chest','Back','Shoulders','Biceps','Triceps','Quads','Hamstrings','Glutes','Abs'];
+/* What a lift trains, in settled anatomy, for the agents (2026-10-21). DELTA told him a low-to-high cable fly works the
+   lower chest, then agreed it had it backwards when he corrected it: no prompt said what a lift trains, so the model
+   answered from memory. This is the reference they are given instead, and it wins over memory. Only long-settled
+   mechanics go in (which head a joint angle stretches, which plane a muscle moves the arm in); nothing contested.
+   First match wins, so the specific forms come before the general ones. Every re is all-must-match, with short
+   tokens anchored (the style note: unanchored "lat" matches "plate"). */
+const LIFT_FACTS = [
+  // First, because "Incline Prone Reverse Fly" is a rear-delt lift and would otherwise read as an incline (chest) fly.
+  {re:[/\breverse fly|\breverse flye|rear delt|face pull/], f:'the rear delts, with the upper back between the shoulder blades (rhomboids, mid traps).'},
+  {re:[/\blow[- ]?to[- ]?high\b/, /\bfly|\bflyes?\b|crossover|cable/], f:'the UPPER chest (clavicular head of the pec), with the front delts: the arms sweep up and in. Not the lower chest.'},
+  {re:[/\bincline\b/, /\bfly|\bflyes?\b/], f:'the upper chest (clavicular head of the pec), with the front delts.'},
+  {re:[/\bhigh[- ]?to[- ]?low\b/, /\bfly|\bflyes?\b|crossover|cable/], f:'the LOWER chest (sternocostal fibres of the pec): the arms sweep down and in.'},
+  {re:[/\bdecline\b/, /\bfly|\bflyes?\b/], f:'the lower chest (sternocostal fibres of the pec).'},
+  {re:[/\bfly\b|\bflyes?\b|\bflies\b|crossover|pec deck/], f:'the chest, mostly the mid pec (sternal fibres): arms move straight across, no elbow bend, so no triceps.'},
+  {re:[/close[- ]?grip/, /bench|press/], f:'the triceps more than a regular bench, with the chest and front delts.'},
+  {re:[/\bincline\b/, /press|bench/], f:'the upper chest (clavicular head) more than a flat press, with the front delts and triceps.'},
+  {re:[/\bdecline\b/, /press|bench/], f:'the lower chest (sternocostal fibres), with the triceps.'},
+  {re:[/\bdips?\b/], f:'the lower chest and triceps, with the front delts; leaning forward shifts it to the chest, upright to the triceps.'},
+  {re:[/bench press|chest press|\bbench\b|push[- ]?ups?/], f:'the whole chest, mostly the mid and lower pec (sternal fibres), with the front delts and triceps.'},
+  {re:[/lateral raise|side raise|\blateral\b/], f:'the side (lateral) delts.'},
+  {re:[/front raise/], f:'the front delts.'},
+  {re:[/upright row/], f:'the side delts and upper traps.'},
+  {re:[/\bshrugs?\b/], f:'the upper traps.'},
+  {re:[/overhead press|shoulder press|military|arnold|\bohp\b/], f:'the front delts most, the side delts some, and the triceps.'},
+  {re:[/pullover|straight[- ]arm/], f:'the lats, with almost no biceps (the elbows do not bend).'},
+  {re:[/pulldown|pull[- ]?ups?|chin[- ]?ups?/], f:'the lats most, with the biceps, rear delts and the muscles between the shoulder blades.'},
+  {re:[/\brows?\b/, /\bwide\b|elbows?[- ]out|high row/], f:'the upper back (rhomboids, mid traps) and rear delts more than the lats.'},
+  {re:[/\brows?\b/, /\bclose\b|neutral|\bv[- ]?(bar|handle|grip)\b|elbows?[- ]in|single[- ]arm|one[- ]arm|dumbbell|\bcable row|seated/], f:'the lats and mid back, with the biceps: elbows close to the body pull through the lats.'},
+  {re:[/\brows?\b/], f:'the upper and mid back (lats, rhomboids, mid traps, rear delts), with the biceps.'},
+  {re:[/romanian|\brdl\b|stiff[- ]leg/], f:'the hamstrings and glutes, a hip hinge with soft knees; the lower back holds position.'},
+  {re:[/trap[- ]?bar/], f:'the glutes, quads and hamstrings, with the back holding position; more quads than a conventional deadlift.'},
+  {re:[/\bsumo\b/, /deadlift/], f:'the glutes, adductors and quads more, and the hamstrings less, than a conventional deadlift.'},
+  {re:[/deadlift/], f:'the glutes, hamstrings and spinal erectors, with the upper back and grip holding the bar.'},
+  {re:[/good morning|back extension|hyperextension/], f:'the glutes, hamstrings and spinal erectors.'},
+  {re:[/preacher|spider curl|concentration/], f:'the biceps with the arm in front of the body, which biases the short head.'},
+  {re:[/\bincline\b/, /curl/], f:'the biceps with the arm behind the body (stretched), which biases the long head.'},
+  {re:[/bayesian/], f:'the biceps with the arm behind the body (stretched), which biases the long head.'},
+  {re:[/hammer/, /curl/], f:'the brachialis and brachioradialis, with the biceps; the neutral grip takes away the biceps\u2019 job of turning the palm up.'},
+  {re:[/reverse/, /curl/], f:'the brachioradialis and brachialis (forearm and under the biceps), with less biceps: palms down.'},
+  {re:[/leg curl|hamstring curl/, /seated/], f:'the hamstrings at a longer length than a lying curl, because the hips are bent.'},
+  {re:[/leg curl|hamstring curl/], f:'the hamstrings, by bending the knee (including the short head of the biceps femoris, which a hip hinge cannot train).'},
+  {re:[/wrist curl/], f:'the forearm flexors.'},
+  {re:[/curl/], f:'the biceps (both heads), with the brachialis.'},
+  {re:[/overhead/, /extension|tricep|french/], f:'the triceps with the arm overhead (stretched), which biases the long head.'},
+  {re:[/pushdown|push[- ]?down|pressdown/], f:'the triceps with the arm at the side, mostly the lateral and medial heads; the long head works less than overhead.'},
+  {re:[/skull ?crusher|lying (tricep|extension)|\bjm press\b/], f:'the triceps, all three heads, with the long head partly stretched.'},
+  {re:[/kickback/], f:'the triceps, all three heads, hardest at lockout.'},
+  {re:[/leg extension/], f:'the quads only, including the rectus femoris (the quad head squats work least).'},
+  {re:[/front squat/], f:'the quads more than a back squat, with the glutes; the upper back holds the bar.'},
+  {re:[/split squat|bulgarian|lunge|step[- ]?ups?/], f:'the quads and glutes of the front leg, with the adductors.'},
+  {re:[/leg press/], f:'the quads and glutes; feet high and wide shift it toward the glutes and hamstrings, low and narrow toward the quads.'},
+  {re:[/hack squat|pendulum|belt squat|\bsquat/], f:'the quads, glutes and adductors, with the lower back holding position.'},
+  {re:[/hip thrust|glute bridge/], f:'the glutes most, with a little hamstring.'},
+  {re:[/abduct/], f:'the glute medius and minimus (the side of the hip).'},
+  {re:[/adduct/], f:'the adductors (inner thigh).'},
+  {re:[/calf/, /seated/], f:'the calves with the knee bent, mainly the soleus (a bent knee takes the gastrocnemius out).'},
+  {re:[/calf/], f:'the calves with the knee straight, mainly the gastrocnemius.'},
+  {re:[/leg raise|knee raise/], f:'the hip flexors and the abs; the abs work most when the pelvis curls up at the top.'},
+  {re:[/crunch|abdominal|\babs?\b/], f:'the abs (rectus abdominis), by curling the spine.'}
+];
+function liftFactFor(nm){
+  const n = String(nm || '').toLowerCase();
+  const hit = LIFT_FACTS.find(function(x){ return x.re.every(function(r){ return r.test(n); }); });
+  return hit ? hit.f : '';
+}
+/* The reference as DELTA and ZULU are handed it, nightly and in chat: one line per lift in the split in force and the
+   permanent split. A lift the table does not know gets the app's broad groups and is marked as such, so the model is
+   told to stay broad rather than invent a region for it. */
+const LIFT_REF_MAX_CHARS = 3200;
+function agLiftRefLine(id){
+  if(id !== 'delta' && id !== 'zulu') return '';
+  const names = [];
+  const add = function(sp){ Object.keys(sp || {}).forEach(function(k){ ((sp[k] || {}).exercises || []).forEach(function(x){ const nm = exName(x); if(nm && names.indexOf(nm) < 0) names.push(nm); }); }); };
+  try{ add(activeSplitObj()); }catch(e){}
+  add(S.split);
+  if(!names.length) return '';
+  const lines = [];
+  let n = 0;
+  names.forEach(function(nm){
+    const f = liftFactFor(nm);
+    let line;
+    if(f) line = '- '+nm+': '+f;
+    else { const m = musclesFor(nm); line = '- '+nm+': '+(m.p.length ? m.p.join(' and ') : 'unclassified')+' (broad group only; not in the reference, so do not name a region of the muscle).'; }
+    if(n + line.length <= LIFT_REF_MAX_CHARS){ lines.push(line); n += line.length; }
+  });
+  return '\nWHAT EACH LIFT TRAINS (the app\u2019s reference: settled anatomy. Where it disagrees with what you remember, it is right):\n'+lines.join('\n')+'\n';
+}
 function dateKeyOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 /* Motion (V4 stage 3). The CSS reduced-motion rule stops every animation and transition, but a
    scripted smooth scroll goes straight past it -- so every smooth scroll goes through here. */
@@ -4251,7 +4365,7 @@ const PR_LIFTS = {
    the newer fields (swapFrom, removed, set rm/p, toggledAt): absent reads as "not recorded". */
 function sessionMods(l){
   const m = {session:false, deload:false, home:false, coachPlan:false, call:'', toggled:false, skippedCheckIn:false, quick:[],
-             swapped:[], swapFrom:{}, added:[], removed:[], oneRM:[], override:[], callRecover:[], liftDeload:[], todayAdj:[]};
+             swapped:[], swapFrom:{}, added:[], removed:[], oneRM:[], override:[], callRecover:[], liftDeload:[], todayAdj:[], callDrop:''};
   if(!l) return m;
   m.deload = !!l.deload; m.home = !!l.home; m.coachPlan = !!l.coachPlan;
   if(l.call && !l.call.off && (l.call.call === 'easy' || l.call.call === 'recover')) m.call = l.call.call;
@@ -4265,6 +4379,8 @@ function sessionMods(l){
   // Before swapFrom existed, swapped mixed adds and swaps; with it, an entry without a source is an add.
   m.added = l.swapFrom ? m.swapped.filter(function(n){ return !m.swapFrom[n]; }) : [];
   m.removed = Array.isArray(l.removed) ? l.removed.slice() : [];
+  // The lift an all-out strain day left out (a call, not his choice, so it is not in removed).
+  m.callDrop = typeof l.callDrop === 'string' ? l.callDrop : '';
   m.todayAdj = Array.isArray(l.todayAdj) ? l.todayAdj.slice() : [];
   (l.entries || []).forEach(function(e){ if((e.sets || []).some(function(s){ return s && s.rm; })) m.oneRM.push(e.exercise); });
   Object.keys(l.decisions || {}).forEach(function(nm){
@@ -4822,12 +4938,38 @@ const CK_MARK = {
   load:   {pri:4, row:'top', col:'var(--warn)'}
 };
 const CK_MARK_GAP = 46;
-function ckMarks(marks, px, py, T, B, L, R){
+/* o.rail (the Strength hero, 2026-10-21): every week-long mark is a bar on one lane over the plot, so only the
+   deload bands sit behind the data. A calorie week was a full-height tint, and next to a deload band the two read
+   as one muddy column. High-load (and low-recovery) weeks that touch are one bar with one label, not a label a
+   week. Without o the marks draw exactly as before. */
+function ckRailMerge(marks){
+  const out = [], last = {};
+  marks.slice().sort(function(a, b){ return String(a.date).localeCompare(String(b.date)); }).forEach(function(m){
+    const p = last[m.kind];
+    if((m.kind === 'load' || m.kind === 'rec') && p && m.date <= mesoAddDays(p.end || p.date, 1)){
+      if((m.end || m.date) > (p.end || p.date)) p.end = m.end || m.date;
+      return;
+    }
+    const c = Object.assign({}, m);
+    out.push(c); last[m.kind] = c;
+  });
+  return out;
+}
+function ckMarks(marks, px, py, T, B, L, R, o){
   const out = {under:'', over:'', labels:'', shown:0};
   if(!marks || !marks.length) return out;
-  const placed = {top:[], bot:[], pt:[]};
+  const rail = !!(o && o.rail);
+  if(rail) marks = ckRailMerge(marks);
+  const placed = {top:[], bot:[], pt:[]}, spans = {top:[], bot:[], pt:[]};
   const lab = function(row, x, y, txt, col, anchor){
-    if(!txt || placed[row].some(function(p){ return Math.abs(p - x) < CK_MARK_GAP; })) return;
+    if(!txt) return;
+    // On the rail a label is as wide as its text (9px mono with its spacing is about 6 units a character), so a
+    // long one like HIGH LOAD cannot run into the next; elsewhere the fixed gap, as before.
+    if(rail){
+      const wd = String(txt).length * 6, a = anchor === 'middle' ? x - wd/2 : x, b = a + wd;
+      if(spans[row].some(function(sp){ return a < sp[1] + 8 && b > sp[0] - 8; })) return;
+      spans[row].push([a, b]);
+    } else if(placed[row].some(function(p){ return Math.abs(p - x) < CK_MARK_GAP; })) return;
     placed[row].push(x);
     out.labels += '<text class="ck-mk" x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'"'+(anchor ? ' text-anchor="'+anchor+'"' : '')+
       ' font-family="'+CK_MONO+'" font-size="9" letter-spacing=".06em" fill="'+col+'">'+esc(txt)+'</text>';
@@ -4836,22 +4978,31 @@ function ckMarks(marks, px, py, T, B, L, R){
     .forEach(function(m){
       const k = CK_MARK[m.kind];
       if(!k) return;
-      const x = px(m.date);
+      let x = px(m.date);
+      // A band that began before the plot but runs into it is drawn from the edge. It used to vanish whole, so a
+      // run of heavy weeks merged across the window's first day disappeared (found 2026-10-21).
+      const band = m.kind === 'deload' || m.kind === 'load' || m.kind === 'rec' || (m.kind === 'cal' && m.end);
+      if(band && x < L - 0.5 && px(m.end || m.date) >= L) x = L;
       if(!(x >= L - 0.5 && x <= R + 0.5)) return;
       out.shown++;
+      // On the rail, food and training get a lane each, so a calorie week and a heavy week in the same days do
+      // not draw over each other, and the labels sit in one row above both.
+      const labY = rail ? T - 15 : T - 9;
       if(m.kind === 'deload' || m.kind === 'load' || m.kind === 'rec'){
         const x2 = Math.max(x + 4, Math.min(R, px(m.end || m.date) + 4));
         if(m.kind === 'deload') out.under += '<rect x="'+x.toFixed(1)+'" y="'+T.toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="'+Math.max(0, B - T).toFixed(1)+'" rx="3" fill="var(--panel2)"/>';
         else out.under += '<rect x="'+x.toFixed(1)+'" y="'+(T - 5).toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="3" rx="1.5" fill="'+k.col+'" opacity=".85"/>';
-        lab(k.row, x + 2, k.row === 'bot' ? B - 5 : T - 9, m.label, k.col);
+        lab(k.row, x + 2, k.row === 'bot' ? B - 5 : labY, m.label, k.col);
       } else if(m.kind === 'cal' && m.end){
-        // A week of eating (his choice, 2026-10-04): a faint band across that week, not a one-day line.
+        // A week of eating (his choice, 2026-10-04): a faint band across that week, not a one-day line. On the
+        // rail it is a bar on the food lane instead.
         const x2 = Math.max(x + 4, Math.min(R, px(m.end) + 4));
-        out.under += '<rect class="ck-calw" x="'+x.toFixed(1)+'" y="'+T.toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="'+Math.max(0, B - T).toFixed(1)+'" rx="3" fill="'+k.col+'" opacity=".09"/>';
-        lab('top', x + 3, T - 9, m.label, k.col);
+        if(rail) out.under += '<rect class="ck-calw" x="'+x.toFixed(1)+'" y="'+(T - 10).toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="3" rx="1.5" fill="'+k.col+'" opacity=".85"/>';
+        else out.under += '<rect class="ck-calw" x="'+x.toFixed(1)+'" y="'+T.toFixed(1)+'" width="'+(x2 - x).toFixed(1)+'" height="'+Math.max(0, B - T).toFixed(1)+'" rx="3" fill="'+k.col+'" opacity=".09"/>';
+        lab('top', x + (rail ? 2 : 3), labY, m.label, k.col);
       } else if(m.kind === 'cal'){
-        out.under += '<line x1="'+x.toFixed(1)+'" x2="'+x.toFixed(1)+'" y1="'+T.toFixed(1)+'" y2="'+B.toFixed(1)+'" stroke="'+k.col+'" stroke-width="1" stroke-dasharray="2 3" opacity=".75"/>';
-        lab('top', x + 3, T - 9, m.label, k.col);
+        out.under += '<line x1="'+x.toFixed(1)+'" x2="'+x.toFixed(1)+'" y1="'+(rail ? T - 10 : T).toFixed(1)+'" y2="'+B.toFixed(1)+'" stroke="'+k.col+'" stroke-width="1" stroke-dasharray="2 3" opacity=".75"/>';
+        lab('top', x + 3, labY, m.label, k.col);
       } else if(m.kind === 'dip' && m.v != null){
         const y = py(m.v);
         out.over += '<circle class="ck-dip" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="6" fill="none" stroke="'+k.col+'" stroke-width="2"/>';
@@ -4861,11 +5012,31 @@ function ckMarks(marks, px, py, T, B, L, R){
     });
   return out;
 }
+/* The key under a chart drawn with the rail: one swatch per kind of mark it shows, drawn the way the mark is, so a
+   bar whose label made way for another still says what it is. */
+const CK_MARK_WORDS = {deload:'Deload', load:'High-load week', rec:'Low recovery', cal:'Calorie week', dip:'Dip'};
+function ckMarkKeyHTML(marks, from){
+  const have = {};
+  (marks || []).forEach(function(m){ if(m && CK_MARK[m.kind] && (!from || (m.end || m.date) >= from)) have[m.kind] = 1; });
+  const ks = ['deload', 'load', 'rec', 'cal', 'dip'].filter(function(k){ return have[k]; });
+  if(!ks.length) return '';
+  return '<div class="ck-key" aria-label="Chart key">'+ks.map(function(k){
+    return '<span class="ck-key-i"><i class="ck-key-'+k+'" style="--kc:'+CK_MARK[k].col+'"></i>'+CK_MARK_WORDS[k]+'</span>';
+  }).join('')+'</div>';
+}
 function ckText(x, y, txt, o){
   o = o || {};
   return '<text x="'+(+x).toFixed(1)+'" y="'+(+y).toFixed(1)+'"'+(o.anchor?' text-anchor="'+o.anchor+'"':'')+
     ' font-family="'+(o.num?CK_NUM:CK_FONT)+'" font-size="'+(o.size||11)+'"'+(o.weight?' font-weight="'+o.weight+'"':'')+
+    (o.halo?' stroke="var(--panel)" stroke-width="4" stroke-linejoin="round" paint-order="stroke"':'')+
     ' fill="'+(o.fill||'var(--dim)')+'">'+txt+'</text>';
+}
+/* A round step for an axis from lo to hi: the smallest that splits it into at most 4 parts. */
+const CK_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
+function ckNiceStep(lo, hi){
+  const r = Math.max(1e-6, hi - lo);
+  for(let i = 0; i < CK_STEPS.length; i++){ const st = CK_STEPS[i]; if(Math.ceil(hi/st) - Math.floor(lo/st) <= 4) return st; }
+  return Math.pow(10, Math.ceil(Math.log10(r/4)));
 }
 function ckGrid(x1, x2, y){
   return '<line x1="'+(+x1).toFixed(1)+'" x2="'+(+x2).toFixed(1)+'" y1="'+(+y).toFixed(1)+'" y2="'+(+y).toFixed(1)+'" stroke="var(--line)" stroke-width="1"/>';
@@ -5780,7 +5951,9 @@ function whoopContext(){
       (w.sleep.performance!=null? ' ('+Math.round(w.sleep.performance)+'% of need)':''));
   }
   if(w.strain && w.strain.date === todayKey() && w.strain.score!=null){
-    bits.push('yesterday\u2019s strain '+w.strain.score.toFixed(1)+'/21');
+    // The section dated today is the cycle still running: strain so far today, not yesterday's (it was
+    // labelled yesterday's until 2026-10-21).
+    bits.push('strain so far today '+w.strain.score.toFixed(1)+'/21'+(strainPreWorkout() ? ', before he trains' : ', including today\u2019s session'));
   }
   if(!bits.length) return '';
   return 'WHOOP TODAY: '+bits.join('; ')+'. This is measured data, not self-reported \u2014 prefer it '+
@@ -5803,8 +5976,10 @@ function trainingContext(){
   const rdHist = [...S.readiness].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(r=>!rdComplete(r) ? r.date+': sleep only, no check-in ('+r.sleep+'h)' : r.date+': '+r.tier+' ('+r.sleep+'h, '+r.sore+', '+r.energy+' energy'+(r.stress?', '+r.stress:'')+(r.motiv?', '+r.motiv+' motivation':'')+')').join('; ');
   let fatLine = 'not enough history yet';
   try{
-    const _fi = fatigueIndex();
-    if(_fi.ok) fatLine = _fi.status+' (ratio '+_fi.ratio+' \u2014 this week '+_fi.acute+' effort-weighted sets vs a 4-week norm of '+_fi.chronic+'/wk)';
+    const _fi = fatigueIndex(), _dq = deloadQuietUntil();
+    // Deload alerts off: the status word is what reads as "deload now", so it is not sent at all.
+    if(_dq) fatLine = 'off. '+deloadQuietAgentLine(_dq);
+    else if(_fi.ok) fatLine = _fi.status+' (ratio '+_fi.ratio+' \u2014 this week '+_fi.acute+' effort-weighted sets vs a 4-week norm of '+_fi.chronic+'/wk)';
   }catch(e){}
   // Derived, never written down. A literal describing state that changes is a bug with a
   // delay on it: this one said ~150 lb against a 158.8 lb weigh-in, and had D3 and D6 swapped.
@@ -6521,6 +6696,9 @@ function applyWhoop(raw){
   }
   if(raw.strain && dateOk(raw.strain.date)){
     out.strain = {date:raw.strain.date, score: num(raw.strain.score, 0, 21)};
+    // Its own stamp only (whoopStrainNow()): a carried strain is not stamped by the relay, and the file's
+    // fetchedAt would make an afternoon-old total look fresh.
+    if(stampOk(raw.strain.readAt)) out.strain.readAt = raw.strain.readAt;
   }
   /* Daily history, kept by the relay as a rolling window so there is something to correlate
      against -- until this existed S.whoop held today and nothing else, and every past recovery
@@ -6914,6 +7092,11 @@ async function whoopMaybeKick(){
       }
     }
   }catch(e){}
+  return whoopDispatch();
+}
+/* The one dispatch POST, shared by the morning kick and the pre-workout strain kick (2026-10-21), so a refused
+   token is recorded and named in exactly one place. true when GitHub accepted the run. */
+async function whoopDispatch(){
   try{
     const res = await fetch('https://api.github.com/repos/' + WHOOP_REPO +
                             '/actions/workflows/' + WHOOP_WORKFLOW + '/dispatches',
@@ -6947,6 +7130,64 @@ async function whoopMaybeKick(){
     }
   }catch(e){ /* offline or blocked -- the cron is still there underneath */ }
   return false;
+}
+/* ---- Pre-workout strain (his ask, 2026-10-21) ----
+   WHOOP day strain is a running total, and it can be high before he trains (a game, a long walk, a hard shift).
+   At WHOOP's own "High" band (14) the session is at least an easy day; at "All out" (18) at least a recover day
+   and the last accessory comes out. dayCall() holds the rule, so every preview of today agrees with LIVE.
+   Strain only climbs through a day, so an old reading is a floor on the real number, never an overstatement:
+   it is used whatever its age, and the age is shown. The relay rarely runs on its own schedule, so in the two
+   hours before his workout time a fresh read is asked for, three times a day at most per device. */
+const STRAIN_HIGH = 14, STRAIN_ALLOUT = 18;
+const STRAIN_KICK_KEY = 'ironhub:strainkick', STRAIN_KICK_MAX = 3, STRAIN_KICK_GAP = 20 * 60 * 1000;
+const STRAIN_STALE_MIN = 30, STRAIN_KICK_BEFORE_MIN = 120, STRAIN_KICK_AFTER_MIN = 30;
+let _strainKickAt = 0;
+function whoopStrainNow(){
+  const st = S.whoop && S.whoop.strain;
+  if(!st || st.date !== todayKey() || typeof st.score !== 'number') return null;
+  const at = Date.parse(st.readAt || '');
+  return {score:st.score, readAt:isFinite(at) ? at : null};
+}
+function strainTier(score){ return score >= STRAIN_ALLOUT ? 'allout' : score >= STRAIN_HIGH ? 'high' : null; }
+/* "Before he trains": nothing logged today and no session started today. After that the total holds the
+   workout itself, and today's call was already made at Start. */
+function strainPreWorkout(){
+  const t = todayKey();
+  try{ if((S.logs || []).some(function(l){ return l && l.date === t; })) return false; }catch(e){}
+  return !(live && live.date === t && live.startedAt);
+}
+function strainReadWhen(ms){ return ms ? new Date(ms).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : ''; }
+function strainKickCount(){
+  try{ const p = JSON.parse(localStorage.getItem(STRAIN_KICK_KEY) || 'null'); return (p && p.date === todayKey()) ? (+p.n || 0) : 0; }catch(e){ return 0; }
+}
+/* Whether a fresh strain read is worth asking for now. Pure apart from the clock it is given. */
+function strainKickDue(nowMs){
+  if(!strainPreWorkout()) return false;
+  const dk = currentDayKey();
+  if(!dk || dk === 'REST') return false;
+  const wt = String((S.fuel && S.fuel.workoutTime) || '');
+  const m = /^(\d{1,2}):(\d{2})$/.exec(wt);
+  if(!m) return false;
+  const d = new Date(nowMs), mins = d.getHours() * 60 + d.getMinutes(), start = (+m[1]) * 60 + (+m[2]);
+  if(mins < start - STRAIN_KICK_BEFORE_MIN || mins > start + STRAIN_KICK_AFTER_MIN) return false;
+  const sn = whoopStrainNow();
+  return !(sn && sn.readAt && nowMs - sn.readAt < STRAIN_STALE_MIN * 60000);
+}
+async function whoopStrainKick(manual){
+  if(!syncReady()) return false;
+  const now = Date.now();
+  if(!manual && !strainKickDue(now)) return false;
+  if(now - _strainKickAt < STRAIN_KICK_GAP || strainKickCount() >= STRAIN_KICK_MAX) return false;
+  _strainKickAt = now;
+  try{ localStorage.setItem(STRAIN_KICK_KEY, JSON.stringify({date:todayKey(), n:strainKickCount() + 1})); }catch(e){}
+  return whoopDispatch();
+}
+/* LIVE's Refresh: the same budget as the automatic kick, and it says what happened. */
+function strainRefresh(){
+  const el = document.getElementById('strainRefreshMsg');
+  Promise.resolve(whoopStrainKick(true)).then(function(okd){
+    if(el) el.textContent = okd ? 'Asked WHOOP for a fresh read; it lands in a minute or two.' : 'Not asked: sync is off, or this device asked within 20 minutes, or 3 times today.';
+  }).catch(function(){});
 }
 async function syncPull(force){
   if(!syncReady()){ setSyncMsg('Not connected \u2014 paste your token and hit Connect first.', true); return; }
@@ -7055,6 +7296,17 @@ function applyPulled(d, exportedAt){
       a.questions = qaNewest(a.questions).slice(0, QA_KEEP);
     }
     if(localAgents.qa && localAgents.qa.at && (!a.qa || localAgents.qa.at > (a.qa.at || ''))) a.qa = localAgents.qa;
+    // The Desk: by id, so items posted on either device survive; an item never changes except to be hidden, and a hide wins.
+    if(Array.isArray(localAgents.desk)){
+      if(!Array.isArray(a.desk)) a.desk = [];
+      localAgents.desk.forEach(function(loc){
+        if(!loc || !loc.id) return;
+        const r = a.desk.find(function(x){ return x && x.id === loc.id; });
+        if(!r){ a.desk.push(loc); return; }
+        if((+loc.hid || 0) > (+r.hid || 0)) r.hid = loc.hid;
+      });
+      a.desk = deskNewest(a.desk).slice(0, DESK_KEEP);
+    }
   }
   if(localLastAuto){
     const iv = invState();
@@ -9267,7 +9519,8 @@ function settingsSummaries(){
   let blk = false;
   try{ blk = !!mesoActiveStrBlockId(); }catch(e){}
   out.training = (scheduleMode()==='cycle' ? 'Rotating cycle' : 'Weekly schedule')+' \u00b7 '+rr+
-    (deloadActive() ? ' \u00b7 deload active' : blk ? ' \u00b7 strength block now' : '');
+    (deloadActive() ? ' \u00b7 deload active' : blk ? ' \u00b7 strength block now' : '')+
+    (deloadQuietUntil() && !deloadActive() ? ' \u00b7 deload alerts off till '+homeShortDate(deloadQuietUntil()) : '');
   const days = Object.keys(S.split||{}).length;
   const exs = Object.values(S.split||{}).reduce((n,d)=>n+((d.exercises||[]).length),0);
   const maxed = {};
@@ -9383,6 +9636,10 @@ function renderSettings(){
           '<div><label>Start</label><input type="date" id="deloadCustomStart"></div>'+
           '<div><label>Through</label><input type="date" id="deloadCustomUntil"></div>'+
           '<div style="flex:none"><button class="btn sm" onclick="startDeloadWeekCustom()">Set</button></div></div>')) +
+    // Deload alerts on or off (deloadQuietUntil()): the same control as on the Fatigue cards.
+    '<p class="small" style="margin-top:12px"><b style="color:var(--text)">Deload alerts</b> \u2014 '+
+      (deloadQuietUntil() ? esc(deloadQuietText(deloadQuietUntil())) : 'on. The app and the agents suggest a deload when the signals call for one.')+'</p>'+
+    '<div style="margin-top:8px">'+deloadQuietBtnHTML()+'</div>'+
     '</div>';
 
   html += '<h2>Rep Range</h2><div class="card"><div class="row">'+
@@ -10440,13 +10697,33 @@ function _startLiveNow(dk){
   // coach's plan rather than the split's (experiments and the prescription record exclude those).
   const _cp = !!coachDayPlanFor(dk);
   const exs = buildLiveExercises(dk, dc ? dc.call : undefined);
+  // All-out strain before he trains (18+) also takes the last accessory out; the call's undo puts it back.
+  let _drop = null;
+  if(dc && dc.strain && dc.strain.tier === 'allout'){
+    const di = strainDropIdx(exs);
+    if(di >= 0){ _drop = {name:exs[di].name, idx:di, ex:exs[di]}; exs.splice(di, 1); }
+  }
   live = { date:todayKey(), day:dk, startedAt:Date.now(), exercises:exs, curIdx:0,
-           trimmed:exs.some(function(e){ return e._callTrim; }), home:homeActiveToday(),
-           call: dc ? {call:dc.call, score:dc.score, conf:dc.conf, why:dc.why, whoop:dc.whoop, checkIn:dc.checkIn} : null,
+           trimmed:exs.some(function(e){ return e._callTrim; }) || !!_drop, home:homeActiveToday(),
+           call: dc ? {call:dc.call, score:dc.score, conf:dc.conf, why:dc.why, whoop:dc.whoop, checkIn:dc.checkIn,
+                       strain:dc.strain ? {score:dc.strain.score, tier:dc.strain.tier, readAt:dc.strain.readAt} : null} : null,
+           callDrop:_drop ? {name:_drop.name, idx:_drop.idx, ex:_drop.ex} : null,
            callOff:false, coachPlan:_cp, skippedCheckIn:(S.readySkipDate === todayKey()) };
   liveActiveIdx = 0;
   saveLiveDraft();
   renderLive();
+}
+/* Which lift an all-out day leaves out: the last accessory he has not started. Never a compound, never a
+   deload, 1RM test or swapped-in lift, and never a session cut below 3 lifts. -1 when there is none. */
+function strainDropIdx(exs){
+  if(!Array.isArray(exs) || exs.length <= 3) return -1;
+  for(let i = exs.length - 1; i >= 0; i--){
+    const e = exs[i];
+    if(!e || !e.name || (e.sets && e.sets.length) || e.done || e._deload || e._1rm || e._swapped) continue;
+    if(mesoIsCompound(e.name)) continue;
+    return i;
+  }
+  return -1;
 }
 function liveStartPicker(){
   const days = activeDayKeys();
@@ -10849,8 +11126,22 @@ function liveBriefHTML(){
   try{ shape = todayPlanShape(dk); }catch(e){}
   try{ if(lifts[0] && lifts[0].w){ const ex0 = buildOneLiveExercise(lifts[0].name, null, {call:call}); pw = livePrWatch(ex0, {w:lifts[0].w}); } }catch(e){ pw = null; }
   if(!lifts.length && !call) return '';
+  // Today's WHOOP strain so far, how old the reading is, and a way to ask for a fresh one (pre-workout strain).
+  let strainLine = '';
+  try{
+    const sn = whoopStrainNow();
+    // When the strain already set today's call, the call line above names it: say when it was read and what it does.
+    if(sn || syncReady()) strainLine = '<p class="small lv-brief-strain">'+(sn && dc && dc.strain
+        ? 'Strain'+(sn.readAt ? ' read by WHOOP at '+esc(strainReadWhen(sn.readAt)) : ' from WHOOP')+
+          (dc.strain.tier === 'allout' ? ' · your last accessory comes out today' : '')
+        : sn ? 'WHOOP strain so far <b>'+esc(sn.score.toFixed(1))+'</b>'+(sn.readAt ? ' · read '+esc(strainReadWhen(sn.readAt)) : '')+' · eases the day at '+STRAIN_HIGH
+        : 'No WHOOP strain for today yet')+
+      (syncReady() ? ' <button class="btn ghost sm" onclick="strainRefresh()">Refresh</button>' : '')+
+      ' <span id="strainRefreshMsg" class="dim"></span></p>';
+  }catch(e){ strainLine = ''; }
   return '<div class="card lv-brief"><div class="k">Before you start · '+esc(dk)+'</div>'+
     (call ? '<p class="small lv-brief-call"><b>'+esc(DC_LABEL[call])+'</b>'+(dc.why && dc.why.length ? ' · '+esc(dc.why.join(' · ')) : '')+'</p>' : '')+
+    strainLine+
     lifts.map(function(l){
       return '<div class="lv-brief-l"><span>'+esc(l.name)+'</span><b>'+(l.w ? l.w+' × '+l.lo+'–'+l.hi : '')+'</b></div>';
     }).join('')+
@@ -10937,7 +11228,7 @@ async function liveDeltaSend(){
       '\nYou can look one thing up if you genuinely need it (get_lift_history is usually '+
       'the one), but prefer answering from what you already have: every lookup is another few '+
       'seconds he spends waiting between sets.\n\n'+
-      coachMemContext()+trainingContext()+agContext()+liveDeltaContext();
+      coachMemContext()+trainingContext()+agContext()+(function(){ try{ return agLiftRefLine('delta'); }catch(e){ return ''; } })()+liveDeltaContext();
     const msgs = a.chats.delta.slice(-14).map(m=>({role:m.role, content:m.content}));
     // maxRounds 2 rather than the usual 6 -- see the note in callClaudeWithData.
     const {text} = await callClaudeWithData(msgs, sys, 4000, {maxRounds:2, route:'live:delta'});
@@ -11393,6 +11684,8 @@ function endLiveSession(opts){
   // What the day was called, and whether he kept it, so the engine can later see how its calls
   // played out.
   if(live.call) logRec.call = {call:live.call.call, score:live.call.score, conf:live.call.conf, off:!!live.callOff};
+  // The strain that set a floor under the call, so the log says why the day was eased.
+  if(logRec.call && live.call.strain) logRec.call.strain = live.call.strain.score;
   // Session timing, for density later. Both are ms. Anything measuring training time should
   // prefer the first and last set's ts over these: endedAt is when End was tapped, and a
   // session left open while he drove home is not a slower session.
@@ -11423,6 +11716,9 @@ function endLiveSession(opts){
   live.exercises.forEach(function(e){ if(e._swapFrom && e.sets.length) _sf[e.name] = e._swapFrom; });
   if(Object.keys(_sf).length) logRec.swapFrom = _sf;
   if(Array.isArray(live.removed) && live.removed.length) logRec.removed = live.removed.slice();
+  // The lift an all-out strain day left out, if it stayed out (pre-workout strain, 2026-10-21).
+  if(live.callDrop && live.callDrop.name && !live.callOff && !live.exercises.some(function(e){ return e && e.name === live.callDrop.name; }))
+    logRec.callDrop = live.callDrop.name;
   if(live.callToggledAt && logRec.call) logRec.call.toggledAt = +live.callToggledAt;
   if(live.skippedCheckIn) logRec.skippedCheckIn = true;
   // Lifts a chat card changed for today only (adjust_today): their numbers were his call, not the engine's.
@@ -12456,6 +12752,13 @@ function deloadCardHTML(){
       '<p class="small">Deload week is active through '+fmtDate(deloadWindow().until)+'. Sessions this week are auto-lightened and excluded from your progression and trend charts.</p>'+
       '<div style="margin-top:10px"><button class="btn ghost sm" onclick="endDeloadWeek()">End deload early</button></div></div>';
   }
+  // Deload alerts off: no Recommend or Watch until the date he picked, and the way back on.
+  const _q = deloadQuietUntil();
+  if(_q){
+    return '<div class="card" style="border-left:3px solid var(--muted)"><div class="chart-h" style="margin-bottom:4px">Fatigue check <span class="pill" style="border-color:var(--line2);color:var(--muted)">Quiet till '+esc(homeShortDate(_q))+'</span></div>'+
+      '<p class="small">'+esc(deloadQuietText(_q))+' Nothing here suggests a deload until then, and the agents are told not to.</p>'+
+      '<div style="margin-top:10px">'+deloadQuietBtnHTML()+'</div></div>';
+  }
   const d=deloadCheck();
   if(d.severity==='clear'){
     return '<div class="card" style="border-left:3px solid var(--cyan)"><div class="chart-h" style="margin-bottom:4px">Fatigue check <span class="pill" style="border-color:var(--cyan-dim);color:var(--cyan)">Clear</span></div><p class="small">No deload signals right now \u2014 recovery is keeping up with the work. Keep pushing.</p>'+deloadForecastLineHTML()+'</div>';
@@ -12468,7 +12771,7 @@ function deloadCardHTML(){
   return '<div class="card" style="border-left:3px solid '+col+'"><div class="chart-h" style="margin-bottom:6px">Fatigue check <span class="pill" style="border-color:'+col+';color:'+col+'">'+head+'</span></div>'+
     '<div class="small" style="margin-bottom:8px">'+d.reasons.map(r=>'<div class="exinfo-cue"><span style="color:'+col+'">\u25b8</span>'+esc(r)+'</div>').join('')+'</div>'+
     '<p class="small" style="color:var(--text)">'+how+'</p>'+deloadForecastLineHTML()+
-    '<div style="margin-top:10px"><button class="btn sm" onclick="if(confirm(\'Start a deload week? Loads drop to ~60% for 2 sets and this week won\\u2019t count toward progression.\'))startDeloadWeek()">Start deload week</button></div></div>';
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"><button class="btn sm" onclick="if(confirm(\'Start a deload week? Loads drop to ~60% for 2 sets and this week won\\u2019t count toward progression.\'))startDeloadWeek()">Start deload week</button>'+deloadQuietBtnHTML()+'</div></div>';
 }
 
 /* ===================== 7. 1RM TEST PROTOCOL ===================== */
@@ -13668,9 +13971,9 @@ function fatigueBannerHTML(){
       (fi.lowDays>=2 ? ', and readiness has been low '+fi.lowDays+' days' : '')+'. '+
       (hard ? 'A deload now costs you nothing and buys back performance \u2014 holding this another week is how injuries and stalls start.'
             : 'Fine for a short push, but keep an eye on sleep and readiness.')+'</p>'+
-    '<div style="display:flex;gap:8px;margin-top:10px">'+
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">'+
     '<button class="btn sm" style="border-color:var(--violet);color:var(--violet)" onclick="startDeloadWeek()">Start deload week</button>'+
-    '<button class="btn sm ghost" onclick="fatigueDismiss()">Not now</button>'+
+    '<button class="btn sm ghost" onclick="fatigueDismiss()">Not now</button>'+deloadQuietBtnHTML()+
     '<button class="btn sm ghost" style="margin-left:auto" onclick="setMode(\'review\');showMainTab(\'analytics\',\'an_fatigue\')">See the data</button>'+
     '</div></div>';
 }
@@ -14294,7 +14597,8 @@ function investigateLift(nm){
   } else if(slope < -0.3){
     severity='orange'; title=nm+' trending down';
     findings.push('Mild decline over recent sessions \u2014 could be fatigue, sleep, or accumulated grinding.');
-    if(hardPct!=null && hardPct>=40){
+    // While deload alerts are off (deloadQuietUntil()) the flag offers the light reset instead.
+    if(hardPct!=null && hardPct>=40 && !deloadQuietUntil()){
       fix={label:'Start deload week', desc:'High grind density plus a downward trend is the classic overreach signature. A deload week ('+'~60% loads) usually restores the trend within 1\u20132 weeks after.', type:'deload', payload:{}};
     } else {
       const baseW = invLastWorkingWeight(nm);
@@ -17025,13 +17329,27 @@ function anStrainBetween(a, b){
 function anStrainByWeek(n){
   return anLastWeeks(n, true).map(ws=>({date:ws, v:anStrainBetween(ws, mesoAddDays(ws,6))}));
 }
+/* The norm is his usual TRAINING week, so a week holding a deload session is not part of it
+   (2026-10-21). It used to be the plain 28 days before this week, and a week after his Oct 10-15
+   deload that window still held the deload at half weight: the norm sank, an ordinary week read
+   1.54x "overreached", the deload banner came back, and the overreach alone made every day an easy
+   day. Now: the 4 most recent 7-day windows before this one with no deload session in them, looking
+   back up to 12 weeks, and at least 2 of them. */
+const FI_NORM_WEEKS = 4, FI_NORM_LOOKBACK = 12, FI_NORM_MIN = 2;
 function fatigueIndex(endKey){
   // endKey lets the deload forecast read last week's ratio the same way; default is today.
   const e = endKey || todayKey();
   const acute = anStrainBetween(mesoAddDays(e,-6), e);
-  // Prior 28 days, weekly. It ended at -6, the same day the acute window starts, so that day
-  // counted in both.
-  const chronic = anStrainBetween(mesoAddDays(e,-34), mesoAddDays(e,-7)) / 4;
+  // Weekly windows ending the day before the acute one starts, so no day counts in both.
+  const deloadDays = (S.logs || []).filter(function(l){ return l && l.deload; }).map(function(l){ return l.date; });
+  const weeks = [];
+  for(let i = 1; i <= FI_NORM_LOOKBACK && weeks.length < FI_NORM_WEEKS; i++){
+    const b = mesoAddDays(e, -7*i), a = mesoAddDays(b, -6);
+    if(deloadDays.some(function(d){ return d >= a && d <= b; })) continue;
+    weeks.push(anStrainBetween(a, b));
+  }
+  if(weeks.length < FI_NORM_MIN) return {ok:false, reason:'Rebuilding your norm: it needs 2 recent training weeks with no deload in them.'};
+  const chronic = weeks.reduce(function(t, x){ return t + x; }, 0) / weeks.length;
   if(chronic < 4) return {ok:false, reason:'Needs about a month of logged training to establish your baseline.'};
   let ratio = acute/chronic;
   // readiness modifier: a run of low-readiness days makes the same load cost more
@@ -17047,7 +17365,42 @@ const FATIGUE_LABELS = {
   productive:'Productive — training load sits in the sweet spot relative to what your body is adapted to.',
   high:'High — meaningfully above your recent norm. Sustainable briefly, but watch sleep and readiness.',
   overreached:'Overreached — well above your adapted load. If this holds another week, a deload is the smart move.'};
+/* Deload talk, off until a date he picked (2026-10-21, Winter Arc: "I do not need to deload for at
+   least 8 more weeks"). S.deloadQuiet = {until, from, at}, set only by his tap and saved with save(),
+   so it syncs to both devices and a pull cannot undo it. While it holds:
+     - nothing on his screens suggests a deload (the LIVE banner, the Fatigue cards, the Today tile,
+       the bell), and the forecast says it is off and until when;
+     - training load is left out of today's call (his pick); recovery, sleep, soreness and strain
+       still make it;
+     - the agents are told it is off, are not shown high-load events or the load factor, are not
+       offered the deload fix, and agDeloadBlock() refuses one if they send it anyway.
+   A planned meso deload still runs (it is his plan), and his own Start deload buttons still work.
+   Gated on a well-formed date, because an older copy of the app never wrote the key. */
+const DELOAD_QUIET_DAYS = 56;
+function deloadQuietUntil(){
+  const q = S.deloadQuiet;
+  const u = (q && typeof q.until === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.until)) ? q.until : null;
+  return (u && u >= todayKey()) ? u : null;
+}
+function deloadQuietSet(on){
+  if(on){ const t = todayKey(); S.deloadQuiet = {until:mesoAddDays(t, DELOAD_QUIET_DAYS), from:t, at:Date.now()}; }
+  else S.deloadQuiet = null;
+  save();
+  try{ renderLive(); }catch(e){}
+  try{ renderAnFatigue(); }catch(e){}
+  try{ rerenderActive(true); }catch(e){}
+}
+/* The one sentence everything says while it holds: his screens, and the agents' prompt. */
+function deloadQuietText(u){ return 'Deload alerts are off until '+homeShortDate(u)+' (your call).'; }
+function deloadQuietAgentLine(u){ return 'Deload alerts are off until '+homeShortDate(u)+', his call: he does not need a deload before then. Do not suggest one, and do not read training load as overreach.'; }
+/* His control, in one place: on the Fatigue cards, the LIVE banner and Settings. */
+function deloadQuietBtnHTML(){
+  const u = deloadQuietUntil();
+  return u ? '<button class="btn sm ghost" onclick="deloadQuietSet(false)">Turn deload alerts back on</button>'
+           : '<button class="btn sm ghost" onclick="deloadQuietSet(true)">Quiet for 8 weeks</button>';
+}
 function fatigueSuggestsDeload(){
+  if(deloadQuietUntil()) return null;
   const fi = fatigueIndex();
   if(!fi.ok || (fi.status!=='overreached' && !(fi.status==='high' && fi.lowDays>=2))) return null;
   if(deloadActive()) return null;
@@ -17243,7 +17596,9 @@ function dayCall(dateKey, dayKey){
     const own = !hasRec || (rd.energyPre && rd.energy !== rd.energyPre);
     if(own) add({low:-1, high:0.5}[rd.energy] || 0, 'energy '+rd.energy, 'check-in');
   }
-  try{
+  // Left out while deload alerts are off (his pick, 2026-10-21): overreached alone scores DC_EASY, so a
+  // high ratio he has said to ignore would quietly make every day an easy one.
+  if(!deloadQuietUntil()) try{
     const fi = fatigueIndex();
     if(fi.ok) add({high:-1, overreached:-2, fresh:0.25}[fi.status] || 0, 'training load '+fi.status+' ('+fi.ratio+'\u00d7 your norm)', 'load');
   }catch(e){}
@@ -17254,24 +17609,36 @@ function dayCall(dateKey, dayKey){
     if(f) add(f.delta >= 1 ? -1 : f.delta <= -1 ? 0.5 : 0, 'last '+dayKey+' felt RPE '+f.rpe+' against '+f.lo+'\u2013'+f.hi, 'history');
   }
   const score = Math.round(parts.reduce(function(t, p){ return t + p.pts; }, 0)*100)/100;
-  // Training load and how the last session felt are data too, so they can make a call on their
-  // own (an overreached week with no WHOOP is still an easy day). With nothing at all the score
-  // is 0 and the day is normal.
-  const hasData = hasRec || hasSleep || !!rd || parts.length > 0;
   let call = 'normal';
   if(score <= DC_RECOVER) call = 'recover';
   else if(score <= DC_EASY) call = 'easy';
   // A push day needs nothing against it, not just a good total.
   else if(score >= DC_PUSH && !parts.some(function(p){ return p.pts <= -1; })) call = 'push';
+  // Pre-workout strain is a floor, not points (his ask, 2026-10-21): WHOOP's High band makes the day at least
+  // easy, All out at least recover, whatever else the day scored. Today only, and only before he trains.
+  let strain = null;
+  if(d === todayKey() && strainPreWorkout()){
+    const sn = whoopStrainNow(), tier = sn ? strainTier(sn.score) : null;
+    if(tier){
+      strain = {score:Math.round(sn.score * 10) / 10, tier:tier, readAt:sn.readAt};
+      const floor = tier === 'allout' ? 'recover' : 'easy', rank = {push:0, normal:1, easy:2, recover:3};
+      if(rank[floor] > rank[call]) call = floor;
+    }
+  }
+  // Training load and how the last session felt are data too, so they can make a call on their
+  // own (an overreached week with no WHOOP is still an easy day). With nothing at all the score
+  // is 0 and the day is normal.
+  const hasData = hasRec || hasSleep || !!rd || parts.length > 0 || !!strain;
   const conf = (hasRec && rd) ? 'high' : (hasRec || rd) ? 'medium' : hasData ? 'low' : 'none';
   const dir = call === 'push' ? 1 : (call === 'easy' || call === 'recover') ? -1 : 0;
   // The reasons that point the way the call went. A normal day has none to give: its parts pull
   // both ways and cancel, and listing them reads as "why is this normal?" (they stay in parts).
   const why = !dir ? [] : parts.filter(function(p){ return p.pts * dir > 0; })
-                   .sort(function(a, b){ return Math.abs(b.pts) - Math.abs(a.pts); }).slice(0, 3)
+                   .sort(function(a, b){ return Math.abs(b.pts) - Math.abs(a.pts); })
                    .map(function(p){ return p.txt; });
-  return {date:d, day:dayKey || null, call:call, score:score, conf:conf, why:why, parts:parts,
-          whoop:hasRec, checkIn:!!rd, calibrated:cal.calibrated, provisional:!!(wr && wr.provisional)};
+  if(strain) why.unshift('strain '+strain.score+' so far today');
+  return {date:d, day:dayKey || null, call:call, score:score, conf:conf, why:why.slice(0, 3), parts:parts,
+          whoop:hasRec, checkIn:!!rd, calibrated:cal.calibrated, provisional:!!(wr && wr.provisional), strain:strain};
 }
 /* The readiness tier recommend() reads, from a call: an easy or recover day holds an earned jump
    exactly as a low check-in always has. */
@@ -17741,7 +18108,8 @@ function agEvents(days, kinds){
     });
   }catch(e){}
   // A heavy week: how far over his norm, what recovery did the week after, and any dips that followed.
-  if(want('load')) try{
+  // Not while deload alerts are off (deloadQuietUntil()): a heavy week is what he said to stop reading as overreach.
+  if(want('load') && !deloadQuietUntil()) try{
     ckEventMarks(from, ['load']).forEach(function(m){
       let ratio = null;
       try{ const fi = fatigueIndex(m.end); if(fi && fi.ok) ratio = fi.ratio; }catch(e){}
@@ -17917,7 +18285,11 @@ function strHeroHTML(){
       e1rmSeries(nm).forEach(function(p){ if(!clean[p.date]) mod[p.date] = 1; });
     }catch(e){}
     const cw = ckW();
-    h += anFanChartSVG(res, cw, ckH(cw, 220), {histDays:STR_HIST_DAYS, marks:marks, modDates:mod, noMeter:true});
+    // The hero draws the clean version (2026-10-21): the forecast grows out of the trend line, the range is the band
+    // alone, week-long marks sit on one lane over the plot, and the dates are short. The numbers are the same.
+    h += anFanChartSVG(res, cw, ckH(cw, 232), {histDays:STR_HIST_DAYS, marks:marks, modDates:mod, noMeter:true,
+      fromFit:true, bandOnly:true, rail:true, shortDates:true});
+    h += ckMarkKeyHTML(marks, from);
     if(isMaxed(nm)) h += '<p class="str-say">At the machine\u2019s top, so there is no weight to forecast. Progress here is reps.</p>';
     else {
       const end = function(p){ const a = res.series[p]; return Math.round(a[a.length-1].v); };
@@ -17980,9 +18352,19 @@ function pxMean(a){ const v = a.filter(function(x){ return typeof x === 'number'
 const DELOAD_TYPICAL_WEEKS = [8, 12];
 function deloadForecast(){
   if(deloadActive()) return null;
-  const t = todayKey(), d = deloadCheck();
+  const t = todayKey();
   const since = lastDeloadEndKey();
   const weeksSince = since ? Math.floor((Date.parse(t) - Date.parse(since)) / (7*86400000)) : null;
+  // Deload alerts off (deloadQuietUntil): no signal is read, so nothing can say "due". A planned meso
+  // deload is still his plan and is still reported, so the Today tile and the bell can count down to it.
+  const _q = deloadQuietUntil();
+  if(_q){
+    let pq = null;
+    try{ const nd = mesoNextDeload(); if(nd && nd.startKey > t) pq = {start:nd.startKey, weeksAway:Math.ceil((Date.parse(nd.startKey) - Date.parse(t)) / (7*86400000))}; }catch(e){}
+    return {quiet:true, until:_q, weeks:null, horizon:null, pressure:0, planned:pq, ratioNow:null, ratioWeekAgo:null,
+            feltNow:null, feltBefore:null, weeksSince:weeksSince, text:deloadQuietText(_q)};
+  }
+  const d = deloadCheck();
   let rNow = null, rThen = null;
   try{ const a = fatigueIndex(), b = fatigueIndex(mesoAddDays(t, -7)); if(a.ok) rNow = a.ratio; if(b.ok) rThen = b.ratio; }catch(e){}
   // Since the last deload only, like deloadCheck()'s signals: grinders before it are what it was for.
@@ -18221,7 +18603,8 @@ function intelSummary(){
     if(wr.n) L.push('How recovery affects him: 15+ under usual '+pc(b.below.hard)+'% grind/fail (n '+b.below.n+'), about usual '+pc(b.normal.hard)+'% (n '+b.normal.n+')'+
       (b.above.n ? ', 15+ over '+pc(b.above.hard)+'% (n '+b.above.n+')' : '')+'; '+(wr.calibrated ? 'calibrated, low recovery weighted \u00d7'+wr.weight : 'not calibrated yet')+'.'); }catch(e){}
   try{ const f = deloadForecast();
-    if(f) L.push('Deload forecast: '+f.text+(f.weeksSince !== null ? ' Last deload ended '+f.weeksSince+' weeks ago.' : ''));
+    if(f && f.quiet) L.push('Deload: '+deloadQuietAgentLine(f.until)+(f.weeksSince !== null ? ' Last deload ended '+f.weeksSince+' weeks ago.' : ''));
+    else if(f) L.push('Deload forecast: '+f.text+(f.weeksSince !== null ? ' Last deload ended '+f.weeksSince+' weeks ago.' : ''));
     else if(deloadActive()) L.push('Deload: in one now.'); }catch(e){}
   try{ const br = bulkRate(4);
     if(br) L.push('Bodyweight: '+sg(br.rate, 2)+' lb/wk over '+br.weeks+' weeks ('+bulkBand(br.rate)+'; lean-bulk band '+BULK_LO+'\u2013'+BULK_HI+'), now '+br.cur+' lb.'); }catch(e){}
@@ -18353,10 +18736,14 @@ function liveCallHTML(){
   } else {
     h += '<p class="small dc-why">'+esc((c.why||[]).join(' \u00b7 ') || 'No recovery data today')+'.</p>'+
          '<p class="small dc-what">'+esc(DC_WHAT[c.call])+'</p>';
+    // Pre-workout strain set a floor under the call. The reasons above already give the number; say when WHOOP read
+    // it and what came out.
+    if(c.strain) h += '<p class="small dc-what dc-strain">'+(c.strain.readAt ? 'WHOOP read that strain at '+esc(strainReadWhen(c.strain.readAt))+', before you started.' : 'That strain was read before you started.')+
+      (live.callDrop && live.callDrop.name ? ' '+esc(live.callDrop.name)+' is left out today.' : '')+'</p>';
     // Two recover calls in a row are a pattern, not a bad night.
     const prev = (S.logs||[]).filter(function(l){ return l && l.call && l.date < live.date; }).sort(function(a, b){ return b.date.localeCompare(a.date); })[0];
     if(c.call === 'recover' && prev && prev.call.call === 'recover' && !prev.call.off)
-      h += '<p class="small dc-what" style="color:var(--bad)">Second recover day running \u2014 a deload week may be due.</p>';
+      h += '<p class="small dc-what" style="color:var(--bad)">Second recover day running'+(deloadQuietUntil() ? '. Go by how the sets feel.' : ' \u2014 a deload week may be due.')+'</p>';
     if(adj) h += '<button class="btn ghost sm" onclick="liveCallToggle()">Train the normal plan instead</button>';
   }
   return h + '</div>';
@@ -18374,7 +18761,25 @@ function liveCallToggle(){
     if(ex._coachNote){ nb._coachNote = ex._coachNote; nb.recDetail = 'Coach: '+ex._coachNote+'. '+(nb.recDetail||''); nb.advMsg = nb.recDetail; }
     return nb;
   });
-  live.trimmed = !live.callOff && live.exercises.some(function(e){ return e._callTrim; });
+  // The lift an all-out day left out comes back at its place with the normal plan, and goes again on
+  // re-apply only while it has nothing logged.
+  const dr = live.callDrop;
+  if(dr && dr.name){
+    const at = live.exercises.findIndex(function(e){ return e && e.name === dr.name; });
+    if(live.callOff && at < 0){
+      const nb = buildOneLiveExercise(dr.name, dr.ex && dr.ex._homeEquipList, {call:'normal', sets:sets[dr.name]});
+      if(dr.ex && dr.ex._coachNote){ nb._coachNote = dr.ex._coachNote; nb.recDetail = 'Coach: '+dr.ex._coachNote+'. '+(nb.recDetail||''); nb.advMsg = nb.recDetail; }
+      const ins = Math.min(dr.idx, live.exercises.length);
+      live.exercises.splice(ins, 0, nb);
+      if(ins <= liveActiveIdx) liveActiveIdx++;   // the lift he is on moved down one
+    } else if(!live.callOff && at >= 0 && !(live.exercises[at].sets || []).length && !live.exercises[at].done){
+      live.exercises.splice(at, 1);
+      if(liveActiveIdx > at) liveActiveIdx--;
+      if(liveActiveIdx >= live.exercises.length) liveActiveIdx = Math.max(0, live.exercises.length - 1);
+    }
+  }
+  live.trimmed = !live.callOff && (live.exercises.some(function(e){ return e._callTrim; }) ||
+    !!(dr && dr.name && !live.exercises.some(function(e){ return e && e.name === dr.name; })));
   saveLiveDraft(); renderLive();
 }
 /* Today, before the session: what the call is, set automatically once he starts. */
@@ -18953,14 +19358,29 @@ function anDayMs(k){ return new Date(k+'T00:00:00').getTime(); }
 function anConfLevel(r2){
   return r2>0.7 ? {n:3, col:'var(--cyan)'} : r2>0.4 ? {n:2, col:'var(--amber)'} : {n:1, col:'var(--red)'};
 }
+/* What a fan chart draws. opts.fromFit (the Strength hero, 2026-10-21): the forecast starts where the fitted trend
+   is today, at the spread the model itself gives that day, instead of every line pinned to res.cur. For a lift
+   res.cur is his BEST, so on a lift below its peak all three lines fell off a cliff in the first two days (241 to
+   218 on his squat). Drawing only: res.series, res.cur and every number read from them are untouched. */
+function anFanDrawSeries(res, opts){
+  if(!(opts && opts.fromFit && res.reg)) return res.series;
+  const day0 = Math.round((anDayMs(todayKey())-res.reg.x0)/86400000), fit0 = res.reg.intercept + res.reg.slope*day0;
+  const out = {};
+  AN_ENS_PCTS.forEach(pc=>{
+    const a = (res.series[pc.p]||[]).slice();
+    if(a.length) a[0] = {date:a[0].date, v:Math.max(0, Math.round((fit0 + (pc.p===50 ? 0 : pc.z*(res.sd||0)))*10)/10)};
+    out[pc.p] = a;
+  });
+  return out;
+}
 /* Fan chart: real history on the left of a "today" divider, projection fan on the right.
    Time-scaled on x rather than index-scaled, because the historical points have to sit at
    their true spacing relative to the projection or the two halves lie about each other. */
 function anFanChartSVG(res, w, h, opts){
   opts = opts || {};
-  const s50 = res.series[50], n = s50.length;
-  const projEnd = s50[n-1].date;
-  const horizonDays = Math.max(1, Math.round((anDayMs(projEnd)-anDayMs(s50[0].date))/86400000));
+  const n = res.series[50].length;
+  const projEnd = res.series[50][n-1].date;
+  const horizonDays = Math.max(1, Math.round((anDayMs(projEnd)-anDayMs(res.series[50][0].date))/86400000));
   // Show a history window roughly the size of the horizon so neither half is crushed, but
   // never fewer than 6 real points \u2014 a projection floating over nothing is exactly what
   // this chart was rebuilt to stop doing.
@@ -18968,17 +19388,27 @@ function anFanChartSVG(res, w, h, opts){
   let hist = (res.hist||[]).filter(p=>p.date>=cutoff);
   if(hist.length < 6) hist = (res.hist||[]).slice(-6);
 
-  const vs = res.series[10].concat(res.series[50], res.series[90], hist).map(p=>p.v);
+  const series = anFanDrawSeries(res, opts);
+  const s50 = series[50];
+  const vs = series[10].concat(series[50], series[90], hist).map(p=>p.v);
   let lo = Math.min(...vs), hi = Math.max(...vs);
   if(hi===lo){ hi+=1; lo-=1; }
-  const pad = (hi-lo)*0.10; lo = Math.max(0, lo-pad); hi += pad;
+  // Round gridlines (2026-10-21): the scale snaps out to a whole step, so the axis reads 190 / 210 / 230
+  // rather than 190 / 217 / 245. A little pad first, so a point never sits on the edge line.
+  const pad = (hi-lo)*0.06; lo = Math.max(0, lo-pad); hi += pad;
+  const step = ckNiceStep(lo, hi);
+  lo = Math.max(0, Math.floor(lo/step)*step); hi = Math.ceil(hi/step)*step;
+  if(hi - lo < 2*step) hi = lo + 2*step;
 
   const t0 = Math.min(anDayMs(hist.length?hist[0].date:todayKey()), anDayMs(todayKey()));
   const t1 = anDayMs(projEnd);
+  // opts.rail leaves a lane over the plot for the event marks, so their labels stop sitting on the top line.
+  const top = opts.rail && opts.marks && opts.marks.length ? 40 : 18;
   const L = 40, R = w-14, span = Math.max(1, t1-t0);
   const px = k => L + ((anDayMs(k)-t0)/span)*(R-L);
-  const py = v => h-24 - ((v-lo)/(hi-lo))*(h-42);
+  const py = v => h-24 - ((v-lo)/(hi-lo))*(h-24-top);
   const pathFor = arr => arr.map((p,i)=>(i?'L':'M')+px(p.date).toFixed(1)+' '+py(p.v).toFixed(1)).join(' ');
+  const xLabel = k => opts.shortDates ? homeShortDate(k) : fmtDate(k);
 
   // Callers draw the fan at the width it is shown at (ckW), so its type is fixed units: an
   // 11-unit label is an 11px label on a phone card and on a desktop one alike.
@@ -18988,18 +19418,17 @@ function anFanChartSVG(res, w, h, opts){
   // step off today's reading look like a kink (his note, 2026-10-20: "a little sloppy").
   const xyOf = arr => arr.map(p=>[px(p.date), py(p.v)]);
   let s = '<svg class="ck" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Projection: history, then a likely range" style="width:100%;height:auto;display:block">';
-  const mid = (hi+lo)/2;
-  s += ckGrid(L, R, py(hi)) + ckGrid(L, R, py(mid)) + ckGrid(L, R, py(lo));
+  const ticks = [];
+  for(let v = lo; v <= hi + step/1000; v += step) ticks.push(Math.round(v*1000)/1000);
+  ticks.forEach(v=>{ s += ckGrid(L, R, py(v)); });
   // Real events behind the line (V4 stage 5): bands first, so the lines and dots draw over them.
-  const mk = ckMarks(opts.marks, px, py, py(hi), h-24, L, R);
+  const mk = ckMarks(opts.marks, px, py, py(hi), h-24, L, R, {rail:!!opts.rail});
   s += mk.under;
   // shaded p10\u2013p90 envelope, its edges the same curves as the two lines
-  s += '<path class="ck-fan" d="'+ckSmoothD(xyOf(res.series[90]))+' '+ckSmoothD(xyOf(res.series[10].slice().reverse())).replace(/^M/, 'L')+' Z"'+
+  s += '<path class="ck-fan" d="'+ckSmoothD(xyOf(series[90]))+' '+ckSmoothD(xyOf(series[10].slice().reverse())).replace(/^M/, 'L')+' Z"'+
     ' fill="'+(opts.bandFill||'rgba(242,138,58,.12)')+'" stroke="none"/>';
-  // y labels
-  s += ckText(L-7, py(hi)+4, Math.round(hi), {anchor:'end', size:fs(11)});
-  s += ckText(L-7, py(mid)+4, Math.round(mid), {anchor:'end', size:fs(11)});
-  s += ckText(L-7, py(lo)+4, Math.round(lo), {anchor:'end', size:fs(11)});
+  // y labels, one per gridline
+  ticks.forEach(v=>{ s += ckText(L-7, py(v)+4, step < 1 ? v.toFixed(1) : Math.round(v), {anchor:'end', size:fs(11)}); });
 
   if(hist.length){
     // The fitted trend line, drawn back across the real points. Confidence stops being an
@@ -19008,9 +19437,12 @@ function anFanChartSVG(res, w, h, opts){
     const conf = anConfLevel(res.r2);
     if(res.reg){
       const fitAt = k => res.reg.intercept + res.reg.slope*((new Date(k).getTime()-res.reg.x0)/86400000);
-      s += '<path d="M'+px(hist[0].date).toFixed(1)+' '+py(fitAt(hist[0].date)).toFixed(1)+
-           'L'+px(todayKey()).toFixed(1)+' '+py(fitAt(todayKey())).toFixed(1)+
-           '" fill="none" stroke="'+conf.col+'" stroke-width="1.2" stroke-dasharray="5 4" opacity=".55"/>';
+      // With fromFit it ends exactly where the forecast starts, so the two read as one line. In ink then, not
+      // the confidence colour: red on a noisy lift read as an alarm, and the hero says confidence in words.
+      const fitEnd = opts.fromFit ? s50[0].v : fitAt(todayKey());
+      s += '<path class="ck-fit" d="M'+px(hist[0].date).toFixed(1)+' '+py(fitAt(hist[0].date)).toFixed(1)+
+           'L'+px(todayKey()).toFixed(1)+' '+py(fitEnd).toFixed(1)+
+           '" fill="none" stroke="'+(opts.fromFit ? 'var(--dim)' : conf.col)+'" stroke-width="1.2" stroke-dasharray="5 4" opacity="'+(opts.fromFit ? '.8' : '.55')+'"/>';
     }
     s += ckPath(pathFor(hist), 'var(--muted)', {w:1.8, op:.85});
     // A session the engine did not shape (a recover day, a swap, a reset) is drawn hollow.
@@ -19018,19 +19450,22 @@ function anFanChartSVG(res, w, h, opts){
       ? '<circle class="ck-mod" cx="'+px(p.date).toFixed(1)+'" cy="'+py(p.v).toFixed(1)+'" r="3" fill="var(--panel)" stroke="var(--muted)" stroke-width="1.6"/>'
       : ckDot(px(p.date), py(p.v), 'var(--muted)', 2.8); });
     // divider between what happened and what is guessed
-    s += '<line x1="'+px(todayKey()).toFixed(1)+'" y1="10" x2="'+px(todayKey()).toFixed(1)+'" y2="'+(h-22)+
+    s += '<line x1="'+px(todayKey()).toFixed(1)+'" y1="'+(top > 18 ? top - 4 : 10)+'" x2="'+px(todayKey()).toFixed(1)+'" y2="'+(h-22)+
          '" stroke="var(--line2)" stroke-width="1" stroke-dasharray="2 3"/>';
   }
 
-  // the outer paces first and thinner, so the expected line reads on top
+  // the outer paces first and thinner, so the expected line reads on top. opts.bandOnly (the hero) leaves the
+  // two outer lines out: the band already shows the range, and the hero says it in words under the chart.
   AN_ENS_PCTS.slice().sort((a, b)=>(a.p===50) - (b.p===50)).forEach(pc=>{
+    if(opts.bandOnly && pc.p !== 50) return;
     const dash = pc.p===50 ? '' : ' stroke-dasharray="4 4"';
-    s += '<path d="'+ckSmoothD(xyOf(res.series[pc.p]))+'" fill="none" stroke="'+pc.col+'" stroke-width="'+(pc.p===50?2.5:1.4)+'" stroke-linejoin="round" stroke-linecap="round"'+dash+(pc.p===50?'':' opacity=".85"')+'/>';
-    const last = res.series[pc.p][n-1];
+    s += '<path d="'+ckSmoothD(xyOf(series[pc.p]))+'" fill="none" stroke="'+pc.col+'" stroke-width="'+(pc.p===50?2.5:1.4)+'" stroke-linejoin="round" stroke-linecap="round"'+dash+(pc.p===50?'':' opacity=".85"')+'/>';
+    const last = series[pc.p][n-1];
     s += ckDot(px(last.date), py(last.v), pc.col, pc.p===50?4.5:3);
-    // The expected value is the one number this chart exists to give: label it in ink. It used to read
-    // "~168", and in the condensed numeral face the tilde looked like a minus sign.
-    if(pc.p===50) s += ckText(px(last.date)-9, py(last.v)-11, Math.round(last.v)+' lb', {anchor:'end', num:true, size:fs(15), weight:700, fill:'var(--text)'});
+    // The expected value is the one number this chart exists to give: label it in ink, with a halo in the card
+    // colour so it reads over the band. It used to read "~168", and in the condensed numeral face the tilde
+    // looked like a minus sign.
+    if(pc.p===50) s += ckText(px(last.date)-9, py(last.v)-11, Math.round(last.v)+' lb', {anchor:'end', num:true, size:fs(15), weight:700, fill:'var(--text)', halo:true});
   });
   // where all three start: today's value, ringed, so the fan visibly grows out of one point
   if(n) s += ckDot(px(s50[0].date), py(s50[0].v), 'var(--text)', 3.5);
@@ -19049,9 +19484,9 @@ function anFanChartSVG(res, w, h, opts){
   }
 
   // x-axis labels: window start, today, horizon end
-  if(hist.length) s += ckText(px(hist[0].date), h-6, fmtDate(hist[0].date), {anchor:'start', size:fs(11)});
+  if(hist.length) s += ckText(px(hist[0].date), h-6, xLabel(hist[0].date), {anchor:'start', size:fs(11)});
   s += ckText(px(todayKey()), h-6, 'today', {anchor:'middle', size:fs(11), weight:600, fill:'var(--muted)'});
-  s += ckText(px(projEnd), h-6, fmtDate(projEnd), {anchor:'end', size:fs(11)});
+  s += ckText(px(projEnd), h-6, xLabel(projEnd), {anchor:'end', size:fs(11)});
   s += '</svg>';
   return s;
 }
@@ -19886,7 +20321,7 @@ function wpSystem(wp){
     return '  '+fmtDate(d)+' ('+d+'): '+(k === 'REST' ? 'REST' : k+' '+dayName(k))+(mw ? ' \u00b7 meso '+mw.type+(mw.repLo ? ' '+mw.repLo+'-'+mw.repHi : '') : '');
   });
   let dl = '';
-  try{ const dw = deloadWindow(); if(dw) dl = 'A deload is on through '+dw.until+'. '; const fc = deloadForecast(); if(fc && fc.text) dl += 'Deload forecast: '+fc.text; }catch(e){}
+  try{ const dw = deloadWindow(); if(dw) dl = 'A deload is on through '+dw.until+'. '; const fc = deloadForecast(); if(fc && fc.quiet) dl += deloadQuietAgentLine(fc.until)+' '; else if(fc && fc.text) dl += 'Deload forecast: '+fc.text; }catch(e){}
   let intel = ''; try{ intel = intelSummary(); }catch(e){}
   return agSharedBrief()+
     '\n'+'You are ZULU. It is his Sunday check-in: he has told you what the coming week looks like, and you '+
@@ -20251,7 +20686,10 @@ function renderAnFatigue(){
     '<div style="display:flex;align-items:baseline;gap:12px;margin:4px 0 8px">'+
     '<span style="font-family:var(--disp);font-size:34px;font-weight:700;color:'+col+'">'+fi.ratio.toFixed(2)+'</span>'+
     '<span style="font-family:var(--disp);font-size:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:'+col+'">'+fi.status+'</span></div>'+
-    '<p class="small">'+FATIGUE_LABELS[fi.status]+'</p>'+
+    // While deload alerts are off, a high reading is information only: it does not talk him into one.
+    '<p class="small">'+((deloadQuietUntil() && (fi.status === 'high' || fi.status === 'overreached'))
+      ? 'Above your adapted load. '+esc(deloadQuietText(deloadQuietUntil()))+' This is information only.'
+      : FATIGUE_LABELS[fi.status])+'</p>'+
     '<p class="small" style="margin-top:8px;color:var(--dim)">This week: '+fi.acute+' effort-weighted sets \u00b7 your 4-week norm: '+fi.chronic+'/wk'+
     (fi.lowDays>=2 ? ' \u00b7 '+fi.lowDays+' low-readiness days this week (weighted in)' : '')+'</p></div>';
   const weekly = anStrainByWeek(10);
@@ -20261,19 +20699,23 @@ function renderAnFatigue(){
       '<p class="small" style="margin-top:8px;color:var(--dim)">Shaded band = your productive zone (\u00b125% of your 4-week norm). Living above it for weeks at a time is how overreach builds.</p></div>';
   }
   try{ const f = deloadForecast();
-    if(f) h += '<div class="card"><div class="k">Deload forecast</div><p class="small">'+esc(f.text)+'</p>'+
+    if(f && f.quiet) h += '<div class="card dq-card"><div class="k">Deload forecast</div><p class="small">'+esc(f.text)+
+      ' The numbers above still update; nothing suggests a deload, and the agents are told not to.</p>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">'+deloadQuietBtnHTML()+'</div></div>';
+    else if(f) h += '<div class="card"><div class="k">Deload forecast</div><p class="small">'+esc(f.text)+'</p>'+
       '<p class="small" style="margin-top:6px;color:var(--dim)">From the fatigue check, this week\u2019s load against a week ago'+
       (f.ratioNow !== null && f.ratioWeekAgo !== null ? ' ('+f.ratioWeekAgo+' \u2192 '+f.ratioNow+')' : '')+
-      ', and how hard sessions have felt against plan'+(f.feltNow !== null ? ' (RPE '+(f.feltNow >= 0 ? '+' : '')+f.feltNow+' vs target lately)' : '')+'. In weeks, not days.</p></div>'; }catch(e){}
+      ', and how hard sessions have felt against plan'+(f.feltNow !== null ? ' (RPE '+(f.feltNow >= 0 ? '+' : '')+f.feltNow+' vs target lately)' : '')+'. In weeks, not days.</p>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">'+deloadQuietBtnHTML()+'</div></div>'; }catch(e){}
   try{ h += densityCardHTML(); }catch(e){}
   const sug = fatigueSuggestsDeload();
   if(sug){
     h += '<div class="card" style="border-left:3px solid var(--red)">'+
       '<div class="k" style="color:var(--red)">Deload suggested</div>'+
       '<p class="small">Load has been running well above your adapted norm'+(sug.lowDays>=2?' and readiness is dipping':'')+'. A deload week now costs you nothing and buys back performance.</p>'+
-      '<div style="display:flex;gap:8px;margin-top:10px">'+
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">'+
       '<button class="btn sm" style="border-color:var(--violet);color:var(--violet)" onclick="startDeloadWeek();renderAnFatigue()">Start deload week</button>'+
-      '<button class="btn sm ghost" onclick="fatigueDismiss()">Not now</button></div></div>';
+      '<button class="btn sm ghost" onclick="fatigueDismiss()">Not now</button>'+deloadQuietBtnHTML()+'</div></div>';
   }
   el.innerHTML = h;
 }
@@ -20780,6 +21222,8 @@ function opsSignature(){
     (S.logs||[]).length,
     // a question asked or answered changes the Hub card
     (function(){ try{ return qaList().map(function(q){ return q.id+(q.ans ? (q.ans.undone ? 'u' : 'a') : ''); }).join(','); }catch(e){ return ''; } })(),
+    // the Desk: a new item or a hide
+    (function(){ try{ const d = agState().desk || []; return d.length+':'+d.filter(function(x){ return x && x.hid; }).length+':'+((d[0] && d[0].at) || '')+':'+(deskAll ? 1 : 0); }catch(e){ return ''; } })(),
     // the Hub's spend ring: this month's total (both devices) against the cap
     (function(){ try{ return spendMonth().toFixed(2)+'/'+spendCap(); }catch(e){ return ''; } })(),
     Math.floor(Date.now()/300000)
@@ -20931,6 +21375,9 @@ function agResetCeiling(name){
    a week while an experiment starts under it), and agRejectReason() names the rule that fired. */
 function agDeloadBlock(){
   if(deloadActive()) return 'a deload is already in force';
+  // His call (2026-10-21): the prompt says so, and this is the guarantee.
+  const _dq = deloadQuietUntil();
+  if(_dq) return 'he turned deload alerts off until '+fmtDate(_dq)+' (he can turn them back on, or start one himself, from the Fatigue card)';
   try{
     const nd = mesoNextDeload();
     if(nd && nd.startKey <= mesoAddDays(todayKey(), AG_DELOAD_NEAR_DAYS))
@@ -21517,6 +21964,8 @@ function pdContextLine(targets){
     targets.map(function(r){
       let c = [];
       try{ c = plateauCauses(r.lift, todayKey(), pwCauseWindow(r)); }catch(e){ c = []; }
+      // Deload alerts off: load is not handed to the agents as a cause (deloadQuietUntil()).
+      if(deloadQuietUntil()) c = c.filter(function(x){ return x.k !== 'load'; });
       const prev = dg[r.lift];
       return '- '+r.lift+': '+r.word+' ('+r.sig.map(function(x){ return x.txt; }).join('; ')+'). App\u2019s likely factors: '+
         (c.length ? c.map(function(x){ return x.k+' ['+x.conf+'] '+x.txt; }).join('; ') : 'none stands out')+'.'+
@@ -21848,6 +22297,7 @@ function chatContext(id){
   return part(coachMemContext)+part(trainingContext)+part(agContext)+
     ((id === 'delta' || id === 'echo' || id === 'zulu') ? part(intelSummary) : '')+
     part(function(){ return agEventsLine(id); })+
+    part(function(){ return agLiftRefLine(id); })+
     ((id === 'delta' || id === 'zulu') ? part(agFeelLine) : '')+
     (id === 'charlie' ? part(function(){ return svContextLine(); }) : '')+
     part(function(){ return agLastNightLine(id); })+
@@ -22249,7 +22699,9 @@ function agEvidenceRules(){
     '- Before blaming food for a stalled lift, check his bodyweight trend: if it is rising inside his target band, food is '+
       'unlikely to be the main limiter.\n'+
     '- Say "research shows" or "well established" only for long-settled training and nutrition principles. Anything else '+
-      'is "my read" or "common coaching practice". Never present a guess as a finding.\n';
+      'is "my read" or "common coaching practice". Never present a guess as a finding.\n'+
+    '- What a lift trains comes from WHAT EACH LIFT TRAINS when it is given. For a lift it does not cover, name the broad '+
+      'muscle group and do not guess which part of the muscle it hits.\n';
 }
 /* How every chat answers (2026-10-14): to him, call first, then why, then at most two numbers. The
    bench-timeline reply above talked about "him" in the third person and opened on a wall of stats. */
@@ -22332,6 +22784,12 @@ const AG_FIX_MENU = {
       'whether to like or stock it. Only when his stock is thin or he keeps missing the gap -- most nights, none.'
 };
 
+/* The menu as offered tonight: while deload alerts are off there is no deload to offer (agDeloadBlock()
+   would refuse it anyway). */
+function agFixMenu(id){
+  const m = AG_FIX_MENU[id] || '';
+  return (id === 'delta' && deloadQuietUntil()) ? m.replace('  {"type":"deload","payload":{}}'+'\n', '') : m;
+}
 /* Shared tail: the JSON contract, identical for all three specialists. */
 function agJsonSpec(id){
   return '\n'+'Respond with ONLY valid JSON -- no markdown fences, no commentary before or after:'+'\n'+
@@ -22345,7 +22803,7 @@ function agJsonSpec(id){
     'empty array. Do not add a proposal just to have said something -- say it in summary instead. A '+
     'proposal with fix:null is a contradiction: if there is nothing to apply, it is not a proposal.'+'\n'+
     'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<one of>}'+'\n'+
-    (AG_FIX_MENU[id]||'')+(id==='delta' || id==='echo' ? expMenuLine(id) : '')+'\n'+
+    agFixMenu(id)+(id==='delta' || id==='echo' ? expMenuLine(id) : '')+'\n'+
     'Anything not on that list, including null, is discarded -- do not submit it.'+'\n'+
     'Cap: at most 2 proposals. Fewer is better; most nights the right answer is zero.'+'\n'+
     'IMPORTANT: do not describe a change in your summary as though it were already made. Nothing you '+
@@ -22376,6 +22834,8 @@ function agJsonSpec(id){
       'own area only: agree with your own numbers, add a caution, or push back. '+
       '"peer":{"to":"'+agPeersOffered(id).map(function(k){ return AGENTS[k].name; }).join('|')+'","text":"<='+RT_PEER_MAX+' chars"}. '+
       'Leave it out when your area adds nothing to what they said.'+'\n' : '')+
+    // The Desk (2026-10-21): optional, every night. Before the question, so the diagnosis stays last.
+    deskSpecLine(id)+
     // A question for him: only the agent whose turn it is, only on a night one may be asked.
     qaSpecLine(id)+
     // Plateau diagnosis (V4 stage 6): only on a night with lifts to diagnose.
@@ -22393,7 +22853,10 @@ function agBaseContext(id){
   // two that coach training. Both before DELTA's tail: pdContextLine() stays last, which the cost guard relies on.
   let evl = '';
   try{ evl = agEventsLine(id); }catch(e){ evl = ''; }
-  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+intel+evl+
+  let lref = '', desk = '';
+  try{ lref = agLiftRefLine(id); }catch(e){ lref = ''; }
+  try{ desk = agDeskLine(id).txt; }catch(e){ desk = ''; }
+  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+intel+evl+lref+desk+
     ((id==='delta' || id==='zulu') ? agFeelLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+qaContextLine(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext()+pdContextLine(pdTargets()) : '');
 }
@@ -22563,6 +23026,237 @@ function agValidateReplies(raw, okIds){
   (okIds || []).forEach(function(k){ const t = rtClip(raw[k] !== undefined ? raw[k] : raw[(AGENTS[k] || {}).name], RT_REPLY_MAX); if(t) out[k] = t; });
   return out;
 }
+/* ---- THE DESK (his ask, 2026-10-21) ----
+   "A section in the hub where agents can make their own summaries and create their own graphs", then: "the graphs can
+   be smaller and more static... where agents note things, communicate directly with each other, and more." Each agent
+   may post up to DESK_PER_NIGHT items in an optional "desk" key on the call it already makes: an observation, a note
+   to another agent ("to"), a reply to an item it was shown ("re"), a stretch it flags as an event, and sometimes a
+   small chart. The chart is a SPEC (which of his series, which lift or group, how many weeks): the app draws it from
+   his own data at render time, so no number on the Desk comes from a model. A flagged event is the agent's read and
+   is drawn only on its own item, never among the chart marks (those never come from a model). The other agents see
+   the Desk the next night (agDeskLine()). It changes nothing in his program: anything to apply is still a proposal.
+   Stored in S.agents.desk, newest first, capped at DESK_KEEP, merged by id on a pull; a hide is his tap and sticks. */
+const DESK_KEEP = 24, DESK_PER_NIGHT = 2, DESK_TEXT_MAX = 240, DESK_TITLE_MAX = 60, DESK_LABEL_MAX = 24;
+const DESK_DAYS = 14, DESK_LINE_MAX = 900, DESK_EV_SPAN = 28, DESK_SHOW = 8;
+const DESK_SERIES = {
+  e1rm:{label:'e1RM', unit:'lb', dp:0}, sets:{label:'hard sets a week', dp:0}, bw:{label:'bodyweight, weekly average', unit:'lb', dp:1},
+  cals:{label:'calories a day', dp:0}, protein:{label:'protein a day', unit:'g', dp:0}, recovery:{label:'WHOOP recovery', unit:'%', dp:0},
+  hrv:{label:'HRV', unit:'ms', dp:0}, sleep:{label:'sleep', unit:'h', dp:1}, strain:{label:'day strain', dp:1}, sessions:{label:'sessions a week', dp:0}
+};
+// Each agent charts from its own area; ZULU from any.
+const DESK_SERIES_FOR = {delta:['e1rm', 'sets', 'recovery'], echo:['bw', 'cals', 'protein', 'sleep'], charlie:['sessions', 'sleep', 'strain'], zulu:null};
+let deskAll = false;   // "Show all", module-scoped so the 30 s repaint keeps it
+function deskSeriesFor(id){ return DESK_SERIES_FOR[id] || Object.keys(DESK_SERIES); }
+function agDeskItems(){ const d = agState().desk; return Array.isArray(d) ? d.filter(function(x){ return x && x.id && AGENTS[x.agent] && !x.hid; }) : []; }
+function deskNewest(arr){ return arr.slice().sort(function(a, b){ return String(b.at || '').localeCompare(String(a.at || '')); }); }
+function deskEvText(ev){ return homeShortDate(ev.from)+(ev.to && ev.to !== ev.from ? '–'+homeShortDate(ev.to) : '')+' “'+ev.label+'”'; }
+/* What one agent is shown of the Desk tonight, and the ids it may reply to. Items to it first, then what the others
+   flagged, then each other agent's newest observation, and its own last post so it does not say it again. Nothing at
+   all means no section, so a quiet Desk adds nothing to the prompt. */
+function agDeskLine(id){
+  const none = {txt:'', ids:[]};
+  if(!AGENTS[id]) return none;
+  const from = mesoAddDays(todayKey(), -DESK_DAYS);
+  const items = deskNewest(agDeskItems().filter(function(x){ return (x.day || '') >= from; }));
+  if(!items.length) return none;
+  const lines = [], ids = [];
+  let n = 0;
+  const put = function(x, line, reply){
+    if(n + line.length > DESK_LINE_MAX) return;
+    lines.push(line); n += line.length;
+    if(reply && ids.indexOf(x.id) < 0) ids.push(x.id);
+  };
+  const who = function(x){ return AGENTS[x.agent].name; };
+  items.filter(function(x){ return x.agent !== id && x.to === id; })
+    .forEach(function(x){ put(x, '- ['+x.id+'] '+who(x)+' to you ('+homeShortDate(x.day)+'): '+x.text, true); });
+  items.filter(function(x){ return x.agent !== id && x.event && x.to !== id; })
+    .forEach(function(x){ put(x, '- ['+x.id+'] '+who(x)+' flagged '+deskEvText(x.event)+': '+rtClip(x.text, 160), true); });
+  const seen = {};
+  items.forEach(function(x){
+    if(x.agent === id || x.to || x.re || x.event || seen[x.agent]) return;
+    seen[x.agent] = 1;
+    put(x, '- ['+x.id+'] '+who(x)+' ('+homeShortDate(x.day)+'): '+rtClip(x.title ? x.title+'. '+x.text : x.text, 160), true);
+  });
+  const mine = items.filter(function(x){ return x.agent === id; })[0];
+  if(mine) put(mine, '- Your last post ('+homeShortDate(mine.day)+'): '+rtClip(mine.title || mine.text, 100)+'. Do not post it again.', false);
+  if(!lines.length) return none;
+  return {txt:'\n'+'THE DESK (the board the four of you share with him, last 2 weeks; their reads, not the app’s numbers. '+
+    'To answer one, put its id in "re"):\n'+lines.join('\n')+'\n', ids:ids};
+}
+function deskSpecLine(id){
+  const ser = deskSeriesFor(id);
+  return '\n'+'ALSO, optionally, a top-level "desk" key: up to '+DESK_PER_NIGHT+' items for THE DESK, the board the four of you share '+
+    'with him in the Hub. An item is an observation worth his reading, a note to another agent, or a reply to one. Most nights, '+
+    'leave it out, and never repeat your summary. '+
+    '"desk":[{"text":"<='+DESK_TEXT_MAX+' chars","title":"<='+DESK_TITLE_MAX+' chars, optional","to":"<another agent, optional>",'+
+    '"re":"<an id from THE DESK, optional>","chart":{"series":"'+ser.join('|')+'"'+
+    (ser.indexOf('e1rm') >= 0 ? ',"lift":"<exact lift name, e1rm only>"' : '')+
+    (ser.indexOf('sets') >= 0 ? ',"group":"<'+MUSCLE_GROUPS.join('|')+', sets only>"' : '')+',"weeks":2..26},'+
+    '"event":{"from":"YYYY-MM-DD","to":"YYYY-MM-DD","label":"<='+DESK_LABEL_MAX+' chars"}}]. '+
+    'chart and event are optional. The app draws a chart from his own data, so give no numbers for it. An event flags a '+
+    'stretch inside the last '+Math.round(EV_DAYS / 7)+' weeks worth remembering (a trip, a slump, a change), shown as your read. '+
+    'The Desk changes nothing: anything to apply still goes in proposals.'+'\n';
+}
+/* The gate. Strings clipped, a series only from this agent's own area, a lift resolved to a real one, a group from the
+   app's groups, weeks clamped, an event inside the last EV_DAYS and no longer than DESK_EV_SPAN, "to" another agent,
+   "re" only an id this agent was shown before its await. A bad chart or event is dropped and named, and the note it
+   came with is kept; an item with no text is dropped. Stores the spec, never a number from the model. */
+function agValidateDesk(raw, id, shown){
+  const res = {items:[], dropped:0};
+  if(!raw || !AGENTS[id]) return res;
+  const arr = Array.isArray(raw) ? raw : (typeof raw === 'object' ? [raw] : []);
+  const t = todayKey(), ser = deskSeriesFor(id), ok = Array.isArray(shown) ? shown : [];
+  const dOk = function(d){ return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && isFinite(Date.parse(d)); };
+  res.dropped = Math.max(0, arr.length - DESK_PER_NIGHT);
+  arr.slice(0, DESK_PER_NIGHT).forEach(function(x){
+    const text = (x && typeof x === 'object') ? rtClip(x.text, DESK_TEXT_MAX) : '';
+    if(!text){ res.dropped++; return; }
+    const it = {id:agUid(), agent:id, text:text, at:new Date().toISOString(), day:t}, drop = [];
+    const title = rtClip(x.title, DESK_TITLE_MAX);
+    if(title) it.title = title;
+    const re = typeof x.re === 'string' ? x.re.replace(/^\s*\[|\]\s*$/g, '').trim() : '';
+    if(re && ok.indexOf(re) >= 0){
+      it.re = re;
+      const par = (agState().desk || []).find(function(p){ return p && p.id === re; });
+      if(par && par.agent !== id) it.to = par.agent;   // a reply is to the one who wrote it
+    }
+    const to = x.to ? rtAgentId(x.to) : '';
+    if(to && to !== id) it.to = to;
+    const c = x.chart;
+    if(c && typeof c === 'object' && ser.indexOf(c.series) >= 0){
+      const ch = {series:c.series, weeks:Math.max(2, Math.min(26, Math.round(+c.weeks) || 8))};
+      let good = true;
+      if(c.series === 'e1rm'){ const nm = agResolveExName(c.lift); if(nm) ch.lift = nm; else good = false; }
+      if(c.series === 'sets'){ const g = MUSCLE_GROUPS.find(function(k){ return k.toLowerCase() === String(c.group || '').trim().toLowerCase(); }); if(g) ch.group = g; else good = false; }
+      if(good) it.chart = ch; else drop.push('chart');
+    } else if(c) drop.push('chart');
+    const e = x.event;
+    if(e && typeof e === 'object'){
+      const f = e.from, u = e.to || e.from, label = rtClip(e.label, DESK_LABEL_MAX);
+      if(dOk(f) && dOk(u) && f <= u && u <= t && f >= mesoAddDays(t, -EV_DAYS) && daysBetween(f, u) <= DESK_EV_SPAN && label) it.event = {from:f, to:u, label:label};
+      else drop.push('event');
+    }
+    if(drop.length) it._drop = drop;
+    res.items.push(it);
+  });
+  return res;
+}
+/* Into the S that exists after the await (the caller re-resolved it), each with a feed line. */
+function agDeskIngest(a, id, raw, shown){
+  if(!raw) return 0;
+  let v;
+  try{ v = agValidateDesk(raw, id, shown); }catch(e){ return 0; }
+  if(!v.items.length){ agLog(id, 'My note for the Desk did not pass the check, so it is not shown.'); return 0; }
+  if(!Array.isArray(a.desk)) a.desk = [];
+  v.items.forEach(function(it){
+    const dr = it._drop; delete it._drop;
+    a.desk.unshift(it);
+    agLog(id, 'On the Desk: '+(it.title || rtClip(it.text, 120))+(dr ? ' (its '+dr.join(' and ')+' did not pass the check)' : ''), it.to ? {to:it.to} : undefined);
+  });
+  a.desk = deskNewest(a.desk).slice(0, DESK_KEEP);
+  return v.items.length;
+}
+/* The points a Desk chart draws, from his data, read when it is drawn. */
+function deskSeriesPts(ch){
+  const t = todayKey(), from = mesoAddDays(t, -7 * ch.weeks);
+  const inWin = function(p){ return p && p.date >= from && p.date <= t; };
+  const byDate = function(a, b){ return a.date.localeCompare(b.date); };
+  // Complete weeks only: the week in progress would read as a drop.
+  const weeks = function(fn){
+    const out = [];
+    for(let k = weekKeyOf(from); mesoAddDays(k, 6) <= t; k = mesoAddDays(k, 7)) out.push({date:k, v:fn(k, mesoAddDays(k, 6))});
+    return out;
+  };
+  if(ch.series === 'e1rm') return e1rmSeries(ch.lift, {excludeHome:true}).filter(inWin);
+  if(ch.series === 'bw') return bodyweightSeriesSmoothed().filter(inWin);
+  if(ch.series === 'cals' || ch.series === 'protein')
+    return (S.nutrition || []).filter(function(n){ return inWin(n) && +n[ch.series] > 0; }).sort(byDate).map(function(n){ return {date:n.date, v:+n[ch.series]}; });
+  const wf = {recovery:'recovery', hrv:'hrv', sleep:'sleepHours', strain:'strain'}[ch.series];
+  if(wf) return whoopHistRows().filter(function(r){ return inWin(r) && typeof r[wf] === 'number'; }).sort(byDate).map(function(r){ return {date:r.date, v:r[wf]}; });
+  if(ch.series === 'sets') return weeks(function(a, b){ return (weeklyVolumeByGroup(a, b) || {})[ch.group] || 0; });
+  if(ch.series === 'sessions') return weeks(function(a, b){ return (S.logs || []).filter(function(l){ return l && l.date >= a && l.date <= b; }).length; });
+  return [];
+}
+function deskChartLabel(ch){
+  const D = DESK_SERIES[ch.series] || {label:ch.series};
+  return (ch.series === 'e1rm' ? ch.lift+' ' : ch.series === 'sets' ? ch.group+' ' : '')+D.label+' · '+ch.weeks+' wk';
+}
+/* A small, static chart: one line in the agent's colour, its latest value, the first and last dates, and the agent's
+   flagged stretch shaded behind it. No axes, no hover. */
+const DESK_W = 280, DESK_H = 70;
+function deskSparkSVG(it){
+  const ch = it && it.chart;
+  if(!ch || !DESK_SERIES[ch.series]) return '';
+  let pts = [];
+  try{ pts = deskSeriesPts(ch); }catch(e){ pts = []; }
+  if(pts.length < 2) return '<p class="small desk-nodata">Not enough data yet to draw '+esc(deskChartLabel(ch))+'.</p>';
+  const A = AGENTS[it.agent], col = A.col, D = DESK_SERIES[ch.series];
+  const W = DESK_W, H = DESK_H, L = 4, R = W - 44, T = 8, B = H - 17;
+  const ms = function(k){ return Date.parse(k+'T00:00:00Z'); };
+  const t0 = ms(pts[0].date), t1 = Math.max(t0 + 86400000, ms(pts[pts.length-1].date));
+  const vs = pts.map(function(p){ return p.v; });
+  let lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+  if(hi === lo){ hi += 1; lo -= 1; }
+  const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+  const px = function(k){ return L + (ms(k) - t0) / (t1 - t0) * (R - L); };
+  const py = function(v){ return B - (v - lo) / (hi - lo) * (B - T); };
+  const xy = pts.map(function(p){ return [px(p.date), py(p.v)]; }), last = xy[xy.length-1], lv = pts[pts.length-1].v;
+  const fmt = function(v){ return D.dp ? (Math.round(v * 10) / 10).toFixed(1) : String(Math.round(v)); };
+  let s = '<svg class="ck desk-spark" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(deskChartLabel(ch))+': '+fmt(pts[0].v)+' to '+fmt(lv)+'">';
+  if(it.event){
+    const a = Math.max(L, Math.min(R, px(it.event.from))), b = Math.max(L, Math.min(R, px(it.event.to) + 3));
+    if(b > a) s += '<rect class="desk-ev-band" x="'+a.toFixed(1)+'" y="'+T+'" width="'+(b - a).toFixed(1)+'" height="'+(B - T)+'" rx="2" fill="'+col+'" opacity=".14"/>';
+  }
+  const d = ckD(xy);
+  s += ckArea(d, xy[0][0], last[0], B, col) + ckPath(d, col, {w:1.8});
+  s += ckDot(last[0], last[1], col, 3.2);
+  s += ckText(R + 6, last[1] + 4, fmt(lv)+(D.unit ? '<tspan font-size="9" fill="var(--dim)"> '+esc(D.unit)+'</tspan>' : ''), {num:true, size:13, weight:700, fill:'var(--text)'});
+  s += ckText(L, H - 3, esc(homeShortDate(pts[0].date)), {size:9.5}) + ckText(R, H - 3, esc(homeShortDate(pts[pts.length-1].date)), {anchor:'end', size:9.5});
+  return s+'</svg>';
+}
+function deskItemHTML(x, reply){
+  const A = AGENTS[x.agent], T = x.to ? AGENTS[x.to] : null;
+  return '<div class="desk-i'+(reply ? ' re' : '')+'">'+
+    '<div class="desk-i-h"><span class="cc-glyph" style="color:'+A.col+'" aria-label="'+esc(A.name)+'">'+esc(A.name.charAt(0))+'</span>'+
+      (T ? '<span class="hub-act-to" style="color:'+T.col+'" aria-label="to '+esc(T.name)+'">→ '+esc(T.name.charAt(0))+'</span>' : '')+
+      '<span class="desk-i-who">'+esc(A.name)+(T ? ' to '+esc(T.name) : '')+'</span>'+
+      '<span class="desk-i-when">'+esc(homeShortDate(x.day))+'</span>'+
+      '<button class="desk-hide" data-desk="'+esc(x.id)+'" onclick="deskHide(this.dataset.desk)" aria-label="Hide this" title="Hide">×</button></div>'+
+    (x.title ? '<b class="desk-i-t">'+esc(x.title)+'</b>' : '')+
+    '<p class="desk-i-x">'+esc(x.text)+'</p>'+
+    (x.event ? '<span class="desk-ev" style="color:'+A.col+'">Flagged · '+esc(deskEvText(x.event))+'</span>' : '')+
+    (x.chart ? '<div class="desk-ch"><span class="desk-ch-l">'+esc(deskChartLabel(x.chart))+'</span>'+deskSparkSVG(x)+'</div>' : '')+
+    '</div>';
+}
+/* The Hub's Desk: last night's table on top, then the items, newest first, each reply under what it answers. */
+function hubDeskHTML(){
+  const items = deskNewest(agDeskItems());
+  const rt = agRoundtable(), rl = (rt && Array.isArray(rt.lines)) ? rt.lines.filter(function(l){ return l && AGENTS[l.from] && AGENTS[l.to] && l.text; }) : [];
+  let h = '<h2>The Desk</h2><div class="card desk">';
+  if(!items.length && !rl.length)
+    return h+'<p class="ag-empty">Nothing on the Desk yet. The agents post here at night when something is worth noting, and talk to each other here.</p></div>';
+  if(rl.length) h += '<div class="desk-rt"><div class="desk-rt-h">At the table last night</div>'+rl.map(function(l){
+      const A = AGENTS[l.from], T = AGENTS[l.to];
+      return '<div class="desk-rt-l"><span class="cc-glyph" style="color:'+A.col+'">'+esc(A.name.charAt(0))+'</span>'+
+        '<span class="hub-act-to" style="color:'+T.col+'">→ '+esc(T.name.charAt(0))+'</span><span>'+esc(l.text)+'</span></div>';
+    }).join('')+'</div>';
+  const ids = {};
+  items.forEach(function(x){ ids[x.id] = 1; });
+  const top = items.filter(function(x){ return !x.re || !ids[x.re]; });
+  const kids = function(pid){ return items.filter(function(x){ return x.re === pid; }).reverse(); };
+  (deskAll ? top : top.slice(0, DESK_SHOW)).forEach(function(x){ h += deskItemHTML(x, false)+kids(x.id).map(function(r){ return deskItemHTML(r, true); }).join(''); });
+  if(top.length > DESK_SHOW) h += '<button class="btn ghost sm" onclick="deskToggleAll()">'+(deskAll ? 'Show fewer' : 'Show all '+top.length)+'</button>';
+  return h+'</div>';
+}
+function deskToggleAll(){ deskAll = !deskAll; renderOps(); }
+/* Hiding is his tap: it syncs (save()), and a hide wins on a pull, so a hidden item does not come back. */
+function deskHide(id){
+  const it = (agState().desk || []).find(function(x){ return x && x.id === id; });
+  if(!it) return;
+  it.hid = Date.now();
+  save();
+  try{ renderOps(); }catch(e){}
+}
 /* ---- cross-review, ZULU's half (his call, 2026-10-18) ----
    The code half (agConflict) refuses what collides with a rule. This half is judgement: ZULU, already reading the
    night, may HOLD a specialist's new request it thinks is wrong, with one line why. A held request is not in his
@@ -22668,6 +23362,9 @@ async function agRunSpecialist(id, manual){
   const pdFor = (id==='delta') ? pdTargets().map(function(r){ return {lift:r.lift, lvl:r.lvl}; }) : null;
   // Whether it was offered a question tonight, taken before the await like the two above.
   const qaAsk = qaOfferTo(id);
+  // The Desk items it may reply to, taken before the await from the same state its prompt was built from.
+  let deskIds = [];
+  try{ deskIds = agDeskLine(id).ids; }catch(e){ deskIds = []; }
   const consulted = [];
   const res = await callClaudeWithData(
     [{role:'user', content:'Run the '+(manual?'on-demand':'daily')+' cycle for '+todayKey()+'.'}],
@@ -22678,7 +23375,7 @@ async function agRunSpecialist(id, manual){
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   const parsed = parseLooseJSON(res.text);
   if(parsed){ parsed._consulted = consulted; if(dbFor) parsed._debriefFor = dbFor; if(pdFor && pdFor.length) parsed._pdFor = pdFor; if(qaAsk) parsed._qaAsk = true;
-    if(rtPeers.length) parsed._rtPeers = rtPeers; }
+    if(rtPeers.length) parsed._rtPeers = rtPeers; parsed._deskIds = deskIds; }
   return parsed;
 }
 
@@ -22852,6 +23549,8 @@ async function agRunAll(manual){
       let peer = null;
       try{ peer = r.val._rtPeers ? agValidatePeer(r.val.peer, r.id, r.val._rtPeers) : null; }catch(e){ peer = null; }
       if(peer){ agLog(r.id, peer.text, {to:peer.to}); rt.lines.push(peer); }
+      // Its Desk items, if any, into the live S.
+      try{ agDeskIngest(a2, r.id, r.val.desk, r.val._deskIds); }catch(e){}
       if(r.val.summary) rt.said[r.id] = rtClip(String(r.val.summary), RT_SAID_MAX);
       digest.push(AGENTS[r.id].name+': '+String(r.val.summary||'(nothing)')+
         (peer ? '\n  '+AGENTS[r.id].name+', to '+AGENTS[peer.to].name+': '+peer.text : ''));
@@ -22903,6 +23602,7 @@ async function agRunAll(manual){
         // Its holds, into the S that exists NOW (a pull during its call replaced S).
         try{ agApplyHolds(a3, agValidateHolds(zres && zres.hold, newReqs.map(function(q){ return q.id; }))); }catch(e){}
         if(zres && zres._qaAsk){ try{ qaIngest(a3, 'zulu', zres.question); }catch(e){} }
+        try{ if(zres) agDeskIngest(a3, 'zulu', zres.desk, zres._deskIds); }catch(e){}
         // ZULU's line to each specialist, then the roundtable into the S that exists NOW: a pull during ZULU's call
         // replaced S, and a reference taken before it would be an orphan that save() never writes.
         try{
@@ -23020,6 +23720,7 @@ async function agRunLead(digest, manual, okIds, newReqs){
       '"replies":{'+reported.map(function(k){ return '"'+k+'":"..."'; }).join(',')+'}. Leave an agent out when there is nothing worth '+
       'saying to it; never invent a finding for one that did not report.'+'\n' : '')+
     agHoldSpecLine(newReqs)+
+    deskSpecLine('zulu')+
     qaSpecLine('zulu')+
     'Do not describe anything as already changed. Nothing takes effect until he taps Approve.'+'\n'+
     '\n'+'WHAT THE SPECIALISTS REPORTED TONIGHT:'+'\n'+digest.join('\n')+
@@ -23027,12 +23728,15 @@ async function agRunLead(digest, manual, okIds, newReqs){
     '\n'+'TODAY, THE DAY BEING REVIEWED, IS: '+(sc==='REST'?'a REST day':sc+' \u2014 '+dayName(sc))+
     '\n'+agBaseContext('zulu');
   const qaAsk = qaOfferTo('zulu');   // before the await
+  let deskIds = [];
+  try{ deskIds = agDeskLine('zulu').ids; }catch(e){ deskIds = []; }
   const res = await callClaudeWithData(
     [{role:'user', content:'Write tonight\u2019s synthesis.'}],
     sys, AG_MAXTOK, {effort:'high', route:'night:zulu'});
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   const out = parseLooseJSON(res.text);
   if(out && qaAsk) out._qaAsk = true;
+  if(out) out._deskIds = deskIds;
   return out;
 }
 
@@ -23773,6 +24477,7 @@ function todayDeloadTile(){
       const d = Math.max(0, daysBetween(todayKey(), f.planned.start));
       return {big:d+' day'+(d === 1 ? '' : 's'), sub:'to the planned deload', pips:Math.min(7, d)};
     }
+    if(f.quiet) return {big:'Off', sub:'deload alerts till '+homeShortDate(f.until)};
     if(f.weeks === 0) return {big:'Due', sub:'a deload looks due now'};
     if(f.weeks) return {big:'~'+f.weeks+' wk', sub:'until a deload looks due'};
     if(f.horizon) return {big:'~'+f.horizon.lo+'–'+f.horizon.hi+' wk', sub:'no sign of needing one yet'};
@@ -24665,6 +25370,8 @@ function renderOps(){
       (_wp.reply.days||[]).map(function(d){ return '<div class="db-row"><span class="db-k">'+esc(fmtDate(d.date))+'</span><span class="small">'+esc(d.note)+'</span></div>'; }).join('')+
       '<p class="small" style="color:var(--dim);margin-top:6px">You said: '+esc(wpInputLine(_wp) || 'nothing in particular')+'</p></div>';
   }catch(e){ console.warn('week plan card failed', e); }
+  // The Desk (2026-10-21): the agents' board, above the feed.
+  try{ h += hubDeskHTML(); }catch(e){ console.warn('desk failed', e); }
 
   // The feed: when, who (the agent's glyph in its colour), what. Today's lines show the time,
   // older ones the date.
@@ -25054,6 +25761,8 @@ function agForegroundCheck(){
   // This device's spend records, rebuilt from its log, so the other device's cap check sees them.
   try{ if(spendLedgerSync()) save(false); }catch(e){}
   try{ whoopMaybeKick(); }catch(e){}
+  // A fresh strain read in the two hours before his workout time (whoopStrainKick()). Its own gate and budget.
+  try{ Promise.resolve(whoopStrainKick()).catch(function(){}); }catch(e){}
   try{ agMaybeAutoRun(); }catch(e){}
   try{ agMaybeMorningBrief(); }catch(e){}
   // Same reasoning as the three above, and the same reason it is not a new setInterval: on iOS
