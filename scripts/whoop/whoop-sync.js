@@ -399,8 +399,10 @@ function todaySections(r0, s0, c0, readAt) {
      * trusted it. A reading taken minutes after the sleep ended is the one that can still move. */
     if (s0.end && isFinite(Date.parse(s0.end))) out.sleep.end = new Date(s0.end).toISOString();
   }
+  // Strain carries readAt too (2026-10-21): it is the running total of a day still going, and the app eases a
+  // session when it is high before he trains, so it has to know how old the number is.
   if (c0 && c0.score) {
-    out.strain = { date: dayOf(c0.start), score: c0.score.strain };
+    out.strain = { date: dayOf(c0.start), score: c0.score.strain, readAt };
   }
   return out;
 }

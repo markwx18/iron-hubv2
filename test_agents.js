@@ -15356,6 +15356,375 @@ setTimeout(async () => {
     ev('S = JSON.parse(window.__pgS); delete window.__pgS; delete window.__pgK; localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  console.log('=== DELOAD: THE NORM WITHOUT THE DELOAD, AND ALERTS OFF UNTIL A DATE (2026-10-21) ===');
+  // A week after his Oct 10-15 deload the app read 1.54x "overreached": the 28-day norm still held the light deload
+  // week. He does not need one for 8 weeks and asked for the system and the agents to be quiet until then. The fixture
+  // is built around whatever today is: 5 sessions a week of 12 solid sets, a deload week of three light sessions, then
+  // a heavier week of 6 sessions (Winter Arc).
+  try {
+    w.__dqSaved = ev('JSON.stringify(S)');
+    w.__dqK = null;
+    ev("window.__dqK = {fatigueIndex: fatigueIndex, deloadCheck: deloadCheck, mesoNextDeload: mesoNextDeload};");
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const sess = (id, n, o) => Object.assign({id: 'dq' + id, date: dk(n), day: 'D1', entries: [{exercise: 'Zz DQ Press', sets: Array.from({length: (o && o.deload) ? 6 : 12}, () => (o && o.deload) ? {w: 60, r: 10, e: 'easy', ef: 90} : {w: 100, r: 8, e: 'solid', ef: 50})}]}, o || {});
+    const logs = [];
+    for (let d = -62; d <= -14; d++) if ([1, 2, 3, 4, 5].indexOf(((d % 7) + 7) % 7) >= 0) logs.push(sess(logs.length, d));
+    [-11, -9, -7].forEach(d => logs.push(sess(logs.length, d, {deload: true})));
+    for (let d = -6; d <= -1; d++) logs.push(sess(logs.length, d));
+    ev('S.logs = ' + JSON.stringify(logs) + '; S.readiness = []; S.deloadQuiet = null; S.meso = null; S.deload = null; S.fatigueDismissed = null;');
+    // What the old norm read: the plain 28 days before this week, deload included.
+    const oldRatio = ev("(function(){ var e = todayKey(); return anStrainBetween(mesoAddDays(e,-6), e) / (anStrainBetween(mesoAddDays(e,-34), mesoAddDays(e,-7)) / 4); })()");
+    ok('norm: the fixture is his shape (the old 28-day norm read it over 1.5)', oldRatio > 1.5, String(oldRatio));
+    const fi = ev('JSON.stringify(fatigueIndex())');
+    ok('norm: a week holding a deload is not part of the norm, so a heavier week reads 1.2, productive', /"ratio":1\.2,/.test(fi) && /"status":"productive"/.test(fi), fi);
+    // Deload weeks everywhere: too few training weeks to call a norm.
+    const many = [];
+    for (let d = -90; d <= -7; d += 2) many.push(sess('m' + d, d, {deload: true}));
+    ev('S.logs = ' + JSON.stringify(many.concat(logs.filter(l => l.date >= dk(-6)))) + ';');
+    const fiNo = ev('JSON.stringify(fatigueIndex())');
+    ok('norm: with fewer than 2 clean weeks in reach it says it is rebuilding, rather than guess', /"ok":false/.test(fiNo) && /Rebuilding your norm/.test(fiNo), fiNo);
+    ev('S.logs = ' + JSON.stringify(logs) + ';');
+
+    // --- alerts off ---
+    ev("fatigueIndex = function(){ return {ok:true, ratio:1.6, status:'overreached', acute:80, chronic:50, lowDays:0}; };");
+    ev("deloadCheck = function(){ return {severity:'recommend', score:4, reasons:['Bench e1RM has slipped over the last 4 sessions']}; };");
+    ev("mesoNextDeload = function(){ return null; };");
+    ok('alerts on: overreached suggests a deload (LIVE banner, with the way to turn it off)', /FATIGUE: OVERREACHED/.test(ev('fatigueBannerHTML()')) && /Quiet for 8 weeks/.test(ev('fatigueBannerHTML()')));
+    ok('alerts on: the forecast says due, the bell says so', ev('deloadForecast().weeks') === 0 && ev("pwNotifItems().some(function(x){ return /^deload:/.test(x.id); })") === true);
+    const callOn = ev("JSON.stringify(dayCall(todayKey()))");
+    ok('alerts on: training load is part of today’s call (overreached alone is an easy day)', /"src":"load"/.test(callOn) && /"call":"easy"/.test(callOn), callOn);
+    ok('alerts on: the deload fix is on DELTA’s menu and allowed', /"type":"deload"/.test(ev("agFixMenu('delta')")) && ev("agDeloadBlock()") === '');
+    ok('alerts on: the agents read the status word', /FATIGUE MODEL: overreached/.test(ev('trainingContext()')));
+    ok('alerts on: heavy weeks are among the events the agents review', ev("agEvents(70, ['load']).length") > 0);
+    const chB = ev('S.meta.changedAt');
+    ev('deloadQuietSet(true)');
+    ok('alerts off: his tap sets 8 weeks from today, and saves it to sync', ev('deloadQuietUntil()') === dk(56) && ev('S.deloadQuiet.from') === dk(0) && ev('S.meta.changedAt') >= chB && ev("JSON.parse(localStorage.getItem(LS_KEY)).deloadQuiet.until") === dk(56));
+    ok('alerts off: no LIVE banner', ev('fatigueBannerHTML()') === '');
+    const fq = ev('JSON.stringify(deloadForecast())');
+    ok('alerts off: the forecast says off and until when, and nothing is due', /"quiet":true/.test(fq) && /"weeks":null/.test(fq) && /Deload alerts are off until/.test(fq), fq);
+    ok('alerts off: the bell has no "deload looks due"', ev("pwNotifItems().some(function(x){ return /^deload:/.test(x.id); })") === false);
+    ok('alerts off: Today’s tile says Off, with the date', ev("JSON.stringify(todayDeloadTile())") === JSON.stringify({big: 'Off', sub: 'deload alerts till ' + ev("homeShortDate(mesoAddDays(todayKey(), 56))")}), ev("JSON.stringify(todayDeloadTile())"));
+    const callOff = ev("JSON.stringify(dayCall(todayKey()))");
+    ok('alerts off: training load is left out of today’s call (his pick)', !/"src":"load"/.test(callOff) && /"call":"normal"/.test(callOff), callOff);
+    const tc = ev('trainingContext()');
+    ok('alerts off: the agents are told it is off, not the status word', /FATIGUE MODEL: off\. Deload alerts are off until/.test(tc) && !/overreached/.test(tc), (tc.match(/FATIGUE MODEL[^\n]*/) || [''])[0]);
+    ok('alerts off: the summary says it too', /Deload: Deload alerts are off until [^.]*, his call/.test(ev('intelSummary()')));
+    ok('alerts off: no deload on DELTA’s menu', !/"type":"deload"/.test(ev("agFixMenu('delta')")) && /"type":"liftReset"/.test(ev("agFixMenu('delta')")));
+    ok('alerts off: a deload sent anyway is refused in code, with the reason', /turned deload alerts off until/.test(ev('agDeloadBlock()')) &&
+       ev("agValidateFix({type:'deload', payload:{}}, 'delta')") === null && /turned deload alerts off/.test(ev("agRejectReason({type:'deload', payload:{}}, 'delta')")));
+    ok('alerts off: chat cannot start one either', /Not now: he turned deload alerts off/.test(ev("JSON.stringify(coachValidateAction('start_deload', {}, 'delta'))")), ev("JSON.stringify(coachValidateAction('start_deload', {}, 'delta'))"));
+    ok('alerts off: heavy weeks are not handed to the agents as events', ev("agEvents(70, ['load']).length") === 0 && !/High-load week/.test(ev("agEventsLine('delta')")));
+    ok('alerts off: the Fatigue check says quiet, with the way back on', /Quiet till/.test(ev('deloadCardHTML()')) && /Turn deload alerts back on/.test(ev('deloadCardHTML()')) && !/Deload recommended/.test(ev('deloadCardHTML()')));
+    ev('renderAnFatigue();');
+    const af = ev("document.getElementById('an_fatigue').innerHTML");
+    ok('alerts off: the Fatigue tab keeps its numbers, says it is information only, and suggests nothing', /1\.60/.test(af) && /information only/.test(af) && !/Deload suggested/.test(af) && /Turn deload alerts back on/.test(af));
+    ok('alerts off: the Settings summary names it, folded', /deload alerts off till/.test(ev('settingsSummaries().training')));
+    // A planned meso deload is his plan and is still counted down.
+    ev("mesoNextDeload = function(){ return {startKey: mesoAddDays(todayKey(), 2), endKey: mesoAddDays(todayKey(), 8)}; };");
+    ok('alerts off: a planned deload still counts down on Today and in the bell', ev("todayDeloadTile().big") === '2 days' && ev("pwNotifItems().some(function(x){ return /^deloadplan:/.test(x.id); })") === true);
+    ev("mesoNextDeload = function(){ return null; };");
+    ev("S.deloadQuiet = {until: mesoAddDays(todayKey(), -1), from: mesoAddDays(todayKey(), -57), at: 1};");
+    ok('alerts off: the day after the date, it is over by itself', ev('deloadQuietUntil()') === null && /FATIGUE: OVERREACHED/.test(ev('fatigueBannerHTML()')));
+    ev("S.deloadQuiet = {until: todayKey()};");
+    ok('alerts off: the date itself is still quiet', ev('deloadQuietUntil()') === dk(0));
+    ev("S.deloadQuiet = {until: 'Dec 16'};");
+    ok('alerts off: a malformed date is not quiet', ev('deloadQuietUntil()') === null);
+    ev('deloadQuietSet(true); deloadQuietSet(false);');
+    ok('alerts off: Turn back on clears it', ev('S.deloadQuiet') === null && ev('deloadQuietUntil()') === null && /"type":"deload"/.test(ev("agFixMenu('delta')")));
+  } catch (e) {
+    ok('deload norm and quiet section', false, e.stack);
+  } finally {
+    ev("if(window.__dqK){ fatigueIndex = window.__dqK.fatigueIndex; deloadCheck = window.__dqK.deloadCheck; mesoNextDeload = window.__dqK.mesoNextDeload; delete window.__dqK; }");
+    ev('if(window.__dqSaved){ S = JSON.parse(window.__dqSaved); delete window.__dqSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== THE STRENGTH HERO CHART, CLEANER (2026-10-21) ===');
+  // His screenshot: every forecast line fell off a cliff at today (the fan was pinned to his best, 241, while the
+  // trend sat near 218), the trend line was red, the axis read 245 / 217 / 190, and the top row was a pile of marks.
+  // The numbers stay the same; only the drawing changes, and only where the hero asks for it.
+  try {
+    const pts = "[[-84,232],[-78,241],[-70,232],[-49,232],[-39,228],[-31,232],[-23,205],[-1,211]].map(function(x){ return {date: mesoAddDays(todayKey(), x[0]), v: x[1]}; })";
+    ev("window.__hcRes = anFanProject(" + pts + ", 28);");
+    ok('hero chart: the fixture is his shape (the model’s start is his best, well over the trend)', ev('__hcRes.cur') === 241 && ev('__hcRes.series[50][0].v') === 241);
+    const drawn = JSON.parse(ev('JSON.stringify(anFanDrawSeries(__hcRes, {fromFit: true}))'));
+    const fit0 = ev("(function(){ var r = __hcRes.reg, d = Math.round((anDayMs(todayKey()) - r.x0) / 86400000); return Math.round((r.intercept + r.slope * d) * 10) / 10; })()");
+    ok('hero chart: drawn from the fit, the forecast starts at the trend today, not at his best', drawn[50][0].v === fit0 && fit0 < 230, JSON.stringify(drawn[50][0]) + ' fit ' + fit0);
+    ok('hero chart: the range starts at the model’s own spread for today, not pinched to one point', drawn[90][0].v > fit0 && drawn[10][0].v < fit0 && Math.abs((drawn[90][0].v - fit0) - (fit0 - drawn[10][0].v)) < 0.2);
+    ok('hero chart: every later point, and the numbers read from them, are untouched',
+       JSON.stringify(drawn[50].slice(1)) === ev('JSON.stringify(__hcRes.series[50].slice(1))') && ev('__hcRes.series[50][0].v') === 241 && ev('__hcRes.cur') === 241);
+    ok('hero chart: without fromFit it draws the model as it always did', ev('anFanDrawSeries(__hcRes, {}) === __hcRes.series') === true);
+    const heroOpts = "{histDays: 84, noMeter: true, fromFit: true, bandOnly: true, rail: true, shortDates: true, marks: [" +
+      "{kind: 'load', date: mesoAddDays(todayKey(), -90), end: mesoAddDays(todayKey(), -84), label: 'HIGH LOAD'}," +
+      "{kind: 'load', date: mesoAddDays(todayKey(), -83), end: mesoAddDays(todayKey(), -77), label: 'HIGH LOAD'}," +
+      "{kind: 'cal', date: mesoAddDays(todayKey(), -40), end: mesoAddDays(todayKey(), -34), label: '+650 CAL'}," +
+      "{kind: 'deload', date: mesoAddDays(todayKey(), -10), end: mesoAddDays(todayKey(), -7), label: 'DELOAD'}]}";
+    const hs = ev('anFanChartSVG(__hcRes, 380, 232, ' + heroOpts + ')');
+    const fitD = (hs.match(/class="ck-fit" d="M[\d.]+ [\d.]+L([\d.]+) ([\d.]+)"[^>]*stroke="([^"]+)"/) || []);
+    const ring = (hs.match(/<circle cx="([\d.]+)" cy="([\d.]+)" r="3.5" fill="var\(--text\)"/) || []);
+    ok('hero chart: the dashed trend runs straight into the ringed start of the forecast (one line, no cliff)',
+       fitD.length && ring.length && fitD[1] === ring[1] && fitD[2] === ring[2], JSON.stringify([fitD.slice(1), ring.slice(1)]));
+    ok('hero chart: the trend line is in ink, not the confidence colour', fitD[3] === 'var(--dim)', fitD[3]);
+    ok('hero chart: the range is the band alone, no dashed p10 and p90 lines', !/stroke-dasharray="4 4"/.test(hs) && /class="ck-fan"/.test(hs) && !/stroke="var\(--cyan\)"/.test(hs));
+    const ylab = (hs.match(/<text x="33\.0" y="[\d.]+" text-anchor="end"[^>]*>(\d+)<\/text>/g) || []).map(t => +t.replace(/.*>(\d+)<\/text>/, '$1'));
+    const st = ylab.length > 1 ? Math.abs(ylab[0] - ylab[1]) : 0;
+    ok('hero chart: the axis is round numbers on an even step, 3 to 5 lines', ylab.length >= 3 && ylab.length <= 5 && [5, 10, 20, 25, 50].indexOf(st) >= 0 &&
+       ylab.every((v, i) => v % st === 0 && (i === 0 || Math.abs(ylab[i - 1] - v) === st)), JSON.stringify(ylab));
+    ok('hero chart: short dates, no weekday', new RegExp('>' + ev("homeShortDate(mesoAddDays(todayKey(), 28))") + '<').test(hs) && !/>(Mon|Tue|Wed|Thu|Fri|Sat|Sun),/.test(hs));
+    ok('hero chart: back-to-back heavy weeks are one bar with one label, drawn from the edge though they began before it',
+       (hs.match(/fill="var\(--warn\)" opacity="\.85"/g) || []).length === 1 && (hs.match(/>HIGH LOAD</g) || []).length === 1 && /<rect x="40\.0" y="35\.0"[^>]*fill="var\(--warn\)"/.test(hs), (hs.match(/<rect[^>]*warn[^>]*>/g) || []).join(' '));
+    ok('hero chart: a calorie week is a bar on its own lane, not a full-height tint', /class="ck-calw" x="[\d.]+" y="30\.0"[^>]*height="3"/.test(hs) && !/class="ck-calw"[^>]*opacity="\.09"/.test(hs));
+    ok('hero chart: the expected value keeps its halo so it reads over the band', /paint-order="stroke"[^>]*>\d+ lb</.test(hs));
+    // The default stays as it was: the ensemble card and the bodyweight fan.
+    const plain = ev('anFanChartSVG(__hcRes, 380, 230)');
+    ok('fan default: still pinned to the model’s start, both outer lines drawn, the meter on', /stroke-dasharray="4 4"/.test(plain) && /R² /.test(plain) && /fill="var\(--text\)"/.test(plain));
+    // The marks on their own: the rail's width-aware labels, the default's fixed gap.
+    const lin = "function(k){ return 10 + daysBetween(mesoAddDays(todayKey(), -60), k) * 5; }";
+    const two = "[{kind: 'load', date: mesoAddDays(todayKey(), -50), end: mesoAddDays(todayKey(), -44), label: 'HIGH LOAD'}, {kind: 'cal', date: mesoAddDays(todayKey(), -40), end: mesoAddDays(todayKey(), -34), label: '+300 CAL'}]";
+    const mR = JSON.parse(ev("JSON.stringify(ckMarks(" + two + ", " + lin + ", function(v){ return 200 - v; }, 40, 180, 10, 310, {rail: true}))"));
+    const mD = JSON.parse(ev("JSON.stringify(ckMarks(" + two + ", " + lin + ", function(v){ return 200 - v; }, 40, 180, 10, 310))"));
+    ok('marks: on the rail a long label keeps its own width (HIGH LOAD would run into a label 50 units on)', />\+300 CAL</.test(mR.labels) && !/HIGH LOAD/.test(mR.labels) && />HIGH LOAD</.test(mD.labels) && />\+300 CAL</.test(mD.labels), mR.labels + ' / ' + mD.labels);
+    const edge = JSON.parse(ev("JSON.stringify(ckMarks([{kind: 'deload', date: mesoAddDays(todayKey(), -64), end: mesoAddDays(todayKey(), -58), label: 'DELOAD'}], " + lin + ", function(v){ return 200 - v; }, 20, 180, 10, 310))"));
+    ok('marks: a deload that began before the chart and runs into it is drawn from the edge (it used to vanish)', /<rect x="10\.0"/.test(edge.under) && edge.shown === 1, JSON.stringify(edge));
+    ok('marks: the key names each kind shown, and only those', /High-load week/.test(ev("ckMarkKeyHTML(" + two + ")")) && /Calorie week/.test(ev("ckMarkKeyHTML(" + two + ")")) && !/Deload/.test(ev("ckMarkKeyHTML(" + two + ")")) && ev("ckMarkKeyHTML([])") === '');
+    ok('nice step: the smallest round step that makes at most 4 parts', ev('ckNiceStep(184, 262)') === 25 && ev('ckNiceStep(186, 244)') === 20 && ev('ckNiceStep(170.2, 171.4)') === 0.5 && ev('ckNiceStep(160, 176)') === 5);
+  } catch (e) {
+    ok('hero chart section', false, e.stack);
+  } finally {
+    ev('delete window.__hcRes;');
+  }
+
+  console.log('=== PRE-WORKOUT STRAIN (2026-10-21) ===');
+  // His ask: strain piled up before the workout eases it. WHOOP's own bands: 14 (High) makes the day at least easy,
+  // 18 (All out) at least recover and drops the last accessory. dayCall() holds the rule; the call's bounds and its
+  // one-tap undo still apply. Built around today, so the suite reads the same on any day.
+  try {
+    w.__stSaved = ev('JSON.stringify(S)');
+    ev("window.__stK = {fatigueIndex: fatigueIndex, currentDayKey: currentDayKey, whoopDispatch: whoopDispatch, syncReady: syncReady};");
+    ev("fatigueIndex = function(){ return {ok:false}; }; live = null; liveActiveIdx = 0;");
+    const dk = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const lifts = ['Zz St Squat', 'Zz St Bench Press', 'Zz St Leg Extension', 'Zz St Lateral Raise', 'Zz St Curl'];
+    const W = {'Zz St Squat': 225, 'Zz St Bench Press': 185, 'Zz St Leg Extension': 120, 'Zz St Lateral Raise': 20, 'Zz St Curl': 30};
+    const hist = [-9, -2].map((n, i) => ({id: 'st' + i, date: dk(n), day: 'ZS', entries: lifts.map(nm => ({exercise: nm, sets: [8, 8, 8].map(r => ({w: W[nm], r: r, e: 'solid', ef: 55}))}))}));
+    ev('S.split.ZS = {name: "Zz Strain Day", exercises: ' + JSON.stringify(lifts) + '}; S.logs = ' + JSON.stringify(hist) + '; S.readiness = []; S.deload = null; S.meso = null; S.deloadQuiet = null; S.coachDayPlan = null; S.todayAdjust = null;');
+    const setStrain = (score, extra) => ev("S.whoop = {strain: Object.assign({date: todayKey(), score: " + JSON.stringify(score) + ", readAt: new Date(Date.now() - 40*60000).toISOString()}, " + JSON.stringify(extra || {}) + ")};");
+
+    ok('strain: WHOOP’s bands, at the edges', ev("[strainTier(13.9), strainTier(14), strainTier(17.9), strainTier(18)].join()") === ',high,high,allout');
+    setStrain(13.9);
+    ok('strain: under 14 adds nothing (a normal day stays normal)', ev("dayCall(todayKey(), 'ZS').call") === 'normal' && ev("dayCall(todayKey(), 'ZS').strain") === null);
+    setStrain(14.2);
+    const c14 = ev("JSON.stringify(dayCall(todayKey(), 'ZS'))");
+    ok('strain: 14 makes it at least an easy day, and says why first', /"call":"easy"/.test(c14) && /"why":\["strain 14\.2 so far today"/.test(c14) && /"tier":"high"/.test(c14), c14);
+    setStrain(18.6);
+    ok('strain: 18 makes it at least a recover day', ev("dayCall(todayKey(), 'ZS').call") === 'recover' && ev("dayCall(todayKey(), 'ZS').strain.tier") === 'allout');
+    // A push day: a full check-in that says so, then the same day with 15 strain.
+    ev("S.readiness = [{date: todayKey(), sleep: '8+', sore: 'fresh', energy: 'high', stress: 'calm', motiv: 'fired up', tier: 'high'}]; S.whoop = null;");
+    ok('strain: the fixture is a push day without strain', ev("dayCall(todayKey(), 'ZS').call") === 'push', ev("JSON.stringify(dayCall(todayKey(), 'ZS'))"));
+    setStrain(15);
+    ok('strain: a push day is not kept above the floor', ev("dayCall(todayKey(), 'ZS').call") === 'easy');
+    ev("S.readiness = [];");
+    ev("S.whoop = {strain: {date: mesoAddDays(todayKey(), -1), score: 19}};");
+    ok('strain: yesterday’s total is not today’s', ev("dayCall(todayKey(), 'ZS').strain") === null && ev("dayCall(todayKey(), 'ZS').call") === 'normal');
+    ev("S.whoop = {strain: {date: todayKey(), score: null}};");
+    ok('strain: a strain with no score sets nothing', ev("dayCall(todayKey(), 'ZS').strain") === null);
+    setStrain(16);
+    ok('strain: another day’s call is never touched by today’s strain', ev("dayCall(mesoAddDays(todayKey(), 1), 'ZS').strain") === null);
+    ev("S.logs.push({id: 'stToday', date: todayKey(), day: 'ZS', entries: [{exercise: 'Zz St Curl', sets: [{w: 30, r: 8}]}]});");
+    ok('strain: once a session is logged today, the total holds the workout and sets no floor', ev("dayCall(todayKey(), 'ZS').strain") === null);
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 'stToday'; });");
+
+    // --- the session, at 18+ ---
+    setStrain(18.6);
+    ev("_startLiveNow('ZS');");
+    const names = ev("JSON.stringify(live.exercises.map(function(e){ return e.name; }))");
+    ok('session at 18+: a recover day, and the last accessory is left out', ev('live.call.call') === 'recover' && names === JSON.stringify(lifts.slice(0, 4)) && ev('live.callDrop.name') === 'Zz St Curl', names);
+    const bound = ev(`(function(){ var bad = []; live.exercises.forEach(function(x){ var n = buildOneLiveExercise(x.name, null, {call: 'normal'});
+      var last = Math.max.apply(null, historyFor(x.name)[0].sets.map(function(s){ return +s.w || 0; }));
+      if(!(x.targetW <= n.targetW && x.targetW >= last - incForExercise(x.name) && x.planned <= n.planned && x.planned >= n.planned - 1)) bad.push(x.name+'|'+x.targetW+'|'+n.targetW+'|'+x.planned+'|'+n.planned); }); return bad; })()`);
+    ok('session at 18+: every lift it keeps stays inside the call’s bounds', bound.length === 0, JSON.stringify(bound));
+    ok('session at 18+: LIVE says the strain, when WHOOP read it, and what came out', /strain 18\.6 so far today/.test(ev('liveCallHTML()')) &&
+       /WHOOP read that strain at [^,]+, before you started\. Zz St Curl is left out today\./.test(ev('liveCallHTML()')) && (ev('liveCallHTML()').match(/18\.6/g) || []).length === 1, ev('liveCallHTML()'));
+    ev('liveCallToggle();');
+    ok('undo: the normal plan brings the left-out lift back at its place', ev("JSON.stringify(live.exercises.map(function(e){ return e.name; }))") === JSON.stringify(lifts) && ev('live.callOff') === true);
+    ev('liveCallToggle();');
+    ok('re-apply: it goes again while nothing is logged on it', ev("JSON.stringify(live.exercises.map(function(e){ return e.name; }))") === JSON.stringify(lifts.slice(0, 4)));
+    ev('liveCallToggle(); live.exercises[4].sets.push({w: 30, r: 8}); liveCallToggle();');
+    ok('re-apply: a lift he has started is never taken away', ev("live.exercises.some(function(e){ return e.name === 'Zz St Curl'; })") === true);
+    ev('liveCallToggle(); live.exercises = live.exercises.filter(function(e){ return e.name !== "Zz St Curl"; }); liveCallToggle(); liveCallToggle();');
+    // End it with the drop standing: the log says what came out and the strain that did it.
+    ev("live.callOff = false; live.exercises = live.exercises.filter(function(e){ return e.name !== 'Zz St Curl'; }); live.exercises[0].sets.push({w: 205, r: 6}); endLiveSession();");
+    const lg = ev("JSON.stringify(S.logs.filter(function(l){ return l.date === todayKey() && l.day === 'ZS'; }).pop())");
+    ok('log: it records the lift left out and the strain behind the call', /"callDrop":"Zz St Curl"/.test(lg) && /"strain":18\.6/.test(lg), lg);
+    ok('log: sessionMods() reads the drop, and the session counts as shaped by the call', ev("sessionMods(S.logs.filter(function(l){ return l.date === todayKey() && l.day === 'ZS'; }).pop()).callDrop") === 'Zz St Curl' &&
+       ev("sessionMods(S.logs.filter(function(l){ return l.date === todayKey() && l.day === 'ZS'; }).pop()).session") === true);
+    ev("S.logs = S.logs.filter(function(l){ return !(l.date === todayKey() && l.day === 'ZS'); }); live = null; clearLiveDraft();");
+    // Which lift goes: the last accessory, never a compound, never below 3 lifts.
+    const di = arr => ev("strainDropIdx(" + JSON.stringify(arr.map(n => ({name: n, sets: []}))) + ")");
+    ok('drop: the last accessory, skipping compounds after it', di(['Zz St Squat', 'Zz St Leg Extension', 'Zz St Curl', 'Zz St Bench Press']) === 2);
+    ok('drop: never a compound, and never a session of 3 or fewer', di(['Zz St Squat', 'Zz St Bench Press', 'Zz Row', 'Zz Deadlift']) === -1 && di(['Zz St Squat', 'Zz St Leg Extension', 'Zz St Curl']) === -1);
+    ok('drop: a deload or started lift stays', ev("strainDropIdx([{name:'A Squat',sets:[]},{name:'B Press',sets:[]},{name:'C Curl',sets:[],_deload:true},{name:'D Raise',sets:[{w:1,r:1}]}])") === -1);
+    setStrain(15.5);
+    ev("_startLiveNow('ZS');");
+    ok('session at 14-17.9: an easy day, nothing left out', ev('live.call.call') === 'easy' && ev('live.callDrop') === null && ev('live.exercises.length') === 5);
+    ev('live = null; clearLiveDraft();');
+
+    // --- the data: the relay stamps it, the app keeps it, the agents read it right ---
+    const relay = require(RELAY_PATH);   // IRONHUB_RELAY points it at a mutant of the relay
+    const sec = relay.todaySections(null, null, {start: dk(0) + 'T02:00:00.000Z', score: {strain: 15.2}}, '2026-10-21T21:40:00.000Z');
+    ok('relay: strain carries the time the run read it', sec.strain && sec.strain.readAt === '2026-10-21T21:40:00.000Z' && sec.strain.score === 15.2, JSON.stringify(sec));
+    ev("applyWhoop({fetchedAt: '2026-10-21T22:00:00.000Z', strain: {date: todayKey(), score: 15.2, readAt: '2026-10-21T21:40:00.000Z'}});");
+    ok('app: applyWhoop() keeps strain’s own read time', ev('S.whoop.strain.readAt') === '2026-10-21T21:40:00.000Z');
+    ev("applyWhoop({fetchedAt: '2026-10-21T22:00:00.000Z', strain: {date: todayKey(), score: 15.2}});");
+    ok('app: and never stamps an unstamped strain with the file’s time', ev('S.whoop.strain.readAt') === undefined && ev('whoopStrainNow().readAt') === null);
+    ok('agents: today’s strain is "so far today", not "yesterday’s"', /strain so far today 15\.2\/21, before he trains/.test(ev('whoopContext()')) && !/yesterday/.test(ev('whoopContext()')), ev('whoopContext()'));
+
+    // --- a fresh read before the workout ---
+    ev("S.fuel.workoutTime = '19:45'; currentDayKey = function(){ return 'ZS'; };");
+    const at = (h, m) => "(function(){ var d = new Date(); d.setHours(" + h + ", " + m + ", 0, 0); return d.getTime(); })()";
+    ev("S.whoop = {strain: {date: todayKey(), score: 9, readAt: new Date(" + at(14, 0) + ").toISOString()}};");
+    ok('kick: asked for from 2 hours before his workout time', ev('strainKickDue(' + at(17, 44) + ')') === false && ev('strainKickDue(' + at(17, 46) + ')') === true);
+    ok('kick: and until half an hour after it', ev('strainKickDue(' + at(20, 15) + ')') === true && ev('strainKickDue(' + at(20, 16) + ')') === false);
+    ev("S.whoop.strain.readAt = new Date(" + at(18, 30) + ").toISOString();");
+    ok('kick: not while the reading is under 30 minutes old', ev('strainKickDue(' + at(18, 50) + ')') === false && ev('strainKickDue(' + at(19, 1) + ')') === true);
+    ev("currentDayKey = function(){ return 'REST'; };");
+    ok('kick: not on a rest day', ev('strainKickDue(' + at(19, 1) + ')') === false);
+    ev("currentDayKey = function(){ return 'ZS'; }; S.fuel.workoutTime = '';");
+    ok('kick: not without a workout time to aim at', ev('strainKickDue(' + at(19, 1) + ')') === false);
+    ev("S.fuel.workoutTime = '19:45'; S.logs.push({id: 'stToday2', date: todayKey(), day: 'ZS', entries: [{exercise: 'Zz St Curl', sets: [{w: 30, r: 8}]}]});");
+    ok('kick: not once today is logged', ev('strainKickDue(' + at(19, 1) + ')') === false);
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 'stToday2'; });");
+    ev("window.__stN = 0; whoopDispatch = function(){ window.__stN++; return Promise.resolve(true); }; syncReady = function(){ return true; }; localStorage.removeItem(STRAIN_KICK_KEY); _strainKickAt = 0;");
+    await ev('whoopStrainKick(true)'); await ev('whoopStrainKick(true)');
+    ok('kick: one dispatch, then none within 20 minutes', ev('__stN') === 1 && ev('strainKickCount()') === 1);
+    ev("_strainKickAt = 0; localStorage.setItem(STRAIN_KICK_KEY, JSON.stringify({date: todayKey(), n: 3}));");
+    await ev('whoopStrainKick(true)');
+    ok('kick: and never more than 3 a day on this device', ev('__stN') === 1);
+    ev("localStorage.removeItem(STRAIN_KICK_KEY); _strainKickAt = 0;");
+    ev("S.whoop = {strain: {date: todayKey(), score: 15.2, readAt: new Date(Date.now() - 3600000).toISOString()}};");
+    const br = ev('liveBriefHTML()');
+    ok('LIVE before the session: the call names the strain once, the line says when it was read, and a Refresh', /Easy day<\/b> · strain 15\.2 so far today/.test(br) &&
+       /Strain read by WHOOP at [^<]+<button/.test(br) && (br.match(/15\.2/g) || []).length === 1 && /onclick="strainRefresh\(\)"/.test(br), br.slice(0, 600));
+    ev("S.whoop.strain.score = 9.4;");
+    const br2 = ev('liveBriefHTML()');
+    ok('LIVE before the session: under 14, the strain so far and the line it eases at', /WHOOP strain so far <b>9\.4<\/b> · read [^·]+· eases the day at 14/.test(br2), br2.slice(0, 600));
+  } catch (e) {
+    ok('pre-workout strain section', false, e.stack);
+  } finally {
+    ev("if(window.__stK){ fatigueIndex = window.__stK.fatigueIndex; currentDayKey = window.__stK.currentDayKey; whoopDispatch = window.__stK.whoopDispatch; syncReady = window.__stK.syncReady; delete window.__stK; } delete window.__stN; live = null; try{ clearLiveDraft(); }catch(e){} try{ localStorage.removeItem(STRAIN_KICK_KEY); }catch(e){}");
+    ev('if(window.__stSaved){ S = JSON.parse(window.__stSaved); delete window.__stSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== AGENTS: WHAT EACH LIFT TRAINS, AND THE DESK (2026-10-21) ===');
+  // DELTA said a low-to-high cable fly works the lower chest. No prompt said what a lift trains; now a fixed reference
+  // does, for DELTA and ZULU. And the Desk: each agent may post a note, a note to another agent, a reply, a flagged
+  // stretch and a small chart the app draws from his data, on the calls that already run.
+  try {
+    w.__dkS = ev('JSON.stringify(S)');
+    const d = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    // --- the reference ---
+    ok('reference: a low-to-high fly is the UPPER chest', /^the UPPER chest \(clavicular head/.test(ev("liftFactFor('Low-to-High Cable Fly')")));
+    ok('reference: a high-to-low fly is the LOWER chest', /^the LOWER chest/.test(ev("liftFactFor('High-to-Low Cable Fly')")));
+    ok('reference: a chest-supported reverse fly is the rear delts, not an incline (chest) fly', /^the rear delts/.test(ev("liftFactFor('Incline Prone Reverse Fly')")));
+    ok('reference: the heads a joint angle biases (incline curl long head, preacher short head, overhead extension long head)',
+       /long head/.test(ev("liftFactFor('Incline Dumbbell Curl')")) && /short head/.test(ev("liftFactFor('Preacher Curl Machine')")) && /long head/.test(ev("liftFactFor('Dumbbell Overhead Extension')")));
+    ok('reference: anchored, so a plate-loaded press is not a lat lift', /chest/.test(ev("liftFactFor('Plate Loaded Chest Press')")));
+    ev("S.split.D1 = {name: 'Chest + Triceps', exercises: ['Barbell Bench Press', 'Low-to-High Cable Fly', 'Zz Mystery Machine']};");
+    const ref = ev("agLiftRefLine('delta')");
+    ok('reference: DELTA is handed a line per lift in the split, the fly as the upper chest', /WHAT EACH LIFT TRAINS[^\n]*it is right\):/.test(ref) && /\n- Low-to-High Cable Fly: the UPPER chest/.test(ref), ref.slice(0, 400));
+    ok('reference: a lift it does not know gets the broad group and is told not to name a region', /- Zz Mystery Machine: [^\n]*not in the reference, so do not name a region/.test(ref));
+    ok('reference: DELTA and ZULU only (ECHO and CHARLIE do not coach lifts)', ev("agLiftRefLine('zulu')") !== '' && ev("agLiftRefLine('echo')") === '' && ev("agLiftRefLine('charlie')") === '');
+    ok('reference: in DELTA’s nightly prompt and ZULU’s chat, not ECHO’s', /- Low-to-High Cable Fly: the UPPER chest/.test(ev("agBaseContext('delta')")) &&
+       /- Low-to-High Cable Fly: the UPPER chest/.test(ev("chatContext('zulu')")) && !/WHAT EACH LIFT TRAINS/.test(ev("agBaseContext('echo')")));
+    ok('reference: the evidence rules point at it', /WHAT EACH LIFT TRAINS/.test(ev('agEvidenceRules()')));
+    ok('muscles: a fly is chest with no triceps; a reverse fly and a face pull are rear delts', ev("JSON.stringify(musclesFor('Low-to-High Cable Fly'))") === JSON.stringify({p: ['Chest'], s: []}) &&
+       ev("musclesFor('Reverse Fly').p[0]") === 'Shoulders' && ev("musclesFor('Face Pull').p[0]") === 'Shoulders' && ev("JSON.stringify(musclesFor('Plate Loaded Chest Press'))") === JSON.stringify({p: ['Chest'], s: ['Triceps']}));
+
+    // --- the Desk: the gate ---
+    ev("S.logs = " + JSON.stringify([-35, -28, -21, -14, -7, -2].map((n, i) => ({id: 'dk' + i, date: d(n), day: 'D1', entries: [{exercise: 'Zz Desk Bench', sets: [{w: 150 + i * 5, r: 8}, {w: 150 + i * 5, r: 8}]}]}))) + "; agState().desk = [];");
+    const V = (raw, id, shown) => JSON.parse(ev('JSON.stringify(agValidateDesk(' + JSON.stringify(raw) + ', ' + JSON.stringify(id) + ', ' + JSON.stringify(shown || []) + '))'));
+    let v = V([{text: 'Bench is climbing.', title: 'Bench', chart: {series: 'e1rm', lift: 'zz desk bench', weeks: 100}}], 'delta');
+    ok('desk gate: a note with a chart keeps the spec only, the lift in its real spelling, the weeks clamped', v.items.length === 1 &&
+       JSON.stringify(v.items[0].chart) === JSON.stringify({series: 'e1rm', weeks: 26, lift: 'Zz Desk Bench'}) && !v.items[0]._drop, JSON.stringify(v));
+    v = V([{text: 'Scale moving.', chart: {series: 'e1rm', lift: 'Zz Desk Bench'}}], 'echo');
+    ok('desk gate: a series outside the agent’s own area drops the chart and keeps the note, naming it', v.items.length === 1 && !v.items[0].chart && JSON.stringify(v.items[0]._drop) === '["chart"]');
+    v = V([{text: 'x', chart: {series: 'e1rm', lift: 'Trap Bar Deadlift Imaginary'}}, {text: 'y', chart: {series: 'sets', group: 'Wings'}}], 'delta');
+    ok('desk gate: a lift that matches nothing, or a group that is not one, is no chart', v.items.every(x => !x.chart));
+    v = V([{text: 'a', event: {from: d(1), to: d(2), label: 'future'}}, {text: 'b', event: {from: d(-90), to: d(-85), label: 'old'}}], 'delta');
+    ok('desk gate: an event in the future or past the last 10 weeks is dropped', v.items.every(x => !x.event && x._drop && x._drop[0] === 'event'));
+    v = V([{text: 'c', event: {from: d(-60), to: d(-20), label: 'too long'}}, {text: 'e', event: {from: d(-20), to: d(-14), label: 'Low-cal week, a long label that runs on'}}], 'delta');
+    ok('desk gate: a stretch over 4 weeks is dropped; a good one is kept, its label clipped', !v.items[0].event && v.items[1].event && v.items[1].event.from === d(-20) && v.items[1].event.label.length <= 24, JSON.stringify(v));
+    v = V([{text: 'f', to: 'DELTA'}, {text: 'g', to: 'Echo', re: 'agNOTSHOWN'}, {text: 'third'}], 'delta');
+    ok('desk gate: never to itself; "to" by name; a "re" it was not shown is dropped; a third item is dropped',
+       v.items.length === 2 && !v.items[0].to && v.items[1].to === 'echo' && !v.items[1].re && v.dropped === 1, JSON.stringify(v));
+    ok('desk gate: no text, no item', V([{title: 'only a title'}, 'just a string'], 'delta').items.length === 0);
+    ok('desk chart: a weekly series stops at the last complete week (the week in progress would read as a drop)', ev("(function(){ var t = todayKey(), cur = weekKeyOf(t), last = mesoAddDays(cur, 6) <= t ? cur : mesoAddDays(cur, -7);" +
+       " var p = deskSeriesPts({series: 'sessions', weeks: 6}); return p.length >= 4 && p[p.length - 1].date === last && p.every(function(x){ return mesoAddDays(x.date, 6) <= t; }); })()") === true);
+    ok('desk gate: an item stores no number from the model, only text and specs', !/"v"|"pts"|"value"/.test(JSON.stringify(V([{text: 'n', chart: {series: 'e1rm', lift: 'Zz Desk Bench', v: 999, pts: [1, 2]}}], 'delta'))));
+
+    // --- the Desk: two nights, through the real cycle, with S swapped mid-reply ---
+    ev("S.settings.apiKey = 'sk-test'; agState().roundtable = null; agState().log = []; agState().lastRun = ''; agState().proposals = []; agState().desk = [];");
+    ev("window.__dkReal = callClaudeWithData; window.__dkSys = {}; window.__dkAns = {};" +
+       "callClaudeWithData = async function(msgs, sys){ var who = /You are CHARLIE/.test(sys) ? 'charlie' : /You are DELTA/.test(sys) ? 'delta' : /You are ECHO/.test(sys) ? 'echo' : 'zulu';" +
+       " if(/weekly coach letter/.test(sys)) return {text:'A letter.', toolsUsed:0};" +
+       " window.__dkSys[who] = String(sys); var a = window.__dkAns[who]; if(typeof a === 'function') a = a();" +
+       " S = JSON.parse(JSON.stringify(S));" +
+       " return {text: JSON.stringify(a || {summary: who + ' had nothing.', proposals: []}), toolsUsed:0}; };");
+    ok('desk: a quiet Desk adds no section to any prompt', ev("agDeskLine('delta').txt") === '' && !/THE DESK \(/.test(ev("agBaseContext('delta')")));
+    ok('desk: each agent is offered the key, with its own series only', /"desk":\[/.test(ev("agJsonSpec('delta')")) && /"series":"e1rm\|sets\|recovery"/.test(ev("agJsonSpec('delta')")) &&
+       /"series":"bw\|cals\|protein\|sleep"/.test(ev("agJsonSpec('echo')")) && !/"lift":/.test(ev("deskSpecLine('echo')")) && /"lift":/.test(ev("deskSpecLine('delta')")));
+    ev("window.__dkAns = {" +
+       "delta: {summary: 'Bench up.', proposals: [], desk: [{title: 'Bench 999 lb soon', text: 'Bench is climbing <b>fast</b>.', chart: {series: 'e1rm', lift: 'Zz Desk Bench', weeks: 8}}," +
+       "  {text: 'Did intake dip the week the bench stalled?', to: 'ECHO', event: {from: " + JSON.stringify(d(-20)) + ", to: " + JSON.stringify(d(-14)) + ", label: 'low-cal week'}}]}," +
+       "echo: {summary: 'Scale steady.', proposals: [], desk: {text: 'Two lighter weeks in a row.', chart: {series: 'bw', weeks: 6}}}," +
+       "zulu: function(){ var dl = agState().desk.find(function(x){ return x.agent === 'delta' && !x.to; }); return {summary: 'Fine.', proposals: [], desk: [{text: 'Good, keep the 8s.', re: dl ? dl.id : ''}, {text: 'ECHO, check protein on the low days.', to: 'echo'}]}; }" +
+       "};");
+    await ev('agRunAll(false)');
+    const desk1 = JSON.parse(ev('JSON.stringify(agState().desk)'));
+    const zs = ev("window.__dkSys.zulu || ''");
+    ok('desk: written into the S that exists after each reply (S swapped every call), the specialists’ and ZULU’s', desk1.length === 5 &&
+       desk1.filter(x => x.agent === 'delta').length === 2 && desk1.filter(x => x.agent === 'zulu').length === 2 && desk1.filter(x => x.agent === 'echo').length === 1, JSON.stringify(desk1.map(x => x.agent + ':' + x.text)));
+    const dl1 = desk1.find(x => x.agent === 'delta' && !x.to), zr = desk1.find(x => x.agent === 'zulu' && x.re);
+    ok('desk: ZULU sees tonight’s posts with their ids, and its reply is threaded to DELTA', new RegExp('\\[' + dl1.id + '\\] DELTA').test(zs) && zr && zr.re === dl1.id && zr.to === 'delta', zs.slice(zs.indexOf('THE DESK'), zs.indexOf('THE DESK') + 400));
+    ok('desk: each post leaves a feed line, a note to an agent drawn as one', ev("agState().log.some(function(e){ return e.agent === 'delta' && e.to === 'echo' && /^On the Desk: Did intake dip/.test(e.text); })") === true);
+    // The next night: ECHO is shown DELTA's note to it, with its id, and answers it; DELTA is not shown ZULU's note to ECHO.
+    ev("agState().lastRun = ''; agState().roundtable.d = mesoAddDays(todayKey(), -1);");
+    const toEcho = desk1.find(x => x.agent === 'delta' && x.to === 'echo');
+    ev("window.__dkAns = {delta: {summary: 'Same.', proposals: []}, charlie: {summary: 'ok', proposals: []}, zulu: {summary: 'ok', proposals: [], replies: {echo: 'Good find.'}}, echo: {summary: 'Checked.', proposals: [], desk: {text: 'Yes: 2900 a day that week, against 3700.', re: " + JSON.stringify(toEcho.id) + "}}};");
+    await ev('agRunAll(false)');
+    const s2 = ev('JSON.stringify(window.__dkSys)'), S2 = JSON.parse(s2);
+    ok('desk: ECHO’s next prompt has DELTA’s note to it, with the id to answer', new RegExp('\\[' + toEcho.id + '\\] DELTA to you \\([^)]+\\): Did intake dip').test(S2.echo || ''), (S2.echo || '').slice((S2.echo || '').indexOf('THE DESK'), (S2.echo || '').indexOf('THE DESK') + 500));
+    ok('desk: DELTA is not shown ZULU’s note to ECHO', !/ECHO, check protein/.test(S2.delta || '') && /check protein/.test(S2.echo || ''));
+    ok('desk: DELTA is reminded of its own last post, so it does not post it again', /Your last post/.test(S2.delta || ''));
+    const desk2 = JSON.parse(ev('JSON.stringify(agState().desk)'));
+    const er = desk2.find(x => x.agent === 'echo' && x.re);
+    ok('desk: ECHO’s answer is threaded under DELTA’s note, to DELTA', er && er.re === toEcho.id && er.to === 'delta');
+    // --- the Hub ---
+    ev("setMode('review'); showMainTab('ops');");
+    const hub = ev("(function(){ var dk = document.querySelector('#ops .desk'); if(!dk) return null; var its = Array.prototype.slice.call(dk.querySelectorAll('.desk-i'));" +
+      " return {n: its.length, re: its.map(function(x){ return x.classList.contains('re') ? 1 : 0; }).join(''), svg: dk.querySelectorAll('svg.desk-spark').length, hov: dk.querySelectorAll('.ck-hov').length," +
+      " html: dk.innerHTML, rt: !!dk.querySelector('.desk-rt')}; })()");
+    ok('hub: the Desk sits above the feed, with every item and last night’s table', !!hub && hub.n === 6 && hub.rt && ev("(function(){ var h = document.getElementById('ops').innerHTML; return h.indexOf('The Desk') < h.indexOf('Activity log'); })()") === true, JSON.stringify(hub && {n: hub.n, re: hub.re}));
+    ok('hub: each reply sits right under what it answers', !!hub && /10/.test(hub.re) && (hub.re.match(/1/g) || []).length === 2, hub && hub.re);
+    const lastE = Math.round(ev("e1rmSeries('Zz Desk Bench').slice(-1)[0].v"));
+    ok('hub: the charts are small and static, drawn from his data (the latest e1RM, not a model number)', !!hub && hub.svg === 1 && hub.hov === 0 &&
+       new RegExp('>' + lastE + '<').test(hub.html) && /viewBox="0 0 280 70"/.test(hub.html) && !/999/.test(hub.html.replace(/Bench 999 lb soon/, '')), lastE);
+    ok('hub: a chart with under 2 points is left out and the note still shows (no weigh-ins: no bodyweight line)', !!hub && /Not enough data yet to draw bodyweight, weekly average/.test(hub.html) && /Two lighter weeks in a row\./.test(hub.html));
+    ok('hub: model text is escaped, and a flagged stretch shows as the agent’s', !!hub && /Bench is climbing &lt;b&gt;fast&lt;\/b&gt;\./.test(hub.html) && /Flagged · [^<]*low-cal week/.test(hub.html) && /desk-ev-band/.test(hub.html) === false);
+    // Hide is his tap, saved to sync, and a pull carrying the unhidden copy does not bring it back.
+    const sig0 = ev('opsSignature()'), ch0 = ev('S.meta.changedAt');
+    ev("deskHide(" + JSON.stringify(dl1.id) + ");");
+    ok('hide: gone from the Desk and the prompts, saved, and the Hub repaints', ev("agDeskItems().some(function(x){ return x.id === " + JSON.stringify(dl1.id) + "; })") === false &&
+       ev('S.meta.changedAt') >= ch0 && ev('opsSignature()') !== sig0 && !new RegExp(dl1.id).test(ev("agDeskLine('zulu').txt")));
+    ev("window.__dkSnap = JSON.parse(JSON.stringify(S)); window.__dkSnap.agents.desk = window.__dkSnap.agents.desk.map(function(x){ var c = Object.assign({}, x); delete c.hid; return c; }).filter(function(x){ return x.agent !== 'echo'; });");
+    ev("applyPulled(window.__dkSnap, Date.now())");
+    ok('merge: a pull keeps this device’s items it lacked, and a hide wins', ev("agState().desk.some(function(x){ return x.agent === 'echo'; })") === true &&
+       ev("!!(agState().desk.find(function(x){ return x.id === " + JSON.stringify(dl1.id) + "; }) || {}).hid") === true);
+  } catch (e) {
+    ok('agents reference and desk section', false, e.stack);
+  } finally {
+    ev("if(window.__dkReal){ callClaudeWithData = window.__dkReal; delete window.__dkReal; delete window.__dkSys; delete window.__dkAns; delete window.__dkSnap; }");
+    ev('if(window.__dkS){ S = JSON.parse(window.__dkS); delete window.__dkS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3789 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3908 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -301,12 +301,14 @@ pushes. Now:
 | What the agents see | nightly `agCalendarContext()` (shares `agCalDayLine()` / `agCalPlanLine()` / `agCalNextDays()` with chat's `agTodayContext()`), `agSplitLiftText()`, `agFeelLine()`, chat `agLastNightLine()`; events `agEvents()` / `agEventsLine()` (`EV_FOR`, `EV_DAYS`), tools `get_events` / `get_recovery` |
 | Cross-review & volume | `agVolumeLastBlock()` / `liftHardShare()` (`VOL_GRIND_PCT`); `agTonightRequests()`, `agHoldSpecLine()`, `agValidateHolds()`, `agApplyHolds()`, `agShowAnyway()`, `agHeld()` |
 | Roundtable & voices | `AG_VOICE`, `S.agents.roundtable` (`agRoundtable()`, `RT_*`), `agPeersOffered()` / `agPeersSaid()`, `agValidatePeer()`, `agValidateReplies()`; the feed `agLog(agent, text, {to})` + `_agLogRun`, `hubFeedHTML()` / `hubActHTML()` |
+| The Desk | `S.agents.desk` (`DESK_*`, `DESK_SERIES` / `DESK_SERIES_FOR`), `deskSpecLine()`, `agDeskLine(id)` (`{txt, ids}`), `agValidateDesk()`, `agDeskIngest()`, `deskSeriesPts()` / `deskSparkSVG()`, `hubDeskHTML()` / `deskItemHTML()`, `deskHide()` / `deskToggleAll()` (`deskAll`) |
+| Lift reference | `LIFT_FACTS`, `liftFactFor()`, `agLiftRefLine(id)` (DELTA and ZULU, nightly and chat); `musclesFor()` |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
-| Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix |
+| Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix; pre-workout strain `whoopStrainNow()`, `strainTier()` (`STRAIN_HIGH` / `STRAIN_ALLOUT`), `strainPreWorkout()`, `strainDropIdx()` (`live.callDrop` → `logRec.callDrop`), `whoopStrainKick()` / `strainKickDue()` / `strainRefresh()` |
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
 | Home / strip | `renderHome()` (`todayKeyLifts()`, `todayPlanShape()`, `nextPrForecast()` = the soonest of `nextPrForecasts()`, stepped with `nextPrStep()` / `nextPrPick`, `agStripState()`, `homeWheelHTML()`), `renderStatusStrip()`, `readinessNow()`, `renderNotif()` (`notifDismiss()` one item, `notifClear()` all) |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
-| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()`, `briefWhoopDrift()`, `S.whoop.history`; a failed run: `S.whoop.relayError`, `whoopRelayFault()`, `whoopRunFailText()`; `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`, `spendRefresh()`, `relayErrorRecord()`) |
+| WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()` and `whoopStrainKick()` (one POST, `whoopDispatch()`), `briefWhoopDrift()`, `S.whoop.history`; a failed run: `S.whoop.relayError`, `whoopRelayFault()`, `whoopRunFailText()`; `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`, `spendRefresh()`, `relayErrorRecord()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
 | Live session | `renderLive()`, the dock (`intraAdvice()` aim and why, `liveStep()`, `liveLogLabel()`, `livePrWatch()`, `liveFinishEstimate()`, `liveWakeApply()`, quick chips `liveShortOnTime()` / `liveRecoverRest()`), gear `liftLoad()` / `plateCalc()` / `gearLine()` / `plateChange()`, `liveDeltaSend()`, `liveSetToLog()` (the one set copy into `S.logs`); `liveKeepInputs()` / `liveRestoreInputs()` (typed values survive a repaint); `loadLiveDraft()` (`LIVE_DRAFT_MAX_H`, a session past midnight survives); `liveRecoverStale()` (a session never ended is saved at the next boot) |
@@ -320,9 +322,9 @@ pushes. Now:
 | Chat actions | `CHAT_LANES` / `CHAT_ALL` / `chatActionsFor()`, `coachToolDefs(agent)`, `coachValidateAction(name, inp, agent)`, `coachExecuteAction()`, `coachStageProposals()`, `coachFindProposal()`, `coachApplyProposal()`, undo `coachUndoProposal()` / `chatUndoStore()` / `CHAT_UNDO_KEYS`, `chatHistoryMsgs()`; every chat's context and loop `chatContext()`, `agTodayContext()`, `chatActionRules()`, `chatActionHandler()` (`refused`); today-only `S.todayAdjust`, `todayAdjFor()` / `todayAdjApply()`, `liveTodayAdjRebuild()`, `todaySessionNames()` / `liveSessionNames()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network; the cap: `spendLedgerSync()` (`S.spend`), `spendMonth()`, `spendBlock()`, `spendPreflight()`, `spendManualOk()`, `spendCap()` |
-| Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()` |
+| Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()`; alerts off `S.deloadQuiet`, `deloadQuietUntil()` / `deloadQuietSet()` / `deloadQuietBtnHTML()`, `agFixMenu()`; the norm `fatigueIndex()` (`FI_NORM_*`) |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
-| Projections | `anFanProject()` (shared core), `anFanChartSVG()` (curves via `ckSmoothD()`, key `fanLegendHTML()`), `anFanMilestones()`, `bwProjectFor()` |
+| Projections | `anFanProject()` (shared core), `anFanChartSVG()` (curves via `ckSmoothD()`, round ticks `ckNiceStep()`, drawn series `anFanDrawSeries()`, key `fanLegendHTML()`), `anFanMilestones()`, `bwProjectFor()`; the hero's marks `ckMarks(…, {rail})` (`ckRailMerge()`), `ckMarkKeyHTML()` |
 | Sunday check-in | `wpWeekFor()`, `wpStage()`, `wpCardHTML()`, `wpSubmit()`, change: `wpEdit()` / `wpEditCancel()` / `wpEditableWeek()` / `wpFormWeek()`, `wpRun()` (route `weekplan`), `wpFilterProposals()`, `wpContextLine()`, `S.weekPlan` |
 | Experiments | `EXP_TEMPLATES`, `expState()` (`S.experiments`), `expValidate()`, `expStart()`, `expSessions()`, `expScore()` / `expTrend()`, `expEvaluate()`, `expTick()`, `expStop()`, `expAnswer()`, `expMenuLine()`, `expCardHTML()` |
 | Prediction record | `predTick()` (`S.predictions`), `predLifts()`, `predTopsets()`, `predResolve()`, `predRecord()`, `predRecordCardHTML()`, `predIntelLine()` |
@@ -647,6 +649,42 @@ discussions"). It all rides the calls that already run.
   as before.
 - **The roundtable is commentary.** It changes nothing, and anything to apply still goes through proposals.
 
+**The Desk: the agents' board in the Hub** (his ask, 2026-10-21: "agents make their own summaries and create their own
+graphs", then "the graphs can be smaller and more static... where agents note things, communicate directly with each
+other, and more"). It rides the calls that already run, like the roundtable.
+- **One optional `"desk"` key**, offered to all four every night (`deskSpecLine()`; in the specialists' spec before
+  `qaSpecLine()`, so `pdSpecLine()` stays last, and in ZULU's beside `agHoldSpecLine()`). Up to `DESK_PER_NIGHT` (2)
+  items: text, an optional title, `to` another agent, `re` an item it was shown, a `chart` spec and an `event`.
+- **A chart is a spec, never numbers.** `{series, lift?, group?, weeks}`, the series only from the agent's own area
+  (`DESK_SERIES_FOR`: DELTA e1rm / sets / recovery, ECHO bw / cals / protein / sleep, CHARLIE sessions / sleep / strain,
+  ZULU any). `deskSeriesPts()` reads his data when it draws (weekly series stop at the last complete week, or the week
+  in progress reads as a drop); `deskSparkSVG()` is small (280×70) and static: no hover, no axes. Under 2 points the
+  chart is left out and the note still shows.
+- **`agValidateDesk()` is the gate:** strings clipped (`rtClip`), a lift through `agResolveExName()`, a group from
+  `MUSCLE_GROUPS`, weeks clamped 2-26, an event inside `EV_DAYS` and at most `DESK_EV_SPAN` (28) days, `to` never itself,
+  `re` only an id it was shown (`agDeskLine(id).ids`, taken before the await like `_rtPeers`; a reply is to the item's
+  author). A bad chart or event is dropped and named in the feed line; the note is kept.
+- **A flagged event is the agent's read.** It is drawn only on its own item, never among the chart marks
+  (`ckEventMarks()` never takes a model's input), and the other agents see it the next night as theirs.
+- **What each agent is shown** (`agDeskLine(id)`, `DESK_DAYS` (14), at most `DESK_LINE_MAX`): items to it, events the
+  others flagged, each other agent's newest observation (an item addressed to a third agent is not shown), and its own
+  last post so it does not repeat it. Nothing on the Desk means no section, so a quiet Desk costs nothing.
+- **Stored** in `S.agents.desk`, newest first, capped at `DESK_KEEP` (24), written into the re-resolved state after
+  each await (`a2`, then `a3` for ZULU; the suite swaps `S` on every call), merged by id in `applyPulled()`. An item
+  never changes except to be hidden: **Hide** is his tap (`save()`), and a hide wins on a pull.
+- **The Hub** draws it between This week and the Activity log (`hubDeskHTML()`): last night's roundtable lines on top,
+  then up to `DESK_SHOW` items with each reply under what it answers. `opsSignature()` includes it.
+- **It is commentary.** It changes nothing in his program; anything to apply still goes through proposals.
+
+**The agents are told what each lift trains** (2026-10-21). DELTA told him a low-to-high cable fly works the lower chest,
+then agreed it had it backwards. No prompt said what a lift trains. `LIFT_FACTS` is a fixed table of settled anatomy
+(which head a joint angle biases, which plane a muscle moves the arm in), first match wins, short tokens anchored; the
+rear-delt rule comes first because "Incline Prone Reverse Fly" otherwise reads as an incline chest fly (a mutant caught
+it). `agLiftRefLine(id)` gives DELTA and ZULU one line per lift in the split in force and the permanent split, nightly
+(`agBaseContext()`, before DELTA's tail), in chat (`chatContext()`) and mid-workout; a lift the table does not know gets
+its broad group and is told not to name a region. `agEvidenceRules()` points at it. `musclesFor()` no longer counts a fly
+as triceps work, and reads a reverse fly or face pull as rear delts.
+
 These are prompts, so they are hints, not guarantees. The checks that would enforce them (a number in a reply
 traced to data, a principles list with sources) are planned and not built.
 
@@ -889,6 +927,30 @@ The fix has three parts:
   - `rpeTargetFor()`, `exRepMode()`, `pwBlockAt()`, the Sunday plan;
   - `mesoNextDeload()` skips an ended deload, which also frees `agDeloadBlock()`;
   - `lastDeloadEndKey()` takes the day before the end.
+
+**The fatigue norm is his usual training week, so a deload week is not part of it** (2026-10-21). A week after his Oct
+10-15 deload `fatigueIndex()` read 1.54× "overreached": its norm was the plain 28 days before this week, and those still
+held the deload at half weight. The banner came back, and overreached alone (−2 = `DC_EASY`) made every day an easy one.
+The norm is now the mean of the 4 most recent 7-day windows before the acute one with no deload session in them, looking
+back `FI_NORM_LOOKBACK` (12) weeks; under `FI_NORM_MIN` (2) such weeks it says it is rebuilding rather than guess. The
+HIGH LOAD marks and the plateau load factor read the same function, so they stopped flagging the weeks after a deload too.
+
+**Deload alerts can be off until a date** (his call, 2026-10-21: "I do not need to deload for at least 8 more weeks").
+`S.deloadQuiet = {until, from, at}`, set only by his tap ("Quiet for 8 weeks" on the LIVE banner, the Fatigue tab, the
+Fatigue check and Settings › Training; `deloadQuietSet()`), saved with `save()` so both devices hold it. Never written at
+boot: that is the stale-push trap. `deloadQuietUntil()` gates on a well-formed date, and the day after it is over by
+itself. While it holds:
+- his screens: no LIVE banner or "Deload suggested", `deloadForecast()` returns `{quiet}` with its text (the Today tile
+  says Off, the bell has no "deload looks due"), the Fatigue check says Quiet, a high reading on the Fatigue tab is
+  "information only", and the second-recover-day line does not suggest a deload;
+- today's call leaves training load out (his pick); recovery, sleep, soreness and strain still make it;
+- the agents: `trainingContext()`'s FATIGUE MODEL and `intelSummary()` say it is off and not to suggest one, the Sunday
+  plan is told the same, `agEvents()` leaves out heavy weeks, `pdContextLine()` drops the load factor, and
+  `agFixMenu('delta')` offers no deload;
+- **enforced in code:** `agDeloadBlock()` refuses a deload (queue, approval, chat `start_deload`, the Sunday plan), and
+  Investigation offers the light reset instead of a deload.
+
+A planned meso deload still runs and is still counted down (it is his plan), and his own Start deload buttons work.
 
 **A sleep log is not a check-in.** `quickLogSleep()` writes a stub with `partial:true` and no
 tier. Older stubs carry a made-up `tier:'ok'` with empty soreness and energy. `rdComplete()`
@@ -1136,6 +1198,29 @@ last weight. Held is the behaviour; the bound was restated on 2026-09-28, not th
 An investigation override is left alone. `liveCallToggle()` rebuilds only lifts with no logged set,
 so a logged set is never rewritten. `live.call` and `logRec.call` (with `off`) keep what the day
 was called and whether he kept it.
+
+**Pre-workout strain sets a floor under the call** (his ask, 2026-10-21). WHOOP day strain is a running total and can be
+high before he trains. At WHOOP's own bands, `STRAIN_HIGH` (14, "High") makes today at least easy and `STRAIN_ALLOUT`
+(18, "All out") at least recover; the floor lives in `dayCall()` (not points), so Today, the key lifts, Plan and LIVE
+agree, and "strain N so far today" leads `why`.
+- **Today only, and only before he trains** (`strainPreWorkout()`: nothing logged today, no session started today). After
+  that the total holds the workout itself.
+- **An old reading is still a floor**: strain only climbs through a day, so a reading is used whatever its age, and the
+  age is shown. A strain dated another day never counts.
+- **At 18+ the last accessory comes out** (`strainDropIdx()`: never a compound, a deload, a 1RM test or a swapped-in lift,
+  and never a session cut below 3 lifts). It is a lift out, not a set, so it sits outside "never more than one set
+  fewer"; he chose it. `live.callDrop` keeps it, `liveCallToggle()` puts it back at its place with the normal plan and
+  drops it again on re-apply only while nothing is logged on it, and `logRec.callDrop` / `logRec.call.strain` record it
+  (`sessionMods().callDrop`).
+- **A fresh reading before the workout:** `whoopStrainKick()` from `agForegroundCheck()` asks the relay for a run from 2 h
+  before `S.fuel.workoutTime` to 30 min after (`strainKickDue()`), on a training day not yet logged, when the reading is
+  missing or over 30 min old; its own budget in `localStorage['ironhub:strainkick']` (3 a day, 20 min apart, per device,
+  never `S`), the same POST as the morning kick (`whoopDispatch()`). LIVE's idle brief shows the strain, when it was read,
+  and Refresh.
+- The relay stamps `readAt` on strain; `applyWhoop()` keeps only strain's own stamp (never the file's `fetchedAt`), and
+  `whoopContext()` calls it "strain so far today" (it said "yesterday's strain" until this change).
+- The call's reasons carry the number ("strain 18.6 so far today"); LIVE's strain line says only when WHOOP read it and
+  what came out, so the number is said once.
 
 The call replaced the low-check-in "trim?" prompt (`rd3ShowTrimPrompt`, `liveTrimVol`,
 removed). `live.trimmed` / `logRec.trimmed` now mean "the call took sets off", so the Readiness
@@ -1783,6 +1868,19 @@ How they draw:
 `CK_BRUSH_MIN` hands two dates to the function named in `data-brush`; `touch-action:pan-y` keeps a vertical swipe scrolling.
 Positions go back to dates in UTC (`ckUtcKey()`), because the axis is `new Date('YYYY-MM-DD')`. Without `hover` a chart draws
 as before. Fan lines are monotone curves through the model's own points (`ckSmoothD()`), so a restyle cannot add a peak.
+**The Strength hero draws the fan clean** (his note on its screenshot, 2026-10-21: "still looks sloppy"). The forecast's
+numbers never change; only the drawing does, and only where the hero asks:
+- `opts.fromFit` (`anFanDrawSeries()`): the fan starts at the fitted trend today, at the model's own spread that day.
+  `anFanProject()` pins day 0 to `res.cur`, his BEST for a lift, so on a lift below its peak every line fell ~25 lb in the
+  first sample. The dashed trend now runs into the forecast's ringed start, in ink (`var(--dim)`), not the confidence
+  colour.
+- `opts.bandOnly`: the range is the band alone, with no dashed p10/p90 lines (the hero says the range in words).
+- `opts.rail` (`ckMarks(…, {rail:true})`): week-long marks are bars on a lane over the plot, food and training on lanes of
+  their own, back-to-back heavy weeks one bar (`ckRailMerge()`), labels as wide as their text, and a key under the chart
+  (`ckMarkKeyHTML()`) so a bar whose label made way still says what it is. Only deload bands sit behind the data.
+- `opts.shortDates`; every fan chart's axis snaps to a round step (`ckNiceStep()`), and the expected value has a halo.
+- **Any band that began before the chart's first day is drawn from the edge** (every chart). It used to vanish whole,
+  which is how a merged run of heavy weeks disappeared.
 Full-width charts draw on a 380-wide viewBox (`CK_W`). They used to draw on 700, which a phone card
 shrinks to about half, so their 10-unit axis text rendered near 5px. The fan chart scales its
 type with the width it is given. Each `ckArea()` takes its own gradient id; a shared id would
