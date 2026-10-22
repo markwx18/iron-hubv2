@@ -79,7 +79,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3908 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3911 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -301,7 +301,7 @@ pushes. Now:
 | What the agents see | nightly `agCalendarContext()` (shares `agCalDayLine()` / `agCalPlanLine()` / `agCalNextDays()` with chat's `agTodayContext()`), `agSplitLiftText()`, `agFeelLine()`, chat `agLastNightLine()`; events `agEvents()` / `agEventsLine()` (`EV_FOR`, `EV_DAYS`), tools `get_events` / `get_recovery` |
 | Cross-review & volume | `agVolumeLastBlock()` / `liftHardShare()` (`VOL_GRIND_PCT`); `agTonightRequests()`, `agHoldSpecLine()`, `agValidateHolds()`, `agApplyHolds()`, `agShowAnyway()`, `agHeld()` |
 | Roundtable & voices | `AG_VOICE`, `S.agents.roundtable` (`agRoundtable()`, `RT_*`), `agPeersOffered()` / `agPeersSaid()`, `agValidatePeer()`, `agValidateReplies()`; the feed `agLog(agent, text, {to})` + `_agLogRun`, `hubFeedHTML()` / `hubActHTML()` |
-| The Desk | `S.agents.desk` (`DESK_*`, `DESK_SERIES` / `DESK_SERIES_FOR`), `deskSpecLine()`, `agDeskLine(id)` (`{txt, ids}`), `agValidateDesk()`, `agDeskIngest()`, `deskSeriesPts()` / `deskSparkSVG()`, `hubDeskHTML()` / `deskItemHTML()`, `deskHide()` / `deskToggleAll()` (`deskAll`) |
+| The Desk | `S.agents.desk` (`DESK_*`, `DESK_SERIES` / `DESK_SERIES_FOR`), `deskSpecLine()`, `agDeskLine(id)` (`{txt, ids}`), `agValidateDesk()`, `agDeskIngest()`, `deskSeriesPts()` / `deskSparkSVG()`; its Hub tab `#desk` / `renderDesk()` (`hubDeskHTML()` / `deskItemHTML()`), `deskHide()` / `deskToggleAll()` (`deskAll`) |
 | Lift reference | `LIFT_FACTS`, `liftFactFor()`, `agLiftRefLine(id)` (DELTA and ZULU, nightly and chat); `musclesFor()` |
 | Pattern engine | `effRpe()`, `rpeTargetFor()`, `feltVsPlan()`, `recoveryBaseline()`, `whoopOn()`, `whoopResponse()`, `dayCall()`, `callTier()`, `liftProfile()`, `muscleResponse()` |
 | Today's call | `_startLiveNow()` (sets `live.call`), `liveCallHTML()`, `liveCallToggle()`, `dayCallCardHTML()`, `liveEffectiveCall()`; set counts: `exSlotSets()`, `cycleSets()`, `setCount` fix; pre-workout strain `whoopStrainNow()`, `strainTier()` (`STRAIN_HIGH` / `STRAIN_ALLOUT`), `strainPreWorkout()`, `strainDropIdx()` (`live.callDrop` → `logRec.callDrop`), `whoopStrainKick()` / `strainKickDue()` / `strainRefresh()` |
@@ -672,8 +672,11 @@ other, and more"). It rides the calls that already run, like the roundtable.
 - **Stored** in `S.agents.desk`, newest first, capped at `DESK_KEEP` (24), written into the re-resolved state after
   each await (`a2`, then `a3` for ZULU; the suite swaps `S` on every call), merged by id in `applyPulled()`. An item
   never changes except to be hidden: **Hide** is his tap (`save()`), and a hide wins on a pull.
-- **The Hub** draws it between This week and the Activity log (`hubDeskHTML()`): last night's roundtable lines on top,
-  then up to `DESK_SHOW` items with each reply under what it answers. `opsSignature()` includes it.
+- **It is its own Hub tab**, Desk, between Agents and Flags (his ask, 2026-10-21: "a new category inside the hub, like
+  Agents and Flags"): section `#desk`, `renderDesk()` (`REVIEW_RENDER.desk`, `NAV_LEGACY.desk`), not on the Agents view.
+  `hubDeskHTML()` opens on one line saying what it is, then last night's roundtable lines, then up to `DESK_SHOW` items
+  with each reply under what it answers. A post or a hide is a `save()` or a pull, which moves `changedAt`, so
+  `tabSignature()` already repaints it.
 - **It is commentary.** It changes nothing in his program; anything to apply still goes through proposals.
 
 **The agents are told what each lift trains** (2026-10-21). DELTA told him a low-to-high cable fly works the lower chest,

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-21-v1">
+<meta name="ironhub-build" content="2026-10-21-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1919,6 +1919,7 @@
   .hub-tools span{padding:4px 9px; border-radius:10px; background:var(--panel2); font-size:12px; color:var(--muted);}
   .hub-act{display:flex; gap:10px; padding:11px 0; border-top:1px solid var(--panel2); align-items:flex-start;}
   .desk{display:flex; flex-direction:column; gap:0;}
+  .desk-intro{color:var(--muted); margin:2px 2px 12px;}
   .desk-rt{padding-bottom:10px; margin-bottom:2px; border-bottom:1px solid var(--panel2);}
   .desk-rt-h, .desk-ch-l{font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; color:var(--dim); text-transform:uppercase;}
   .desk-rt-l{display:flex; gap:8px; align-items:flex-start; font-size:13.5px; line-height:1.4; margin-top:8px;}
@@ -2172,6 +2173,7 @@
         <section id="library"></section>
         <section id="coach"></section>
         <section id="ops"></section>
+        <section id="desk"></section>
         <section id="invest"></section>
         <section id="meso"></section>
         <section id="log"></section>
@@ -10156,6 +10158,8 @@ const NAV_MODEL = [
   // key off it, and a rename would buy nothing but churn.
   {id:'ops',      label:'Hub',      ic:'coach', top:true, subs:[
     {id:'ops',         label:'Agents'},
+    // The agents' board, its own tab (his ask, 2026-10-21: "a new category inside the hub, like Agents and Flags").
+    {id:'desk',        label:'Desk'},
     {id:'invest',      label:'Flags'}]},
   {id:'settings', label:'Settings', ic:'gear', top:true, subs:[
     {id:'settings',    label:'General'}]}
@@ -10173,7 +10177,7 @@ const NAV_LEGACY = {
   road:['progress','strength'], an_overload:['progress','an_overload'],
   an_fatigue:['progress','an_fatigue'],
   bulk:['body','bulk'], fuel:['body','fuel'], an_dev:['body','an_dev'], an_recovery:['body','an_recovery'],
-  invest:['ops','invest'],
+  invest:['ops','invest'], desk:['ops','desk'],
   // Coach was folded into ZULU inside OPERATIONS -- keep the old id routing so any existing
   // showReviewTab('coach') call still lands somewhere real instead of Progress.
   coach:['ops','ops'], ops:['ops','ops'],
@@ -21222,8 +21226,6 @@ function opsSignature(){
     (S.logs||[]).length,
     // a question asked or answered changes the Hub card
     (function(){ try{ return qaList().map(function(q){ return q.id+(q.ans ? (q.ans.undone ? 'u' : 'a') : ''); }).join(','); }catch(e){ return ''; } })(),
-    // the Desk: a new item or a hide
-    (function(){ try{ const d = agState().desk || []; return d.length+':'+d.filter(function(x){ return x && x.hid; }).length+':'+((d[0] && d[0].at) || '')+':'+(deskAll ? 1 : 0); }catch(e){ return ''; } })(),
     // the Hub's spend ring: this month's total (both devices) against the cap
     (function(){ try{ return spendMonth().toFixed(2)+'/'+spendCap(); }catch(e){ return ''; } })(),
     Math.floor(Date.now()/300000)
@@ -23232,7 +23234,8 @@ function deskItemHTML(x, reply){
 function hubDeskHTML(){
   const items = deskNewest(agDeskItems());
   const rt = agRoundtable(), rl = (rt && Array.isArray(rt.lines)) ? rt.lines.filter(function(l){ return l && AGENTS[l.from] && AGENTS[l.to] && l.text; }) : [];
-  let h = '<h2>The Desk</h2><div class="card desk">';
+  // Its own tab, so the tab names it: one line on what it is, then the board.
+  let h = '<p class="small desk-intro">What the agents noticed, said to each other and flagged. Their read, not the app\u2019s numbers: it changes nothing in your plan.</p><div class="card desk">';
   if(!items.length && !rl.length)
     return h+'<p class="ag-empty">Nothing on the Desk yet. The agents post here at night when something is worth noting, and talk to each other here.</p></div>';
   if(rl.length) h += '<div class="desk-rt"><div class="desk-rt-h">At the table last night</div>'+rl.map(function(l){
@@ -23248,14 +23251,14 @@ function hubDeskHTML(){
   if(top.length > DESK_SHOW) h += '<button class="btn ghost sm" onclick="deskToggleAll()">'+(deskAll ? 'Show fewer' : 'Show all '+top.length)+'</button>';
   return h+'</div>';
 }
-function deskToggleAll(){ deskAll = !deskAll; renderOps(); }
+function deskToggleAll(){ deskAll = !deskAll; renderDesk(); }
 /* Hiding is his tap: it syncs (save()), and a hide wins on a pull, so a hidden item does not come back. */
 function deskHide(id){
   const it = (agState().desk || []).find(function(x){ return x && x.id === id; });
   if(!it) return;
   it.hid = Date.now();
   save();
-  try{ renderOps(); }catch(e){}
+  try{ renderDesk(); }catch(e){}
 }
 /* ---- cross-review, ZULU's half (his call, 2026-10-18) ----
    The code half (agConflict) refuses what collides with a rule. This half is judgement: ZULU, already reading the
@@ -25370,8 +25373,6 @@ function renderOps(){
       (_wp.reply.days||[]).map(function(d){ return '<div class="db-row"><span class="db-k">'+esc(fmtDate(d.date))+'</span><span class="small">'+esc(d.note)+'</span></div>'; }).join('')+
       '<p class="small" style="color:var(--dim);margin-top:6px">You said: '+esc(wpInputLine(_wp) || 'nothing in particular')+'</p></div>';
   }catch(e){ console.warn('week plan card failed', e); }
-  // The Desk (2026-10-21): the agents' board, above the feed.
-  try{ h += hubDeskHTML(); }catch(e){ console.warn('desk failed', e); }
 
   // The feed: when, who (the agent's glyph in its colour), what. Today's lines show the time,
   // older ones the date.
@@ -25400,6 +25401,17 @@ function renderOps(){
   _opsSig = opsSignature();
 }
 REVIEW_RENDER.ops = renderOps;
+/* The Desk's own Hub tab, between Agents and Flags (his ask, 2026-10-21). It only reads, so the 30 s repaint can
+   draw it freely. A new post or a hide is a save() or a pull, both of which move changedAt, so tabSignature() already
+   repaints it; Show all repaints it directly. */
+function renderDesk(){
+  const el = document.getElementById('desk');
+  if(!el) return;
+  let h = '';
+  try{ h = hubDeskHTML(); }catch(e){ console.warn('desk failed', e); h = '<div class="card"><p class="ag-empty">The Desk could not be drawn.</p></div>'; }
+  el.innerHTML = h;
+}
+REVIEW_RENDER.desk = renderDesk;
 /* Coach is gone as a tab; anything that still calls renderCoach now repaints OPERATIONS.
    Declared last so hoisting makes this the live definition. */
 function renderCoach(){ renderOps(); }

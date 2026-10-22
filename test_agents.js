@@ -15697,12 +15697,18 @@ setTimeout(async () => {
     const desk2 = JSON.parse(ev('JSON.stringify(agState().desk)'));
     const er = desk2.find(x => x.agent === 'echo' && x.re);
     ok('desk: ECHO’s answer is threaded under DELTA’s note, to DELTA', er && er.re === toEcho.id && er.to === 'delta');
-    // --- the Hub ---
+    // --- the Hub: the Desk is its own tab, between Agents and Flags (his ask, 2026-10-21) ---
+    ok('hub: the Desk is a Hub tab of its own, between Agents and Flags', JSON.stringify(ev("navMain('ops').subs.map(function(x){ return x.id + ':' + x.label; })")) === JSON.stringify(['ops:Agents', 'desk:Desk', 'invest:Flags']) &&
+       JSON.stringify(ev("NAV_LEGACY.desk")) === JSON.stringify(['ops', 'desk']));
     ev("setMode('review'); showMainTab('ops');");
-    const hub = ev("(function(){ var dk = document.querySelector('#ops .desk'); if(!dk) return null; var its = Array.prototype.slice.call(dk.querySelectorAll('.desk-i'));" +
+    ok('hub: the Agents view no longer carries the Desk', ev("!!document.querySelector('#ops .desk')") === false && !/The Desk/.test(ev("document.getElementById('ops').innerHTML")));
+    ev("showMainTab('ops', 'desk');");
+    ok('hub: opening the tab shows only the Desk, with the sub-nav on it', ev("document.getElementById('desk').classList.contains('on') && !document.getElementById('ops').classList.contains('on')") === true &&
+       ev("activeMainTab") === 'ops' && ev("navMemory.ops || activeReviewTab") === 'desk');
+    const hub = ev("(function(){ var dk = document.querySelector('#desk .desk'); if(!dk) return null; var its = Array.prototype.slice.call(dk.querySelectorAll('.desk-i'));" +
       " return {n: its.length, re: its.map(function(x){ return x.classList.contains('re') ? 1 : 0; }).join(''), svg: dk.querySelectorAll('svg.desk-spark').length, hov: dk.querySelectorAll('.ck-hov').length," +
       " html: dk.innerHTML, rt: !!dk.querySelector('.desk-rt')}; })()");
-    ok('hub: the Desk sits above the feed, with every item and last night’s table', !!hub && hub.n === 6 && hub.rt && ev("(function(){ var h = document.getElementById('ops').innerHTML; return h.indexOf('The Desk') < h.indexOf('Activity log'); })()") === true, JSON.stringify(hub && {n: hub.n, re: hub.re}));
+    ok('hub: the Desk tab holds every item and last night’s table, under a line on what it is', !!hub && hub.n === 6 && hub.rt && /What the agents noticed/.test(ev("document.getElementById('desk').innerHTML")), JSON.stringify(hub && {n: hub.n, re: hub.re}));
     ok('hub: each reply sits right under what it answers', !!hub && /10/.test(hub.re) && (hub.re.match(/1/g) || []).length === 2, hub && hub.re);
     const lastE = Math.round(ev("e1rmSeries('Zz Desk Bench').slice(-1)[0].v"));
     ok('hub: the charts are small and static, drawn from his data (the latest e1RM, not a model number)', !!hub && hub.svg === 1 && hub.hov === 0 &&
@@ -15710,10 +15716,10 @@ setTimeout(async () => {
     ok('hub: a chart with under 2 points is left out and the note still shows (no weigh-ins: no bodyweight line)', !!hub && /Not enough data yet to draw bodyweight, weekly average/.test(hub.html) && /Two lighter weeks in a row\./.test(hub.html));
     ok('hub: model text is escaped, and a flagged stretch shows as the agent’s', !!hub && /Bench is climbing &lt;b&gt;fast&lt;\/b&gt;\./.test(hub.html) && /Flagged · [^<]*low-cal week/.test(hub.html) && /desk-ev-band/.test(hub.html) === false);
     // Hide is his tap, saved to sync, and a pull carrying the unhidden copy does not bring it back.
-    const sig0 = ev('opsSignature()'), ch0 = ev('S.meta.changedAt');
+    const sig0 = ev('tabSignature()'), ch0 = ev('S.meta.changedAt');
     ev("deskHide(" + JSON.stringify(dl1.id) + ");");
-    ok('hide: gone from the Desk and the prompts, saved, and the Hub repaints', ev("agDeskItems().some(function(x){ return x.id === " + JSON.stringify(dl1.id) + "; })") === false &&
-       ev('S.meta.changedAt') >= ch0 && ev('opsSignature()') !== sig0 && !new RegExp(dl1.id).test(ev("agDeskLine('zulu').txt")));
+    ok('hide: gone from the Desk tab and the prompts, saved, and the tab’s refresh sees it', ev("agDeskItems().some(function(x){ return x.id === " + JSON.stringify(dl1.id) + "; })") === false &&
+       ev("document.querySelectorAll('#desk .desk-i').length") === 5 && ev('S.meta.changedAt') >= ch0 && ev('tabSignature()') !== sig0 && !new RegExp(dl1.id).test(ev("agDeskLine('zulu').txt")));
     ev("window.__dkSnap = JSON.parse(JSON.stringify(S)); window.__dkSnap.agents.desk = window.__dkSnap.agents.desk.map(function(x){ var c = Object.assign({}, x); delete c.hid; return c; }).filter(function(x){ return x.agent !== 'echo'; });");
     ev("applyPulled(window.__dkSnap, Date.now())");
     ok('merge: a pull keeps this device’s items it lacked, and a hide wins', ev("agState().desk.some(function(x){ return x.agent === 'echo'; })") === true &&
