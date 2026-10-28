@@ -14074,13 +14074,13 @@ setTimeout(async () => {
           {exercise: 'Lying Leg Curl', weight: 90, reps: 6, e1rm: 108, prev: 104, gain: 4, date: '2026-10-12', t: 1}]);
         S.split = Object.assign({}, S.split, {D6: {name: 'Legs', exercises: ['Lying Leg Curl', {name: 'Hammer Curl', inc: 5}]}});
         S.meso = {template: null, active: {startedAt: '2026-10-05', startKey: '2026-10-05', weeks: [], splits: {bx: {status: 'approved', split: {S1: {name: 'a', exercises: [{name: 'Lying Leg Curl', inc: 5, sets: 2}]}}}}}};
-        S.dataFixes = [];
+        S.dataFixes = ['ipm-plip-2026-09-19'];
         S.logs.forEach(function(l){ if(/^lc/.test(String(l.id))) l.t = 1; });`);
     const sets = (id) => JSON.parse(ev("JSON.stringify(S.logs.find(function(l){ return l.id === '" + id + "'; }))"));
     ev("window.__lcSR = syncReady; syncReady = function(){ return true; }; S.settings.autoSync = true;");
-    ok('run: on a synced device whose pull did not succeed, nothing changes yet', ev('dataFixesRun(false)') === 0 && sets('lc1').entries[0].sets[0].w === 35 && ev('S.dataFixes.length') === 0);
+    ok('run: on a synced device whose pull did not succeed, nothing changes yet', ev('dataFixesRun(false)') === 0 && sets('lc1').entries[0].sets[0].w === 35 && ev('S.dataFixes.length') === 1);
     ev("window.__lcT = S.meta.changedAt; S.meta.changedAt = 1;");
-    ok('run: after a good pull it applies once', ev('dataFixesRun(true)') === 1 && JSON.stringify(ev('S.dataFixes')) === '["llc-per-side-2026-10-05"]');
+    ok('run: after a good pull it applies once', ev('dataFixesRun(true)') === 1 && JSON.stringify(ev('S.dataFixes')) === '["ipm-plip-2026-09-19","llc-per-side-2026-10-05"]');
     const a = sets('lc1'), b = sets('lc2'), c = sets('lc3');
     ok('fix: every set of the lift through Oct 5 is doubled', JSON.stringify(a.entries[0].sets.map(s => s.w)) === '[70,70]' && JSON.stringify(b.entries[0].sets.map(s => s.w)) === '[90,90]');
     ok('fix: and what was prescribed, planned and decided with it', JSON.stringify(b.entries[0].sets.map(s => s.p.w)) === '[80,90]' && b.plan['Lying Leg Curl'].w === 80 &&
@@ -14098,10 +14098,10 @@ setTimeout(async () => {
     ok('run: never twice', ev('dataFixesRun(true)') === 0 && sets('lc1').entries[0].sets[0].w === 70);
     // the mark travels with the data: a device pulling the corrected snapshot does not apply it again
     ev("window.__lcSnap = JSON.parse(JSON.stringify(S));");
-    ev("S.dataFixes = []; S.logs.find(function(l){ return l.id === 'lc1'; }).entries[0].sets[0].w = 35;");
+    ev("S.dataFixes = ['ipm-plip-2026-09-19']; S.logs.find(function(l){ return l.id === 'lc1'; }).entries[0].sets[0].w = 35;");
     ev("applyPulled(window.__lcSnap); delete window.__lcSnap;");
     ok('sync: the mark arrives with the corrected data, so the other device leaves it alone', ev('dataFixesRun(true)') === 0 && sets('lc1').entries[0].sets[0].w === 70);
-    ev("syncReady = function(){ return false; }; S.dataFixes = []; S.logs.find(function(l){ return l.id === 'lc1'; }).entries[0].sets[0].w = 35;");
+    ev("syncReady = function(){ return false; }; S.dataFixes = ['ipm-plip-2026-09-19']; S.logs.find(function(l){ return l.id === 'lc1'; }).entries[0].sets[0].w = 35;");
     ok('run: a device without sync applies it at once', ev('dataFixesRun(false)') === 1 && sets('lc1').entries[0].sets[0].w === 70);
     ev("syncReady = window.__lcSR; delete window.__lcSR;");
     // the boot pull reports whether it worked, and the correction waits on it
@@ -14126,6 +14126,58 @@ setTimeout(async () => {
   } finally {
     ev("if(window.__lcSR){ syncReady = window.__lcSR; delete window.__lcSR; } if(window.__lcF){ fetchGistData = window.__lcF; delete window.__lcF; } if(window.__lcP){ pushUnconfirmedChanges = window.__lcP; delete window.__lcP; }");
     ev('if(window.__lcSaved){ S = JSON.parse(window.__lcSaved); delete window.__lcSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== D5 INCLINE WAS THE PLATE-LOADED MACHINE FROM SEP 19 (2026-10-28) ===');
+  try {
+    w.__ipSaved = ev('JSON.stringify(S)');
+    const A = 'Incline Press Machine', B = 'Plate Loaded Incline Press';
+    // Messy on purpose: the old machine before the window, on another day inside it, and after it; a session holding
+    // both names; and a stale PR row that was a PR on the old machine but is not one on the new.
+    ev(`S.logs = [
+        {id: 'ip0', date: '2026-09-11', day: 'D5', entries: [{exercise: '${A}', sets: [{w: 125, r: 12}, {w: 125, r: 10}]}]},
+        {id: 'ip1', date: '2026-09-19', day: 'D5', entries: [{exercise: '${B}', sets: [{w: 180, r: 7}, {w: 140, r: 12}]}]},
+        {id: 'ip2', date: '2026-09-27', day: 'D5', entries: [{exercise: '${A}', sets: [{w: 110, r: 12}, {w: 110, r: 12}]}, {exercise: 'Cable Fly', sets: [{w: 30, r: 12}]}],
+          plan: {'${A}': {w: 110, lo: 8, hi: 12, n: 2}}, decisions: {'${A}': {code: 'hold', from: 110, to: 110}}, swapped: ['Cable Fly'], swapFrom: {'Cable Fly': 'Chest Fly Machine'}},
+        {id: 'ip3', date: '2026-10-05', day: 'D1', entries: [{exercise: '${A}', sets: [{w: 125, r: 10}]}]},
+        {id: 'ip4', date: '2026-10-20', day: 'D5', entries: [{exercise: '${A}', sets: [{w: 165, r: 12}]}, {exercise: '${B}', sets: [{w: 165, r: 10}]}]},
+        {id: 'ip5', date: '2026-11-01', day: 'D5', entries: [{exercise: '${A}', sets: [{w: 130, r: 12}]}]}];
+      S.logs.forEach(function(l){ l.t = 1; });
+      S.prHistory = [{exercise: '${A}', weight: 125, reps: 12, e1rm: 175, prev: 170, gain: 5, date: '2026-07-29', t: 1},
+                     {exercise: '${A}', weight: 165, reps: 12, e1rm: 231, prev: 175, gain: 56, date: '2026-10-20', t: 1}];
+      S.split = Object.assign({}, S.split, {D1: {name: 'Push', exercises: ['${A}', 'Pec Deck']}, D5: {name: 'Chest + Back', exercises: [{name: '${A}', inc: 15}, 'Cable Fly']}});
+      S.meso = null;
+      S.dataFixes = ['llc-per-side-2026-10-05'];`);
+    const lg = (id) => JSON.parse(ev("JSON.stringify(S.logs.find(function(l){ return l.id === '" + id + "'; }))"));
+    const names = (id) => lg(id).entries.map(e => e.exercise).join(',');
+    ev("window.__ipSR = syncReady; syncReady = function(){ return false; }; window.__ipLive = live; live = {exercises: []};");
+    ok('rename: waits while a LIVE session is open, and stays unmarked', ev('dataFixesRun(false)') === 0 && names('ip2') === A + ',Cable Fly' && ev('S.dataFixes.length') === 1);
+    ev("live = null;");
+    ok('rename: runs once LIVE is closed', ev('dataFixesRun(false)') === 1 && ev("S.dataFixes.indexOf('ipm-plip-2026-09-19')") >= 0);
+    ok('rename: D5 sessions in the window take the new name', names('ip2') === B + ',Cable Fly');
+    ok('rename: the old machine before the window, on another day, and after it keeps its name', names('ip0') === A && names('ip3') === A && names('ip5') === A);
+    const s2 = lg('ip2');
+    ok('rename: plan and decisions move with it; other lifts on the log are untouched', !!s2.plan[B] && !s2.plan[A] && s2.decisions[B].to === 110 && !s2.decisions[A] &&
+       s2.swapFrom['Cable Fly'] === 'Chest Fly Machine' && JSON.stringify(s2.swapped) === '["Cable Fly"]');
+    const s4 = lg('ip4');
+    ok('rename: a session holding both names becomes one entry with every set', s4.entries.length === 1 && s4.entries[0].exercise === B && s4.entries[0].sets.length === 2);
+    ok('rename: changed logs are stamped for the sync, untouched ones are not', s2.t > 1 && s4.t > 1 && lg('ip0').t === 1 && lg('ip3').t === 1 && lg('ip5').t === 1);
+    const prs = JSON.parse(ev("JSON.stringify(S.prHistory)"));
+    const e1 = (wt, r) => Math.round(ev('epley(' + wt + ',' + r + ')') * 10) / 10;
+    ok('rename: the old machine’s PR in the window is gone, its earlier one stays', !prs.some(p => p.exercise === A && p.date === '2026-10-20') && prs.some(p => p.exercise === A && p.date === '2026-07-29'), JSON.stringify(prs));
+    const pb = prs.filter(p => p.exercise === B);
+    ok('rename: and the PR is rebuilt against the new machine’s own best', pb.length === 1 && pb[0].date === '2026-10-20' && pb[0].weight === 165 && pb[0].reps === 12 && pb[0].prev === e1(180, 7) && pb[0].t > 1, JSON.stringify(pb));
+    ok('rename: D5’s slot takes the new name and keeps its step; D1 keeps the old machine', ev('JSON.stringify(S.split.D5.exercises[0])') === JSON.stringify({name: B, inc: 15}) && ev('S.split.D1.exercises[0]') === A);
+    ok('rename: a line in the feed says what moved', ev("agState().log.some(function(l){ return /Corrected D5 from .*: 3 logged sets of Incline Press Machine were Plate Loaded Incline Press, and D5 now lists/.test(l.text); })"));
+    ok('rename: never twice', ev('dataFixesRun(false)') === 0);
+    // a day already holding the new name: the old slot goes rather than leaving the machine on it twice
+    ev(`S.split.D5.exercises = [{name: '${A}', inc: 15}, '${B}']; dataFixRename(DATA_FIXES.filter(function(f){ return f.kind === 'rename'; })[0]);`);
+    ok('rename: a day already listing the new name drops the old slot', ev('JSON.stringify(S.split.D5.exercises)') === JSON.stringify([B]));
+  } catch (e) {
+    ok('incline rename section', false, e.stack);
+  } finally {
+    ev("if(window.__ipSR){ syncReady = window.__ipSR; delete window.__ipSR; } if('__ipLive' in window){ live = window.__ipLive; delete window.__ipLive; }");
+    ev('if(window.__ipSaved){ S = JSON.parse(window.__ipSaved); delete window.__ipSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
   console.log('=== CHAT ACTIONS FOR EVERY AGENT (2026-10-06) ===');

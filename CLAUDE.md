@@ -1006,6 +1006,11 @@ had to get right, and that any future removal here should copy:
   the slot `inc` on the permanent split and every block split. Sessions after the date are untouched.
 - **Add a correction as a new `DATA_FIXES` entry with a new id.** Never reuse or edit an id: a device
   that already applied it will not run it again.
+- **A rename inside a window is `kind:'rename'`** (`dataFixRename()`, first used 2026-10-28: D5's Incline Press
+  Machine from Sep 19 through Oct 28 was really Plate Loaded Incline Press). It moves only that day's sessions in
+  the window, with every name-keyed field on them, rebuilds both lifts' PR rows in the window from `prBackfill()`
+  (a PR on the old machine is not one on the new), and renames the day's slot. It waits while LIVE is open. It is
+  not `exRenameEverywhere()`, which merges a whole name's history.
 
 **Card open-state must not live on the DOM node.** `rerenderActive()` regenerates the whole
 active tab every 30 s and after every sync pull, so DOM-only state is wiped on a timer with

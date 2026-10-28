@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-21-v2">
+<meta name="ironhub-build" content="2026-10-28-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2361,11 +2361,76 @@ const REMOVED_STATE_KEYS = ['dateOverrides','tempStrengthSplit','tempStrengthWin
    device had already doubled. A failed pull just waits for the next open.
    Lying Leg Curl, 2026-10-05: every set through that night was logged per side, not as the total. Weights,
    what the engine prescribed and decided, and the PR log are all doubled; the step becomes 10 lb total (5
-   a side), and from then on he logs the total. */
+   a side), and from then on he logs the total.
+   Plate Loaded Incline Press, 2026-10-28: he switched D5's incline to the plate-loaded machine on Sep 19, logged
+   that day under its own name, and every D5 after it under Incline Press Machine because the split still said so.
+   A rename fix ('kind: rename') moves only those sessions, the window and the day, so the machine's history before
+   Sep 19 stays its own, and puts the new name in the day's slot. Not exRenameEverywhere(): that is a whole-name
+   merge, and it would fold four months of a different machine into this one. */
 const DATA_FIXES = [
-  {id:'llc-per-side-2026-10-05', lift:'Lying Leg Curl', factor:2, through:'2026-10-05', inc:10}
+  {id:'llc-per-side-2026-10-05', lift:'Lying Leg Curl', factor:2, through:'2026-10-05', inc:10},
+  {id:'ipm-plip-2026-09-19', kind:'rename', from:'Incline Press Machine', to:'Plate Loaded Incline Press', day:'D5', since:'2026-09-19', through:'2026-10-28', slot:true}
 ];
+/* A rename inside a window: the sessions of fx.day dated fx.since through fx.through, with every field on those
+   logs that keys on the name, then the PR rows in the window rebuilt for both names (a 130 x 12 that was a PR on the
+   old machine is not one beside 180 x 7 on this one), then the day's slot. Returns the sets moved. */
+function dataFixRename(fx){
+  const A = fx.from, B = fx.to;
+  const inWin = function(d){ return !!d && d >= fx.since && d <= fx.through; };
+  const mv = function(o){
+    if(!o || typeof o !== 'object' || Array.isArray(o) || !Object.prototype.hasOwnProperty.call(o, A)) return false;
+    if(!Object.prototype.hasOwnProperty.call(o, B)) o[B] = o[A];
+    delete o[A]; return true;
+  };
+  const arr = function(a){ return Array.isArray(a) ? a.map(function(v){ return v === A ? B : v; }) : a; };
+  let n = 0;
+  (S.logs || []).forEach(function(l){
+    if(!l || !inWin(l.date) || (fx.day && l.day !== fx.day)) return;
+    let hit = false;
+    (l.entries || []).forEach(function(e){ if(e && e.exercise === A){ e.exercise = B; n += (e.sets || []).length; hit = true; } });
+    if(!hit) return;
+    // Two entries under one name: historyFor() reads the first only, so the second's sets would vanish.
+    const kept = []; let keep = null;
+    l.entries.forEach(function(e){
+      if(!e) return;
+      if(e.exercise !== B){ kept.push(e); return; }
+      if(keep){ keep.sets = (keep.sets || []).concat(e.sets || []); return; }
+      keep = e; kept.push(e);
+    });
+    l.entries = kept;
+    mv(l.plan); mv(l.decisions);
+    if(l.swapFrom && typeof l.swapFrom === 'object'){
+      mv(l.swapFrom);
+      Object.keys(l.swapFrom).forEach(function(k){ if(l.swapFrom[k] === A) l.swapFrom[k] = B; });
+    }
+    ['swapped','removed','todayAdj'].forEach(function(k){ if(Array.isArray(l[k])) l[k] = arr(l[k]); });
+    stampRec(l);
+  });
+  if(Array.isArray(S.prHistory)){
+    const both = function(ex){ return ex === A || ex === B; };
+    S.prHistory = S.prHistory.filter(function(p){ return !(p && both(p.exercise) && inWin(p.date)); });
+    prBackfill().forEach(function(r){ if(both(r.exercise) && inWin(r.date)) S.prHistory.push(stampRec(r)); });
+    S.prHistory.sort(function(a, b){ return String(a.date).localeCompare(String(b.date)); });
+  }
+  if(fx.slot){
+    exAllSplitObjs().forEach(function(src){
+      Object.keys(src || {}).forEach(function(dk){
+        if(fx.day && dk !== fx.day) return;
+        const d = src[dk]; if(!d || !Array.isArray(d.exercises)) return;
+        const has = d.exercises.some(function(x){ return exName(x) === B; });
+        // Already on the day: the old slot goes, or LIVE would prescribe the same machine twice.
+        if(has){ d.exercises = d.exercises.filter(function(x){ return exName(x) !== A; }); return; }
+        d.exercises.forEach(function(x, j){
+          if(typeof x === 'object' && x && x.name === A) x.name = B;
+          else if(x === A) d.exercises[j] = B;
+        });
+      });
+    });
+  }
+  return n;
+}
 function dataFixApply(fx){
+  if(fx.kind === 'rename') return dataFixRename(fx);
   const k = function(v){ return (typeof v === 'number' && isFinite(v)) ? Math.round(v * fx.factor * 10) / 10 : v; };
   let n = 0;
   (S.logs || []).forEach(function(l){
@@ -2412,10 +2477,17 @@ function dataFixesRun(pulled){
   let ran = 0;
   DATA_FIXES.forEach(function(fx){
     if(S.dataFixes.indexOf(fx.id) >= 0) return;
+    /* An open LIVE session holds its own copy of the names (exRenameBlocker()'s reason), so a rename waits for
+       the next open rather than renaming the split under it. */
+    if(fx.kind === 'rename' && typeof live !== 'undefined' && live) return;
     const n = dataFixApply(fx);
     S.dataFixes.push(fx.id);
     ran++;
-    try{ agLog('charlie', 'Corrected '+fx.lift+': '+n+' logged set'+(n === 1 ? '' : 's')+' through '+fmtDate(fx.through)+' were per side, so their weights are now the total.'); }catch(e){}
+    try{
+      agLog('charlie', fx.kind === 'rename'
+        ? 'Corrected '+fx.day+' from '+fmtDate(fx.since)+' to '+fmtDate(fx.through)+': '+n+' logged set'+(n === 1 ? '' : 's')+' of '+fx.from+' were '+fx.to+', and '+fx.day+' now lists '+fx.to+'.'
+        : 'Corrected '+fx.lift+': '+n+' logged set'+(n === 1 ? '' : 's')+' through '+fmtDate(fx.through)+' were per side, so their weights are now the total.');
+    }catch(e){}
   });
   if(ran){ save(); try{ rerenderActive(true); }catch(e){} }
   return ran;
