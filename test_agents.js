@@ -5133,9 +5133,10 @@ setTimeout(async () => {
     ev("applyWhoop({recovery:{date:todayKey(), score:72, hrv:85, rhr:50}});");
     ev('renderOps();');
     const late = ev(OPS);
-    ok("today's brief offers a rewrite", late.indexOf('Rewrite') >= 0);
+    // The button is Reload since 2026-11-01: briefReload() is agRunBrief(true), here or on the server.
+    ok("today's brief offers a rewrite", />Reload</.test(late));
     ok('and it calls the manual path, which skips the morning gates',
-       late.indexOf('agRunBrief(true)') >= 0);
+       late.indexOf('onclick="briefReload()"') >= 0);
     ok('and the card says why it might need one',
        late.indexOf('Written before your WHOOP') >= 0);
 
@@ -5145,7 +5146,7 @@ setTimeout(async () => {
     const good = ev(OPS);
     ok('a brief that already has recovery is not flagged',
        good.indexOf('Written before your WHOOP') < 0);
-    ok('but it can still be rewritten on demand', good.indexOf('Rewrite') >= 0);
+    ok('but it can still be rewritten on demand', />Reload</.test(good));
 
     // Nothing to fold in yet: no recovery today means the note would be telling him to wait
     // for something that has not happened.
@@ -6600,7 +6601,7 @@ setTimeout(async () => {
     ok('with no brief, the dashboard explains itself rather than showing an empty space',
        /No brief yet/.test(homeHTML) && /waiting for WHOOP/.test(homeHTML),
        homeHTML.indexOf('No brief yet') >= 0 ? 'present' : 'MISSING');
-    ok('and offers the button that writes one', /agRunBrief\(true\)/.test(homeHTML));
+    ok('and offers the button that writes one', /onclick="briefReload\(\)"/.test(homeHTML));
     ok('and says how many times it has looked', /Checked 1 time/.test(homeHTML), homeHTML.slice(0, 0));
 
     // a brief that exists still wins the space -- the explanation is only for its absence
@@ -6792,7 +6793,7 @@ setTimeout(async () => {
     ok('the dashboard flags a brief written before the recovery landed',
        /Written before your WHOOP/.test(homeLate) && /50%/.test(homeLate),
        homeLate.indexOf('Written before your WHOOP') >= 0 ? 'present' : 'MISSING');
-    ok('and puts the rewrite control on that card', /onclick="agRunBrief\(true\)"/.test(homeLate));
+    ok('and puts the rewrite control on that card', /onclick="briefReload\(\)"/.test(homeLate));
     ev("agState().brief.hadWhoop = true;");
     ev('renderHome()');
     ok('a brief that already has the number says nothing about it',
@@ -8577,7 +8578,7 @@ setTimeout(async () => {
     ok('HOME: a rescored brief says so, with both readings',
        /Written from an earlier WHOOP reading \(28%, 4\.5h sleep\).*50%, 7\.0h sleep/.test(homeP),
        (homeP.match(/Written from[^<]*/) || ['MISSING'])[0]);
-    ok('HOME: and offers the rewrite', /onclick="agRunBrief\(true\)"/.test(homeP));
+    ok('HOME: and offers the rewrite', /onclick="briefReload\(\)"/.test(homeP));
 
     ev('callClaudeWithData = window.__realDataP; delete window.__realDataP;');
   } catch (e) {
@@ -15781,6 +15782,224 @@ setTimeout(async () => {
   } finally {
     ev("if(window.__dkReal){ callClaudeWithData = window.__dkReal; delete window.__dkReal; delete window.__dkSys; delete window.__dkAns; delete window.__dkSnap; }");
     ev('if(window.__dkS){ S = JSON.parse(window.__dkS); delete window.__dkS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== THE SERVER RUNNER: 9 PM WITH NO DEVICE OPEN, AND RELOAD ON THE BRIEF (2026-11-01) ===');
+  ev("window.__rnS = JSON.stringify(S); window.__rnFetch = window.fetch; window.__rnRunAll = agRunAll; window.__rnBrief = agRunBrief; window.__rnData = callClaudeWithData;");
+  try {
+    // A clock at an exact minute, held until the call settles (withHourAt() holds the hour only, and the grace is in minutes).
+    const withClockAt = function(h, m, fn){
+      ev('Date.prototype.__rgH = Date.prototype.getHours; Date.prototype.__rgM = Date.prototype.getMinutes;' +
+         'Date.prototype.getHours = function(){ return ' + h + '; }; Date.prototype.getMinutes = function(){ return ' + m + '; };');
+      const done = () => ev('Date.prototype.getHours = Date.prototype.__rgH; Date.prototype.getMinutes = Date.prototype.__rgM; delete Date.prototype.__rgH; delete Date.prototype.__rgM;');
+      let out; try { out = fn(); } catch (e) { done(); throw e; }
+      if (out && typeof out.then === 'function') return out.then(v => { done(); return v; }, e => { done(); throw e; });
+      done(); return out;
+    };
+    // --- the grace: once the server has been seen, the device leaves 9 PM to it ---
+    const at = (h, m) => 'new Date(2026, 10, 3, ' + h + ', ' + m + ')';
+    ev("agState().runner = {at: " + at(21, 10) + ".getTime() - 3600000, did:'brief'};");
+    ok('grace: at 9:10 PM the device waits 35 more minutes for the server', ev('runnerGraceLeft(' + at(21, 10) + ')') === 35, ev('runnerGraceLeft(' + at(21, 10) + ')'));
+    ok('grace: from 9:45 it is the device’s turn, and before 9 PM the grace says nothing', ev('runnerGraceLeft(' + at(21, 45) + ')') === 0 && ev('runnerGraceLeft(' + at(20, 30) + ')') === 0);
+    ev("agState().runner = {at: " + at(21, 10) + ".getTime() - 5 * 864e5, did:'night'};");
+    ok('grace: a server last seen 5 days ago is not waited for', ev('runnerGraceLeft(' + at(21, 10) + ')') === 0);
+    ev("delete agState().runner;");
+    ok('grace: a device that has never seen the server runs at 9 as it always did', ev('runnerGraceLeft(' + at(21, 10) + ')') === 0);
+
+    ev("window.__rnRuns = 0; agRunAll = async function(){ window.__rnRuns++; };");
+    ev("S.settings.apiKey = 'k'; S.settings.ghToken = ''; S.settings.gistId = ''; agState().autoRun = true; agState().lastRun = '2000-01-01'; _agRunning = false;");
+    ev("agState().runner = {at: Date.now() - 3600000, did:'night'};");
+    await withClockAt(21, 10, () => ev('agMaybeAutoRun()'));
+    ok('scheduler: at 9:10 with the server seen, the device does not start a cycle', ev('window.__rnRuns') === 0);
+    await withClockAt(21, 50, () => ev('agMaybeAutoRun()'));
+    ok('scheduler: at 9:50, with tonight still not run, the device steps in', ev('window.__rnRuns') === 1);
+    ev("delete agState().runner; window.__rnRuns = 0;");
+    await withClockAt(21, 10, () => ev('agMaybeAutoRun()'));
+    ok('scheduler: with no server seen, 9:10 runs as before', ev('window.__rnRuns') === 1);
+
+    // The pull can be what tells this device the server exists: the gate is asked again after it.
+    ev("window.__rnRuns = 0; S.settings.ghToken = 'ghp_t'; S.settings.gistId = 'G'; S.settings.autoSync = true; S.meta.pushedAt = S.meta.changedAt;" +
+       "window.__rnSnap = JSON.parse(JSON.stringify(S)); delete window.__rnSnap.settings.ghToken; window.__rnSnap.agents.runner = {at: Date.now() - 3600000, did:'brief'};" +
+       "window.fetch = async function(u){ return {ok:true, status:200, json: async function(){ return {files:{'ironhub_data.json':{content: JSON.stringify({app:'ironhub', v:1, exportedAt: Date.now() + 5000, data: window.__rnSnap})}}}; }}; };");
+    await withClockAt(21, 10, () => ev('agMaybeAutoRun()'));
+    ok('scheduler: a pull that brings the server’s stamp stops the device’s 9:10 cycle', ev('window.__rnRuns') === 0 && ev('runnerSeen()') === true);
+
+    // --- the runner's own entry: an awaitable cycle and a night it reports ---
+    ev("window.__rnRuns = 0; delete agState().runner; S.settings.ghToken = ''; S.settings.gistId = '';");
+    const mar = await withClockAt(21, 5, () => ev('Promise.resolve(agMaybeAutoRun()).then(function(){ return window.__rnRuns; })'));
+    ok('agMaybeAutoRun() returns the cycle, so the runner can wait for it to finish', mar === 1);
+
+    // --- Reload ---
+    const briefOk = "callClaudeWithData = async function(m, sys){ window.__rnCalls = (window.__rnCalls || 0) + 1; return {text: JSON.stringify({brief:'Rewritten here.'}), toolsUsed: 0}; };";
+    ev(briefOk + " window.__rnCalls = 0; agRunBrief = window.__rnBrief; _agBriefRunning = false; _agRunning = false; _briefReload = null;" +
+       "window.__rnReq = []; window.fetch = async function(u, o){ window.__rnReq.push({u: String(u), o: o}); return {ok:true, status:204, json: async function(){ return {}; }}; };" +
+       "S.settings.ghToken = 'ghp_t'; S.settings.gistId = 'G'; delete agState().runner;");
+    await ev('briefReload()');
+    ok('reload: before the server has ever run, Reload writes on this device and sends nothing to GitHub',
+       ev('window.__rnCalls') === 1 && ev('window.__rnReq.length') === 0 && ev('agBrief().text') === 'Rewritten here.');
+    ev("agState().runner = {at: Date.now() - 3600000, did:'brief'}; window.__rnCalls = 0; window.__rnReq = [];");
+    await ev('briefReload()');
+    const rq = ev("JSON.stringify(window.__rnReq.map(function(r){ return {u: r.u, m: r.o && r.o.method, b: r.o && JSON.parse(r.o.body)}; }))");
+    ok('reload: with the server seen, one dispatch of the agents workflow in reload mode, WHOOP first, and no API call here',
+       JSON.stringify(JSON.parse(rq)) === JSON.stringify([{u: 'https://api.github.com/repos/markwx18/iron-hubv2/actions/workflows/agents.yml/dispatches', m: 'POST',
+         b: {ref: 'main', inputs: {mode: 'reload', whoop: '1', over: '0'}}}]) && ev('window.__rnCalls') === 0, rq);
+    const homeB = ev('homeBriefHTML(agBrief())');
+    ev('renderOps();');
+    ok('reload: the brief says it is reloading, and its button is disabled meanwhile', /Reloading on the server/.test(homeB) &&
+       /disabled(="")? onclick="briefReload\(\)">Reloading/.test(w.document.getElementById('ops').innerHTML), homeB.slice(0, 300));
+    await ev('briefReload()');
+    ok('reload: a second tap while it is out sends nothing', ev('window.__rnReq.length') === 1);
+    ev("agSetBrief('From the server.', true, null); agState().brief.at = new Date(Date.now() + 1000).toISOString();");
+    ev('renderOps();');
+    ok('reload: when the new brief lands, the note goes and the button is back', ev('briefReloadNote()') === '' && ev('briefReloadBusy()') === false &&
+       />Reload</.test(w.document.getElementById('ops').innerHTML));
+    ev("agState().brief.at = new Date(Date.now() - 20 * 60000).toISOString(); _briefReload = {at: Date.now() - 9 * 60000, state: 'sent'};");
+    ok('reload: one that never lands says so after 8 minutes, and can be tapped again', /No new brief after 8 minutes/.test(ev('briefReloadNote()')) && ev('briefReloadBusy()') === false);
+    ev("_briefReload = null; window.__rnCalls = 0; agState().log = []; window.fetch = async function(u, o){ return {ok:false, status:403, headers:{get:function(){ return null; }}, json: async function(){ return {message:'Resource not accessible by personal access token'}; }, text: async function(){ return JSON.stringify({message:'Resource not accessible by personal access token'}); }}; };");
+    await ev('briefReload()');
+    ok('reload: a token that cannot dispatch falls back to writing here, and the feed names GitHub’s refusal',
+       ev('window.__rnCalls') === 1 && ev("agState().log.some(function(l){ return /Reload: GitHub refused the reload \\(403/.test(l.text); })") === true &&
+       /on this device instead/.test(ev('briefReloadNote()')), JSON.stringify(ev('agState().log.map(function(l){ return l.text; })')));
+    ev('renderOps();');
+    const opsH = w.document.getElementById('ops').innerHTML;
+    ok('buttons: every brief button is Reload now; none calls the device-only write directly',
+       /onclick="briefReload\(\)"/.test(opsH) && !/onclick="agRunBrief\(true\)"/.test(opsH) && !/onclick="agRunBrief\(true\)"/.test(html));
+  } catch (e) {
+    ok('server runner (in-app)', false, e.stack);
+  } finally {
+    ev("window.fetch = window.__rnFetch; agRunAll = window.__rnRunAll; agRunBrief = window.__rnBrief; callClaudeWithData = window.__rnData; _briefReload = null; _agBriefRunning = false; _agRunning = false;" +
+       "S = JSON.parse(window.__rnS); localStorage.setItem(LS_KEY, JSON.stringify(S));" +
+       "['__rnS','__rnFetch','__rnRunAll','__rnBrief','__rnData','__rnRuns','__rnSnap','__rnCalls','__rnReq'].forEach(function(k){ delete window[k]; });");
+  }
+
+  // --- headless: the boot never runs, so nothing in the app races the runner ---
+  try {
+    const hd = new JSDOM(html, {runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.com/',
+      beforeParse(x){ x.IRONHUB_HEADLESS = true; x.fetch = () => Promise.reject(new TypeError('no network')); x.matchMedia = w.matchMedia; x.Element.prototype.scrollIntoView = function(){}; }});
+    const hw = hd.window;
+    ok('headless: the app loads, its functions are there, and its boot does not run (no nav built, no state written)',
+       typeof hw.runnerTick === 'function' && hw.document.getElementById('botnav').innerHTML.trim() === '' && hw.localStorage.getItem('ironhub:v1') === null,
+       hw.document.getElementById('botnav').innerHTML.slice(0, 80));
+    hw.close();
+  } catch (e) { ok('headless load', false, e.stack); }
+
+  // --- the runner, end to end: scripts/agents/run.js as the workflow runs it, with GitHub and the API faked ---
+  try {
+    const fsR = require('fs'), osR = require('os'), cpR = require('child_process');
+    const RUNNER_PATH = process.env.IRONHUB_RUNNER || path.join(__dirname, 'scripts', 'agents', 'run.js');
+    const tmpR = fsR.mkdtempSync(path.join(osR.tmpdir(), 'runner-'));
+    const NODE_MODS = path.dirname(path.dirname(require.resolve('jsdom/package.json')));
+    // A fixed instant for the app copy, so the suite reads the same at any hour (the app reads the local hour).
+    // Pinned non-writable: when the whole suite is run with its clock moved, that shift sits at the top of the
+    // app's first script and would otherwise move these fixtures off their instant.
+    const shifted = function(iso){
+      const shim = "<script>(function(){ var R = Date, off = new R('" + iso + "').getTime() - R.now();" +
+        " function D(a,b,c,d,e,f,g){ if(!(this instanceof D)) return new R(R.now()+off).toString();" +
+        " var n = arguments.length; return n===0 ? new R(R.now()+off) : n===1 ? new R(a) : new R(a,b,n>2?c:1,n>3?d:0,n>4?e:0,n>5?f:0,n>6?g:0); }" +
+        " D.prototype = R.prototype; D.now = function(){ return R.now()+off; }; D.UTC = R.UTC; D.parse = R.parse;" +
+        " Object.defineProperty(window, 'Date', {value: D, writable: false, configurable: false}); })();</script>";
+      const i = html.indexOf('<script>'), f = path.join(tmpR, 'app-' + iso.replace(/\W/g, '') + '.html');
+      fsR.writeFileSync(f, html.slice(0, i) + shim + html.slice(i));
+      return f;
+    };
+    const mockR = path.join(tmpR, 'mock.js');
+    fsR.writeFileSync(mockR, [
+      "const fs = require('fs'); const sc = JSON.parse(process.env.RUNNER_MOCK); const calls = []; let gets = 0;",
+      "process.on('exit', function(){ fs.writeFileSync(sc.out, JSON.stringify(calls)); });",
+      "const reply = function(status, body){ return new Response(typeof body === 'string' ? body : JSON.stringify(body), {status: status, headers: {'content-type': 'application/json'}}); };",
+      "global.fetch = async function(url, opts){ const u = String(url), m = (opts && opts.method) || 'GET';",
+      "  if(u.indexOf('api.anthropic.com') >= 0){ const b = JSON.parse(opts.body), sys = String(b.system || '');",
+      "    const who = /You are CHARLIE/.test(sys) ? 'charlie' : /You are DELTA/.test(sys) ? 'delta' : /You are ECHO/.test(sys) ? 'echo' : /Daily Brief/.test(sys) ? 'brief' : 'zulu';",
+      "    calls.push({k:'api', who: who, whoop: /TODAY\\u2019s measured numbers/.test(sys)});",
+      "    const text = who === 'brief' ? JSON.stringify({brief: 'Brief at ' + new Date().toISOString()}) : JSON.stringify({summary: who + ' had nothing.', proposals: []});",
+      "    return reply(200, {id:'m', type:'message', role:'assistant', content:[{type:'text', text: text}], stop_reason:'end_turn', usage:{input_tokens:1000, output_tokens:200}}); }",
+      "  if(u.indexOf('/gists/STATE') >= 0){",
+      "    if(m === 'PATCH'){ calls.push({k:'state', c: JSON.parse(opts.body).files['runner_local.json'].content}); return reply(200, {}); }",
+      "    calls.push({k:'stateRead'}); if(sc.stateStatus) return reply(sc.stateStatus, {message:'Bad credentials'});",
+      "    return reply(200, {files: sc.state ? {'runner_local.json': {content: sc.state}} : {}}); }",
+      "  if(u.indexOf('/gists/SYNC') >= 0){",
+      "    if(m === 'PATCH'){ calls.push({k:'push', c: JSON.parse(opts.body).files['ironhub_data.json'].content}); return reply(200, {}); }",
+      "    gets++; calls.push({k:'pull'}); if(sc.syncStatus) return reply(sc.syncStatus, {message:'Server Error'});",
+      "    const snap = (sc.later && gets >= sc.later.from) ? sc.later.snap : sc.snap;",
+      "    const files = {'ironhub_data.json': {content: JSON.stringify(snap)}}; if(sc.whoop) files['whoop_data.json'] = {content: JSON.stringify(sc.whoop)};",
+      "    return reply(200, {files: files}); }",
+      "  calls.push({k:'other', u: u}); throw new TypeError('unexpected request ' + u); };"].join('\n'));
+    const runR = function(name, iso, sc, mode){
+      sc.out = path.join(tmpR, name + '.json');
+      const env = Object.assign({}, process.env, {TZ: 'America/New_York', IRONHUB_HTML: shifted(iso), ANTHROPIC_API_KEY: 'sk-test', NODE_PATH: NODE_MODS,
+        IRONHUB_GIST_ID: 'SYNC', IRONHUB_GIST_TOKEN: 'ghp_x', IRONHUB_STATE_GIST_ID: 'STATE', RUN_MODE: mode || 'auto', RUN_OVER: '0', RUNNER_MOCK: JSON.stringify(sc)});
+      const r = cpR.spawnSync(process.execPath, ['-r', mockR, RUNNER_PATH], {env: env, encoding: 'utf8', timeout: 90000});
+      let calls = []; try { calls = JSON.parse(fsR.readFileSync(sc.out, 'utf8')); } catch (e) {}
+      const pushes = calls.filter(c => c.k === 'push').map(c => JSON.parse(c.c));
+      return {code: r.status, log: (r.stdout || '') + (r.stderr || ''), calls: calls, api: calls.filter(c => c.k === 'api'),
+              last: pushes.length ? pushes[pushes.length - 1].data : null, pushes: pushes.length,
+              state: calls.filter(c => c.k === 'state').map(c => JSON.parse(c.c))};
+    };
+    const DAY = '2026-11-03', ms = (t) => Date.parse(DAY + 'T' + t + '-05:00');
+    // Two sessions, uneven, and a lastRun from last night: the shape a real gist has at 5 AM.
+    const base = {app: 'ironhub', v: 1, exportedAt: ms('05:00:00'), data: {
+      logs: [{id: 'l1', date: '2026-11-01', day: 'D5', entries: [{exercise: 'Barbell Back Squat', sets: [{w: 275, r: 6}, {w: 275, r: 5}, {w: 255, r: 7}]}], t: ms('05:00:00') - 2 * 864e5},
+             {id: 'l0', date: '2026-10-30', day: 'D3', entries: [{exercise: 'Barbell Bench Press', sets: [{w: 185, r: 6}, {w: 185, r: 4}]}], t: ms('05:00:00') - 4 * 864e5}],
+      agents: {autoRun: true, lastRun: '2026-11-02', proposals: [], log: [], status: {}},
+      meta: {changedAt: ms('04:59:00'), lastSync: 0, pushedAt: ms('04:59:00')}}};
+    const snapWith = function(edit){ const s = JSON.parse(JSON.stringify(base)); edit(s); return s; };
+    const whoopToday = {fetchedAt: DAY + 'T11:10:00Z', recovery: {date: DAY, score: 64, hrv: 70, rhr: 52, readAt: DAY + 'T11:10:00Z'}};
+    const carried = JSON.stringify({'ironhub:device': 'dsrv0001', 'ironhub:usage': JSON.stringify([{at: ms('06:10:00'), r: 'brief', i: 1000, o: 100, cw: 0, cr: 0}])});
+
+    let r = runR('morning', DAY + 'T07:30:00-05:00', {snap: base, whoop: whoopToday, state: carried});
+    ok('runner, morning: with today’s WHOOP in, one brief call that quotes it, and a clean exit',
+       r.code === 0 && r.api.length === 1 && r.api[0].who === 'brief' && r.api[0].whoop === true, r.log.slice(-400));
+    ok('runner, morning: the brief is pushed, dated today, stamped as the server’s, with the history left as it was',
+       !!r.last && r.last.agents.brief && r.last.agents.brief.date === DAY && r.last.agents.runner && r.last.agents.runner.did === 'brief' &&
+       r.last.logs.map(l => l.id).sort().join() === 'l0,l1', r.last && JSON.stringify(r.last.agents.brief));
+    const sp = r.last && (r.last.spend || []).find(x => x.dev === 'dsrv0001');
+    ok('runner, morning: its spend counts toward the cap as one device, the earlier call this morning included', !!sp && sp.day === DAY && sp.n === 2, JSON.stringify(r.last && r.last.spend));
+    ok('runner, morning: and the usage log goes back to the state gist with both calls, under the same device',
+       r.state.length === 1 && r.state[0]['ironhub:device'] === 'dsrv0001' && JSON.parse(r.state[0]['ironhub:usage']).length === 2, JSON.stringify(r.state));
+    ok('runner, morning: the public log says what it did and nothing of his data', /mode auto: wrote the brief \[brief\]/.test(r.log) && !/Brief at/.test(r.log) && !/Squat/.test(r.log), r.log.slice(-300));
+
+    r = runR('early', DAY + 'T08:00:00-05:00', {snap: base, state: carried});
+    ok('runner, 8 AM with no WHOOP yet: no call, no push, and it says it is waiting', r.code === 0 && r.api.length === 0 && r.pushes === 0 && /waiting for WHOOP/.test(r.log), r.log.slice(-300));
+    r = runR('ten', DAY + 'T10:00:00-05:00', {snap: base, state: carried});
+    ok('runner, 10 AM with still no WHOOP: it writes the brief anyway, saying so', r.api.length === 1 && r.api[0].who === 'brief' && r.api[0].whoop === false && r.last && r.last.agents.brief.date === DAY);
+
+    const night = snapWith(s => { s.data.agents.brief = {text: 'x', at: DAY + 'T11:30:00.000Z', date: DAY, hadWhoop: true}; });
+    r = runR('night', DAY + 'T21:05:00-05:00', {snap: night, state: carried});
+    ok('runner, 9 PM: the three specialists and ZULU run, and the night is stamped and pushed',
+       r.code === 0 && r.api.map(a => a.who).sort().join() === 'charlie,delta,echo,zulu' && r.last && r.last.agents.lastRun === DAY && r.last.agents.runner.did === 'night',
+       r.api.map(a => a.who).join() + ' | ' + r.log.slice(-300));
+    const ran = snapWith(s => { s.data.agents.lastRun = DAY; });
+    r = runR('ran', DAY + 'T21:30:00-05:00', {snap: ran, state: carried});
+    ok('runner, 9:30 PM after the cycle ran: no call and no push', r.code === 0 && r.api.length === 0 && r.pushes === 0 && /already run/.test(r.log), r.log.slice(-200));
+    r = runR('evening', DAY + 'T20:30:00-05:00', {snap: night, state: carried});
+    ok('runner, 8:30 PM: the 9 PM gate is closed, the brief is written, nothing runs', r.api.length === 0 && r.pushes === 0);
+
+    // A session the phone logs while the cycle runs: the push applies it first and carries the union.
+    const later = snapWith(s => { s.exportedAt = ms('21:06:00');
+      s.data.logs.push({id: 'l2', date: DAY, day: 'D1', entries: [{exercise: 'Barbell Bench Press', sets: [{w: 190, r: 5}, {w: 190, r: 4}, {w: 175, r: 8}]}], t: ms('21:06:00')});
+      s.data.meta.changedAt = ms('21:05:50'); });
+    r = runR('race', DAY + 'T21:05:00-05:00', {snap: night, later: {from: 3, snap: later}, state: carried});
+    ok('runner, 9 PM: a session logged on the phone mid-cycle is kept in the push, beside the night',
+       !!r.last && r.last.logs.some(l => l.id === 'l2') && r.last.agents.lastRun === DAY, r.last && JSON.stringify(r.last.logs.map(l => l.id)));
+
+    r = runR('pullfail', DAY + 'T21:05:00-05:00', {snap: night, syncStatus: 500, state: carried});
+    ok('runner: a gist it cannot read means no call and no push (never a cycle on blank state)', r.api.length === 0 && r.pushes === 0 && /could not be read/.test(r.log), r.log.slice(-200));
+    r = runR('statefail', DAY + 'T21:05:00-05:00', {snap: night, stateStatus: 401});
+    ok('runner: a state gist it cannot read stops it before any call, and fails the job', r.code === 1 && r.api.length === 0 && r.pushes === 0 && /state gist/.test(r.log), r.log.slice(-200));
+
+    const briefed = snapWith(s => { s.data.agents.brief = {text: 'Old one.', at: DAY + 'T11:15:00.000Z', date: DAY, hadWhoop: true, whoopScore: 64}; });
+    r = runR('reload', DAY + 'T11:20:00-05:00', {snap: briefed, whoop: whoopToday, state: carried}, 'reload');
+    ok('runner, reload: the brief written at 6:15 is rewritten now, from this morning’s WHOOP',
+       r.api.length === 1 && r.api[0].whoop === true && !!r.last && r.last.agents.brief.at > DAY + 'T16:00' && /reload: rewrote the brief/.test(r.log),
+       (r.last && r.last.agents.brief.at) + ' | ' + r.log.slice(-300));
+    r = runR('auto-written', DAY + 'T09:00:00-05:00', {snap: briefed, whoop: whoopToday, state: carried});
+    ok('runner, 9 AM with a brief already out and WHOOP unchanged: nothing is rewritten', r.api.length === 0 && r.pushes === 0);
+    const drift = JSON.parse(JSON.stringify(whoopToday)); drift.recovery.score = 41;
+    r = runR('drift', DAY + 'T10:00:00-05:00', {snap: briefed, whoop: drift, state: carried});
+    ok('runner, 10 AM after WHOOP rescored the morning 64 → 41: the brief is rewritten once, by itself', r.api.length === 1 && !!r.last && r.last.agents.brief.whoopScore === 41 && r.last.agents.brief.rescored === true,
+       r.log.slice(-300));
+  } catch (e) {
+    ok('server runner (end to end)', false, e.stack);
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

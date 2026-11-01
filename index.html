@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-10-28-v1">
+<meta name="ironhub-build" content="2026-11-01-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24645,9 +24645,10 @@ function homeBriefHTML(brief){
       // it quotes (briefDriftNote).
       (briefDriftNote(brief)
         ? '<p class="small" style="color:var(--warn);margin-top:6px">'+esc(briefDriftNote(brief))+'</p>'+
-          '<button class="btn ghost sm" style="margin-top:6px" '+(_agBriefRunning?'disabled':'')+
-          ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing…':'Rewrite')+'</button>'
+          '<button class="btn ghost sm" style="margin-top:6px" '+(briefReloadBusy()?'disabled':'')+
+          ' onclick="briefReload()">'+(briefReloadBusy()?'Reloading…':'Reload')+'</button>'
         : '')+
+      (briefReloadNote() ? '<p class="small" style="color:var(--dim);margin-top:6px">'+esc(briefReloadNote())+'</p>' : '')+
       '<p class="small" style="color:var(--dim);margin-top:6px">ZULU · '+esc(fmtDate(brief.date))+'</p></div></div>';
   }
   /* No brief used to render as nothing at all, which is indistinguishable from a brief that simply
@@ -24660,8 +24661,9 @@ function homeBriefHTML(brief){
       esc(tr.reason)+'.'+(tr.detail ? ' '+esc(tr.detail)+'.' : '')+'</p>'+
       '<p class="small" style="color:var(--dim);margin-top:4px">Checked '+tr.n+
       (tr.n===1?' time':' times')+', last at '+esc(new Date(tr.at).toLocaleTimeString())+'.</p>'+
-      '<button class="btn ghost sm" style="margin-top:8px" '+(_agBriefRunning?'disabled':'')+
-      ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing'+String.fromCharCode(8230)
+      (briefReloadNote() ? '<p class="small" style="color:var(--dim);margin-top:6px">'+esc(briefReloadNote())+'</p>' : '')+
+      '<button class="btn ghost sm" style="margin-top:8px" '+(briefReloadBusy()?'disabled':'')+
+      ' onclick="briefReload()">'+(briefReloadBusy()?'Writing'+String.fromCharCode(8230)
         :'Write it now')+'</button></div>';
   }
   return '';
@@ -25402,16 +25404,17 @@ function renderOps(){
       // control on it anywhere. That is a dead end on the one card whose whole value is being
       // current, and it is the case Mark actually hit.
       '<button class="btn ghost sm" style="margin-left:auto" '+
-        (_agBriefRunning?'disabled':'')+' onclick="agRunBrief(true)">'+
-        (_agBriefRunning?'Writing'+String.fromCharCode(8230)
-          :_briefToday?'Rewrite':'Write today'+String.fromCharCode(8217)+'s')+'</button>'+
+        (briefReloadBusy()?'disabled':'')+' onclick="briefReload()">'+
+        (briefReloadBusy()?'Reloading'+String.fromCharCode(8230)
+          :_briefToday?'Reload':'Write today'+String.fromCharCode(8217)+'s')+'</button>'+
       '</div>'+
       '<p class="small" style="margin-top:6px">'+esc(_brief.text)+'</p>'+
+      (briefReloadNote() ? '<p class="small" style="margin-top:6px;color:var(--dim)">'+esc(briefReloadNote())+'</p>' : '')+
       // Says which of the two stories this card is telling. Without it a brief that opens "no
       // recovery data" next to a status strip showing a real number just looks broken.
       (_briefToday && briefDriftNote(_brief)
         ? '<p class="small" style="margin-top:6px;color:var(--warn)">'+esc(briefDriftNote(_brief))+
-          ' Rewrite to fold it in.</p>' : '')+
+          ' Reload to fold it in.</p>' : '')+
       '</div>';
   } else {
     // No brief at all is a normal state before the first morning run, not an error -- say which
@@ -25419,8 +25422,9 @@ function renderOps(){
     h += '<div class="card" style="border-left:3px solid '+AGENTS.zulu.col+'">'+
       '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'+
       '<b style="color:'+AGENTS.zulu.col+';letter-spacing:.04em">DAILY BRIEF</b>'+
-      '<button class="btn ghost sm" style="margin-left:auto" '+(_agBriefRunning?'disabled':'')+
-        ' onclick="agRunBrief(true)">'+(_agBriefRunning?'Writing'+String.fromCharCode(8230):'Write it now')+'</button></div>'+
+      '<button class="btn ghost sm" style="margin-left:auto" '+(briefReloadBusy()?'disabled':'')+
+        ' onclick="briefReload()">'+(briefReloadBusy()?'Writing'+String.fromCharCode(8230):'Write it now')+'</button></div>'+
+      (briefReloadNote() ? '<p class="small" style="margin-top:6px;color:var(--dim)">'+esc(briefReloadNote())+'</p>' : '')+
       '<p class="ag-empty" style="margin-top:6px">'+
       (_agBriefRunning?'ZULU is writing this morning'+String.fromCharCode(8217)+'s brief'+String.fromCharCode(8230)
         :'Not written yet today \u2014 it goes out each morning once your WHOOP recovery lands.')+'</p></div>';
@@ -25656,9 +25660,9 @@ function briefWhoopDetail(){
   return 'WHOOP has today at '+w.score+'%';
 }
 
-/* Fires on the first app open of the morning. There is no backend and no service worker, so
-   "in the morning" can only mean "the first time he opens it after AG_BRIEF_HOUR" -- which is
-   the moment he would read it anyway. */
+/* Fires on the first app open of the morning, and since 2026-11-01 from the server runner every half hour from 6:00
+   to 10:30 (runnerTick(), with WHOOP re-read first), so a morning he never opens the app, or opens it on school
+   Wi-Fi, still gets its brief. Same gates either way: whichever writes first, the other finds it written. */
 function agMaybeMorningBrief(confirmed){
   const a = agState();
   if(!a.autoRun) return briefNote('auto-run is switched off in Ops');
@@ -25746,6 +25750,128 @@ async function agConfirmBriefThenWrite(){
   }catch(e){ console.warn('agConfirmBriefThenWrite failed', e); }
 }
 
+/* ---- the server runner (his ask, 2026-11-01) ----
+   On Oct 31 no device was open until 11:30 PM, so the 9 PM cycle started at 11:30. And on a school morning the
+   brief cannot be written from his phone at all, because school Wi-Fi blocks api.anthropic.com (2026-09-25).
+   So a GitHub Actions job (.github/workflows/agents.yml, scripts/agents/run.js) loads THIS file headless in jsdom,
+   the way the suite does, and calls runnerTick(). A Cloudflare cron (clock/) dispatches it at 9 PM and through the
+   morning, because GitHub's own schedule is the lottery the WHOOP relay measured. Nothing is re-implemented on
+   the server: the cycle, the brief and their gates are the functions below, and the push is syncPush(), with its
+   reconcile. The device keeps its own scheduler as the fallback.
+   - The runner is a device with no screen: fresh state each run, pulled from the gist; this file's boot never runs
+     (IRONHUB_HEADLESS, see the dispatcher at the bottom). Its usage log and device id are carried between runs in
+     the relay's state gist, so its spend counts toward the cap like a third device.
+   - S.agents.runner {at, did} is stamped when it did something. Seeing it within RUNNER_SEEN_DAYS, the device
+     leaves 9 PM to the server for RUNNER_GRACE_MIN, so the two do not both pay for a cycle at 9:01.
+   - Reload on the brief (briefReload()) dispatches the same job in 'reload' mode: GitHub answers on school Wi-Fi,
+     so the relay re-reads WHOOP and the brief is rewritten there. It lands through the ordinary 60 s pull. */
+const RUNNER_WORKFLOW = 'agents.yml';
+const RUNNER_GRACE_MIN = 45;     // the device's own 9 PM cycle waits this long once the server has been seen
+const RUNNER_SEEN_DAYS = 4;
+const RUNNER_RELOAD_WAIT_MS = 8 * 60000;   // past this, a Reload that never landed says so
+function runnerHeadless(){ try{ return !!window.IRONHUB_HEADLESS; }catch(e){ return false; } }
+function runnerSeen(now){
+  const r = S.agents && S.agents.runner;
+  return !!(r && +r.at > 0 && (now || Date.now()) - r.at < RUNNER_SEEN_DAYS * 864e5);
+}
+/* Minutes past 9 PM that the device still leaves to the server. 0 means go. */
+function runnerGraceLeft(d){
+  if(runnerHeadless() || !runnerSeen(d ? d.getTime() : 0)) return 0;
+  const t = d || new Date(), past = (t.getHours() - 21) * 60 + t.getMinutes();
+  return (past >= 0 && past < RUNNER_GRACE_MIN) ? RUNNER_GRACE_MIN - past : 0;
+}
+/* One server run. mode 'auto' does what the clock says (the 9 PM gate in the evening, the brief's gates in the
+   morning); 'reload' rewrites the brief now. Returns {did, why}; did is '' when nothing was written. The pull must
+   succeed first: a run on state it could not confirm is current would push it over the phone's. */
+async function runnerTick(mode){
+  if(!syncReady()) return {did:'', why:'no gist is configured'};
+  if(!S.settings.apiKey) return {did:'', why:'no API key is set'};
+  const pulled = await autoPullOnLoad();
+  if(!pulled) return {did:'', why:'the gist could not be read, so nothing ran'};
+  let did = '', why = '';
+  if(mode === 'reload'){
+    // Re-resolved after the pull: applyPulled() has replaced S. A manual write wins over one another device
+    // landed meanwhile, exactly as the Rewrite button's does.
+    const before = (agBrief() || {}).at || '';
+    await agRunBrief(true);
+    const b = agBrief();
+    if(b && (b.at || '') > before){ did = 'brief'; why = 'rewrote the brief'; }
+    else why = 'the brief was not rewritten (see the agents’ feed)';
+  } else if(new Date().getHours() >= 21){
+    const lastRun = agState().lastRun;
+    await agMaybeAutoRun();
+    if(agState().lastRun === todayKey() && lastRun !== todayKey()){ did = 'night'; why = 'ran tonight’s cycle'; }
+    else why = agState().lastRun === todayKey() ? 'tonight’s cycle had already run' : 'the 9 PM gate stayed closed';
+  } else {
+    const before = (agBrief() || {}).at || '';
+    // confirmed: the pull above is the check agConfirmBriefThenWrite() would make.
+    await agMaybeMorningBrief(true);
+    const b = agBrief();
+    if(b && (b.at || '') > before){ did = 'brief'; why = 'wrote the brief'; }
+    else { const tr = briefTrail(); why = 'no brief: ' + (tr ? tr.reason : 'the gate stayed closed'); }
+  }
+  if(did){ agState().runner = {at:Date.now(), did:did}; save(); }
+  return {did:did, why:why};
+}
+/* The debounced push would never fire before the job exits, so the runner pushes itself and says whether the gist
+   now holds everything. syncPush() swallows its error, so the watermarks are the answer. */
+async function runnerFlush(){
+  clearTimeout(_pushTimer); _pushTimer = null;
+  try{ if(spendLedgerSync()) save(false); }catch(e){}
+  const pending = function(){ return !!(S.meta && (S.meta.changedAt || 0) > (S.meta.pushedAt || 0)); };
+  for(let i = 0; i < 2 && pending(); i++) await syncPush(false);
+  return !pending();
+}
+
+/* ---- Reload on the brief ----
+   Module-scoped, never S: it is this device's tap, and the 30 s repaint must not lose it. */
+let _briefReload = null;   // {at, state:'sent'|'here'|'device', msg}
+function briefReloadState(){
+  const r = _briefReload;
+  if(!r) return null;
+  const b = agBrief();
+  if(r.state === 'sent' && b && Date.parse(b.at || '') > r.at) r.state = 'here';
+  if(r.state === 'sent' && Date.now() - r.at > RUNNER_RELOAD_WAIT_MS) return {state:'late'};
+  return r;
+}
+function briefReloadNote(){
+  const r = briefReloadState();
+  if(!r) return '';
+  if(r.state === 'sent') return 'Reloading on the server: WHOOP is being re-read and ZULU is rewriting it. About 2 minutes.';
+  if(r.state === 'late') return 'No new brief after 8 minutes. The server run may have failed (GitHub › Actions › Agents).';
+  if(r.state === 'device') return r.msg || '';
+  return '';
+}
+function briefReloadBusy(){ const r = briefReloadState(); return _agBriefRunning || !!(r && r.state === 'sent'); }
+function briefReloadRepaint(){
+  try{ renderOps(); }catch(e){}
+  try{ if(MODE==='review' && activeReviewTab==='home') renderHome(); }catch(e){}
+}
+async function briefReload(){
+  if(briefReloadBusy()) return;
+  if(!spendManualOk()) return;
+  // Without sync there is no server to ask, and until the server has run once (runnerSeen()) it may not be set up:
+  // a dispatch to a job with no API key would leave him waiting 8 minutes for nothing. Write it here, as Rewrite did.
+  if(!syncReady() || !runnerSeen()) return agRunBrief(true);
+  const over = !!spendBlock('brief');   // he has just said yes to going over the cap
+  _briefReload = {at:Date.now(), state:'sent'};
+  briefReloadRepaint();
+  let msg = '';
+  try{
+    const res = await fetch('https://api.github.com/repos/' + WHOOP_REPO + '/actions/workflows/' + RUNNER_WORKFLOW +
+      '/dispatches', {method:'POST', headers:ghHeaders(),
+      body:JSON.stringify({ref:'main', inputs:{mode:'reload', whoop:'1', over:over ? '1' : '0'}})});
+    if(res.status === 204){ briefReloadRepaint(); return; }
+    msg = 'GitHub refused the reload (' + res.status + (await ghErrMsg(res).then(function(g){ return g ? ': ' + g : ''; }, function(){ return ''; })) + ')';
+  }catch(e){ msg = 'GitHub could not be reached'; }
+  // The server path is closed, so try here. On a network that blocks the API this fails too, and agRunBrief() logs why.
+  _briefReload = {at:Date.now(), state:'device', msg:msg + ', so it is being rewritten on this device instead.'};
+  agLog('zulu', 'Reload: ' + msg + '. Rewriting on this device instead.');
+  briefReloadRepaint();
+  await agRunBrief(true);
+  briefReloadRepaint();
+}
+
 /* ---- 9 PM daily scheduler ---- */
 function agMaybeAutoRun(){
   const a = agState();
@@ -25753,6 +25879,8 @@ function agMaybeAutoRun(){
   if(!S.settings.apiKey) return;
   if(a.lastRun === todayKey()) return;
   if(new Date().getHours() < 21) return;
+  // The server runs it at 9 PM now (runnerTick()). The device steps in only once the server has had its window.
+  if(runnerGraceLeft()) return;
   // At the cap the cycle pauses rather than starting and failing request by request. Not stamped
   // as run, so raising the cap tonight lets it go; logged once a day so the pause leaves evidence.
   const sb = spendBlock();
@@ -25762,7 +25890,7 @@ function agMaybeAutoRun(){
   }
   // Nothing to confirm the gate against on an unsynced device: there is no second instance that
   // could have run tonight, so local state IS the truth. Stays synchronous, and costs no request.
-  if(!syncReady() || S.settings.autoSync === false){ agRunAll(false); return; }
+  if(!syncReady() || S.settings.autoSync === false) return agRunAll(false);
   return agConfirmGateThenRun();
 }
 
@@ -25814,7 +25942,10 @@ async function agConfirmGateThenRun(){
     if(!a.autoRun || _agRunning) return;
     if(!S.settings.apiKey) return;
     if(a.lastRun === todayKey()) return;
-    agRunAll(false);
+    // The pull may be what told this device the server exists.
+    if(runnerGraceLeft()) return;
+    // Returned so runnerTick() (and the suite) can await the cycle.
+    return await agRunAll(false);
   }catch(e){ console.warn('agConfirmGateThenRun failed', e); }
 }
 
@@ -26039,6 +26170,8 @@ try{ startLiveRefresh(); }catch(e){}
   }catch(e){}
   if(route === 'family'){ try{ famFamilyPage(); }catch(e){} return; }
   if(route === 'reply-copy'){ try{ famCopyPage(); }catch(e){} return; }
+  // The server runner (scripts/agents/run.js) drives runnerTick() itself: no screen, no timers, no boot.
+  if(runnerHeadless()) return;
   appBoot();
   if(route === 'reply'){ try{ famReviewFromHash(); }catch(e){} }
 })();
