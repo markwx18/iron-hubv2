@@ -32,6 +32,11 @@ app never loads anything from it. Its setup guide is `discord/README.md`.
 `node pantry/test_worker.js`, must be 0 failed). The app only ever fetches its URL (`FAM_DROP_URL`).
 Its setup guide is `pantry/README.md`.
 
+`clock/` is the alarm clock for the server runner, a Cloudflare Worker with one cron and one secret (its own
+`package.json`; `node clock/test_worker.js`, must be 0 failed). It only ever dispatches `.github/workflows/agents.yml`.
+`scripts/agents/run.js` is that workflow's runner: it loads `index.html` headless, so it is the app, not a copy of it.
+The setup guide is `clock/README.md`.
+
 ---
 
 ## Deploy workflow
@@ -79,7 +84,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3911 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3958 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -318,6 +323,7 @@ pushes. Now:
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
 | Agent questions | `qaDue()`, `qaTurn()` / `qaOfferTo()` (`QA_ORDER`), `qaSpecLine()`, `agValidateQuestion()` / `qaSimilar()`, `qaIngest()`, `qaOpen()`, `qaAnswer()` / `qaSkip()` / `qaUndo()`, `qaContextLine()`, `qaCardHTML()`, `qaHubHTML()`, `S.agents.questions` |
 | Track records & diagnosis | `agOutcome()`, `agTrack()` / `agTrackText()` / `agTrackLine()`, `hubTrackHTML()`; `pdTargets()`, `pdContextLine()` / `pdSpecLine()`, `agValidateDiagnosis()`, `pdReadHTML()`, `S.agents.diagnoses` |
+| Server runner | `runnerTick(mode)` / `runnerFlush()` (driven by `scripts/agents/run.js`), `runnerHeadless()` (`IRONHUB_HEADLESS`), `runnerSeen()` / `runnerGraceLeft()` (`S.agents.runner`, `RUNNER_GRACE_MIN`), Reload `briefReload()` / `briefReloadState()` / `briefReloadNote()` (`_briefReload`, `RUNNER_WORKFLOW`); `clock/src/worker.js` (`plan()`, `easternSlot()`, `tick()`) |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()` (the Hub: `hubFed()`, `hubStatus()`, `hubMapHTML()`, `hubAgentHTML()`, `hubSpendHTML()`), `coachValidateAction()` |
 | Chat actions | `CHAT_LANES` / `CHAT_ALL` / `chatActionsFor()`, `coachToolDefs(agent)`, `coachValidateAction(name, inp, agent)`, `coachExecuteAction()`, `coachStageProposals()`, `coachFindProposal()`, `coachApplyProposal()`, undo `coachUndoProposal()` / `chatUndoStore()` / `CHAT_UNDO_KEYS`, `chatHistoryMsgs()`; every chat's context and loop `chatContext()`, `agTodayContext()`, `chatActionRules()`, `chatActionHandler()` (`refused`); today-only `S.todayAdjust`, `todayAdjFor()` / `todayAdjApply()`, `liveTodayAdjRebuild()`, `todaySessionNames()` / `liveSessionNames()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
@@ -1668,6 +1674,32 @@ consequences to keep in mind:
   him find out at 6 AM. And read the body: `ghErrMsg()` surfaces GitHub's own `message`, because
   "cannot trigger Actions" is a guess at the cause and "Resource not accessible by personal
   access token" is the answer.
+
+**The agents run on a server now, and the server is the app** (his ask, 2026-11-01). On Oct 31 no device was open
+until 11:30 PM, so the 9 PM cycle started then, and on school Wi-Fi the brief cannot be written from his phone at all.
+Mark chose the API key as a repo secret (`ANTHROPIC_API_KEY`), a Cloudflare clock over GitHub's cron, and Reload plus
+an automatic rewrite at 10.
+- **The pieces.** `clock/` fires every 30 minutes and dispatches `.github/workflows/agents.yml` on the Eastern slots:
+  9:00, 9:30 and 10:00 PM, and every half hour from 6:00 to 10:30 AM with a WHOOP re-read first (a job in the relay's
+  own `whoop-sync` concurrency group, so two relays never spend one refresh token). `scripts/agents/run.js` loads
+  `index.html` in jsdom with `IRONHUB_HEADLESS`, so `appBoot()` never runs, and calls `runnerTick()` then
+  `runnerFlush()`.
+- **Nothing is re-implemented.** The gates are `agMaybeAutoRun()` and `agMaybeMorningBrief(true)`, the cycle is
+  `agRunAll()`, and the push is `syncPush()` with its reconcile. The suite runs the real script end to end, including a
+  phone session landing mid-cycle that must survive the push. A new boot-time duty does NOT run on the server, because
+  the boot does not; anything the server must do goes in `runnerTick()`.
+- **Fresh state each run, and the pull must succeed first.** Run on blank state, the 9 PM gate reads open and the push
+  would carry an empty history. `runnerTick()` returns at a failed pull. Only `ironhub:usage` and `ironhub:device`
+  carry over, in the state gist's `runner_local.json`. `spendLedgerSync()` rebuilds a day from the log, so a run
+  starting with an empty log would shrink the morning's spend; a state gist it cannot read is fatal for that reason.
+- **The device yields 9 PM for `RUNNER_GRACE_MIN` (45)** once `S.agents.runner` (stamped only when the server did
+  something) is within `RUNNER_SEEN_DAYS`, and asks again after its pre-pull. From 9:45 it runs the night itself if
+  the server did not.
+- **Reload** (`briefReload()`, every brief button) dispatches `mode: reload` after `spendManualOk()`, with `over:'1'` when
+  he said yes past the cap. It writes on the device instead when there is no sync, when the server has never run
+  (`runnerSeen()`; a job with no key would leave him waiting for nothing), or when GitHub refuses, naming GitHub's
+  reason in the feed. `_briefReload` is module-scoped; past `RUNNER_RELOAD_WAIT_MS` it says the run may have failed.
+- **The Actions log is public.** The runner prints what it did and nothing of his data, and the suite checks that.
 
 **A `setInterval` is not a scheduler on iOS.** Everything agent-side - the 9 PM cycle, the morning
 brief, the relay kick - is checked at boot and then on a 15-minute `setInterval`. That interval is

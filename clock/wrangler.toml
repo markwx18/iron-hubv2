@@ -1,0 +1,11 @@
+name = "ironhub-clock"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# Every 30 minutes, UTC. The Worker reads the Eastern clock and dispatches only on its slots (src/worker.js),
+# so daylight saving needs no edit here. 48 runs a day, well inside the free tier.
+[triggers]
+crons = ["0,30 * * * *"]
+
+# One secret, not in this file (the repo is public):  npx wrangler secret put GH_TOKEN
+# A token that can dispatch workflows on markwx18/iron-hubv2. See README.md.

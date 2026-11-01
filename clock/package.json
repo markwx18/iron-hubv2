@@ -1,0 +1,13 @@
+{
+  "name": "ironhub-clock",
+  "private": true,
+  "type": "module",
+  "description": "Starts Iron Hub's server runner on time. Deploy-time tooling only; the app never loads anything from here.",
+  "scripts": {
+    "test": "node test_worker.js",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.131.1"
+  }
+}

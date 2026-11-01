@@ -1,0 +1,89 @@
+# Iron Hub agents, on the server (his ask, 2026-11-01)
+#
+# The nightly cycle and the morning brief, with no device open. scripts/agents/run.js loads index.html -- the file
+# GitHub Pages serves -- headless and calls the app's own runnerTick(), so the cycle, the brief and their gates are
+# exactly the app's. It pushes through the app's own syncPush(), which reconciles with the gist first, so it can
+# never overwrite a session logged on the phone in the meantime.
+#
+# Started by:
+#   - the Cloudflare clock (clock/), at 9 PM and every half hour from 6:00 to 10:30 AM Eastern. GitHub's own cron
+#     is not used for this: the WHOOP relay measured it at a 3.2 h median gap on a 15-minute schedule.
+#   - the Reload button on the brief (briefReload() in the app), in 'reload' mode. GitHub answers on school
+#     Wi-Fi, which blocks api.anthropic.com, so the brief is rewritten here instead.
+#
+# ONE-TIME SETUP: add the repository secret ANTHROPIC_API_KEY. The others are the relay's and already exist
+# (IRONHUB_GIST_ID, IRONHUB_GIST_TOKEN, IRONHUB_STATE_GIST_ID, WHOOP_*). Then deploy clock/ (clock/README.md).
+#
+# The repo is public, so these logs are too. The runner prints what it did, never his data or the brief.
+
+name: Agents
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "auto (what the clock says) or reload (rewrite the brief now)"
+        required: false
+        default: auto
+      whoop:
+        description: "1 to re-read WHOOP first"
+        required: false
+        default: "0"
+      over:
+        description: "1 when he said yes to going over the monthly cap"
+        required: false
+        default: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  # One runner at a time: two cycles started a minute apart would both find the gate open.
+  group: agents
+  cancel-in-progress: false
+
+jobs:
+  whoop:
+    if: inputs.whoop == '1'
+    runs-on: ubuntu-latest
+    # The relay's own group, so this never runs beside a scheduled relay run: two at once would both spend the same
+    # rotating refresh token (see whoop-sync.yml).
+    concurrency:
+      group: whoop-sync
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Re-read WHOOP
+        env:
+          WHOOP_CLIENT_ID: ${{ secrets.WHOOP_CLIENT_ID }}
+          WHOOP_CLIENT_SECRET: ${{ secrets.WHOOP_CLIENT_SECRET }}
+          WHOOP_REFRESH_TOKEN: ${{ secrets.WHOOP_REFRESH_TOKEN }}
+          IRONHUB_GIST_ID: ${{ secrets.IRONHUB_GIST_ID }}
+          IRONHUB_GIST_TOKEN: ${{ secrets.IRONHUB_GIST_TOKEN }}
+          IRONHUB_STATE_GIST_ID: ${{ secrets.IRONHUB_STATE_GIST_ID }}
+        run: node scripts/whoop/whoop-sync.js
+
+  agents:
+    needs: whoop
+    # Runs whether the re-read ran, failed or was skipped: a brief without this morning's WHOOP is still a brief,
+    # and the app's gates decide whether to wait for it.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install jsdom
+        run: npm install --no-save --no-package-lock jsdom@29.1.1
+      - name: Run the agents
+        env:
+          TZ: America/New_York
+          RUN_MODE: ${{ inputs.mode }}
+          RUN_OVER: ${{ inputs.over }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          IRONHUB_GIST_ID: ${{ secrets.IRONHUB_GIST_ID }}
+          IRONHUB_GIST_TOKEN: ${{ secrets.IRONHUB_GIST_TOKEN }}
+          IRONHUB_STATE_GIST_ID: ${{ secrets.IRONHUB_STATE_GIST_ID }}
+        run: node scripts/agents/run.js
