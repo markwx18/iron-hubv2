@@ -2730,10 +2730,11 @@ setTimeout(async () => {
     live = null;
   })();`);
 
-  console.log('=== BENCH PRACTICE REMOVED ===');
-  // The standalone Bench Practice log and DELTA's bpFreq target were removed 2026-08-25.
-  // These assert the feature is gone from every surface it reached, including the agent
-  // prompts — a leftover mention there would have the agents coaching a tool he no longer has.
+  console.log('=== BENCH PRACTICE V1 REMOVED ===');
+  // The first Bench Practice (a home-only modal) and DELTA's bpFreq target were removed 2026-08-25.
+  // These assert that version is gone from every surface it reached. Bench Practice came back on
+  // 2026-11-01 under its own key, with no fix type and its own agent line (agPracticeLine(), which is
+  // tested in its own section); none of the static prompt text below mentions it, and must not.
   ok('the modal and its helpers are gone', ev('typeof openBenchPractice') === 'undefined'
     && ev('typeof saveBenchPractice') === 'undefined' && ev('typeof bpSuggestedWeight') === 'undefined');
   ok('the overlay is out of the DOM', ev("document.getElementById('bpOverlay')") === null);
@@ -15782,6 +15783,143 @@ setTimeout(async () => {
   } finally {
     ev("if(window.__dkReal){ callClaudeWithData = window.__dkReal; delete window.__dkReal; delete window.__dkSys; delete window.__dkAns; delete window.__dkSnap; }");
     ev('if(window.__dkS){ S = JSON.parse(window.__dkS); delete window.__dkS; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== BENCH PRACTICE (2026-11-01) ===');
+  // Light extra bench on class days. Load, never strength: in volume and fatigue, out of e1RM trends and progression,
+  // and into the PR record only by beating it (his rule). The checks that read the clock (today's call, the schedule,
+  // the deload) are stubbed to a neutral day and then turned on one at a time, so the suite reads the same any day.
+  ev("window.__bpS = JSON.stringify(S); window.__bpCdk = currentDayKey; window.__bpCall = dayCall; window.__bpDl = deloadActive; window.__bpConfirm = window.confirm;");
+  try {
+    const dk = (n) => ev("mesoAddDays(todayKey(), " + n + ")");
+    const T = ev('todayKey()');
+    ev("currentDayKey = function(){ return 'D2'; }; dayCall = function(){ return {call:'normal', why:[]}; }; deloadActive = function(){ return false; };");
+    // Messy on purpose: the best set is not always the first, and the three e1RMs are not a line.
+    ev("S.split = JSON.parse(JSON.stringify(DEFAULT_SPLIT)); S.pain = []; S.readiness = []; S.practice = []; S.prHistory = []; S.road = [];" +
+       "S.logs = [" +
+       "{id:9101, date:'" + dk(-20) + "', day:'D1', entries:[{exercise:'Barbell Bench Press', sets:[{w:185,r:6},{w:185,r:5},{w:175,r:8}]},{exercise:'Dips', sets:[{w:0,r:12}]}]}," +
+       "{id:9102, date:'" + dk(-13) + "', day:'D1', entries:[{exercise:'Barbell Bench Press', sets:[{w:190,r:5},{w:190,r:4},{w:180,r:7}]}]}," +
+       "{id:9103, date:'" + dk(-6) + "', day:'D1', entries:[{exercise:'Barbell Bench Press', sets:[{w:195,r:5},{w:185,r:6},{w:185,r:5}]}]}];");
+    ok('state: practice is its own synced collection, and the old key\'s prune leaves it alone',
+       ev("Array.isArray(DEFAULT_STATE.practice) && typeof SYNC_HISTORY.practice === 'object'") === true &&
+       ev("(pruneRemovedKeys(), 'practice' in S)") === true);
+
+    // The weight: 60% of the median of the last 3 clean e1RMs (222, 222, 227.5 -> 222 -> 133.2), rounded DOWN to 5.
+    const sug = ev('bpSuggest()');
+    ok('weight: 60% of his recent clean e1RM, rounded down to 5 lb', sug.w === 130 && sug.src === 'e1rm' && sug.e1 === 222, JSON.stringify(sug));
+    ev("window.__bpLogs = S.logs; S.logs = [];");
+    ok('weight: with no recent bench it starts at 145', ev('bpSuggest().w') === 145);
+    ev("S.logs = window.__bpLogs; delete window.__bpLogs;");
+    ok('plan: a neutral day has no warning, two sets at the suggested weight', ev("JSON.stringify([bpPlan().w, bpPlan().n, bpPlan().why])") === JSON.stringify([130, 2, '']));
+
+    // What it must never change, read before anything is logged.
+    const before = ev("JSON.stringify({s:e1rmSeries('Barbell Bench Press'), c:e1rmSeries('Barbell Bench Press', {excludeHome:true, excludeMod:true}), rec:recommend('Barbell Bench Press','ok'), " +
+                      "hist:historyFor('Barbell Bench Press').length, logs:S.logs.length, pw:plateauRisk('Barbell Bench Press'), ins:predTopsets().length})");
+    const best0 = ev("bestE1RM('Barbell Bench Press')"), snap0 = ev("snapshotPRs()['Barbell Bench Press']");
+    const wk0 = ev("JSON.stringify(weeklyVolumeByGroup('" + dk(-6) + "', '" + T + "'))");
+    const strain0 = ev("anStrainBetween('" + dk(-6) + "', '" + T + "')"), bm0 = ev("bmWeeklyVol('Chest')");
+
+    // The logger: two rows by default, typed values survive a repaint, a 4th set asks first.
+    ev("bpStart('log'); renderLog();");
+    ok('logger: opens with two sets at the suggested weight', ev("bpDraft.length") === 2 && ev("document.querySelectorAll('#log .bp-sets .setrow').length") === 2 &&
+       ev("document.querySelector('#log .bp-sets input[data-k=w]').value") === '130');
+    ev("(function(){ var r = document.querySelectorAll('#log .bp-sets input[data-k=r]'); r[0].value = '10'; bpInput(r[0]); r[1].value = '9'; bpInput(r[1]); })(); renderLog();");
+    ok('logger: typed reps are kept across a repaint', ev("document.querySelectorAll('#log .bp-sets input[data-k=r]')[1].value") === '9');
+    ev("window.__bpAsked = 0; window.confirm = function(){ window.__bpAsked++; return false; };");
+    ev("bpAddSet();");
+    ok('cap: a 3rd set is offered without asking', ev("bpDraft.length") === 3 && ev("window.__bpAsked") === 0 && /3 sets is the cap/.test(ev("bpCardHTML('log')")));
+    ev("bpAddSet();");
+    ok('cap: a 4th asks first, and a no leaves it at 3', ev("bpDraft.length") === 3 && ev("window.__bpAsked") === 1);
+    ev("window.confirm = function(){ window.__bpAsked++; return true; }; bpAddSet();");
+    ok('cap: the warning is soft, a yes adds the 4th', ev("bpDraft.length") === 4 && ev("window.__bpAsked") === 2);
+    ev("bpDraft.splice(2, 2); window.confirm = window.__bpConfirm;");
+    const ch0 = ev('S.meta.changedAt');
+    ev("bpSave();");
+    ok('save: one practice entry with his sets, saved to sync, and nothing in the logs',
+       ev("JSON.stringify(S.practice.map(function(p){ return [p.date, p.lift, p.sets]; }))") === JSON.stringify([[T, 'Barbell Bench Press', [{w:130, r:10}, {w:130, r:9}]]]) &&
+       ev("S.logs.length") === 3 && ev('S.meta.changedAt') >= ch0 && typeof ev('S.practice[0].t') === 'number' && ev('bpDraft') === null);
+
+    // Load: volume, the muscle map and the fatigue load all see the two sets.
+    const wk1 = JSON.parse(ev("JSON.stringify(weeklyVolumeByGroup('" + dk(-6) + "', '" + T + "'))")), w0 = JSON.parse(wk0);
+    ok('counted: weekly volume gains 2 chest sets and 1 triceps (secondary, half)', wk1.Chest - w0.Chest === 2 && wk1.Triceps - w0.Triceps === 1, JSON.stringify([w0.Chest, wk1.Chest, w0.Triceps, wk1.Triceps]));
+    ok('counted: the muscle map\'s weekly chest volume too', ev("bmWeeklyVol('Chest')") - bm0 === 2);
+    ok('counted: the fatigue load gains the two sets', Math.abs(ev("anStrainBetween('" + dk(-6) + "', '" + T + "')") - strain0 - 2) < 1e-9);
+
+    // Strength: nothing that judges the bench moves, and no PR from a light set.
+    const after = ev("JSON.stringify({s:e1rmSeries('Barbell Bench Press'), c:e1rmSeries('Barbell Bench Press', {excludeHome:true, excludeMod:true}), rec:recommend('Barbell Bench Press','ok'), " +
+                     "hist:historyFor('Barbell Bench Press').length, logs:S.logs.length, pw:plateauRisk('Barbell Bench Press'), ins:predTopsets().length})");
+    ok('excluded: e1RM trend, prescription, history, plateau watch and prediction record are unchanged', after === before);
+    ok('excluded: a light set leaves the record alone and logs no PR', ev("bestE1RM('Barbell Bench Press')") === best0 && ev("snapshotPRs()['Barbell Bench Press']") === snap0 && ev('S.prHistory.length') === 0);
+
+    // Upside only: a practice set that beats the record is a PR, and raises the best, but no prescription jumps off it.
+    ev("bpStart('log'); bpDraft = [{w:'205', r:'6'}]; bpSave();");
+    ok('upside: a practice set over the record is logged as a PR, marked practice', ev("S.prHistory.length") === 1 &&
+       ev("JSON.stringify([S.prHistory[0].exercise, S.prHistory[0].weight, S.prHistory[0].reps, S.prHistory[0].practice, S.prHistory[0].date])") === JSON.stringify(['Barbell Bench Press', 205, 6, true, T]));
+    ok('upside: it raises his best e1RM and heaviest weight', ev("bestE1RM('Barbell Bench Press')") === 246 && ev("actualPR('Barbell Bench Press').w") === 205);
+    const after2 = ev("JSON.stringify({s:e1rmSeries('Barbell Bench Press'), c:e1rmSeries('Barbell Bench Press', {excludeHome:true, excludeMod:true}), rec:recommend('Barbell Bench Press','ok'), " +
+                      "hist:historyFor('Barbell Bench Press').length, logs:S.logs.length, pw:plateauRisk('Barbell Bench Press'), ins:predTopsets().length})");
+    ok('upside: the trend and the next prescription still come from his sessions only', after2 === before);
+    ok('upside: the PR log labels it, and a replay of the history finds it too', /Bench Practice/.test(ev("anPRRow(S.prHistory[0])")) &&
+       ev("prBackfill().filter(function(r){ return r.practice && r.weight === 205; }).length") === 1);
+
+    // Sync: a practice set logged here after the snapshot this device pulls is kept.
+    ev("window.__bpMine = {practice: JSON.parse(JSON.stringify(S.practice))}; S.practice = [];");
+    ok('sync: a pull that lacks a newer practice entry keeps it', ev("mergeUnseenHistory(window.__bpMine, Date.now() - 60000)") === 2 && ev("S.practice.length") === 2);
+    ev("delete window.__bpMine;");
+
+    // Go lighter or skip, one reason at a time.
+    ev("S.logs.push({id:9104, date:'" + dk(-1) + "', day:'D1', entries:[{exercise:'Barbell Bench Press', sets:[{w:190,r:5}]}]});");
+    let pl = ev("bpPlan()");
+    ok('advice: a bench session yesterday says lighter or skip, and offers 10% less', pl.light === true && pl.w === 115 && /Go lighter or skip it: you benched yesterday\./.test(pl.why), JSON.stringify(pl.why));
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 9104; });");
+    ev("currentDayKey = function(){ return 'D1'; };");
+    ok('advice: bench still to come today says so', /bench is in today/.test(ev("bpPlan().why")));
+    ev("currentDayKey = function(){ return 'D2'; }; dayCall = function(){ return {call:'easy', why:['recovery 31%, 22 under your usual 53%']}; };");
+    ok('advice: an easy call says so, with its reason', /today is called easy \(recovery 31%/.test(ev("bpPlan().why")));
+    ev("dayCall = function(){ return {call:'normal', why:[]}; }; deloadActive = function(){ return true; };");
+    ok('advice: a deload week says so', /deload week/.test(ev("bpPlan().why")));
+    ev("deloadActive = function(){ return false; }; S.readiness.push({date:'" + T + "', sleep:'ok', sore:'beat up', energy:'ok', tier:'low'});");
+    ok('advice: a beat-up check-in says so', /checked in beat up/.test(ev("bpPlan().why")));
+    ev("S.readiness = [];");
+    ok('advice: back to a neutral day, no warning', ev("bpPlan().why") === '' && ev("bpPlan().w") === 130);
+
+    // Pain: a flag on a pressing lift stops Today offering it; one on a leg lift does not.
+    ev("S.pain = [{id:'pnbp1', date:'" + dk(-3) + "', exercise:'Barbell Back Squat', level:2, note:''}];");
+    ok('pain: a squat flag does not stop it', ev("bpPlan().adv.stop") === '' && /Bench practice/.test(ev("bpCardHTML('home')")));
+    ev("S.pain.unshift({id:'pnbp2', date:'" + dk(-3) + "', exercise:'Incline Dumbbell Press', level:2, note:''});");
+    ok('pain: a flag on a pressing lift in the last 14 days stops Today suggesting it', ev("bpCardHTML('home')") === '' && /Pain flagged on Incline Dumbbell Press/.test(ev("bpPlan().why")));
+    ok('pain: the Log card still takes one, with the reason on it', /Pain flagged on Incline Dumbbell Press/.test(ev("bpCardHTML('log')")) && /Log again/.test(ev("bpCardHTML('log')")));
+    ev("S.pain[0].date = '" + dk(-15) + "';");
+    ok('pain: an older flag no longer stops it', ev("bpPlan().adv.stop") === '');
+    ev("S.pain = [];");
+
+    // Today shows it and only reads; Log lists it, labelled, with a delete.
+    const sBefore = ev("JSON.stringify(S)");
+    ev("bpOpen = ''; bpDraft = null; renderHome();");
+    ok('Today: the card is there, says what was logged, and rendering it changes nothing in S',
+       /Bench practice/.test(ev("document.getElementById('home').innerHTML")) && /Logged today: 130 × 10, 130 × 9/.test(ev("document.getElementById('home').innerHTML")) &&
+       ev("JSON.stringify(S)") === sBefore);
+    ev("renderLog();");
+    ok('Log: entries are labelled Bench Practice', ev("document.querySelectorAll('#log .bp-row').length") === 2 && /Bench Practice · 205\s×\s6/.test(ev("document.getElementById('log').textContent")));
+    ev("window.confirm = function(){ return true; }; bpDelete(document.querySelector('#log .bp-row .rm'));");
+    ok('Log: delete removes that entry', ev("S.practice.length") === 1 && ev("document.querySelectorAll('#log .bp-row').length") === 1);
+    ev("window.confirm = window.__bpConfirm;");
+
+    // The agents: DELTA and ZULU get one line, CHARLIE and ECHO none, and no practice means no section.
+    ok('agents: DELTA and ZULU are told, at night and in chat', /BENCH PRACTICE \(his optional light bench/.test(ev("agBaseContext('delta')")) &&
+       /BENCH PRACTICE/.test(ev("agBaseContext('zulu')")) && /BENCH PRACTICE/.test(ev("chatContext('delta')")) && /BENCH PRACTICE/.test(ev("chatContext('zulu')")));
+    ok('agents: CHARLIE and ECHO are not', !/BENCH PRACTICE/.test(ev("agBaseContext('charlie')")) && !/BENCH PRACTICE/.test(ev("agBaseContext('echo')")) && !/BENCH PRACTICE/.test(ev("chatContext('echo')")));
+    const leftSets = ev("S.practice[0].sets.length");
+    ok('agents: the line says what it is and what it is not', new RegExp('1 session, ' + leftSets + ' sets? in the last 14 days').test(ev("agPracticeLine()")) &&
+       /never in e1RM trends, prescriptions or predictions/.test(ev("agPracticeLine()")), ev("agPracticeLine()"));
+    ev("S.practice[0].date = '" + dk(-15) + "';");
+    ok('agents: nothing in the last 14 days, no section', ev("agPracticeLine()") === '');
+  } catch (e) {
+    ok('bench practice section', false, e.stack);
+  } finally {
+    ev("currentDayKey = window.__bpCdk; dayCall = window.__bpCall; deloadActive = window.__bpDl; window.confirm = window.__bpConfirm; bpOpen = ''; bpDraft = null;");
+    ev("S = JSON.parse(window.__bpS); localStorage.setItem(LS_KEY, JSON.stringify(S)); ['__bpS','__bpCdk','__bpCall','__bpDl','__bpConfirm','__bpAsked'].forEach(function(k){ delete window[k]; });");
+    ev("var _o = document.querySelectorAll('.pr-overlay'); for(var i = 0; i < _o.length; i++) _o[i].remove();");
   }
 
   console.log('=== THE SERVER RUNNER: 9 PM WITH NO DEVICE OPEN, AND RELOAD ON THE BRIEF (2026-11-01) ===');

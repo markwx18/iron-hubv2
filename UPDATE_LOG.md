@@ -157,3 +157,11 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 - **The agents know what each lift trains.** DELTA and ZULU now get a fixed reference for every lift in your split (a low-to-high fly is the upper chest, a high-to-low fly the lower chest, an incline curl biases the long head, and so on). Where it disagrees with what the model remembers, the reference wins. A fly also no longer counts as triceps volume.
 - **The Desk**, a new tab in the Hub next to Agents and Flags. Each night the agents can post an observation, a note to each other or a reply, flag a stretch worth remembering, and add a small chart. The app draws every chart from your own data, so no number on a chart comes from a model. Last night's roundtable sits on top, replies sit under what they answer, and × hides a post. It changes nothing in your plan. No new API calls, a few cents a month more.
 - **A cleaner Strength chart.** The forecast now grows out of the trend line instead of dropping from your best. The range is one shaded band, the axis uses round numbers, the dates are short, and the heavy-week and calorie marks sit on their own lanes above the chart with a key under it. The numbers haven't changed.
+
+---
+
+## Bench Practice is back (Nov 1)
+
+- **A light extra bench for class days.** Tap **Log practice** on Today or in Train › Log. It offers 2 sets of 8–10 at about 60% of your recent bench e1RM, rounded down (145 until you have recent bench sessions), stopping with 4 or more reps left. You can add a 3rd set; a 4th asks first.
+- **It says when to go lighter or skip.** A bench session yesterday or today, bench later today, a deload, an Easy or Recover day, or a beat-up check-in: it drops the weight 10% and says why in one line. A pain flag on a chest, shoulder or triceps lift in the last two weeks takes it off Today.
+- **It counts as work, never as a weaker bench.** Practice sets count toward weekly volume, the muscle map and fatigue, so today's call sees them. They never touch your bench trend, your next prescription, the plateau watch or predictions. A practice set reaches your PRs only by beating your record, and the PR log marks it "Bench Practice". DELTA and ZULU see what you did as context. Nothing new costs anything.

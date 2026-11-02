@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-01-v1">
+<meta name="ironhub-build" content="2026-11-01-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -412,6 +412,16 @@
   .summary .s-feel,.summary .s-exp{margin-top:20px; text-align:left;}
   .summary .s-feel .rd3-pill,.summary .s-exp .rd3-pill{min-width:0; padding:10px 2px; font-size:12px;}
   .summary .s-feel-note{width:100%; margin-top:8px; box-sizing:border-box;}
+  .bp-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:4px;}
+  .bp-done{color:var(--good);}
+  .bp-why,.bp-cap{color:var(--warn); margin-top:6px;}
+  .bp-sets{display:flex; flex-direction:column; gap:7px; margin-top:10px;}
+  .bp-acts{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px;}
+  .bp-hist{margin-top:10px; border-top:1px solid var(--line);}
+  .bp-row{display:flex; align-items:center; gap:10px; min-width:0; padding:4px 0; border-bottom:1px solid var(--line);}
+  .bp-d{flex:none; width:48px; white-space:nowrap; font-family:var(--mono); font-size:11px; color:var(--dim);}
+  .bp-s{flex:1; min-width:0; overflow-wrap:anywhere; font-size:13px; line-height:1.4;}
+  .bp-row .rm{flex:none; background:none; border:none; color:var(--dim); font-size:16px; min-width:44px; min-height:36px;}
   .db-row{display:flex; gap:10px; margin-top:6px; line-height:1.45;}
   .db-row:first-child{margin-top:0;}
   .db-k{flex:none; width:76px; font-family:var(--disp); font-weight:600; font-size:12px; letter-spacing:.05em; color:var(--muted); padding-top:1px;}
@@ -2296,6 +2306,7 @@ const DEFAULT_STATE = {
   road: [],                    // {id, exercise, target, start, deadline}
   readiness: [],               // {date, sleep, sore, energy, tier}
   pain: [],                    // {id, date, exercise, level 1-3, note} — flagged from LIVE
+  practice: [],                // {id, date, lift, sets:[{w,r}], t} — Bench Practice. Never in logs: see BP_LIFT.
   experiments: {active:null, history:[], declined:{}, lastEnded:''},   // see expState(); replaced whole on a pull
   weekPlan: null,              // {week, input:{days:{date:[tags]}, text}, at, reply?, skipped?, err?} — the Sunday check-in
   targetHist: [],              // {id, kind:'cal'|'pro', from, to, date, by, t} — every target change. See fuelTargetSet().
@@ -2349,7 +2360,9 @@ function load(){
                            an older build still open on another device would keep resolving
                            the calendar through the window, and there is no longer any UI
                            that could turn it off.
-     benchPractice       — the standalone home bench-frequency log, removed with its modal.
+     benchPractice       — the standalone home bench-frequency log, removed with its modal. Bench
+                           Practice came back on 2026-11-01 under its own key (S.practice, see BP_LIFT),
+                           so this one still goes.
      benchPracticeFreq   — DELTA’s frequency target for it, set through the retired bpFreq fix.
      audit               — the weekly audit's proposals, retired 2026-09-28 (see staleExercises()). */
 const REMOVED_STATE_KEYS = ['dateOverrides','tempStrengthSplit','tempStrengthWindow','benchPractice','benchPracticeFreq','audit'];
@@ -2529,6 +2542,7 @@ const SYNC_HISTORY = {
   logs:      {key: r=>'l|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||'')},
   prHistory: {key: r=>'p|'+r.exercise+'|'+r.date+'|'+r.e1rm, ord: r=>String(r.date||''), cap:()=>PR_HISTORY_MAX},
   pain:      {key: r=>'x|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||''), desc:true, cap:()=>200},
+  practice:  {key: r=>'b|'+r.id,   ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>BP_KEEP},
   sessionMeta: {key: r=>'m|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>SESSION_META_MAX},
   predictions: {key: r=>'q|'+r.id, ord: r=>String(r.madeOn||'')+'|'+String(r.id||''), cap:()=>PRED_MAX},
   spend:     {key: r=>'$|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.dev||''), cap:()=>SPEND_REC_MAX},
@@ -3515,6 +3529,7 @@ function heatmapHTML(){
     m.p.forEach(g=>{ if(vol[g]!=null) vol[g]+=n; });
     m.s.forEach(g=>{ if(vol[g]!=null) vol[g]+=n*0.5; });
   }));
+  practiceVolInto(vol, cutKey, '9999-12-31');
   const resetLabel = scheduleMode()==='cycle' ? 'resets after full cycle' : 'resets after rest day';
   let html = '<h2>Weekly Volume Heatmap <span style="font-weight:400;letter-spacing:0;text-transform:none">(this training week \u00b7 since '+fmtDate(cutKey)+' \u00b7 '+resetLabel+' \u00b7 secondary muscles count half)</span></h2><div class="hm">';
   MUSCLE_GROUPS.forEach(g=>{
@@ -3534,7 +3549,11 @@ function heatmapHTML(){
 }
 
 /* ================= PR CELEBRATION ================= */
-function bestE1RM(ex){ const pts = e1rmSeries(ex); return pts.length ? Math.max(...pts.map(p=>p.v)) : 0; }
+function bestE1RM(ex){
+  const pts = e1rmSeries(ex);
+  // Practice sets reach the record and nothing else (upside only, see BP_LIFT): a max cannot fall.
+  return Math.max(pts.length ? Math.max(...pts.map(p=>p.v)) : 0, practiceBestE1RM(ex));
+}
 /* The literal heaviest weight ever lifted for an exercise (any rep count), tie-broken
    by higher reps at that same weight. This is the "realistic" PR — no formula, no
    extrapolation, just the actual heaviest plate you've put up. */
@@ -3566,6 +3585,8 @@ function actualPR(ex){
       });
     });
   });
+  // Practice sets only ever raise it (see BP_LIFT): a lighter one is never heavier than the best.
+  practiceSetsFor(ex).forEach(s=>{ if(!best || s.w>best.w) best = {w:s.w, r:s.r, date:s.date}; });
   return best;
 }
 function prWatchList(){ return [...new Set([...Object.keys(PR_LIFTS), ...S.road.map(g=>g.exercise)])]; }
@@ -3587,6 +3608,13 @@ function snapshotPRs(){
       if(v>0 && (!(e.exercise in m) || v>m[e.exercise])) m[e.exercise] = v;
     }));
   });
+  // Practice sets too, which can only raise a lift's best: a practice set is a PR when it beats the record.
+  practiceState().forEach(p=>(p.sets||[]).forEach(s=>{
+    const w = +s.w||0, r = +s.r||0;
+    if(w<=0 || r<=0) return;
+    const v = epley(w,r);
+    if(v>0 && (!(p.lift in m) || v>m[p.lift])) m[p.lift] = v;
+  }));
   return m;
 }
 /* The set that actually produced the current best e1RM. Earliest one wins a tie —
@@ -3605,6 +3633,11 @@ function prBestSetFor(ex){
       });
     });
   });
+  // A practice set only wins by being strictly better; an earlier logged set keeps a tie.
+  practiceSetsFor(ex).forEach(s=>{
+    const v = epley(s.w, s.r);
+    if(v>0 && (!best || v>best.v)) best = {w:s.w, r:s.r, v, date:s.date, practice:true};
+  });
   return best;
 }
 /* Record one PR row. Returns true only if it was actually written — a repeat call with
@@ -3616,8 +3649,10 @@ function prAppend(ex, now, prev){
   const e1 = Math.round(now*10)/10;
   if(!Array.isArray(S.prHistory)) S.prHistory = [];
   if(S.prHistory.some(p=>p.exercise===ex && p.date===bs.date && Math.abs(p.e1rm-e1)<0.05)) return false;
-  S.prHistory.push(stampRec({exercise:ex, weight:bs.w, reps:bs.r, e1rm:e1,
-                    prev:Math.round(prev*10)/10, gain:Math.round((now-prev)*10)/10, date:bs.date}));
+  const row = {exercise:ex, weight:bs.w, reps:bs.r, e1rm:e1,
+               prev:Math.round(prev*10)/10, gain:Math.round((now-prev)*10)/10, date:bs.date};
+  if(bs.practice) row.practice = true;
+  S.prHistory.push(stampRec(row));
   if(S.prHistory.length > PR_HISTORY_MAX) S.prHistory = S.prHistory.slice(-PR_HISTORY_MAX);
   return true;
 }
@@ -3640,7 +3675,10 @@ function checkPRs(before){
    max is computed exactly the way checkPRs() computes it live, so a backfilled row and a
    live-detected row mean the same thing. */
 function prBackfill(){
-  const logs = [...S.logs].filter(l=>!l.deload).sort((a,b)=>a.date.localeCompare(b.date));
+  // Practice rows replay as sessions of their own, so a practice set that beat the record is a row here too.
+  const logs = [...S.logs].filter(l=>!l.deload)
+    .concat(practiceState().map(p=>({date:p.date, practice:true, entries:[{exercise:p.lift, sets:p.sets||[]}]})))
+    .sort((a,b)=>a.date.localeCompare(b.date));
   const best = {}, out = [];
   logs.forEach(l=>{
     // Reduce to the session's best set per exercise first. Comparing set-by-set would emit
@@ -3655,8 +3693,10 @@ function prBackfill(){
     Object.keys(sess).forEach(ex=>{
       const cur = sess[ex], prev = best[ex] || 0;
       if(prev > 0 && cur.v > prev + 0.01){
-        out.push({exercise:ex, weight:cur.w, reps:cur.r, e1rm:Math.round(cur.v*10)/10,
-                  prev:Math.round(prev*10)/10, gain:Math.round((cur.v-prev)*10)/10, date:l.date});
+        const row = {exercise:ex, weight:cur.w, reps:cur.r, e1rm:Math.round(cur.v*10)/10,
+                     prev:Math.round(prev*10)/10, gain:Math.round((cur.v-prev)*10)/10, date:l.date};
+        if(l.practice) row.practice = true;
+        out.push(row);
       }
       if(cur.v > prev) best[ex] = cur.v;
     });
@@ -4372,6 +4412,7 @@ function renderLog(){
 
   let html = '';
   try{ html += logHeroHTML(); }catch(e){}
+  try{ html += bpCardHTML('log'); }catch(e){ console.warn('bench practice card failed', e); }
   html += logChipsHTML();
   const all = [...S.logs].sort((a,b)=>b.date.localeCompare(a.date));
   const shown = all.filter(function(l){ return logFilter === 'all' ? true : logFilter === 'pr' ? logPRsOn(l).length > 0 : l.day === logFilter; }).slice(0, LOG_ROWS);
@@ -4426,6 +4467,216 @@ function saveManual(){
   const beforePR = snapshotPRs();
   S.logs.push(stampRec({id:Date.now(), date, day:dk, entries}));
   save(); checkPRs(beforePR); renderLog(); renderProgress();
+}
+
+/* ================= BENCH PRACTICE ================= */
+/* A light extra bench on the days his fitness-for-life class lets him lift, about every other day (his ask,
+   2026-11-01). The first one (2026-08-08 to 08-25) was home-only, counted for nothing, and DELTA tuned it through a
+   bpFreq fix, which stays gone. This one is load, never strength:
+   - It lives in S.practice {id, date, lift, sets:[{w,r}], t}, a SYNC_HISTORY collection, never in S.logs. Everything
+     that judges strength reads S.logs (e1rmSeries(), recommend() / classifyDecision(), the prediction record, the
+     plateau watch, Investigation, the streak, CHARLIE's sheet), so light sets leave all of it alone with no opt-out
+     anywhere. A second log on a training day would also break the many readers that expect one session a day.
+   - It opts IN where it is load: weeklyVolumeByGroup(), heatmapHTML(), bmWeeklyVol() and anStrainBetween(), so
+     fatigueIndex() and today's call see it.
+   - Upside only (his rule): the PR readers take their max over practice sets too (bestE1RM(), snapshotPRs(),
+     prBestSetFor(), prBackfill(), actualPR()). A max cannot fall, so a practice set counts only by beating the record,
+     and a 145 x 6 can never read as a weaker bench.
+   - Light on purpose: BP_PCT of his recent clean e1RM, BP_SETS_DEFAULT sets, BP_SETS_MAX offered, a 4th asks first.
+   - bpAdvice() says go lighter or skip, in one line: a bench session yesterday or today (or bench still to come
+     today), a deload, an easy or recover call, or a beat-up check-in. A pain flag on a chest, shoulder or triceps lift
+     in BP_PAIN_DAYS stops Today offering it at all; the Log card still takes one, with the reason on it. */
+const BP_LIFT = 'Barbell Bench Press';
+const BP_PCT = 0.6, BP_DEFAULT_W = 145, BP_LO = 8, BP_HI = 10, BP_LIGHTER = 0.9;
+const BP_SETS_DEFAULT = 2, BP_SETS_MAX = 3, BP_PAIN_DAYS = 14, BP_RECENT_DAYS = 56, BP_AGENT_DAYS = 14, BP_KEEP = 300;
+// A pure read: Today only reads, and the suite checks a render leaves S byte-identical.
+function practiceState(){ return (S && Array.isArray(S.practice)) ? S.practice : []; }
+function practiceRows(from, to){
+  return practiceState().filter(function(p){ return p && Array.isArray(p.sets) && p.date >= from && p.date <= to; });
+}
+/* Every practice set on a lift, oldest first, for the PR readers. */
+function practiceSetsFor(ex){
+  const out = [];
+  practiceState().filter(function(p){ return p && p.lift === ex && Array.isArray(p.sets); })
+    .sort(function(a, b){ return String(a.date).localeCompare(String(b.date)); })
+    .forEach(function(p){ p.sets.forEach(function(s){
+      const w = +(s && s.w) || 0, r = +(s && s.r) || 0;
+      if(w > 0 && r > 0) out.push({w:w, r:r, date:p.date});
+    }); });
+  return out;
+}
+function practiceBestE1RM(ex){
+  let best = 0;
+  practiceSetsFor(ex).forEach(function(s){ const v = epley(s.w, s.r); if(v > best) best = v; });
+  return Math.round(best*10)/10;
+}
+/* Practice sets into a per-muscle volume map, counted the way the logs are (primary 1, secondary 0.5). */
+function practiceVolInto(vol, from, to){
+  practiceRows(from, to).forEach(function(p){
+    const m = musclesFor(p.lift), n = p.sets.length;
+    m.p.forEach(function(g){ if(vol[g] != null) vol[g] += n; });
+    m.s.forEach(function(g){ if(vol[g] != null) vol[g] += n*0.5; });
+  });
+  return vol;
+}
+function bpSetsText(p){ return (p.sets || []).map(function(s){ return s.w+' × '+s.r; }).join(', '); }
+/* The weight to offer: BP_PCT of his recent clean e1RM (the median of the last 3 clean sessions in BP_RECENT_DAYS, so
+   one great or bad day does not move it), rounded DOWN to 5 lb, a bar with 2.5 pairs. Never up: it is meant to be light.
+   With no recent bench, BP_DEFAULT_W. */
+function bpSuggest(){
+  try{
+    const since = mesoAddDays(todayKey(), -BP_RECENT_DAYS);
+    const v = e1rmSeries(BP_LIFT, {excludeHome:true, excludeMod:true})
+      .filter(function(p){ return p.date >= since; }).slice(-3).map(function(p){ return p.v; }).sort(function(a, b){ return a - b; });
+    if(v.length){
+      const med = v.length % 2 ? v[(v.length-1)/2] : (v[v.length/2-1] + v[v.length/2]) / 2;
+      return {w:Math.max(GEAR_BAR, Math.floor(med * BP_PCT / 5) * 5), e1:Math.round(med), src:'e1rm'};
+    }
+  }catch(e){}
+  return {w:BP_DEFAULT_W, e1:0, src:'default'};
+}
+/* Why today is a day to go lighter or skip it ({lighter:[reasons]}), or not to do it at all ({stop:text}). Every check
+   is guarded on its own, so one that throws costs only its own reason. */
+function bpAdvice(){
+  const t = todayKey(), y = mesoAddDays(t, -1), out = {stop:'', lighter:[]};
+  try{
+    const pain = painRecent(BP_PAIN_DAYS).find(function(p){
+      const m = musclesFor(p.exercise);
+      return ['Chest', 'Shoulders', 'Triceps'].some(function(g){ return m.p.indexOf(g) >= 0 || m.s.indexOf(g) >= 0; });
+    });
+    if(pain) out.stop = 'Pain flagged on '+pain.exercise+' '+(pain.date === t ? 'today' : fmtDate(pain.date))+': skip practice until it settles.';
+  }catch(e){}
+  try{
+    const benched = (S.logs || []).filter(function(l){ return l && !l.deload && (l.date === t || l.date === y) &&
+      (l.entries || []).some(function(e){ return e.exercise === BP_LIFT; }); });
+    if(benched.length) out.lighter.push('you benched '+(benched.some(function(l){ return l.date === t; }) ? 'today' : 'yesterday'));
+    else {
+      const dk = currentDayKey();
+      if(dk && dk !== 'REST' && !(S.logs || []).some(function(l){ return l && l.date === t; }) && dayExNames(dk).indexOf(BP_LIFT) >= 0)
+        out.lighter.push('bench is in today’s session');
+    }
+  }catch(e){}
+  try{ if(deloadActive()) out.lighter.push('it is a deload week'); }catch(e){}
+  try{
+    const dk = currentDayKey();
+    const c = dayCall(t, dk === 'REST' ? null : dk);
+    if(c && (c.call === 'easy' || c.call === 'recover')) out.lighter.push('today is called '+c.call+(c.why && c.why[0] ? ' ('+c.why[0]+')' : ''));
+  }catch(e){}
+  try{ const rd = todayReadiness(); if(rd && rd.sore === 'beat up') out.lighter.push('you checked in beat up'); }catch(e){}
+  return out;
+}
+function bpPlan(){
+  const s = bpSuggest(), a = bpAdvice(), light = a.lighter.length > 0;
+  return {w: light ? Math.max(GEAR_BAR, Math.floor(s.w * BP_LIGHTER / 5) * 5) : s.w, n:BP_SETS_DEFAULT, base:s, adv:a, light:light,
+          why: a.stop || (light ? 'Go lighter or skip it: '+a.lighter.slice(0, 2).join('; ')+'.' : '')};
+}
+// Which card is open ('home' or 'log') and what is typed in it: module-scoped, so the 30 s repaint keeps both.
+let bpOpen = '', bpDraft = null;
+function bpCardHTML(where){
+  const pl = bpPlan();
+  if(where === 'home' && (pl.adv.stop || (live && live.date === todayKey()))) return '';
+  const done = practiceState().filter(function(p){ return p && p.date === todayKey(); });
+  const open = bpOpen === where && Array.isArray(bpDraft);
+  let h = '<div class="card bp-card"><div class="bp-head"><span class="k">Bench practice</span>'+
+    (open ? '' : '<button class="btn sm'+(done.length ? ' ghost' : '')+'" onclick="bpStart(\''+where+'\')">'+(done.length ? 'Log again' : 'Log practice')+'</button>')+'</div>';
+  if(done.length) h += '<p class="small bp-done">✓ Logged today: '+esc(done.map(bpSetsText).join(' · '))+'</p>';
+  else {
+    const pct = Math.round(BP_PCT*100)+'% of your recent e1RM ('+pl.base.e1+')';
+    h += '<p class="small">'+pl.n+' × '+BP_LO+'–'+BP_HI+' at '+pl.w+' lb, stopping with 4 or more reps left. '+
+      (pl.base.src !== 'e1rm' ? 'It starts at '+BP_DEFAULT_W+' until you have recent bench sessions.' :
+       pl.light ? 'Your usual is '+pl.base.w+', '+pct+'.' : 'That is '+pct+'.')+'</p>';
+  }
+  if(pl.why) h += '<p class="small bp-why">'+esc(pl.why)+'</p>';
+  if(open){
+    h += '<div class="bp-sets">'+bpDraft.map(function(s, i){
+      return '<div class="setrow"><span class="sn">S'+(i+1)+'</span>'+
+        '<input inputmode="decimal" aria-label="Set '+(i+1)+' weight" placeholder="lb" data-bp="'+i+'" data-k="w" value="'+esc(String(s.w))+'" oninput="bpInput(this)"><span>×</span>'+
+        '<input inputmode="numeric" aria-label="Set '+(i+1)+' reps" placeholder="reps" data-bp="'+i+'" data-k="r" value="'+esc(String(s.r))+'" oninput="bpInput(this)">'+
+        '<button class="rm" title="Remove set" aria-label="Remove set '+(i+1)+'" data-bp="'+i+'" onclick="bpRemoveSet(this)">×</button></div>';
+    }).join('')+'</div>'+
+    (bpDraft.length >= BP_SETS_MAX ? '<p class="small bp-cap">'+BP_SETS_MAX+' sets is the cap, so practice stays light.</p>' : '')+
+    '<div class="bp-acts"><button class="btn sm" onclick="bpSave()">Save practice</button>'+
+    '<button class="btn ghost sm" onclick="bpAddSet()">+ set</button>'+
+    '<button class="btn ghost sm" onclick="bpCancel()">Cancel</button><span class="small err" id="bpMsg"></span></div>';
+  }
+  if(where === 'log'){
+    const rec = practiceState().filter(function(p){ return p && p.date; }).slice()
+      .sort(function(a, b){ return String(b.date).localeCompare(String(a.date)); }).slice(0, 6);
+    if(rec.length) h += '<div class="bp-hist">'+rec.map(function(p){
+      return '<div class="bp-row"><span class="bp-d">'+esc(homeShortDate(p.date))+'</span><span class="bp-s">Bench Practice · '+esc(bpSetsText(p)).replace(/ × /g, ' × ')+'</span>'+
+        '<button class="rm" title="Delete" aria-label="Delete practice on '+esc(fmtDate(p.date))+'" data-bp-id="'+esc(String(p.id))+'" onclick="bpDelete(this)">×</button></div>';
+    }).join('')+'</div>';
+  }
+  return h+'</div>';
+}
+function bpRepaint(){
+  // A tap on iOS can leave the input focused, and refreshBlocked() would then skip the repaint.
+  try{ const a = document.activeElement; if(a && a.blur && a !== document.body) a.blur(); }catch(e){}
+  try{ if(activeMainTab === 'home' && MODE !== 'live'){ renderHome(); return; } }catch(e){}
+  try{ renderLog(); }catch(e){ console.warn('renderLog failed', e); }
+}
+function bpStart(where){
+  const w = bpPlan().w;
+  bpOpen = where; bpDraft = [];
+  for(let i = 0; i < BP_SETS_DEFAULT; i++) bpDraft.push({w:w, r:''});
+  bpRepaint();
+}
+function bpInput(el){
+  const i = +el.dataset.bp, k = el.dataset.k;
+  if(Array.isArray(bpDraft) && bpDraft[i] && (k === 'w' || k === 'r')) bpDraft[i][k] = el.value;
+}
+/* The cap is soft: past BP_SETS_MAX it asks, because a 4th set is real work on top of his bench days. */
+function bpAddSet(){
+  if(!Array.isArray(bpDraft)) return;
+  if(bpDraft.length >= BP_SETS_MAX &&
+     !confirm('Practice is capped at '+BP_SETS_MAX+' sets so it stays light and leaves your bench days alone. Add set '+(bpDraft.length+1)+' anyway?')) return;
+  const last = bpDraft[bpDraft.length-1];
+  bpDraft.push({w: last ? last.w : bpPlan().w, r:''});
+  bpRepaint();
+}
+function bpRemoveSet(el){
+  const i = +el.dataset.bp;
+  if(Array.isArray(bpDraft) && bpDraft[i]) bpDraft.splice(i, 1);
+  bpRepaint();
+}
+function bpCancel(){ bpOpen = ''; bpDraft = null; bpRepaint(); }
+function bpSave(){
+  const sets = [];
+  (bpDraft || []).forEach(function(s){
+    const w = +s.w, r = Math.round(+s.r);
+    if(w > 0 && w <= 1000 && r > 0 && r <= 50) sets.push({w:w, r:r});
+  });
+  if(!sets.length){ const m = document.getElementById('bpMsg'); if(m) m.textContent = 'Fill in a weight and reps for at least one set.'; return; }
+  const before = snapshotPRs();
+  if(!Array.isArray(S.practice)) S.practice = [];
+  S.practice.push(stampRec({id:'bp'+Date.now().toString(36)+Math.random().toString(36).slice(2, 6), date:todayKey(), lift:BP_LIFT, sets:sets}));
+  if(S.practice.length > BP_KEEP) S.practice = S.practice.slice(-BP_KEEP);
+  bpOpen = ''; bpDraft = null;
+  save();
+  checkPRs(before);   // a practice set that beats the record is a PR; anything less changes no number
+  bpRepaint();
+}
+function bpDelete(el){
+  const id = el && el.dataset ? el.dataset.bpId : '';
+  if(!id || !confirm('Delete this practice entry?')) return;
+  S.practice = practiceState().filter(function(p){ return !p || String(p.id) !== id; });
+  save();
+  bpRepaint();
+}
+/* What DELTA and ZULU are told (2026-11-01): the last BP_AGENT_DAYS of practice, as data. It is already inside the
+   volume and fatigue numbers they read; this says where that came from and that it is light on purpose. No section
+   when there is none, so a prompt without practice is unchanged. No fix type touches it. */
+function agPracticeLine(){
+  try{
+    const t = todayKey(), rows = practiceRows(mesoAddDays(t, -BP_AGENT_DAYS), t)
+      .sort(function(a, b){ return String(b.date).localeCompare(String(a.date)); });
+    if(!rows.length) return '';
+    const sets = rows.reduce(function(n, p){ return n + p.sets.length; }, 0);
+    return '\nBENCH PRACTICE (his optional light bench on class days, aimed at about '+Math.round(BP_PCT*100)+'% for '+BP_LO+'-'+BP_HI+
+      ' reps with 4+ in reserve; it is counted in weekly volume and fatigue, never in e1RM trends, prescriptions or predictions, '+
+      'and reaches his PR record only by beating it): '+rows.length+' session'+(rows.length === 1 ? '' : 's')+', '+sets+' set'+(sets === 1 ? '' : 's')+' in the last '+
+      BP_AGENT_DAYS+' days; newest '+fmtDate(rows[0].date)+': '+bpSetsText(rows[0])+'.\n';
+  }catch(e){ return ''; }
 }
 
 /* ================= PROGRESS TAB ================= */
@@ -7803,6 +8054,7 @@ function weeklyVolumeByGroup(startKey, endKey){
     m.p.forEach(g=>{ if(vol[g]!=null) vol[g]+=n; });
     m.s.forEach(g=>{ if(vol[g]!=null) vol[g]+=n*0.5; });
   }));
+  practiceVolInto(vol, startKey, endKey);
   return vol;
 }
 /* An exercise is "main/compound" and therefore NOT swap-eligible if it's a PR lift
@@ -12050,7 +12302,8 @@ function bmWeeklyVol(broad){
   let v=0;
   S.logs.filter(l=>l.date>=wk).forEach(l=>l.entries.forEach(e=>{const m=musclesFor(e.exercise); const n=e.sets.length;
     if(m.p.includes(broad)) v+=n; if(m.s.includes(broad)) v+=n*0.5;}));
-  return v;
+  const pv = {}; pv[broad] = 0; practiceVolInto(pv, wk, '9999-12-31');
+  return v + pv[broad];
 }
 function bmProgress(broad){
   // green if any exercise hitting this group improved e1RM in last ~4wks, yellow if flat, red if declining, off if no data
@@ -17400,6 +17653,8 @@ function anStrainBetween(a, b){
     const mult = l.deload ? 0.5 : 1;
     l.entries.forEach(e=>e.sets.forEach(st=>{ s += anEffMult(effBucket(st))*mult; }));
   });
+  // Bench Practice is load like any set (see BP_LIFT), so fatigueIndex() and today's call see it.
+  practiceRows(a, b).forEach(p=>(p.sets||[]).forEach(st=>{ s += anEffMult(effBucket(st)); }));
   return s;
 }
 function anStrainByWeek(n){
@@ -18879,7 +19134,7 @@ function prHistorySorted(){
 }
 function anPRRow(p){
   const gain = (p.gain!=null && p.gain>0) ? '+'+(Math.round(p.gain*10)/10)+' lb' : '';
-  const reps = (+p.weight>0 ? p.weight+' lb \u00d7 '+p.reps : p.reps+' reps');
+  const reps = (+p.weight>0 ? p.weight+' lb \u00d7 '+p.reps : p.reps+' reps')+(p.practice ? ' \u00b7 Bench Practice' : '');
   return '<div class="card" style="padding:11px 14px">'+
     '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
       '<span class="mono" style="font-size:11px;color:var(--dim);min-width:74px">'+esc(fmtDate(p.date))+'</span>'+
@@ -22372,7 +22627,7 @@ function chatContext(id){
     ((id === 'delta' || id === 'echo' || id === 'zulu') ? part(intelSummary) : '')+
     part(function(){ return agEventsLine(id); })+
     part(function(){ return agLiftRefLine(id); })+
-    ((id === 'delta' || id === 'zulu') ? part(agFeelLine) : '')+
+    ((id === 'delta' || id === 'zulu') ? part(agFeelLine)+part(agPracticeLine) : '')+
     (id === 'charlie' ? part(function(){ return svContextLine(); }) : '')+
     part(function(){ return agLastNightLine(id); })+
     part(function(){ return agTrackLine(id); })+part(function(){ return qaContextLine(id); })+
@@ -22931,7 +23186,7 @@ function agBaseContext(id){
   try{ lref = agLiftRefLine(id); }catch(e){ lref = ''; }
   try{ desk = agDeskLine(id).txt; }catch(e){ desk = ''; }
   return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+intel+evl+lref+desk+
-    ((id==='delta' || id==='zulu') ? agFeelLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+qaContextLine(id)+
+    ((id==='delta' || id==='zulu') ? agFeelLine()+agPracticeLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+qaContextLine(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext()+pdContextLine(pdTargets()) : '');
 }
 /* His own read after recent sessions (S.sessionMeta), for the agents that coach training (2026-10-16). It reached
@@ -24897,6 +25152,7 @@ function renderHome(){
     }
   }
   try{ h += expChipHTML(); }catch(e){ console.warn('experiment chip failed', e); }
+  try{ h += bpCardHTML('home'); }catch(e){ console.warn('bench practice card failed', e); }
   // DELTA's debrief of the last session (it arrives with the nightly cycle).
   try{
     const db = agDebriefRecent();

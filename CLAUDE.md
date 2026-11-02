@@ -84,7 +84,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3958 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3995 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -313,6 +313,7 @@ pushes. Now:
 | Effort lever | `effBucket()`, `effLever()`, `effMean()`, `EFF_ANCHOR` |
 | Home / strip | `renderHome()` (`todayKeyLifts()`, `todayPlanShape()`, `nextPrForecast()` = the soonest of `nextPrForecasts()`, stepped with `nextPrStep()` / `nextPrPick`, `agStripState()`, `homeWheelHTML()`), `renderStatusStrip()`, `readinessNow()`, `renderNotif()` (`notifDismiss()` one item, `notifClear()` all) |
 | Pain flags | `painAdd()`, `painFor()`, `painContext()` |
+| Bench Practice | `S.practice` (`BP_*`), `practiceState()` / `practiceRows()` / `practiceSetsFor()` / `practiceBestE1RM()` / `practiceVolInto()`, `bpSuggest()`, `bpAdvice()`, `bpPlan()`, `bpCardHTML(where)` (`bpOpen`, `bpDraft`), `bpStart()` / `bpAddSet()` / `bpSave()` / `bpDelete()`, `agPracticeLine()` |
 | WHOOP | `applyWhoop()`, `whoopFresh()`, `whoopProvisional()`, `whoopContext()`, `whoopMaybeKick()` and `whoopStrainKick()` (one POST, `whoopDispatch()`), `briefWhoopDrift()`, `S.whoop.history`; a failed run: `S.whoop.relayError`, `whoopRelayFault()`, `whoopRunFailText()`; `scripts/whoop/whoop-sync.js` (`todaySections()`, `carryForward()`, `historyRows()`, `mergeHistory()`, `spendRefresh()`, `relayErrorRecord()`) |
 | Photos | `photoState()`, `photoDownscale()`, `photoLoadAll()`, `photoSaveAll()` |
 | Bulk rate | `bulkRate()`, `bulkBand()` — the ONE bodyweight rate; every lb/wk figure comes from here |
@@ -960,6 +961,35 @@ itself. While it holds:
   Investigation offers the light reset instead of a deload.
 
 A planned meso deload still runs and is still counted down (it is his plan), and his own Start deload buttons work.
+
+**Bench Practice is load, never strength** (his ask, 2026-11-01: a light extra bench on his fitness-for-life class days,
+about every other day). The first version (2026-08-08 to 08-25) was home-only, counted for nothing, and had DELTA's
+`bpFreq` fix; that fix stays gone, and `benchPractice` stays in `REMOVED_STATE_KEYS`.
+- **It is its own collection, `S.practice`** (`{id, date, lift, sets:[{w,r}], t}`, in `SYNC_HISTORY`), **never `S.logs`.**
+  Everything that judges strength reads `S.logs` (e1RM trends, `recommend()` / `classifyDecision()`, the prediction
+  record, the plateau watch, Investigation, the streak, CHARLIE's sheet), so it is left out with no opt-out anywhere. A
+  second log on a training day would also break readers that expect one session a day. Do not move it into `S.logs`.
+- **It opts in where it is load:** `weeklyVolumeByGroup()`, `heatmapHTML()`, `bmWeeklyVol()` (through `practiceVolInto()`)
+  and `anStrainBetween()`, so `fatigueIndex()` and today's call see it. A new volume or load reader must add it too.
+- **Upside only (his rule):** the PR readers take their max over practice sets as well (`bestE1RM()`, `snapshotPRs()`,
+  `prBestSetFor()`, `prBackfill()`, `actualPR()`). A max cannot fall, so a practice set counts only by beating the
+  record, and a 145 x 6 never reads as a weaker bench. Such a PR row carries `practice:true` and the PR log labels it.
+  No prescription jumps off it: `recommend()` reads `S.logs` only.
+- **Light on purpose:** `bpSuggest()` is `BP_PCT` (60%, his pick) of the median of his last 3 clean e1RMs in
+  `BP_RECENT_DAYS`, rounded down to 5 lb, else `BP_DEFAULT_W` (145). `BP_SETS_DEFAULT` (2) sets, `BP_SETS_MAX` (3) offered,
+  and a 4th asks first (a soft cap, his plan's wording).
+- **`bpAdvice()` says go lighter or skip, in one line:** a bench session yesterday or today, bench still to come today, a
+  deload, an easy or recover call, or a beat-up check-in, and the weight drops 10% (`BP_LIGHTER`). A pain flag on a
+  chest, shoulder or triceps lift within `BP_PAIN_DAYS` (14) stops Today offering it; the Log card still takes one, with
+  the reason. Pain flags are per lift, not per joint, so "shoulder or elbow" is read through `musclesFor()`.
+- **Where:** a card on Today (not during LIVE) and on Train › Log, with the last entries and a delete. The open card and
+  what is typed are module-scoped (`bpOpen`, `bpDraft`), so the repaint keeps them; `bpRepaint()` blurs first, because a
+  tap on iOS can leave the input focused and `refreshBlocked()` would skip the repaint.
+- **The agents:** `agPracticeLine()` gives DELTA and ZULU (nightly and chat) the last `BP_AGENT_DAYS` of it, as data, and
+  is empty with none, so a prompt without practice is unchanged. No fix type touches it.
+- **Next (planned, not built):** the PR window, a modest "conditions look favourable" day for a bench PR attempt (an e1RM
+  rep PR or a true single, chosen when he taps it), at most once every 2 weeks, built on `prWatchAt()` /
+  `pwNotifItems()`. An attempt counts by the same upside-only rule and moves no prescription.
 
 **A sleep log is not a check-in.** `quickLogSleep()` writes a stub with `partial:true` and no
 tier. Older stubs carry a made-up `tier:'ok'` with empty soreness and energy. `rdComplete()`
