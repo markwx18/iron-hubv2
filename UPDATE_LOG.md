@@ -162,6 +162,6 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 
 ## Bench Practice is back (Nov 1)
 
-- **A light extra bench for class days.** Tap **Log practice** on Today or in Train › Log. It offers 2 sets of 8–10 at about 60% of your recent bench e1RM, rounded down (145 until you have recent bench sessions), stopping with 4 or more reps left. You can add a 3rd set; a 4th asks first.
-- **It says when to go lighter or skip.** A bench session yesterday or today, bench later today, a deload, an Easy or Recover day, or a beat-up check-in: it drops the weight 10% and says why in one line. A pain flag on a chest, shoulder or triceps lift in the last two weeks takes it off Today.
+- **A light extra bench for class days.** Tap **Log practice** on the Live screen (before you start a session) or in Train › Log. It offers 2 sets of 8–10 at about 60% of your recent bench e1RM, rounded down (145 until you have recent bench sessions), stopping with 4 or more reps left. You can add a 3rd set; a 4th asks first.
+- **It says when to go lighter or skip.** A bench session yesterday or today, bench later today, a deload, an Easy or Recover day, or a beat-up check-in: it drops the weight 10% and says why in one line. A pain flag on a chest, shoulder or triceps lift in the last two weeks takes it off the Live screen.
 - **It counts as work, never as a weaker bench.** Practice sets count toward weekly volume, the muscle map and fatigue, so today's call sees them. They never touch your bench trend, your next prescription, the plateau watch or predictions. A practice set reaches your PRs only by beating your record, and the PR log marks it "Bench Practice". DELTA and ZULU see what you did as context. Nothing new costs anything.

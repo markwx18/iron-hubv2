@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-01-v2">
+<meta name="ironhub-build" content="2026-11-01-v3">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4485,11 +4485,12 @@ function saveManual(){
    - Light on purpose: BP_PCT of his recent clean e1RM, BP_SETS_DEFAULT sets, BP_SETS_MAX offered, a 4th asks first.
    - bpAdvice() says go lighter or skip, in one line: a bench session yesterday or today (or bench still to come
      today), a deload, an easy or recover call, or a beat-up check-in. A pain flag on a chest, shoulder or triceps lift
-     in BP_PAIN_DAYS stops Today offering it at all; the Log card still takes one, with the reason on it. */
+     in BP_PAIN_DAYS stops LIVE offering it at all; the Log card still takes one, with the reason on it.
+   - Where: LIVE's idle screen, under the brief (it was on Today until his ask the same day), and Train › Log. */
 const BP_LIFT = 'Barbell Bench Press';
 const BP_PCT = 0.6, BP_DEFAULT_W = 145, BP_LO = 8, BP_HI = 10, BP_LIGHTER = 0.9;
 const BP_SETS_DEFAULT = 2, BP_SETS_MAX = 3, BP_PAIN_DAYS = 14, BP_RECENT_DAYS = 56, BP_AGENT_DAYS = 14, BP_KEEP = 300;
-// A pure read: Today only reads, and the suite checks a render leaves S byte-identical.
+// A pure read: a render must leave S byte-identical, and the suite checks it.
 function practiceState(){ return (S && Array.isArray(S.practice)) ? S.practice : []; }
 function practiceRows(from, to){
   return practiceState().filter(function(p){ return p && Array.isArray(p.sets) && p.date >= from && p.date <= to; });
@@ -4570,11 +4571,13 @@ function bpPlan(){
   return {w: light ? Math.max(GEAR_BAR, Math.floor(s.w * BP_LIGHTER / 5) * 5) : s.w, n:BP_SETS_DEFAULT, base:s, adv:a, light:light,
           why: a.stop || (light ? 'Go lighter or skip it: '+a.lighter.slice(0, 2).join('; ')+'.' : '')};
 }
-// Which card is open ('home' or 'log') and what is typed in it: module-scoped, so the 30 s repaint keeps both.
+// Which card is open ('live' or 'log') and what is typed in it: module-scoped, so the 30 s repaint keeps both.
 let bpOpen = '', bpDraft = null;
+/* where: 'live' is LIVE's idle screen (his ask, 2026-11-01: it moved there from Today), the one place that suggests it,
+   so a pain flag takes it off there; 'log' is Train › Log, which always takes one and lists the last few. */
 function bpCardHTML(where){
   const pl = bpPlan();
-  if(where === 'home' && (pl.adv.stop || (live && live.date === todayKey()))) return '';
+  if(where === 'live' && (pl.adv.stop || live)) return '';
   const done = practiceState().filter(function(p){ return p && p.date === todayKey(); });
   const open = bpOpen === where && Array.isArray(bpDraft);
   let h = '<div class="card bp-card"><div class="bp-head"><span class="k">Bench practice</span>'+
@@ -4612,7 +4615,7 @@ function bpCardHTML(where){
 function bpRepaint(){
   // A tap on iOS can leave the input focused, and refreshBlocked() would then skip the repaint.
   try{ const a = document.activeElement; if(a && a.blur && a !== document.body) a.blur(); }catch(e){}
-  try{ if(activeMainTab === 'home' && MODE !== 'live'){ renderHome(); return; } }catch(e){}
+  try{ if(MODE === 'live'){ if(!live) renderLive(); return; } }catch(e){}
   try{ renderLog(); }catch(e){ console.warn('renderLog failed', e); }
 }
 function bpStart(where){
@@ -11388,7 +11391,9 @@ function renderLive(){
   try{ invUpdateBadge(); }catch(e){}
   const body = document.getElementById('liveBody');
   if(!live){
-    body.innerHTML = welcomeHTML() + liveBriefHTML() + deloadBannerHTML() + fatigueBannerHTML() + liveIdleHTML();
+    let bp = '';
+    try{ bp = bpCardHTML('live'); }catch(e){ console.warn('bench practice card failed', e); }
+    body.innerHTML = welcomeHTML() + liveBriefHTML() + bp + deloadBannerHTML() + fatigueBannerHTML() + liveIdleHTML();
     initBodyMap('live');
     liveWakeApply();   // no session: let the screen sleep again
     return;
@@ -25152,7 +25157,6 @@ function renderHome(){
     }
   }
   try{ h += expChipHTML(); }catch(e){ console.warn('experiment chip failed', e); }
-  try{ h += bpCardHTML('home'); }catch(e){ console.warn('bench practice card failed', e); }
   // DELTA's debrief of the last session (it arrives with the nightly cycle).
   try{
     const db = agDebriefRecent();

@@ -15883,22 +15883,31 @@ setTimeout(async () => {
     ev("S.readiness = [];");
     ok('advice: back to a neutral day, no warning', ev("bpPlan().why") === '' && ev("bpPlan().w") === 130);
 
-    // Pain: a flag on a pressing lift stops Today offering it; one on a leg lift does not.
+    // Pain: a flag on a pressing lift stops LIVE offering it; one on a leg lift does not.
+    ev("window.__bpLive = live; live = null;");
     ev("S.pain = [{id:'pnbp1', date:'" + dk(-3) + "', exercise:'Barbell Back Squat', level:2, note:''}];");
-    ok('pain: a squat flag does not stop it', ev("bpPlan().adv.stop") === '' && /Bench practice/.test(ev("bpCardHTML('home')")));
+    ok('pain: a squat flag does not stop it', ev("bpPlan().adv.stop") === '' && /Bench practice/.test(ev("bpCardHTML('live')")));
     ev("S.pain.unshift({id:'pnbp2', date:'" + dk(-3) + "', exercise:'Incline Dumbbell Press', level:2, note:''});");
-    ok('pain: a flag on a pressing lift in the last 14 days stops Today suggesting it', ev("bpCardHTML('home')") === '' && /Pain flagged on Incline Dumbbell Press/.test(ev("bpPlan().why")));
+    ok('pain: a flag on a pressing lift in the last 14 days stops LIVE suggesting it', ev("bpCardHTML('live')") === '' && /Pain flagged on Incline Dumbbell Press/.test(ev("bpPlan().why")));
     ok('pain: the Log card still takes one, with the reason on it', /Pain flagged on Incline Dumbbell Press/.test(ev("bpCardHTML('log')")) && /Log again/.test(ev("bpCardHTML('log')")));
     ev("S.pain[0].date = '" + dk(-15) + "';");
     ok('pain: an older flag no longer stops it', ev("bpPlan().adv.stop") === '');
     ev("S.pain = [];");
 
-    // Today shows it and only reads; Log lists it, labelled, with a delete.
+    // LIVE's idle screen shows it and only reads (it moved there from Today, his ask); Log lists it, labelled, with a delete.
     const sBefore = ev("JSON.stringify(S)");
-    ev("bpOpen = ''; bpDraft = null; renderHome();");
-    ok('Today: the card is there, says what was logged, and rendering it changes nothing in S',
-       /Bench practice/.test(ev("document.getElementById('home').innerHTML")) && /Logged today: 130 × 10, 130 × 9/.test(ev("document.getElementById('home').innerHTML")) &&
+    ev("bpOpen = ''; bpDraft = null; renderLive(); renderHome();");
+    ok('LIVE: the idle screen has the card, says what was logged, and rendering it changes nothing in S',
+       /Bench practice/.test(ev("document.getElementById('liveBody').innerHTML")) && /Logged today: 130 × 10, 130 × 9/.test(ev("document.getElementById('liveBody').innerHTML")) &&
        ev("JSON.stringify(S)") === sBefore);
+    ok('Today: the card is no longer there', ev("!!document.querySelector('#home .bp-card')") === false);
+    ev("live = {date:todayKey(), day:'D2', exercises:[]};");
+    ok('LIVE: not during a session', ev("bpCardHTML('live')") === '');
+    ev("live = null; window.__bpMode = MODE; MODE = 'live'; bpStart('live');");
+    ok('LIVE: Log practice opens the sets right there', ev("document.querySelectorAll('#liveBody .bp-sets .setrow').length") === 2);
+    ev("bpCancel();");
+    ok('LIVE: Cancel closes it', ev("document.querySelectorAll('#liveBody .bp-sets').length") === 0 && /Bench practice/.test(ev("document.getElementById('liveBody').innerHTML")));
+    ev("MODE = window.__bpMode; delete window.__bpMode; live = window.__bpLive; delete window.__bpLive;");
     ev("renderLog();");
     ok('Log: entries are labelled Bench Practice', ev("document.querySelectorAll('#log .bp-row').length") === 2 && /Bench Practice · 205\s×\s6/.test(ev("document.getElementById('log').textContent")));
     ev("window.confirm = function(){ return true; }; bpDelete(document.querySelector('#log .bp-row .rm'));");
@@ -15918,6 +15927,7 @@ setTimeout(async () => {
     ok('bench practice section', false, e.stack);
   } finally {
     ev("currentDayKey = window.__bpCdk; dayCall = window.__bpCall; deloadActive = window.__bpDl; window.confirm = window.__bpConfirm; bpOpen = ''; bpDraft = null;");
+    ev("if('__bpLive' in window){ live = window.__bpLive; delete window.__bpLive; } if('__bpMode' in window){ MODE = window.__bpMode; delete window.__bpMode; }");
     ev("S = JSON.parse(window.__bpS); localStorage.setItem(LS_KEY, JSON.stringify(S)); ['__bpS','__bpCdk','__bpCall','__bpDl','__bpConfirm','__bpAsked'].forEach(function(k){ delete window[k]; });");
     ev("var _o = document.querySelectorAll('.pr-overlay'); for(var i = 0; i < _o.length; i++) _o[i].remove();");
   }

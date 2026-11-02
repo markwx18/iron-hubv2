@@ -84,7 +84,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3995 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 3999 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -980,11 +980,12 @@ about every other day). The first version (2026-08-08 to 08-25) was home-only, c
   and a 4th asks first (a soft cap, his plan's wording).
 - **`bpAdvice()` says go lighter or skip, in one line:** a bench session yesterday or today, bench still to come today, a
   deload, an easy or recover call, or a beat-up check-in, and the weight drops 10% (`BP_LIGHTER`). A pain flag on a
-  chest, shoulder or triceps lift within `BP_PAIN_DAYS` (14) stops Today offering it; the Log card still takes one, with
+  chest, shoulder or triceps lift within `BP_PAIN_DAYS` (14) stops LIVE offering it; the Log card still takes one, with
   the reason. Pain flags are per lift, not per joint, so "shoulder or elbow" is read through `musclesFor()`.
-- **Where:** a card on Today (not during LIVE) and on Train › Log, with the last entries and a delete. The open card and
-  what is typed are module-scoped (`bpOpen`, `bpDraft`), so the repaint keeps them; `bpRepaint()` blurs first, because a
-  tap on iOS can leave the input focused and `refreshBlocked()` would skip the repaint.
+- **Where:** a card on LIVE's idle screen, under the brief and never during a session (his ask, the same day: it started
+  on Today), and on Train › Log, with the last entries and a delete. Today has none. The open card and what is typed are
+  module-scoped (`bpOpen`, `bpDraft`), so the repaint keeps them; `bpRepaint()` repaints LIVE when he is on it, and blurs
+  first, because a tap on iOS can leave the input focused and `refreshBlocked()` would skip the repaint.
 - **The agents:** `agPracticeLine()` gives DELTA and ZULU (nightly and chat) the last `BP_AGENT_DAYS` of it, as data, and
   is empty with none, so a prompt without practice is unchanged. No fix type touches it.
 - **Next (planned, not built):** the PR window, a modest "conditions look favourable" day for a bench PR attempt (an e1RM
