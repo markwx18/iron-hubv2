@@ -84,7 +84,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 3999 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 4076 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -331,7 +331,8 @@ pushes. Now:
 | API usage | `aiUsageNote()`, `aiUsageSummary()`, `aiUsageCardHTML()`, `AI_USAGE_KEY`, `AI_PRICE`; `aiReachNote()` for a blocked network; the cap: `spendLedgerSync()` (`S.spend`), `spendMonth()`, `spendBlock()`, `spendPreflight()`, `spendManualOk()`, `spendCap()` |
 | Deload | `deloadWindow()`, `deloadActive()`, `lastDeloadEndKey()`, `deloadCheck()`, `startDeloadWeek()`; alerts off `S.deloadQuiet`, `deloadQuietUntil()` / `deloadQuietSet()` / `deloadQuietBtnHTML()`, `agFixMenu()`; the norm `fatigueIndex()` (`FI_NORM_*`) |
 | Analytics | `renderAnPred()`, `anEnsembleFor()`, `e1rmSeries()`, `linreg()` |
-| Projections | `anFanProject()` (shared core), `anFanChartSVG()` (curves via `ckSmoothD()`, round ticks `ckNiceStep()`, drawn series `anFanDrawSeries()`, key `fanLegendHTML()`), `anFanMilestones()`, `bwProjectFor()`; the hero's marks `ckMarks(…, {rail})` (`ckRailMerge()`), `ckMarkKeyHTML()` |
+| Forecasts | `FC_KINDS_FOR` / `FC_KIND`, `fcAskCheck()`, `fcContext()` / `fcEngine()` (`fcLine()`, `fcScan()`), `fcSystem()` (`FC_RULES`, `fcMemoryLines()`), `fcRun()` (`_fcRunning`), `fcValidate()` / `fcMakeRow()`, `fcResolve()` / `fcPlanHeld()` / `fcStatus()`, `fcRecord()`, `fcTrackLine()`; the tab `renderForecasts()` / `hubForecastsHTML()` (`fcDraft`, `fcAgent`), `fcRate()`, `fcRemove()`, `fcAgain()`, `fcPrefill()` / `fcFromGoal()`, `fcNotifItems()`; `S.forecasts`, `S.forecastRatings` |
+| Projections | `anFanProject()` (shared core; one day of it is `anFanStartDay()` / `anFanPoint()`, one date `anFanAt()`), `anFanChartSVG()` (curves via `ckSmoothD()`, round ticks `ckNiceStep()`, drawn series `anFanDrawSeries()`, key `fanLegendHTML()`), `anFanMilestones()`, `bwProjectFor()`; the hero's marks `ckMarks(…, {rail})` (`ckRailMerge()`), `ckMarkKeyHTML()` |
 | Sunday check-in | `wpWeekFor()`, `wpStage()`, `wpCardHTML()`, `wpSubmit()`, change: `wpEdit()` / `wpEditCancel()` / `wpEditableWeek()` / `wpFormWeek()`, `wpRun()` (route `weekplan`), `wpFilterProposals()`, `wpContextLine()`, `S.weekPlan` |
 | Experiments | `EXP_TEMPLATES`, `expState()` (`S.experiments`), `expValidate()`, `expStart()`, `expSessions()`, `expScore()` / `expTrend()`, `expEvaluate()`, `expTick()`, `expStop()`, `expAnswer()`, `expMenuLine()`, `expCardHTML()` |
 | Prediction record | `predTick()` (`S.predictions`), `predLifts()`, `predTopsets()`, `predResolve()`, `predRecord()`, `predRecordCardHTML()`, `predIntelLine()` |
@@ -415,7 +416,8 @@ There is no write tool and there must never be one: a tool call never changes st
 **The chats propose action cards** (Mark's call on 2026-10-06, replacing ECHO's queue-only
 `propose_fuel_food` from 2026-09-28). He asked for all four agents to be able to act from chat,
 with every card needing his tap:
-- **Each agent proposes only in its own area** (`CHAT_LANES`; ZULU has `CHAT_ALL`, 22 actions).
+- **Each agent proposes only in its own area** (`CHAT_LANES`; ZULU has `CHAT_ALL`, 23 actions; every lane also has
+  `offer_forecast`, which only fills the Forecasts form, see Forecasts below).
   `coachToolDefs(agent)` offers only those, and `coachValidateAction(name, inp, agent)` refuses
   anything else first, so a tool another agent owns is not even a tool it has.
   - DELTA: the split, today's workout and today's session, deloads, a lift's next weight, sets, modes, experiments, notes.
@@ -679,12 +681,59 @@ other, and more"). It rides the calls that already run, like the roundtable.
 - **Stored** in `S.agents.desk`, newest first, capped at `DESK_KEEP` (24), written into the re-resolved state after
   each await (`a2`, then `a3` for ZULU; the suite swaps `S` on every call), merged by id in `applyPulled()`. An item
   never changes except to be hidden: **Hide** is his tap (`save()`), and a hide wins on a pull.
-- **It is its own Hub tab**, Desk, between Agents and Flags (his ask, 2026-10-21: "a new category inside the hub, like
-  Agents and Flags"): section `#desk`, `renderDesk()` (`REVIEW_RENDER.desk`, `NAV_LEGACY.desk`), not on the Agents view.
+- **It is its own Hub tab**, Desk, after Agents (his ask, 2026-10-21: "a new category inside the hub, like
+  Agents and Flags"; Forecasts sits between it and Flags since 2026-11-03): section `#desk`, `renderDesk()` (`REVIEW_RENDER.desk`, `NAV_LEGACY.desk`), not on the Agents view.
   `hubDeskHTML()` opens on one line saying what it is, then last night's roundtable lines, then up to `DESK_SHOW` items
   with each reply under what it answers. A post or a hide is a `save()` or a pull, which moves `changedAt`, so
   `tabSignature()` already repaints it.
 - **It is commentary.** It changes nothing in his program; anything to apply still goes through proposals.
+
+**Forecasts: he asks an agent about the future, and the app keeps score** (his ask, 2026-11-03: "submit a forecast to
+DELTA about my bench", "how jacked I will look in summer 2027", "track whether it came true and how off it was"). His
+picks: the agent commits to its own number with the app's trend line beside it; all four agents; one call, medium
+effort, no lookups; Ask again, a chat card and the Goal Roads link in v1 (photos were not picked).
+- **Fixed kinds, because the app scores every one** (`FC_KINDS_FOR`): DELTA `liftDate` (when an estimated 1RM of W, or W
+  for R reps, is first reached) and `liftAt` (best clean e1RM within `PRED_WINDOW` of a date); ECHO `bwDate` (7-day
+  trailing average reaching W, `dir` stored) and `bwAt` (weigh-ins within `FC_BW_WIN` of a date); CHARLIE `sessionsBy`
+  (days with a session from `from` through a date) and `streak` (where the run from `cur` ends, walked like
+  `streakStats()`); ZULU `look` (his question, a `read`, and 2-`FC_MARKERS_MAX` `liftAt` / `bwAt` markers, plus his 1-5
+  rating at the date in `S.forecastRatings`).
+- **The trend line comes first** (`fcEngine()`, free, live in the form as he types). Lifts and bodyweight use the fan's
+  own formula, now shared: `anFanStartDay()` / `anFanPoint()` inside `anFanProject()`, and `anFanAt(res, date)` for one
+  date, so a forecast and the chart cannot disagree (the suite checks every point). A planned rate moves the bodyweight
+  line; a planned frequency or calorie number does not, because the app has no computed effect for it: that part is the
+  agent's judgement, labelled as such. Sessions are scheduled days × his 8-week show-up rate with a binomial spread; a
+  streak is geometric from his miss rate. HOW SURE TO SOUND still holds: `FC_RULES` tells the agent to start from the
+  line and move off it only for a reason in the data, named in `why`.
+- **The question is his form's** (`fcAskCheck()`, shared by the form, the chat card and Ask again): lift through
+  `agResolveExName()`, a target not already reached, a date `FC_MIN_DAYS`-`FC_MAX_DAYS` out (28+ for `look`), at most
+  `FC_OPEN_MAX` open. Kind, subject, target, date and plan are taken before the await and never from the reply.
+- **`fcValidate()` discards, never repairs**: p10 ≤ p50 ≤ p90 (or early ≤ mid ≤ late, late may be null = "or later"),
+  within bounds (a lift 0.7-1.6× his best, bodyweight ±40 lb, sessions within the window), markers only from the offered
+  subjects. A refused reply was billed and stores nothing; the form says why.
+- **`fcRun()`**: `callClaudeWithData(..., 8000, {noTools:true, effort:'medium', route:'forecast:<agent>'})`, truncation
+  checked, `_fcRunning` module-scoped and released in `finally`, the row pushed into the `S` that exists after the await.
+  `forecast` is a user-started route, so `spendPreflight()` asks past the cap. About 4¢ a forecast.
+- **Rows never change; how one turned out is `fcResolve()` at read time** (the `predResolve()` rule). Errors are signed,
+  the outcome against the call's middle: days late (+) or early, % or lb above, sessions more. The trend line is scored on
+  the same outcome (`engErr`). A date past `late` and not reached is `late` (a known miss, its error still growing, not
+  final) and settles as `notReached` `FC_GIVEUP_DAYS` later. `fcPlanHeld()` checks the plan he gave (frequency,
+  rate, calories) over the window; a plan not kept is shown and left out of the bias.
+- **The agents remember their misses.** `fcMemoryLines(agent)` goes into every forecast prompt: the record by kind
+  (`fcRecord()`: hits, median signed error, typical miss, how often the trend line was closer) and the biggest misses
+  first, each with the agent's own reasoning at the time. Its `calibration` line says how it corrected, stored and shown
+  as "Learning from past calls". `fcTrackLine(id)` puts the record and up to 3 open forecasts in the nightly context
+  (`agBaseContext()`) and every chat, empty with no forecasts, so those prompts are byte-identical until the first one.
+- **Storage:** `S.forecasts` (`'f|'`) and `S.forecastRatings` (`'v|'`), both `SYNC_HISTORY`, cap `FC_KEEP`. Remove is a
+  typo fix, the day it was made only. His rating is replaced in place and can be changed the same day.
+- **His side:** Hub › Forecasts (section `#forecasts`, between Desk and Flags; `renderForecasts()`,
+  `REVIEW_RENDER.forecasts`, `NAV_LEGACY.forecasts`): the record ring and per-agent rows (`fcBoardHTML()`), the Ask card
+  (`fcDraft`, `fcAgent`, `fcKindSel`, module-scoped; `fcSet()` patches the preview in place, `fcSetR()` repaints), the
+  rating card, open and settled cards (`fcCardHTML()`, `fcStatus()` for ahead / behind). The bell has a settled
+  forecast for `FC_NOTIFY_DAYS` and a big picture waiting on his rating (`fcNotifItems()`).
+- **Extras:** Ask again (`fcAgain()`, `of`, YOUR EARLIER CALL in the prompt; both are scored). `offer_forecast` is in every
+  chat lane and only fills the form (`fcPrefill()`); it writes nothing to `S` and has no Undo. A Goal Road's
+  **Ask DELTA for a forecast** is `liftDate` for 1+ reps, the road's own rule (`fcFromGoal()`).
 
 **The agents are told what each lift trains** (2026-10-21). DELTA told him a low-to-high cable fly works the lower chest,
 then agreed it had it backwards. No prompt said what a lift trains. `LIFT_FACTS` is a fixed table of settled anatomy

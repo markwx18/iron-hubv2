@@ -165,3 +165,15 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 - **A light extra bench for class days.** Tap **Log practice** on the Live screen (before you start a session) or in Train › Log. It offers 2 sets of 8–10 at about 60% of your recent bench e1RM, rounded down (145 until you have recent bench sessions), stopping with 4 or more reps left. You can add a 3rd set; a 4th asks first.
 - **It says when to go lighter or skip.** A bench session yesterday or today, bench later today, a deload, an Easy or Recover day, or a beat-up check-in: it drops the weight 10% and says why in one line. A pain flag on a chest, shoulder or triceps lift in the last two weeks takes it off the Live screen.
 - **It counts as work, never as a weaker bench.** Practice sets count toward weekly volume, the muscle map and fatigue, so today's call sees them. They never touch your bench trend, your next prescription, the plateau watch or predictions. A practice set reaches your PRs only by beating your record, and the PR log marks it "Bench Practice". DELTA and ZULU see what you did as context. Nothing new costs anything.
+
+---
+
+## Forecasts (Nov 3)
+
+- **Ask an agent about the future, and the app keeps score.** A new tab in the Hub, between Desk and Flags. DELTA takes lift questions ("when will I bench 275?", as an estimated 1RM or for reps, or "what will my bench be on March 1?"). ECHO takes bodyweight ("what will I weigh on March 1?", "when will I reach 190?"), CHARLIE takes showing up (sessions by a date, how long your streak runs), and ZULU the big picture ("how jacked will I look by summer 2027?").
+- **Every call sits beside the app's own trend line.** The form shows you the trend line for free while you fill it in. The agent starts from it, moves off it only for a reason in your data, and says why. Both get scored, so you can see whether the agent beats the plain line.
+- **Your plans count.** You can give a planned bench frequency, a planned gain in lb a week, or planned calories. When the forecast is scored, the app checks whether you kept the plan. If you didn't, the result still shows, but it doesn't count against the agent.
+- **It's scored when the answer is in.** A date is scored the day you first hit it (how many days early or late). A number is scored on its date (how far above or below). ZULU's big picture comes as 2–4 things the app can measure (bodyweight and your main lifts), and when the date arrives you rate it 1–5. The bell tells you when a forecast settles.
+- **The agents learn from their misses.** Each time you ask, the agent sees its record and its biggest misses first, along with what it was thinking when it made them, and says how it's correcting. Its record is in its nightly check and its chat too.
+- **From chat and from Goal Roads.** Ask an agent "when will I hit 225?" in chat and it can offer a card that opens the form already filled in. Each Goal Road has an **Ask DELTA for a forecast** button. You can also **Ask again** partway through; the first call still gets scored.
+- **Cost:** one call per forecast, about 4¢, and only when you tap Ask. Nothing in your plan changes.
