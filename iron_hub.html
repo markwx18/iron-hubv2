@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-05-v1">
+<meta name="ironhub-build" content="2026-11-06-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -7143,15 +7143,23 @@ function whoopFresh(){
    the one WHOOP can still extend. The relay records sleep.end; a file without it is judged by
    the clock alone, exactly as before. */
 const WHOOP_SETTLE_MIN = 45;
-function whoopProvisional(){
-  if(!whoopFresh()) return false;
+function whoopProvisional(){ return !!whoopProvisionalWhy(); }
+/* Which of the two rules holds the reading, in words, or '' when it is final. The brief's wait note used to name
+   only the clock rule, so on 2026-11-06 the 6:30 AM server run said the recovery "was read before 6 AM" about a
+   reading it had taken at 6:30, minutes after he woke. */
+function whoopProvisionalWhy(){
+  if(!whoopFresh()) return '';
   const t = Date.parse(S.whoop.recovery.readAt || '');
-  if(!isFinite(t)) return false;
+  if(!isFinite(t)) return '';
+  const hm = function(ms){ return new Date(ms).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}); };
   const start = new Date(); start.setHours(AG_BRIEF_HOUR, 0, 0, 0);
-  if(t < start.getTime()) return true;
+  if(t < start.getTime()) return 'the one here was read at ' + hm(t) + ', before ' + AG_BRIEF_HOUR + ' AM, and may be rescored';
   const sl = S.whoop.sleep;
   const end = sl && sl.date === todayKey() ? Date.parse(sl.end || '') : NaN;
-  return isFinite(end) && t - end < WHOOP_SETTLE_MIN * 60000;
+  if(isFinite(end) && t - end < WHOOP_SETTLE_MIN * 60000)
+    return 'the one here was read ' + Math.max(0, Math.round((t - end) / 60000)) + ' min after the sleep ended (' + hm(end) +
+      '), and WHOOP can still rescore it until ' + hm(end + WHOOP_SETTLE_MIN * 60000);
+  return '';
 }
 
 /* ---- Asking the relay to run NOW, instead of waiting for a cron that mostly does not fire ----
@@ -27232,8 +27240,8 @@ function agMaybeMorningBrief(confirmed){
   // asking for the re-read meanwhile; past the cutoff the brief takes what it has, and a rescore
   // after that is caught by briefWhoopDrift() above.
   if(whoopProvisional() && h < AG_BRIEF_WHOOP_CUTOFF) return briefNote(
-    'waiting for WHOOP to re-read today\u2019s recovery, because the one here was read before '+
-    AG_BRIEF_HOUR+' AM and may be rescored (until '+AG_BRIEF_WHOOP_CUTOFF+' AM, then it writes anyway)',
+    'waiting for WHOOP to re-read today\u2019s recovery: '+whoopProvisionalWhy()+
+    ' (until '+AG_BRIEF_WHOOP_CUTOFF+' AM, then it writes anyway)',
     briefWhoopDetail());
   // Every gate above reads LOCAL state, and local state is only as good as this device's last
   // pull -- which at boot and on a foreground is routinely "none yet". On 2026-09-19 the phone

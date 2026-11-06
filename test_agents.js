@@ -8451,6 +8451,7 @@ setTimeout(async () => {
                  "sleep:{date:todayKey(), hours:7.03, performance:79, readAt:" + at(7, 16) + "}});";
     ev(w333);
     ok('app: a recovery read at 3:33 AM is provisional', ev('whoopProvisional()') === true);
+    ok('app: and the wait says it was read before 6 AM', /read at 3:33 AM, before 6 AM/.test(ev('whoopProvisionalWhy()')), ev('whoopProvisionalWhy()'));
     ok('app: but still fresh, so the strip keeps showing it meanwhile', ev('whoopFresh()') === true);
     ev(w716);
     ok('app: the 7:16 AM re-read is not', ev('whoopProvisional()') === false);
@@ -8462,6 +8463,9 @@ setTimeout(async () => {
        "sleep:{date:todayKey(), hours:6.29, performance:70, " + sleepEnd(7, 28) + "readAt:" + at(7, 33) + "}});");
     ok('app: the sleep end is kept', ev('S.whoop.sleep.end') === atNode(7, 28), ev('S.whoop.sleep.end'));
     ok('app: a 7:33 AM read, 5 minutes after the sleep ended, is provisional', ev('whoopProvisional()') === true);
+    // 2026-11-06: the 6:30 AM server run said this kind of reading "was read before 6 AM". It names the rule that held it.
+    ok('app: and the wait names the wake rule, the wake time and when it clears, never "before 6 AM"',
+       /read 5 min after the sleep ended \(7:28\sAM\).*until 8:13\sAM/.test(ev('whoopProvisionalWhy()')) && !/before 6/.test(ev('whoopProvisionalWhy()')), ev('whoopProvisionalWhy()'));
     ok('app: and still fresh, so the strip shows it meanwhile', ev('whoopFresh()') === true);
     ev("delete S.whoop; applyWhoop({fetchedAt:" + at(9, 0) + ", recovery:{date:todayKey(), score:65, hrv:121, rhr:60, readAt:" + at(9, 0) + "}, " +
        "sleep:{date:todayKey(), hours:7.9, performance:82, " + sleepEnd(8, 55) + "readAt:" + at(9, 0) + "}});");
