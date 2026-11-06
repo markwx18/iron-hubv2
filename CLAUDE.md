@@ -324,7 +324,7 @@ pushes. Now:
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
 | Agent questions | `qaDue()`, `qaTurn()` / `qaOfferTo()` (`QA_ORDER`), `qaSpecLine()`, `agValidateQuestion()` / `qaSimilar()`, `qaIngest()`, `qaOpen()`, `qaAnswer()` / `qaSkip()` / `qaUndo()`, `qaContextLine()`, `qaCardHTML()`, `qaHubHTML()`, `S.agents.questions` |
 | Track records & diagnosis | `agOutcome()`, `agTrack()` / `agTrackText()` / `agTrackLine()`, `hubTrackHTML()`; `pdTargets()`, `pdContextLine()` / `pdSpecLine()`, `agValidateDiagnosis()`, `pdReadHTML()`, `S.agents.diagnoses` |
-| Server runner | `runnerTick(mode)` / `runnerFlush()` (driven by `scripts/agents/run.js`), `runnerHeadless()` (`IRONHUB_HEADLESS`), `runnerSeen()` / `runnerGraceLeft()` (`S.agents.runner`, `RUNNER_GRACE_MIN`), Reload `briefReload()` / `briefReloadState()` / `briefReloadNote()` (`_briefReload`, `RUNNER_WORKFLOW`); `clock/src/worker.js` (`plan()`, `easternSlot()`, `tick()`) |
+| Server runner | `runnerTick(mode)` / `runnerFlush()` (driven by `scripts/agents/run.js`), `runnerHeadless()` (`IRONHUB_HEADLESS`), `runnerSeen()` / `runnerClockAlive()` / `runnerGraceLeft()` (`S.agents.runner`, `autoAt`, `RUNNER_GRACE_MIN`, `RUNNER_CLOCK_HOURS`), `runnerHealth()` / `runnerClockNote()`, Reload `briefReload()` / `briefReloadState()` / `briefReloadNote()` (`_briefReload`, `RUNNER_WORKFLOW`); `clock/src/worker.js` (`plan()`, `easternSlot()`, `tick()`) |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()` (the Hub: `hubFed()`, `hubStatus()`, `hubMapHTML()`, `hubAgentHTML()`, `hubSpendHTML()`), `coachValidateAction()` |
 | Chat actions | `CHAT_LANES` / `CHAT_ALL` / `chatActionsFor()`, `coachToolDefs(agent)`, `coachValidateAction(name, inp, agent)`, `coachExecuteAction()`, `coachStageProposals()`, `coachFindProposal()`, `coachApplyProposal()`, undo `coachUndoProposal()` / `chatUndoStore()` / `CHAT_UNDO_KEYS`, `chatHistoryMsgs()`; every chat's context and loop `chatContext()`, `agTodayContext()`, `chatActionRules()`, `chatActionHandler()` (`refused`); today-only `S.todayAdjust`, `todayAdjFor()` / `todayAdjApply()`, `liveTodayAdjRebuild()`, `todaySessionNames()` / `liveSessionNames()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
@@ -1772,9 +1772,19 @@ an automatic rewrite at 10.
   would carry an empty history. `runnerTick()` returns at a failed pull. Only `ironhub:usage` and `ironhub:device`
   carry over, in the state gist's `runner_local.json`. `spendLedgerSync()` rebuilds a day from the log, so a run
   starting with an empty log would shrink the morning's spend; a state gist it cannot read is fatal for that reason.
-- **The device yields 9 PM for `RUNNER_GRACE_MIN` (45)** once `S.agents.runner` (stamped only when the server did
-  something) is within `RUNNER_SEEN_DAYS`, and asks again after its pre-pull. From 9:45 it runs the night itself if
-  the server did not.
+- **The device yields 9 PM for `RUNNER_GRACE_MIN` (45) only while the clock is alive** (`runnerClockAlive()`:
+  `S.agents.runner.autoAt`, stamped only by an AUTOMATIC run that did something, within `RUNNER_CLOCK_HOURS` (30)), and
+  asks again after its pre-pull. From 9:45 it runs the night itself if the server did not.
+  - **A Reload is not the clock** (found 2026-11-05). From Nov 3 the Cloudflare clock dispatched nothing, but his
+    morning Reloads kept stamping `S.agents.runner`, so `runnerSeen()` stayed true and every device waited for a
+    server nothing was starting: the cycle ran at 9:45 at best, or whenever a device was next opened, and no brief was
+    written without a tap. Reload keeps the previous `autoAt`; `runnerSeen()` still answers "is the server set up"
+    for Reload itself.
+  - **A dead clock leaves evidence.** A device that runs the night because the clock did not logs one CHARLIE line
+    (`runnerClockNote()`), Settings' glance has a **Server** row (`runnerHealth()`), and a stopped clock is named in the
+    folded Connections summary.
+  - **The clock keeps its logs** (`[observability]` in `clock/wrangler.toml`): `wrangler tail` cannot connect from his
+    home network, which blocks `*.workers.dev`, so read them in the dashboard (Workers › ironhub-clock › Logs).
 - **Reload** (`briefReload()`, every brief button) dispatches `mode: reload` after `spendManualOk()`, with `over:'1'` when
   he said yes past the cap. It writes on the device instead when there is no sync, when the server has never run
   (`runnerSeen()`; a job with no key would leave him waiting for nothing), or when GitHub refuses, naming GitHub's

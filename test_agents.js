@@ -13523,7 +13523,7 @@ setTimeout(async () => {
     ev("S.settings.ghToken = ''; S.settings.gistId = ''; S.settings.apiKey = ''; S.settings.gdocUrl = ''; S.settings.gdocSecret = ''; S.settings.spendCap = 20; S.whoop = {};");
     const glance = () => JSON.parse(ev("JSON.stringify(setGlance().map(function(r){ return r.k + '|' + r.tone + '|' + r.line; }))"));
     let g = glance();
-    ok('glance: four rows, in order: sync, WHOOP relay, API key, schedule doc', g.length === 4 && g.map(x => x.split('|')[0]).join() === 'sync,relay,api,gdoc', JSON.stringify(g));
+    ok('glance: five rows, in order: sync, WHOOP relay, API key, schedule doc, server', g.length === 5 && g.map(x => x.split('|')[0]).join() === 'sync,relay,api,gdoc,server', JSON.stringify(g));
     ok('glance: a device with nothing connected says so, row by row', g[0] === 'sync|bad|Not connected on this device' && g[1] === 'relay|off|Needs sync on this device' &&
        g[2] === 'api|warn|Not set on this device, so agents and chat can’t run here' && g[3] === 'gdoc|off|Not set up on this device', JSON.stringify(g));
     ev("S.settings.ghToken = 't'; S.settings.gistId = 'gist0000000000'; S.meta.lastSync = Date.now() - 120000;");
@@ -15946,17 +15946,26 @@ setTimeout(async () => {
     };
     // --- the grace: once the server has been seen, the device leaves 9 PM to it ---
     const at = (h, m) => 'new Date(2026, 10, 3, ' + h + ', ' + m + ')';
-    ev("agState().runner = {at: " + at(21, 10) + ".getTime() - 3600000, did:'brief'};");
+    ev("agState().runner = {at: " + at(21, 10) + ".getTime() - 3600000, did:'brief', autoAt: " + at(21, 10) + ".getTime() - 3600000};");
     ok('grace: at 9:10 PM the device waits 35 more minutes for the server', ev('runnerGraceLeft(' + at(21, 10) + ')') === 35, ev('runnerGraceLeft(' + at(21, 10) + ')'));
     ok('grace: from 9:45 it is the device’s turn, and before 9 PM the grace says nothing', ev('runnerGraceLeft(' + at(21, 45) + ')') === 0 && ev('runnerGraceLeft(' + at(20, 30) + ')') === 0);
-    ev("agState().runner = {at: " + at(21, 10) + ".getTime() - 5 * 864e5, did:'night'};");
+    ev("agState().runner = {at: " + at(21, 10) + ".getTime() - 5 * 864e5, did:'night', autoAt: " + at(21, 10) + ".getTime() - 5 * 864e5};");
     ok('grace: a server last seen 5 days ago is not waited for', ev('runnerGraceLeft(' + at(21, 10) + ')') === 0);
     ev("delete agState().runner;");
     ok('grace: a device that has never seen the server runs at 9 as it always did', ev('runnerGraceLeft(' + at(21, 10) + ')') === 0);
+    // Nov 3-5, 2026: the clock dispatched nothing, his morning Reloads kept stamping the runner, and every night the
+    // device waited for a server nothing was starting. A Reload's stamp says the job works, not that the clock does.
+    ev("agState().runner = {at: " + at(21, 10) + ".getTime() - 14 * 3600000, did:'brief', autoAt: " + at(21, 10) + ".getTime() - 48 * 3600000};");
+    ok('grace: a server run only by Reload since its clock last started one 2 days ago is not waited for (the Nov 3 night)',
+       ev('runnerGraceLeft(' + at(21, 10) + ')') === 0 && ev('runnerSeen(' + at(21, 10) + '.getTime())') === true);
+    ev("agState().runner = {at: " + at(21, 10) + ".getTime() - 14 * 3600000, did:'brief'};");
+    ok('grace: nor is a stamp from before autoAt existed, which is what his gist held on Nov 5', ev('runnerGraceLeft(' + at(21, 10) + ')') === 0);
+    ev("agState().runner = {at: " + at(21, 10) + ".getTime() - 23 * 3600000, did:'night', autoAt: " + at(21, 10) + ".getTime() - 23 * 3600000};");
+    ok('grace: last night’s automatic cycle 23 hours ago keeps the clock alive', ev('runnerGraceLeft(' + at(21, 10) + ')') === 35);
 
     ev("window.__rnRuns = 0; agRunAll = async function(){ window.__rnRuns++; };");
     ev("S.settings.apiKey = 'k'; S.settings.ghToken = ''; S.settings.gistId = ''; agState().autoRun = true; agState().lastRun = '2000-01-01'; _agRunning = false;");
-    ev("agState().runner = {at: Date.now() - 3600000, did:'night'};");
+    ev("agState().runner = {at: Date.now() - 3600000, did:'night', autoAt: Date.now() - 3600000};");
     await withClockAt(21, 10, () => ev('agMaybeAutoRun()'));
     ok('scheduler: at 9:10 with the server seen, the device does not start a cycle', ev('window.__rnRuns') === 0);
     await withClockAt(21, 50, () => ev('agMaybeAutoRun()'));
@@ -15967,10 +15976,28 @@ setTimeout(async () => {
 
     // The pull can be what tells this device the server exists: the gate is asked again after it.
     ev("window.__rnRuns = 0; S.settings.ghToken = 'ghp_t'; S.settings.gistId = 'G'; S.settings.autoSync = true; S.meta.pushedAt = S.meta.changedAt;" +
-       "window.__rnSnap = JSON.parse(JSON.stringify(S)); delete window.__rnSnap.settings.ghToken; window.__rnSnap.agents.runner = {at: Date.now() - 3600000, did:'brief'};" +
+       "window.__rnSnap = JSON.parse(JSON.stringify(S)); delete window.__rnSnap.settings.ghToken; window.__rnSnap.agents.runner = {at: Date.now() - 3600000, did:'brief', autoAt: Date.now() - 3600000};" +
        "window.fetch = async function(u){ return {ok:true, status:200, json: async function(){ return {files:{'ironhub_data.json':{content: JSON.stringify({app:'ironhub', v:1, exportedAt: Date.now() + 5000, data: window.__rnSnap})}}}; }}; };");
     await withClockAt(21, 10, () => ev('agMaybeAutoRun()'));
     ok('scheduler: a pull that brings the server’s stamp stops the device’s 9:10 cycle', ev('window.__rnRuns') === 0 && ev('runnerSeen()') === true);
+    // The same pull, but the server has only been run by Reload since its clock last started it (Nov 3-5): the device
+    // runs at 9:10, and the feed says why, once.
+    ev("window.__rnRuns = 0; agState().log = []; _runnerClockLogged = ''; S.meta.pushedAt = S.meta.changedAt; window.__rnSnap.agents.runner = {at: Date.now() - 3600000, did:'brief', autoAt: Date.now() - 3 * 864e5}; agState().runner = JSON.parse(JSON.stringify(window.__rnSnap.agents.runner));");
+    await withClockAt(21, 10, () => ev('agMaybeAutoRun()'));
+    const clockLines = () => ev("agState().log.filter(function(l){ return /server did not run tonight/.test(l.text); }).length");
+    ok('scheduler: a server only Reload has run is not waited for; the device runs at 9:10 and the feed names the clock',
+       ev('window.__rnRuns') === 1 && clockLines() === 1 && ev("agState().log.some(function(l){ return l.agent === 'charlie' && /last started a run 3d ago.*ironhub-clock/.test(l.text); })") === true,
+       JSON.stringify(ev('agState().log.map(function(l){ return l.text; })')));
+    ev("agState().lastRun = '2000-01-01'; S.meta.pushedAt = S.meta.changedAt;");
+    await withClockAt(21, 20, () => ev('agMaybeAutoRun()'));
+    ok('scheduler: and says it once a night, not on every try', clockLines() === 1);
+    // What Settings shows for each.
+    ok('settings: the Server row is red and the folded Connections summary names the stopped clock',
+       ev("(function(){ var r = setGlance().filter(function(x){ return x.k === 'server'; })[0]; return r.tone + '|' + /last started a run 3d ago/.test(r.line); })()") === 'bad|true' &&
+       /Server clock stopped/.test(ev('settingsSummaries().connections')), ev('JSON.stringify(setGlance())'));
+    ev("agState().runner = {at: Date.now() - 3600000, did:'night', autoAt: Date.now() - 3600000};");
+    ok('settings: and green while the clock is starting runs, with nothing in the summary',
+       ev("setGlance().filter(function(x){ return x.k === 'server'; })[0].tone") === 'good' && !/Server clock/.test(ev('settingsSummaries().connections')));
 
     // --- the runner's own entry: an awaitable cycle and a night it reports ---
     ev("window.__rnRuns = 0; delete agState().runner; S.settings.ghToken = ''; S.settings.gistId = '';");
@@ -16101,6 +16128,8 @@ setTimeout(async () => {
        !!r.last && r.last.agents.brief && r.last.agents.brief.date === DAY && r.last.agents.runner && r.last.agents.runner.did === 'brief' &&
        r.last.logs.map(l => l.id).sort().join() === 'l0,l1', r.last && JSON.stringify(r.last.agents.brief));
     const sp = r.last && (r.last.spend || []).find(x => x.dev === 'dsrv0001');
+    ok('runner, morning: an automatic run that wrote something stamps the clock as alive',
+       !!r.last && +r.last.agents.runner.autoAt > 0 && r.last.agents.runner.autoAt === r.last.agents.runner.at, r.last && JSON.stringify(r.last.agents.runner));
     ok('runner, morning: its spend counts toward the cap as one device, the earlier call this morning included', !!sp && sp.day === DAY && sp.n === 2, JSON.stringify(r.last && r.last.spend));
     ok('runner, morning: and the usage log goes back to the state gist with both calls, under the same device',
        r.state.length === 1 && r.state[0]['ironhub:device'] === 'dsrv0001' && JSON.parse(r.state[0]['ironhub:usage']).length === 2, JSON.stringify(r.state));
@@ -16135,11 +16164,15 @@ setTimeout(async () => {
     r = runR('statefail', DAY + 'T21:05:00-05:00', {snap: night, stateStatus: 401});
     ok('runner: a state gist it cannot read stops it before any call, and fails the job', r.code === 1 && r.api.length === 0 && r.pushes === 0 && /state gist/.test(r.log), r.log.slice(-200));
 
-    const briefed = snapWith(s => { s.data.agents.brief = {text: 'Old one.', at: DAY + 'T11:15:00.000Z', date: DAY, hadWhoop: true, whoopScore: 64}; });
+    const briefed = snapWith(s => { s.data.agents.brief = {text: 'Old one.', at: DAY + 'T11:15:00.000Z', date: DAY, hadWhoop: true, whoopScore: 64};
+      s.data.agents.runner = {at: ms('21:01:00') - 864e5, did: 'night', autoAt: ms('21:01:00') - 864e5}; });
     r = runR('reload', DAY + 'T11:20:00-05:00', {snap: briefed, whoop: whoopToday, state: carried}, 'reload');
     ok('runner, reload: the brief written at 6:15 is rewritten now, from this morning’s WHOOP',
        r.api.length === 1 && r.api[0].whoop === true && !!r.last && r.last.agents.brief.at > DAY + 'T16:00' && /reload: rewrote the brief/.test(r.log),
        (r.last && r.last.agents.brief.at) + ' | ' + r.log.slice(-300));
+    ok('runner, reload: a Reload stamps the run but keeps the clock’s last automatic run, never its own time',
+       !!r.last && r.last.agents.runner.did === 'brief' && r.last.agents.runner.autoAt === ms('21:01:00') - 864e5 && r.last.agents.runner.at > r.last.agents.runner.autoAt,
+       r.last && JSON.stringify(r.last.agents.runner));
     r = runR('auto-written', DAY + 'T09:00:00-05:00', {snap: briefed, whoop: whoopToday, state: carried});
     ok('runner, 9 AM with a brief already out and WHOOP unchanged: nothing is rewritten', r.api.length === 0 && r.pushes === 0);
     const drift = JSON.parse(JSON.stringify(whoopToday)); drift.recovery.score = 41;

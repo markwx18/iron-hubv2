@@ -7,5 +7,11 @@ compatibility_date = "2026-09-01"
 [triggers]
 crons = ["0,30 * * * *"]
 
+# Keep the Worker's console lines (the "clock: 21:00 -> FAILED 401: Bad credentials" line names why a slot sent
+# nothing). `wrangler tail` cannot be used from his home network, which blocks *.workers.dev; these logs are read
+# through the dashboard or api.cloudflare.com instead.
+[observability]
+enabled = true
+
 # One secret, not in this file (the repo is public):  npx wrangler secret put GH_TOKEN
 # A token that can dispatch workflows on markwx18/iron-hubv2. See README.md.

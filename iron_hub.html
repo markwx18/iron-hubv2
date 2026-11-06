@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-03-v1">
+<meta name="ironhub-build" content="2026-11-05-v1">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -9916,6 +9916,7 @@ function settingsSummaries(){
   else if(rn && !rn.ok) parts.push(bad(rn.kind === 'run' ? 'WHOOP relay runs are failing' : 'WHOOP relay can\u2019t run from this device'));
   const gn = gdocNote(), gc = gdocCfg();
   if(gc && gn && gn.ok === false) parts.push(bad('Schedule doc not updating'));
+  try{ if(runnerHealth().stopped) parts.push(bad('Server clock stopped')); }catch(e){}
   out.connections = parts.join(' \u00b7 ');
   const ex = +uiPref()['app.lastExport'] || 0;
   out.app = 'Build '+esc(appBuild())+(_updRemote ? ' \u00b7 <b class="sum-new">update ready</b>' : '')+
@@ -9954,6 +9955,8 @@ function setGlance(){
   if(!gc) rows.push({k:'gdoc', t:'Schedule doc', tone:'off', line:'Not set up on this device'});
   else if(gn && gn.ok === false) rows.push({k:'gdoc', t:'Schedule doc', tone:'bad', line:'Not updating'+(gn.msg ? ': '+String(gn.msg).slice(0, 60) : '')});
   else rows.push({k:'gdoc', t:'Schedule doc', tone:'good', line:gn && gn.ok ? 'Writing this week' : 'Set up, not written yet'});
+  // The server runner: whether its clock is starting the 9 PM cycle and the brief with no device open.
+  try{ const rh = runnerHealth(); rows.push({k:'server', t:'Server', tone:rh.tone, line:rh.line}); }catch(e){}
   return rows;
 }
 function setGlanceHTML(){
@@ -27299,15 +27302,50 @@ async function agConfirmBriefThenWrite(){
 const RUNNER_WORKFLOW = 'agents.yml';
 const RUNNER_GRACE_MIN = 45;     // the device's own 9 PM cycle waits this long once the server has been seen
 const RUNNER_SEEN_DAYS = 4;
+const RUNNER_CLOCK_HOURS = 30;   // the clock counts as running while it started a run that did something this recently
 const RUNNER_RELOAD_WAIT_MS = 8 * 60000;   // past this, a Reload that never landed says so
 function runnerHeadless(){ try{ return !!window.IRONHUB_HEADLESS; }catch(e){ return false; } }
 function runnerSeen(now){
   const r = S.agents && S.agents.runner;
   return !!(r && +r.at > 0 && (now || Date.now()) - r.at < RUNNER_SEEN_DAYS * 864e5);
 }
+/* Whether the CLOCK is starting runs, which is a different fact from runnerSeen() (found 2026-11-05). From Nov 3 the
+   Cloudflare clock dispatched nothing, but his Reload taps kept stamping S.agents.runner, so runnerSeen() stayed true
+   and every device kept leaving 9 PM to a server nothing was starting: the cycle ran at 9:45 at best, or whenever a
+   device was next opened. A Reload is dispatched by the device's own token, so it proves the job works, never that
+   the clock does. autoAt is stamped only by an automatic run (the clock's) that did something; with the clock alive
+   that is every night's cycle, so 30 hours covers a night and a margin. A runner stamp from before autoAt existed
+   has none, and reads as not alive: the safe side, since the device then simply runs at 9 as it always did. */
+function runnerClockAlive(now){
+  const r = S.agents && S.agents.runner;
+  return !!(r && +r.autoAt > 0 && (now || Date.now()) - r.autoAt < RUNNER_CLOCK_HOURS * 3600e3);
+}
+/* The Settings row and the Connections summary: is the server starting on its own? A fold must never hide a failure. */
+function runnerHealth(now){
+  const r = S.agents && S.agents.runner;
+  if(!syncReady()) return {tone:'off', line:'Needs sync on this device'};
+  if(!r || !(+r.at > 0)) return {tone:'off', line:'Has not run yet'};
+  if(runnerClockAlive(now)) return {tone:'good', line:'Started on its own '+agTimeAgo(new Date(+r.autoAt).toISOString())};
+  return {tone:'bad', stopped:true, line: +r.autoAt > 0
+    ? 'Its clock last started a run '+agTimeAgo(new Date(+r.autoAt).toISOString())+', so 9 PM falls to a device'
+    : 'Its clock is not starting runs (only Reload has run it), so 9 PM falls to a device'};
+}
+/* A device running the night because the clock did not leaves evidence, once a night (a gate that declines, or here a
+   job that silently moved, must say so). */
+let _runnerClockLogged = '';
+function runnerClockNote(){
+  try{
+    if(runnerHeadless() || !runnerSeen() || runnerClockAlive() || _runnerClockLogged === todayKey()) return;
+    _runnerClockLogged = todayKey();
+    const r = S.agents.runner;
+    agLog('charlie', 'The server did not run tonight’s cycle: its clock ' + (+r.autoAt > 0 ? 'last started a run ' +
+      agTimeAgo(new Date(+r.autoAt).toISOString()) : 'has not started a run on its own') +
+      '. Running it on this device. Check Cloudflare › Workers › ironhub-clock › Logs.');
+  }catch(e){}
+}
 /* Minutes past 9 PM that the device still leaves to the server. 0 means go. */
 function runnerGraceLeft(d){
-  if(runnerHeadless() || !runnerSeen(d ? d.getTime() : 0)) return 0;
+  if(runnerHeadless() || !runnerClockAlive(d ? d.getTime() : 0)) return 0;
   const t = d || new Date(), past = (t.getHours() - 21) * 60 + t.getMinutes();
   return (past >= 0 && past < RUNNER_GRACE_MIN) ? RUNNER_GRACE_MIN - past : 0;
 }
@@ -27341,7 +27379,12 @@ async function runnerTick(mode){
     if(b && (b.at || '') > before){ did = 'brief'; why = 'wrote the brief'; }
     else { const tr = briefTrail(); why = 'no brief: ' + (tr ? tr.reason : 'the gate stayed closed'); }
   }
-  if(did){ agState().runner = {at:Date.now(), did:did}; save(); }
+  // autoAt only from an automatic run: a Reload proves the job works, not that the clock is starting it.
+  if(did){
+    const prev = agState().runner || {};
+    agState().runner = {at:Date.now(), did:did, autoAt: mode === 'reload' ? (+prev.autoAt || 0) : Date.now()};
+    save();
+  }
   return {did:did, why:why};
 }
 /* The debounced push would never fire before the job exits, so the runner pushes itself and says whether the gist
@@ -27475,6 +27518,7 @@ async function agConfirmGateThenRun(){
     if(a.lastRun === todayKey()) return;
     // The pull may be what told this device the server exists.
     if(runnerGraceLeft()) return;
+    runnerClockNote();
     // Returned so runnerTick() (and the suite) can await the cycle.
     return await agRunAll(false);
   }catch(e){ console.warn('agConfirmGateThenRun failed', e); }
