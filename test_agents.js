@@ -1927,8 +1927,13 @@ setTimeout(async () => {
     // investigation reset: 90% of 170 is 153 -> 150 on a 7.5 ladder, but 155 on a 5 ladder
     const icInv = ev("investigateLift('Custom Stack')");
     ok('control: the fixture really does trip the declining branch', icInv.severity === 'red', 'severity=' + icInv.severity);
+    // Since 2026-11-08 the ladder is the LIFT's: whole 7.5 steps from his last top set (170), as agSnapWeight()
+    // places an agent's reset. 90% of 170 is 153 -> 155 (170 - 2 x 7.5); counting from zero gave 150, and on his
+    // 15-lb leg machines (185/200) the zero-counted ladder gave 180, a weight the stack cannot make.
     ok('an investigation reset weight lands on the ladder too',
-      icInv.fix && icInv.fix.payload && icInv.fix.payload.w === 150, JSON.stringify(icInv.fix && icInv.fix.payload));
+      icInv.fix && icInv.fix.payload && icInv.fix.payload.w === 155, JSON.stringify(icInv.fix && icInv.fix.payload));
+    ok('...and a reset that rounds back up to the weight it resets from still goes one step under',
+      ev("invResetWeight('Custom Stack', 170, 0.99)") === 162.5, String(ev("invResetWeight('Custom Stack', 170, 0.99)")));
 
     const incRest = JSON.parse(incSaved);
     ev('S.split = ' + JSON.stringify(incRest.split) + '; S.logs = ' + JSON.stringify(incRest.logs) + ';');
@@ -4081,11 +4086,13 @@ setTimeout(async () => {
   {
     const savedLogsO = ev('JSON.stringify(S.logs)');
     const savedAgO = ev('JSON.stringify(agState().overload || null)');
+    // Dated back from today, not from a fixed January: since 2026-11-08 a lift no one has trained in PW_STALE_DAYS is
+    // "no recent data" with no verdict, and that is asserted on its own below. These lifts are not in the split, so
+    // they are judged by the tab's own baseline rule, which is what this section tests.
     ev(`(function(){
       S.logs = [];
-      var start = new Date('2026-01-05T00:00:00');
       for(var i=0;i<8;i++){
-        var d = new Date(start.getTime() + i*7*86400000).toISOString().slice(0,10);
+        var d = mesoAddDays(todayKey(), -(1 + 7*(7-i)));
         S.logs.push({date:d, entries:[
           {exercise:'OL Climber',  sets:[{w:100+i*5, r:5, e:'solid'}]},
           {exercise:'OL Sinker',   sets:[{w:200-i*5, r:5, e:'solid'}]},
@@ -4186,6 +4193,22 @@ setTimeout(async () => {
        ev("agJsonSpec('delta')").indexOf('"overload"') >= 0 &&
        ev("agJsonSpec('echo')").indexOf('"overload"') < 0 &&
        ev("agJsonSpec('charlie')").indexOf('"overload"') < 0);
+
+    // ---- no recent data (his plan, 2026-11-08): Rear Delt Machine, last trained Sep 26, still read "needs attention"
+    // on Nov 8. A lift nobody has trained in PW_STALE_DAYS gets no verdict, is not offered to the agents, and an agent
+    // row about it is dropped. Falling on purpose, so the baseline rule alone would call it "attention".
+    ev(`(function(){ for(var i=0;i<8;i++) S.logs.push({date:mesoAddDays(todayKey(), -(40 + 7*(7-i))), entries:[
+      {exercise:'OL Gone', sets:[{w:200-i*6, r:5, e:'grind'}]}]}); })();`);
+    const goneSig = ev('olSignals()').find(s => s.lift === 'OL Gone');
+    ok('stale: a lift not trained in 3 weeks has no verdict', goneSig && goneSig.verdict === 'stale', goneSig && goneSig.verdict);
+    ok('stale: control, its own numbers still read down', goneSig && goneSig.dir === 'down');
+    ok('stale: it sorts after every lift with a verdict', ev("olSignals().slice(-1)[0].lift") === 'OL Gone');
+    ok('stale: it is not offered to the agents', ev('olAgentContext()').indexOf('OL Gone') < 0 && ev('olAgentContext()').indexOf('OL Climber') >= 0);
+    w.__sigs = ev('olSignals()');
+    ok('stale: an agent row about it is dropped', val({ lifts: [{ lift: 'OL Gone', direction: 'down', verdict: 'attention', tip: 'x' }] }) === null);
+    ev('delete agState().overload;');
+    ev('renderAnOverload')();
+    ok('stale: the tab says no recent data', /OL Gone[\s\S]*?No recent data/.test(w.document.getElementById('an_overload').innerHTML));
 
     ev('S.logs = ' + savedLogsO + ';');
     ev(savedAgO === 'null' ? 'delete agState().overload;' : 'agState().overload = ' + savedAgO + ';');
@@ -9350,7 +9373,10 @@ setTimeout(async () => {
       {exercise: 'Cable Row', sets: [{w: 150, r: 10, e: 'solid'}, {w: 150, r: 10, e: 'solid'}]},
       {exercise: 'Zz I Dips', sets: [{w: 0.5, r: 12, e: 'solid'}, {w: 0.5, r: 12, e: 'solid'}]}]});
     il[5].decisions = {'Zz I Press': {code: 'increase', moved: true, from: 170, to: 175}};
+    // Three earlier Cable Row sessions (2026-11-08): the facts line now lists the lifts the watch calls holding, and the
+    // watch needs 6+ clean sessions over 3 weeks to call anything. The newest session (an easy day) is not one of them.
     il[5].call = {call: 'easy', score: -2.5, conf: 'high', off: false};
+    [-53, -47, -41].forEach((d, k) => il.unshift({id: 896990 + k, date: dk(d), day: 'D1', entries: [{exercise: 'Cable Row', sets: [{w: 150, r: 10, e: 'solid'}, {w: 150, r: 10, e: 'solid'}]}]}));
     ev('S.logs = ' + JSON.stringify(il) + ';');
     ev('S.whoop.recovery = {date:todayKey(), score:52, hrv:118, rhr:58}; S.whoop.sleep = {date:todayKey(), hours:6.9, performance:80};');
     ev('S.nutrition = ' + JSON.stringify([1, 2, 3, 4, 5].map(i => ({date: dk(-i), cals: 3650, protein: 155}))) + ';');
@@ -9361,7 +9387,7 @@ setTimeout(async () => {
     ok('summary: bodyweight against the band, and intake against target',
        /Bodyweight: \+0\.6\d lb\/wk .*\(pocket; lean-bulk band 0\.5\u20131\)/.test(sum) && /Intake, last 14 days \(5 logged\)/.test(sum), (sum.match(/Bodyweight[^\n]*/) || [''])[0]);
     ok('summary: per-lift patterns, and the stalled lift’s facts',
-       /Lift patterns/.test(sum) && /Zz I Press: \+[\d.]+ lb\/wk; 5 jumps \(100% held\)/.test(sum) && /Cable Row: 150 lb for 6 sessions/.test(sum), (sum.match(/Lift patterns[\s\S]{0,900}/) || [''])[0]);
+       /Lift patterns/.test(sum) && /Zz I Press: \+[\d.]+ lb\/wk; 5 jumps \(100% held\)/.test(sum) && /Cable Row: 150 lb for 8 sessions/.test(sum), (sum.match(/Lift patterns[\s\S]{0,900}/) || [''])[0]);
     ok('summary: no line tells the agent which fix to propose', !/propose with swapEx/.test(sum));
     // A bare "effort 40" came back to him as "40% effort", which reads as coasting; 40 is a grind (2026-10-14).
     ok('summary: effort is a word with the score in brackets, never a bare number',
@@ -9372,7 +9398,10 @@ setTimeout(async () => {
     ok('summary: muscle groups and the engine\u2019s recent decisions, with the call',
        /Muscle groups, last 6 weeks/.test(sum) && /Engine decisions, last 7 days: .*\[easy\].*Zz I Press increase 170\u2192175/.test(sum), (sum.match(/Engine decisions[^\n]*/) || [''])[0]);
     ok('summary: stays small (under 8000 characters, ~2K tokens)', sum.length < 8000, String(sum.length));
-    ok('summary: a lift logged at a 0.5 lb bodyweight marker is left out of the patterns', sum.indexOf('Zz I Dips') < 0);
+    // Left out of the patterns (it always reads "same weight"), but read on its reps by the plateau watch (2026-11-08).
+    const patterns = (sum.match(/Lift patterns[^\n]*\n(?: {2}[^\n]*\n)*/) || [''])[0];
+    ok('summary: a lift logged at a 0.5 lb bodyweight marker is left out of the patterns', patterns.length > 0 && patterns.indexOf('Zz I Dips') < 0, patterns);
+    ok('summary: ...and the plateau watch reads it on its reps, as the card does', /Plateau watch \(the colours[^\n]*Zz I Dips/.test(sum), (sum.match(/Plateau watch[^\n]*/) || [''])[0]);
     ok('summary: DELTA, ECHO and ZULU get it; CHARLIE does not',
        ['delta', 'echo', 'zulu'].every(a => ev("agBaseContext('" + a + "')").indexOf('INTELLIGENCE SUMMARY') >= 0) && ev("agBaseContext('charlie')").indexOf('INTELLIGENCE SUMMARY') < 0);
 
@@ -9386,12 +9415,14 @@ setTimeout(async () => {
     ev("S.split.D2.exercises.push({name:'Rope Cable Curl', inc:10});");
     const st = [];
     const cs = (w, reps) => reps.map(r => ({w: w, r: r, e: 'solid'}));
-    [[-40, 65, [12, 11, 10]], [-32, 70, [10, 9, 8]], [-24, 70, [10, 9, 7]], [-16, 70, [10, 9, 8, 7]], [-8, 70, [10, 9, 8]]].forEach(([d, w, r], i) =>
+    // Eight sessions, not five (2026-11-08): the facts line lists what the watch calls holding, and the watch calls a
+    // stall only on 6+ clean sessions over 3 weeks. The three earlier ones climb into it, as his did.
+    [[-64, 60, [12, 11, 10]], [-56, 62.5, [12, 11, 10]], [-48, 65, [11, 10, 10]], [-40, 65, [12, 11, 10]], [-32, 70, [10, 9, 8]], [-24, 70, [10, 9, 7]], [-16, 70, [10, 9, 8, 7]], [-8, 70, [10, 9, 8]]].forEach(([d, w, r], i) =>
       st.push({id: 897100 + i, date: dk(d), day: 'D2', entries: [
         {exercise: 'Preacher Curl Machine', sets: cs(w, r)},
-        {exercise: 'Rope Cable Curl', sets: cs(70 + i * 5, [12, 10, 9])},
+        {exercise: 'Rope Cable Curl', sets: cs(55 + i * 5, [12, 10, 9])},
         // Same weight every time, a rep more each time: double progression, not a stall.
-        {exercise: 'Incline Dumbbell Curl', sets: cs(30, [8 + i, 8 + i, 7 + i].map(x => Math.min(x, 12)))}]}));
+        {exercise: 'Incline Dumbbell Curl', sets: cs(30, [5 + i, 5 + i, 4 + i].map(x => Math.min(x, 12)))}]}));
     ev('S.logs = S.logs.concat(' + JSON.stringify(st) + ');');
     const pp = ev("liftProfile('Preacher Curl Machine')"), ip = ev("liftProfile('Incline Dumbbell Curl')");
     ok('stall: flat weight and no rep gain is a stall', pp && pp.stalled3 === true && pp.flatRun === 4 && pp.everyDays === 8, JSON.stringify(pp));
@@ -12327,81 +12358,163 @@ setTimeout(async () => {
     const T = (n) => ev("mesoAddDays(todayKey(), " + n + ")");
     const flat = [[90, [10, 9, 8]], [95, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]]];
 
-    // --- the signals, one at a time ---
-    series('Zz PW Stall', flat);
+    // --- the signals, one at a time (rewritten 2026-11-08: his plan, and his three calls on it) ---
+    // No deload near any fixture: one ended in the last week makes every read an early one, which is asserted apart.
+    ev("window.__s5k.lastDeloadEndKey = lastDeloadEndKey; lastDeloadEndKey = function(){ return null; };");
+    const flat9 = [[80, [10, 9, 8]], [85, [10, 9, 8]], [90, [10, 9, 8]], [95, [10, 9, 8]]].concat(flat.slice(2));
+    series('Zz PW Stall', flat9);
     let r = R('Zz PW Stall');
-    ok('watch: five sessions at one weight with the reps flat is stalled, red', r && r.lvl === 'red' && r.word === 'stalled' && r.sig[0].k === 'stalled', JSON.stringify(r));
+    ok('watch: five sessions at one weight with the reps flat, on 9 clean sessions, is holding, amber (his word, never red)',
+       r && r.state === 'holding' && r.lvl === 'amber' && r.word === 'holding' && r.sig[0].k === 'holding' && r.conf === 'higher', JSON.stringify(r));
     ok('watch: and says so in numbers', r && r.sig[0].txt === '5 sessions at 100, reps flat', r && r.sig[0].txt);
-    series('Zz PW Flat3', flat.slice(0, 5));
+    series('Zz PW Stall7', flat);
+    r = R('Zz PW Stall7');
+    ok('watch: the same stall on 7 clean sessions is an early read: holding, neutral (colour follows confidence)',
+       r && r.state === 'holding' && r.lvl === 'calm' && r.conf === 'lower', JSON.stringify(r));
+    // A plain jump, then three sessions flat: no climb before it to read as slowing, so the flat run is the whole story.
+    series('Zz PW Flat3', [[95, [10, 9, 8]], [95, [10, 9, 8]], [95, [10, 9, 8]], [95, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]]]);
     r = R('Zz PW Flat3');
-    ok('watch: three sessions flat is an early sign, amber', r && r.lvl === 'amber' && r.word === 'slowing' && r.sig[0].k === 'flat3', JSON.stringify(r));
-    series('Zz PW Reps', [[100, [8, 8, 8]], [100, [9, 8, 8]], [100, [10, 9, 8]], [100, [11, 10, 9]]]);
+    ok('watch: three sessions flat is too short to call: holding, neutral, and it says so', r && r.state === 'holding' && r.lvl === 'calm' &&
+       r.sig[0].txt === '3 sessions at 100, reps flat' && /too short to call a stall/.test(r.rule), JSON.stringify(r));
+    series('Zz PW Reps', [[95, [8, 8, 8]], [95, [9, 8, 8]], [95, [10, 9, 8]], [100, [8, 8, 8]], [100, [9, 8, 8]], [100, [10, 9, 8]], [100, [11, 10, 9]]]);
     r = R('Zz PW Reps');
-    ok('watch: reps climbing at one weight is double progression, not a stall', r && r.lvl === 'green' && !r.sig.length, JSON.stringify(r));
-    series('Zz PW Fall', [[100, [10]], [100, [9]], [95, [10]], [95, [9]], [92.5, [9]], [90, [9]]]);
+    ok('watch: reps climbing at one weight is double progression, not a stall', r && r.state === 'ok' && r.lvl === 'green' && !r.sig.length, JSON.stringify(r));
+    series('Zz PW Thin', [[100, [8, 8, 8]], [100, [9, 8, 8]], [100, [10, 9, 8]], [100, [11, 10, 9]]]);
+    r = R('Zz PW Thin');
+    ok('evidence: under 6 clean sessions is "not enough data", neutral, never a verdict', r && r.state === 'thin' && r.lvl === 'calm' && r.word === 'not enough data' &&
+       r.sig[0].txt === '4 clean sessions; it reads from 6 over 3 weeks', JSON.stringify(r));
+    [0, 2, 4, 6, 8, 10].forEach(function(d, i){ s5Log('Zz PW Week', 1 + d, [[100 + i * 2.5, 8]]); });
+    r = R('Zz PW Week');
+    ok('evidence: six sessions inside two weeks are not enough either: it needs 3 weeks of them', r && r.state === 'thin', JSON.stringify(r));
+    const fallList = [[100, [10]], [100, [10]], [100, [9]], [100, [10]], [95, [9]], [92.5, [9]], [90, [9]], [90, [8]]];
+    series('Zz PW Fall', fallList);
     r = R('Zz PW Fall');
-    ok('watch: six sessions trending down, the newest under the ones before it, is falling', r && r.lvl === 'red' && r.word === 'falling' &&
-       /^e1RM down [\d.]+%\/wk over the last 6 sessions$/.test(r.sig[0].txt), JSON.stringify(r));
-    series('Zz PW Rebound', [[100, [10]], [100, [9]], [95, [10]], [95, [9]], [92.5, [9]], [100, [10]]]);
+    ok('watch: the last 3 sessions all under the 4 before by more than the line is falling, red on firm evidence', r && r.state === 'falling' && r.lvl === 'red' &&
+       /^e1RM down 11%: 117 over the last 3 sessions, 131\.7 over the 4 before$/.test(r.sig[0].txt), JSON.stringify(r));
+    series('Zz PW OneGood', [[100, [10]], [100, [10]], [100, [10]], [100, [10]], [100, [10]], [110, [10]], [90, [9]], [90, [8]]]);
+    r = R('Zz PW OneGood');
+    ok('watch: one good session among the last 3 says it did not fall (his leg press: 540 x 13 among them)', r && r.state !== 'falling', JSON.stringify(r));
+    series('Zz PW Rebound', [[100, [10]], [100, [10]], [100, [9]], [100, [10]], [95, [9]], [92.5, [9]], [90, [9]], [100, [10]]]);
     r = R('Zz PW Rebound');
-    ok('watch: a newest session back above the ones before it is not falling, even with the six-session slope down',
-       r && r.lvl === 'green' && ev("pwPctPerWeek(e1rmSeries('Zz PW Rebound').slice(-6))") < -0.5, JSON.stringify(r));
+    ok('watch: a newest session back at the level before is not falling', r && r.state !== 'falling', JSON.stringify(r));
+    const stepList = [[30, [12]], [30, [12]], [30, [12]], [30, [12]], [30, [12]], [25, [12]], [25, [12]], [25, [12]]];
+    series('Zz PW Step Fly', stepList);
+    series('Zz PW Step Press', stepList);
+    r = R('Zz PW Step Fly');
+    const rp = R('Zz PW Step Press');
+    ok('lift types: one 5-lb step on a 25-30 lb isolation lift is the plates, not him: not falling', r && r.state !== 'falling' && !ev("pwIssue(" + JSON.stringify(r) + ")"), JSON.stringify(r));
+    ok('lift types: the same numbers on a compound are falling (4% line)', rp && rp.state === 'falling' && rp.comp === true, JSON.stringify(rp));
     const slowList = [[100, [8]], [105, [8]], [110, [8]], [115, [8]], [117.5, [8]], [117.5, [9]], [120, [8]], [120, [9]]];
     series('Zz PW Slow', slowList);
     r = R('Zz PW Slow');
-    ok('watch: the last four sessions gaining under half what the four before did is slowing', r && r.lvl === 'amber' && r.sig.length === 1 && r.sig[0].k === 'slowing' &&
+    ok('watch: gaining under half what the 4 before did is slowing, neutral while it still sets bests', r && r.state === 'slowing' && r.lvl === 'calm' && r.sig[0].k === 'slowing' &&
        /^gaining [\d.]+ lb\/wk over the last 4 sessions, down from [\d.]+$/.test(r.sig[0].txt), JSON.stringify(r));
+    series('Zz PW Slow2', slowList.concat([[120, [8]]]));
+    r = R('Zz PW Slow2');
+    ok('watch: slowing and off its best on 9 clean sessions is amber', r && r.state === 'slowing' && r.lvl === 'amber' && r.sig[0].k === 'slowing', JSON.stringify(r));
     ev("pwBlockAt = function(k){ return k > mesoAddDays(todayKey(), -26) ? 'str' : 'hyp'; };");
     r = R('Zz PW Slow');
-    ok('watch: across a change of block (a new rep range) the slope comparison waits', r && r.lvl === 'green', JSON.stringify(r));
+    ok('watch: across a change of block (a new rep range) the slope comparison waits', r && r.state !== 'slowing', JSON.stringify(r));
     ev("pwBlockAt = function(){ return ''; };");
-    series('Zz PW Harder', [[100, [8], 75], [100, [9], 75], [100, [10], 75], [100, [11], 55], [100, [12], 55], [100, [13], 55]]);
+    series('Zz PW Harder', [[100, [8], 75], [100, [9], 75], [100, [10], 75], [100, [10], 55], [100, [11], 55], [100, [11], 55]]);
     r = R('Zz PW Harder');
     ok('watch: top sets feeling harder at the same weight is an early sign (the lever runs the other way to RPE)',
-       r && r.lvl === 'amber' && r.sig[0].k === 'effort' && r.sig[0].txt === 'top sets feel harder at the same weight: about RPE 7 then, 8 now', JSON.stringify(r));
+       r && r.state === 'slowing' && r.sig[0].k === 'effort' && r.sig[0].txt === 'top sets feel harder at the same weight: about RPE 7 then, 8 now', JSON.stringify(r));
     series('Zz PW Easier', [[100, [8], 55], [100, [9], 55], [100, [10], 55], [100, [11], 75], [100, [12], 75], [100, [13], 75]]);
     r = R('Zz PW Easier');
     ok('watch: feeling easier is not a sign of anything', r && r.lvl === 'green', JSON.stringify(r));
     const missList = [[100, [8]], [102.5, [8]], [105, [8]], [107.5, [8]], [110, [8]], [112.5, [8]], [115, [8]], [117.5, [8]]];
     series('Zz PW Miss', missList, (i, x) => ({plan: {'Zz PW Miss': {w: x[0] + (i >= 4 ? 5 : 0), lo: 8, hi: 12, n: 1}}}));
     r = R('Zz PW Miss');
-    ok('watch: the prescription held less often than it used to is an early sign', r && r.lvl === 'amber' && r.sig[0].k === 'misses' &&
+    ok('watch: the prescription held less often than it used to is an early sign', r && r.state === 'slowing' && r.sig[0].k === 'misses' &&
        r.sig[0].txt === 'held the prescription 0 of the last 4, 4 of the 4 before', JSON.stringify(r));
-    series('Zz PW Two', [[100, [8], 75], [100, [9], 75], [100, [10], 75], [100, [11], 55], [100, [12], 55], [100, [13], 55]], (i) => ({plan: {'Zz PW Two': {w: i >= 3 ? 105 : 100, lo: 8, hi: 12, n: 1}}}));
+    series('Zz PW Two', [[100, [8], 75], [100, [9], 75], [100, [10], 75], [100, [10], 55], [100, [11], 55], [100, [11], 55]], (i) => ({plan: {'Zz PW Two': {w: i >= 3 ? 105 : 100, lo: 8, hi: 12, n: 1}}}));
     r = R('Zz PW Two');
-    ok('watch: two early signs together are red, worded as stalling rather than stalled', r && r.lvl === 'red' && r.word === 'stalling' && r.sig.length === 2, JSON.stringify(r));
-    ev("isMaxed = function(n){ return n === 'Zz PW Stall'; };");
+    ok('watch: two early signs together are slowing, never red (red is only a well-evidenced decline)', r && r.state === 'slowing' && r.lvl !== 'red' &&
+       r.sig.some(s => s.k === 'effort') && r.sig.some(s => s.k === 'misses'), JSON.stringify(r));
+    ev("isMaxed = function(n){ return n === 'Zz PW Stall' || n === 'Zz PW Curl185'; };");
     r = R('Zz PW Stall');
-    ok('watch: a MAXED machine sitting at its top weight is amber at most, and says why', r && r.lvl === 'amber' && r.word === 'at the top', JSON.stringify(r));
+    ok('top: MAXED at the heaviest weight logged on it is "at the top", neutral, and says why', r && r.state === 'top' && r.lvl === 'calm' && r.word === 'at the top' &&
+       r.sig[0].txt === 'MAXED at 100, the heaviest it has been', JSON.stringify(r));
+    series('Zz PW Curl185', [[200, [10, 10, 10]], [185, [12, 12, 12]], [185, [12, 12, 12]], [185, [12, 12, 12]], [185, [12, 12, 12]], [185, [12, 12, 12]], [185, [12, 12, 12]], [185, [12, 12, 12]]]);
+    r = R('Zz PW Curl185');
+    ok('top: MAXED 15 lb under a weight he has lifted is not "at the top" (his leg curl, 200 on Sep 24)', r && r.state !== 'top' && !ev("pwIssue(" + JSON.stringify(r) + ")") &&
+       r.maxedStale && r.maxedStale.w === 200 && r.sig.some(s => /^MAXED, but you’ve logged 200 here \(/.test(s.txt)), JSON.stringify(r));
+    ok('top: ...it reads as at the top of its range, waiting on the next step', r && r.state === 'holding' && r.sig[0].k === 'capped' &&
+       /^at the top of its 8–12 range at 185 \(12, 12, 12\); the next step is \+5 lb \(3%\)$/.test(r.sig[0].txt), JSON.stringify(r && r.sig));
+    ok('top: and the reasoning offers to turn MAXED off', /Turn MAXED off/.test(ev("pwReasonHTML(plateauRisk('Zz PW Curl185'))")));
     ev("isMaxed = window.__s5k.isMaxed;");
+    // An isolation lift sitting at the top of its range at one weight (his Reverse EZ curl, 60 x 12, 12, 10 for two months).
+    series('Zz PW EZ Curl', [[60, [12, 10, 9]], [60, [12, 12, 10]], [60, [12, 12, 11]], [60, [12, 12, 12]], [60, [12, 12, 12]], [60, [12, 12, 11]], [60, [12, 12, 10]], [60, [12, 12, 10]]]);
+    r = R('Zz PW EZ Curl');
+    ok('lift types: an isolation lift capped at the top of its range is holding, neutral, not a flag', r && r.state === 'holding' && r.lvl === 'calm' && r.sig[0].k === 'capped', JSON.stringify(r));
+    ok('lift types: ...and the next step is named with its size', r && /the next step is \+5 lb \(8%\)$/.test(r.sig[0].txt) && /take the \+5 lb \(8%\) step/.test(r.doText), r && (r.sig[0].txt + ' | ' + r.doText));
+    // The range is the one each session was LOGGED under: moved to 12-20 after its last session, it was still capped then.
+    series('Zz PW Moved', [[60, [12, 10, 9]], [60, [12, 12, 10]], [60, [12, 12, 11]], [60, [12, 12, 12]], [60, [12, 12, 12]], [60, [12, 12, 11]], [60, [12, 12, 10]], [60, [12, 12, 10]]],
+      () => ({plan: {'Zz PW Moved': {w: 60, lo: 8, hi: 12, n: 3}}}));
+    ev("S.split.__pwMoved = {name: 'x', exercises: [{name: 'Zz PW Moved', formFocus: true}]};");
+    r = R('Zz PW Moved');
+    ok('lift types: a session is judged by the range it was logged under, not today’s (Form Focus since)', r && r.state === 'holding' && r.sig[0].k === 'capped' &&
+       /8–12 range/.test(r.sig[0].txt), JSON.stringify(r && r.sig));
+    ev("delete S.split.__pwMoved;");
+    // A lift at a recent best is never holding-amber, nor "at the top" without MAXED (his bench, 2026-11-08).
+    series('Zz PW Bench', [[155, [5, 5, 5]], [155, [3, 4, 3]], [155, [6, 4, 6]], [155, [5, 4]], [155, [6, 5, 4]], [155, [5, 5, 4]], [155, [6, 5, 5]], [155, [6, 6, 5]]],
+      (i) => (i === 7 ? {entries: [{exercise: 'Zz PW Bench', sets: [{w: 135, r: 12}, {w: 155, r: 6}, {w: 155, r: 6}, {w: 155, r: 5}]}]} : null));
+    r = R('Zz PW Bench');
+    ok('recent best: a lift at a new e1RM high is not holding-amber, whatever its weight did', r && !(r.state === 'holding' && r.lvl === 'amber') && r.state !== 'top' && r.lvl !== 'red', JSON.stringify(r));
 
     // --- clean sessions only ---
-    series('Zz PW Clean', flat, (i) => (i >= 5 ? {call: {call: 'recover'}} : null));
+    series('Zz PW Clean', flat9, (i) => (i >= 7 ? {call: {call: 'recover'}} : null));
     r = R('Zz PW Clean');
-    ok('clean: two kept recover days do not count toward a stall', r && r.lvl === 'amber' && r.flatRun === 3, JSON.stringify(r));
+    ok('clean: two kept recover days do not count toward a stall, and are listed as left out', r && r.flatRun === 3 &&
+       r.excluded.length === 2 && r.excluded.every(x => x.why === 'recover day'), JSON.stringify(r));
     ok('clean: liftProfile() by default still reads every session (the agents’ summary does not move)',
        ev("liftProfile('Zz PW Clean').flatRun") === 5 && ev("liftProfile('Zz PW Clean', {clean: true}).flatRun") === 3);
+    // Every exclusion kind, by name, in the one list the card and its reasoning both read.
+    const why = (lg) => ev("pwExcludeWhy(" + JSON.stringify(Object.assign({date: '2026-01-05', entries: [{exercise: 'Zz X', sets: [{w: 100, r: 8}]}]}, lg)) + ", 'Zz X')");
+    const kinds = [[{deload: true}, 'deload'], [{home: true}, 'home day'], [{coachPlan: true}, 'coach plan'], [{call: {call: 'recover'}}, 'recover day'],
+      [{call: {call: 'easy'}}, 'easy day'], [{call: {call: 'easy', off: true}}, ''], [{swapped: ['Zz X']}, 'swapped in'],
+      [{decisions: {'Zz X': {code: 'inv-override'}}}, 'reset weight'], [{decisions: {'Zz X': {code: 'call-recover'}}}, 'recover step-down'],
+      [{decisions: {'Zz X': {code: 'deload'}}}, 'deload weight'], [{entries: [{exercise: 'Zz X', sets: [{w: 120, r: 1, rm: 1}]}]}, '1RM test'],
+      [{todayAdj: ['Zz X']}, 'changed for the day'], [{quick: [{k: 'short', lifts: ['Zz X']}]}, 'short on time'],
+      [{quick: [{k: 'short', lifts: ['Zz Other']}]}, ''], [{}, '']];
+    const kindMiss = kinds.filter(k => why(k[0]) !== k[1]).map(k => JSON.stringify(k[0]) + ' -> ' + why(k[0]));
+    ok('clean: every exclusion kind is named (deload, home, coach plan, easy and recover days, swap, reset, step-down, lift deload, 1RM, today’s change, short on time)',
+       kindMiss.length === 0, kindMiss.join('; '));
+    series('Zz PW Short', flat9, (i) => (i >= 7 ? {quick: [{k: 'short', at: 1, lifts: ['Zz PW Short']}]} : null));
+    ok('clean: short on time is left out of the watch only (predictions and experiments still read the session)',
+       R('Zz PW Short').excluded.filter(x => x.why === 'short on time').length === 2 && ev("e1rmSeries('Zz PW Short', {excludeHome: true, excludeMod: true}).length") === 9);
+    const benchBefore = JSON.stringify(R('Zz PW Stall'));
+    ev("window.__s5Pr = S.practice; S.practice = [stampRec({id: 'zbp1', date: mesoAddDays(todayKey(), -2), lift: 'Zz PW Stall', sets: [{w: 140, r: 12}, {w: 140, r: 12}]})];");
+    ok('clean: Bench Practice sets never move the watch (they live in S.practice, never S.logs)', JSON.stringify(R('Zz PW Stall')) === benchBefore);
+    ev("S.practice = window.__s5Pr; delete window.__s5Pr;");
 
     // --- which lifts the watch covers ---
     series('Zz PW Old', flat.slice(0, 5), null, 40);
+    series('Zz PW Ancient', flat.slice(0, 5), null, 100);
     series('Zz PW BW', [[0.5, [10]], [0.5, [10]], [0.5, [11]], [0.5, [11]], [0.5, [12]]]);
     series('Zz PW NotSplit', flat.slice(0, 5));
-    ev("S.split = {D1: {name: 'Zz', exercises: ['Zz PW Stall', 'Zz PW Reps', 'Zz PW Flat3', 'Zz PW Old', 'Zz PW BW']}};");
+    ev("S.split = {D1: {name: 'Zz', exercises: ['Zz PW Stall', 'Zz PW Reps', 'Zz PW Flat3', 'Zz PW Old', 'Zz PW Ancient', 'Zz PW BW', 'Zz PW Fall']}};");
     const pl = JSON.parse(ev('JSON.stringify(pwLifts())'));
     ok('lifts: the split’s lifts are watched', pl.indexOf('Zz PW Stall') >= 0 && pl.indexOf('Zz PW Reps') >= 0, JSON.stringify(pl));
-    ok('lifts: one not trained in 4 weeks is not', pl.indexOf('Zz PW Old') < 0);
-    ok('lifts: nor a bodyweight one logged at 0.5 lb, nor one outside the split', pl.indexOf('Zz PW BW') < 0 && pl.indexOf('Zz PW NotSplit') < 0);
-    ev("invActiveFlags = function(){ return [{key: 'lift:Zz PW Reps', severity: 'orange', title: 'Zz PW Reps declining', status: 'active'}]; };");
+    ok('lifts: one not trained in 3 weeks is listed, as no recent data, never a verdict', pl.indexOf('Zz PW Old') >= 0 &&
+       R('Zz PW Old').state === 'stale' && R('Zz PW Old').word === 'no recent data' && /^last trained /.test(R('Zz PW Old').sig[0].txt));
+    ok('lifts: one not trained in 90 days is not listed at all', pl.indexOf('Zz PW Ancient') < 0);
+    ok('lifts: a bodyweight one logged at 0.5 lb is watched on its reps; one outside the split is not', pl.indexOf('Zz PW BW') >= 0 && R('Zz PW BW').bw === true &&
+       pl.indexOf('Zz PW NotSplit') < 0, JSON.stringify(pl));
+    ev("invActiveFlags = function(){ return [{id: 'zf1', key: 'lift:Zz PW Reps', severity: 'orange', title: 'Zz PW Reps declining', status: 'active'}]; };");
     let pw = JSON.parse(ev('JSON.stringify(plateauWatch())'));
     const pwOf = (nm) => pw.find(x => x.lift === nm);
-    ok('flag: an open Investigation flag makes an on-track lift amber, and names it', pwOf('Zz PW Reps') && pwOf('Zz PW Reps').lvl === 'amber' &&
-       pwOf('Zz PW Reps').word === 'flagged' && pwOf('Zz PW Reps').sig[0].txt === 'Investigation flag open: Zz PW Reps declining', JSON.stringify(pwOf('Zz PW Reps')));
+    ok('flag: an open Investigation flag is a line, not a floor (his call): an on-track lift stays on track and names it', pwOf('Zz PW Reps') && pwOf('Zz PW Reps').lvl === 'green' &&
+       pwOf('Zz PW Reps').state === 'ok' && pwOf('Zz PW Reps').sig.some(s => s.txt === 'Investigation flag open: Zz PW Reps declining') && pwOf('Zz PW Reps').flag.id === 'zf1',
+       JSON.stringify(pwOf('Zz PW Reps')));
     ev("invActiveFlags = function(){ return [{key: 'lift:Zz PW Reps', severity: 'yellow', title: 'x', status: 'active'}]; };");
     pw = JSON.parse(ev('JSON.stringify(plateauWatch())'));
-    ok('flag: a yellow flag is not a floor', pwOf('Zz PW Reps') && pwOf('Zz PW Reps').lvl === 'green');
-    ok('watch: worst first', pw.map(x => x.lvl).join(',') === 'red,amber,green', pw.map(x => x.lift + ':' + x.lvl).join(','));
+    ok('flag: a yellow flag is not even a line', pwOf('Zz PW Reps') && pwOf('Zz PW Reps').lvl === 'green' && !pwOf('Zz PW Reps').sig.some(s => s.k === 'flag'));
+    const rk = {red: 3, amber: 2, calm: 1, green: 0};
+    ok('watch: worst first (red, amber, neutral, on track)', pw.every((x, i) => !i || rk[pw[i - 1].lvl] >= rk[x.lvl]) && pw[0].lvl === 'red' && pw[pw.length - 1].lvl === 'green',
+       pw.map(x => x.lift + ':' + x.lvl).join(','));
     ev("invActiveFlags = window.__s5k.invActiveFlags;");
-
     // --- dips ---
     series('Zz PW Dip', [[100, [10]], [100, [10]], [100, [11]], [92, [10]], [97, [10]]]);
     s5Log('Zz PW Dip', 3, [[80, 10]], {call: {call: 'recover'}});
@@ -12410,13 +12523,14 @@ setTimeout(async () => {
     ok('dips: a kept recover day at 80 lb is not one', !dips.some(d => d.v < 110));
 
     // --- rising: moved up a level at the newest session ---
-    series('Zz PW Rise', flat.slice(0, 6));
+    // Its 8th clean session makes the stall firm, so it goes from a neutral early read to amber.
+    series('Zz PW Rise', flat9.slice(0, 8));
     const riseRows = "[plateauRisk('Zz PW Rise', {topsets: predTopsets(), flags: {}}), plateauRisk('Zz PW Stall', {topsets: predTopsets(), flags: {}})]";
     const logsBefore = ev("window.__s5L = S.logs; S.logs.length");
     const rising = JSON.parse(ev("JSON.stringify(pwRising(" + riseRows + "))"));
-    ok('rising: a lift its newest session moved from amber to red is rising', rising.length === 1 && rising[0].lift === 'Zz PW Rise' && rising[0].from === 'amber' && rising[0].to === 'red' &&
+    ok('rising: a lift its newest session moved from neutral to amber is rising', rising.length === 1 && rising[0].lift === 'Zz PW Rise' && rising[0].from === 'calm' && rising[0].to === 'amber' &&
        rising[0].date === T(-1), JSON.stringify(rising));
-    ok('rising: a lift that was already red is not announced again', !rising.some(x => x.lift === 'Zz PW Stall'));
+    ok('rising: a lift that was already amber is not announced again', !rising.some(x => x.lift === 'Zz PW Stall'));
     ok('rising: the logs are the same array afterwards', ev("S.logs === window.__s5L && S.logs.length") === logsBefore);
     ev("try{ pwAsOf(todayKey(), function(){ throw new Error('x'); }); }catch(e){}");
     ok('rising: and are put back even when the read throws', ev("S.logs === window.__s5L") === true);
@@ -12552,17 +12666,17 @@ setTimeout(async () => {
 
     // --- where it shows: Overload rows, the Hub, and nothing written ---
     ev("S.logs = []; S.notifCleared = [];");
-    series('Zz PW Stall', flat);
-    series('Zz PW Reps', [[100, [8, 8, 8]], [100, [9, 8, 8]], [100, [10, 9, 8]], [100, [11, 10, 9]]]);
+    series('Zz PW Stall', flat9);
+    series('Zz PW Reps', [[95, [8, 8, 8]], [95, [9, 8, 8]], [95, [10, 9, 8]], [100, [8, 8, 8]], [100, [9, 8, 8]], [100, [10, 9, 8]], [100, [11, 10, 9]]]);
     ev("S.split = {D1: {name: 'Zz', exercises: ['Zz PW Stall', 'Zz PW Reps']}}; pwOpen = {};");
     const before = ev('JSON.stringify(S)');
     ev("renderAnOverload();");
-    ok('overload: a watched lift’s row carries the watch’s word', ev("(document.querySelector('#an_overload .pw-line[data-lift=\"Zz PW Stall\"] .pw-w')||{}).textContent") === 'stalled');
+    ok('overload: a watched lift’s row carries the watch’s word', ev("(document.querySelector('#an_overload .pw-line[data-lift=\"Zz PW Stall\"] .pw-w')||{}).textContent") === 'holding');
     ok('overload: an on-track lift gets no watch line, only its row', ev("!!document.querySelector('#an_overload .pw-line[data-lift=\"Zz PW Reps\"]')") === false &&
        [].concat(JSON.parse(ev("JSON.stringify([].slice.call(document.querySelectorAll('#an_overload .ol-nm')).map(function(x){ return x.textContent; }))"))).indexOf('Zz PW Reps') >= 0);
     const olv = JSON.parse(ev("JSON.stringify(olSignals().map(function(x){ return [x.lift, x.verdict, x.watch]; }))"));
     const olOf = (nm) => olv.find(x => x[0] === nm) || [];
-    ok('overload: a lift the watch calls stalled is at least "stalling", never "on track" beside it', olOf('Zz PW Stall')[1] === 'stalling' && olOf('Zz PW Stall')[2] === 'red', JSON.stringify(olv));
+    ok('overload: a lift the watch calls holding (amber) is "stalling" there, never "on track" beside it', olOf('Zz PW Stall')[1] === 'stalling' && olOf('Zz PW Stall')[2] === 'amber', JSON.stringify(olv));
     ok('overload: an on-track lift keeps its verdict', olOf('Zz PW Reps')[1] === 'on-track', JSON.stringify(olv));
     ev("isMaxed = function(n){ return n === 'Zz PW Stall'; };");
     ok('overload: a MAXED machine keeps its carve-out', JSON.parse(ev("JSON.stringify(olSignals().find(function(x){ return x.lift === 'Zz PW Stall'; }).verdict)")) === 'on-track');
@@ -12570,9 +12684,14 @@ setTimeout(async () => {
     ev("pwToggle('Zz PW Stall');");
     ok('overload: tapping opens the likely factors, worded as likely', /Likely factors/.test(ev("(document.querySelector('#an_overload .pw-why')||{}).textContent")) &&
        /likely, not proven/.test(ev("(document.querySelector('#an_overload .pw-why')||{}).textContent")));
+    ok('overload: ...and how it was read: the rule, the sessions read, what to do', /How this was read/.test(ev("(document.querySelector('#an_overload .pw-reason')||{}).textContent")) &&
+       /Rule Holding: 5 sessions at 100, reps flat/.test(ev("(document.querySelector('#an_overload .pw-reason')||{}).textContent")) &&
+       /Read from 9 clean sessions\. Newest:/.test(ev("(document.querySelector('#an_overload .pw-reason')||{}).textContent")) &&
+       /What to do: Hold the weight and add reps/.test(ev("(document.querySelector('#an_overload .pw-reason')||{}).textContent")));
     ev("renderAnOverload();");
     ok('overload: and a repaint keeps it open', !!ev("!!document.querySelector('#an_overload .pw-why')"));
-    ev("pwShow('Zz PW Reps');");
+    // On Overload explicitly: with 7 sessions this lift is one the Strength hero covers, and the hero opens it there.
+    ev("pwShow('Zz PW Reps', true);");
     ok('overload: a chip opens its lift alone', JSON.stringify(JSON.parse(ev('JSON.stringify(pwOpen)'))) === '{"Zz PW Reps":true}' && ev('activeMainTab') === 'progress');
     ev("renderOps();");
     ok('hub: DELTA’s lifts as the watch reads them', /DELTA is watching/.test(ev("(document.querySelector('#ops .hub-pw')||{}).textContent")) &&
@@ -12589,7 +12708,7 @@ setTimeout(async () => {
     ev("if(window.__s5k){ ['pwBlockAt','isMaxed','invActiveFlags','weeklyVolumeByGroup','fatigueIndex','dashToday','dayCall','todayKeyLifts','bestE1RM','nextPrForecast','deloadForecast','deloadActive','pwRising'].forEach(function(k){ window[k] = window.__s5k[k]; }); }");
     ev("try{ pwBlockAt = window.__s5k.pwBlockAt; isMaxed = window.__s5k.isMaxed; invActiveFlags = window.__s5k.invActiveFlags; weeklyVolumeByGroup = window.__s5k.weeklyVolumeByGroup; fatigueIndex = window.__s5k.fatigueIndex;" +
        " dashToday = window.__s5k.dashToday; dayCall = window.__s5k.dayCall; todayKeyLifts = window.__s5k.todayKeyLifts; bestE1RM = window.__s5k.bestE1RM; nextPrForecast = window.__s5k.nextPrForecast;" +
-       " deloadForecast = window.__s5k.deloadForecast; deloadActive = window.__s5k.deloadActive; pwRising = window.__s5k.pwRising; }catch(e){} live = null; notifOpen = false; pwOpen = {};");
+       " deloadForecast = window.__s5k.deloadForecast; deloadActive = window.__s5k.deloadActive; pwRising = window.__s5k.pwRising; if(window.__s5k.lastDeloadEndKey) lastDeloadEndKey = window.__s5k.lastDeloadEndKey; }catch(e){} live = null; notifOpen = false; pwOpen = {};");
     ev('if(window.__s5Saved){ S = JSON.parse(window.__s5Saved); delete window.__s5Saved; } delete window.__s5k;');
   }
 
@@ -12597,7 +12716,7 @@ setTimeout(async () => {
   try {
     w.__s5bSaved = ev('JSON.stringify(S)');
     ev("S.logs = []; S.weights = []; S.nutrition = []; S.readiness = []; S.whoop = null; S.targetHist = []; S.predictions = [];");
-    ev("window.__s5bk = {fatigueIndex: fatigueIndex, pwBlockAt: pwBlockAt, isMaxed: isMaxed};");
+    ev("window.__s5bk = {fatigueIndex: fatigueIndex, pwBlockAt: pwBlockAt, isMaxed: isMaxed, lastDeloadEndKey: lastDeloadEndKey}; lastDeloadEndKey = function(){ return null; };");
     ev("pwBlockAt = function(){ return ''; }; fatigueIndex = function(){ return {ok: false}; }; anEnsembleEx = null; strDipSel = null; strRiskAll = false;");
     let n5 = 0;
     const s5Log = (nm, ago, sets, extra) => ev("S.logs.push(stampRec(Object.assign({id: 's5b-" + (n5++) + "', date: mesoAddDays(todayKey(), -" + ago + "), day: 'D1', entries: [{exercise: " +
@@ -12673,7 +12792,8 @@ setTimeout(async () => {
     ev("S.weights = []; S.targetHist = [];");
 
     // --- the hero ---
-    series('Zz H Row', [[90, [10, 9, 8]], [95, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]]]);
+    // Nine clean sessions, so the stall is firm (amber); seven would be an early, neutral read (2026-11-08).
+    series('Zz H Row', [[80, [10, 9, 8]], [85, [10, 9, 8]], [90, [10, 9, 8]], [95, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]], [100, [10, 9, 8]]]);
     series('Zz H Dip', [[100, [10]], [102.5, [10]], [105, [10]], [96, [10]], [107.5, [10]], [110, [10]], [112.5, [10]], [103, [10]], [115, [10]]]);
     ev("anEnsembleEx = 'Zz H Bench'; setMode('review'); showMainTab('progress', 'strength');");
     const order = ev("Array.prototype.filter.call(document.querySelectorAll('#reviewMode main section'), function(s){ return s.classList.contains('on'); }).map(function(s){ return s.id + ':' + s.style.order; }).sort().join(',')");
@@ -12690,9 +12810,11 @@ setTimeout(async () => {
     ev("for(var i = 0; i < strLifts().length - 1; i++) strStep(1);");
     ok('hero: the arrows step through the lifts and wrap round', after !== 'Zz H Bench' && ev('anEnsembleEx') === 'Zz H Bench', after + ' -> ' + ev('anEnsembleEx'));
     ev("strPick('Zz H Row');");
-    ok('hero: a stalled lift says so, with the reason', /^stalled \u00b7 5 sessions at 100, reps flat$/.test(ev("document.querySelector('#an_pred .str-chip').textContent")), ev("document.querySelector('#an_pred .str-chip').textContent"));
-    ok('hero: and its range is read as the high side', /drawn through older gains; with the lift stalled, read it as the high side\./.test(hero()), hero().slice(0, 500));
-    ok('hero: why it stalled, as likely factors', ev("document.querySelector('#an_pred .str-why .str-sec-h').textContent") === 'Why it stalledlikely, not proven');
+    ok('hero: a stalled lift says so, with the reason', /^holding \u00b7 5 sessions at 100, reps flat$/.test(ev("document.querySelector('#an_pred .str-chip').textContent")), ev("document.querySelector('#an_pred .str-chip').textContent"));
+    ok('hero: and its range is read as the high side', /drawn through older gains; with the lift holding, read it as the high side\./.test(hero()), hero().slice(0, 500));
+    ok('hero: why it is holding, as likely factors', ev("document.querySelector('#an_pred .str-why .str-sec-h').textContent") === 'Why it\u2019s holdinglikely, not proven');
+    ok('hero: ...then how the watch read it, with his two corrections', /How this was read/.test(ev("document.querySelector('#an_pred .str-why').textContent")) &&
+       ev("document.querySelectorAll('#an_pred .str-why .pw-acts button[data-k]').length") === 2);
     ev("strPick('Zz H Dip');");
     const dipD = T(-36), dipLast = T(-8);
     const whyTitle = () => ev("document.querySelector('#an_pred .str-why .str-sec-h span').textContent");
@@ -12707,7 +12829,8 @@ setTimeout(async () => {
     ok('hero: a past dip leaves out what only describes the lift now', JSON.parse(ev("JSON.stringify(plateauCauses('Zz H Row', mesoAddDays(todayKey(), -8), 14, {asOf: true}).map(function(c){ return c.k; }))")).indexOf('stale') < 0 &&
        JSON.parse(ev("JSON.stringify(plateauCauses('Zz H Row', todayKey(), 28).map(function(c){ return c.k; }))")).indexOf('stale') >= 0);
     ev("isMaxed = function(n){ return n === 'Zz H Bench'; }; strPick('Zz H Bench');");
-    ok('hero: a MAXED machine: no weight forecast, and says why', ev("document.querySelector('#an_pred .str-chip').textContent") === 'At the machine\u2019s top' && /no weight to forecast/.test(hero()));
+    ok('hero: a MAXED machine at its heaviest weight: no weight forecast, and says why', /^at the top \u00b7 MAXED at 132\.5, the heaviest it has been$/.test(ev("document.querySelector('#an_pred .str-chip').textContent")) && /no weight to forecast/.test(hero()),
+       ev("document.querySelector('#an_pred .str-chip').textContent"));
     ev("isMaxed = window.__s5bk.isMaxed;");
     // the plateau risk list: capped, then all
     ev("S.split.D1.exercises = ['Zz H Bench', 'Zz H Row', 'Zz H Dip'];" +
@@ -12718,7 +12841,7 @@ setTimeout(async () => {
     ev("strRiskToggle();");
     ok('risk: and all of them on request', rowsN() === 11 && /Show fewer/.test(ev("document.querySelector('#an_pred .str-risk').textContent")));
     ev("strRiskToggle();");
-    ok('risk: each row has the lift\u2019s spark and word', ev("document.querySelector('#an_pred .str-risk-r .str-spark path') !== null") === true && ev("document.querySelector('#an_pred .str-risk-r .str-risk-w').textContent") === 'stalled');
+    ok('risk: each row has the lift\u2019s spark and word', ev("document.querySelector('#an_pred .str-risk-r .str-spark path') !== null") === true && ev("document.querySelector('#an_pred .str-risk-r .str-risk-w').textContent") === 'holding');
     ev("strPick('Zz R3');");
     ok('risk: a lift with too few sessions for the hero opens on Overload instead', ev('activeMainTab') === 'progress' && ev('activeReviewTab') === 'an_overload' && ev('pwOpen["Zz R3"]') === true);
     ev("pwShow('Zz H Row');");
@@ -12747,7 +12870,7 @@ setTimeout(async () => {
   } catch (e) {
     ok('V4 stage 5 Progress section', false, e.stack);
   } finally {
-    ev("try{ fatigueIndex = window.__s5bk.fatigueIndex; pwBlockAt = window.__s5bk.pwBlockAt; isMaxed = window.__s5bk.isMaxed; }catch(e){} anEnsembleEx = null; strDipSel = null; strRiskAll = false; pwOpen = {};");
+    ev("try{ fatigueIndex = window.__s5bk.fatigueIndex; pwBlockAt = window.__s5bk.pwBlockAt; isMaxed = window.__s5bk.isMaxed; lastDeloadEndKey = window.__s5bk.lastDeloadEndKey; }catch(e){} anEnsembleEx = null; strDipSel = null; strRiskAll = false; pwOpen = {};");
     ev('if(window.__s5bSaved){ S = JSON.parse(window.__s5bSaved); delete window.__s5bSaved; } delete window.__s5bk;');
   }
 
@@ -13132,6 +13255,257 @@ setTimeout(async () => {
   } finally {
     ev("try{ recapClose(); }catch(e){} if(window.__pbTK){ todayKey = window.__pbTK; delete window.__pbTK; }");
     ev('if(window.__pbSaved){ S = JSON.parse(window.__pbSaved); delete window.__pbSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
+  }
+
+  console.log('=== PLATEAU WATCH: RESETS, HIS CORRECTIONS, THE PROGRAM, ONE RESULT (2026-11-08) ===');
+  // His plan (iron_hub_stall_detection_plan.md) and his three calls on it: a real stall reads Holding, amber; a reset binds
+  // the agents, never the engine; an Investigation flag is a line on the card, not a floor. Each case below is the shape
+  // of one his export showed, at fixed offsets back from today.
+  try {
+    w.__pwcSaved = ev('JSON.stringify(S)');
+    ev("S.logs = []; S.weights = []; S.nutrition = []; S.readiness = []; S.whoop = null; S.targetHist = []; S.notifCleared = []; S.liftNotes = []; S.pain = []; S.practice = [];" +
+       "invState().overrides = {}; invState().flags = []; invState().history = []; agState().diagnoses = {}; S.split = {D1: {name: 'Zz', exercises: []}};");
+    ev("window.__pwk = {pwBlockAt: pwBlockAt, fatigueIndex: fatigueIndex, lastDeloadEndKey: lastDeloadEndKey, weeklyVolumeByGroup: weeklyVolumeByGroup};" +
+       "pwBlockAt = function(){ return ''; }; fatigueIndex = function(){ return {ok: false}; }; lastDeloadEndKey = function(){ return null; };");
+    let pn = 0;
+    // One session, `ago` days back, its id the time it was logged (resets count sessions by id, as the app writes them).
+    const L = (nm, ago, sets, extra) => ev("S.logs.push(stampRec(Object.assign({id: Date.parse(mesoAddDays(todayKey(), -" + ago + ") + 'T18:00:00') + " + (pn++) +
+      ", date: mesoAddDays(todayKey(), -" + ago + "), day: 'D1', entries: [{exercise: " + JSON.stringify(nm) + ", sets: " +
+      JSON.stringify(sets.map(x => ({w: x[0], r: x[1], e: x[2] || 'solid'}))) + "}]}, " + JSON.stringify(extra || {}) + ")));");
+    // Weekly sessions, oldest first, the newest `newest` days back. Each item: [w, [reps...]].
+    const ser = (nm, list, newest, extra) => list.forEach((x, i) => L(nm, (newest || 1) + 7 * (list.length - 1 - i), x[1].map(r => [x[0], r, x[2]]), extra ? extra(i, x) : null));
+    const R = (nm) => JSON.parse(ev("JSON.stringify(plateauRisk(" + JSON.stringify(nm) + ", {topsets: [], flags: {}}))") || 'null');
+    const iss = (r) => !!r && (r.lvl === 'red' || r.lvl === 'amber');
+    const split = (names) => ev("S.split.D1.exercises = " + JSON.stringify(names) + ";");
+    const reps = (n) => [...Array(n)];
+
+    // ---- a reset, from the log (his Preacher Curl: 70 -> 60 on an Investigation reset, held 2 sessions, then released) ----
+    ser('Zz RS Curl', reps(8).map(() => [70, [10, 9, 8]]), 22);
+    L('Zz RS Curl', 15, [[60, 12], [60, 10]], {decisions: {'Zz RS Curl': {code: 'inv-override', from: 70, to: 60, moved: true}}});
+    L('Zz RS Curl', 8, [[60, 12], [60, 10], [60, 10]]);
+    let r = R('Zz RS Curl');
+    ok('reset: a reset decision in the log is a reset in progress, measured from its new weight, neutral', r && r.state === 'reset' && r.lvl === 'calm' &&
+       r.reset.from === 70 && r.reset.to === 60 && /^60 since .+ \(was 70\) · 1 clean session at it: 60×12,10,10$/.test(r.sig[0].txt), JSON.stringify(r && r.sig));
+    ok('reset: it outlives the 2-session hold (no override is left in force)', JSON.stringify(ev('invState().overrides')) === '{}');
+    ok('reset: and it asks nothing: the reset explains the lighter weight', r && r.drop === null);
+    ok('reset: a reset is not a flag (DELTA does not diagnose it, the bell does not ring)', !iss(r));
+    ser('Zz RS NoDec', reps(8).map(() => [70, [10, 9, 8]]), 22);
+    L('Zz RS NoDec', 15, [[60, 12], [60, 10]]);
+    L('Zz RS NoDec', 8, [[60, 12], [60, 10], [60, 10]]);
+    r = R('Zz RS NoDec');
+    ok('reset: control, the same sessions with nothing to explain them are no reset, and the drop is asked about', r && r.state !== 'reset' && r.drop && r.drop.from === 70 && r.drop.to === 60, JSON.stringify(r && r.drop));
+    // Judged as usual once it ends: 42 days, then the lift is read across the reset, so it is never a standing excuse.
+    ser('Zz RS Old', reps(8).map(() => [70, [10, 9, 8]]), 57);
+    L('Zz RS Old', 50, [[60, 12], [60, 10]], {decisions: {'Zz RS Old': {code: 'inv-override', from: 70, to: 60, moved: true}}});
+    ser('Zz RS Old', reps(6).map(() => [60, [12, 10, 10]]), 8);
+    r = R('Zz RS Old');
+    ok('reset: past PW_RESET_DAYS it is judged as usual: six sessions at 60 with the reps flat are holding, amber', r && r.state === 'holding' && r.lvl === 'amber', JSON.stringify(r && [r.state, r.lvl, r.sig]));
+    // Rebuilt: a clean session back at the level before ends it early.
+    ser('Zz RS Back', reps(8).map(() => [70, [10, 9, 8]]), 36);
+    L('Zz RS Back', 29, [[60, 12], [60, 10]], {decisions: {'Zz RS Back': {code: 'inv-override', from: 70, to: 60, moved: true}}});
+    ser('Zz RS Back', [[60, [12, 12, 12]], [65, [12, 11, 10]], [70, [11, 10, 9]]], 8);
+    ok('reset: a session back at the level before it ends the reset early', R('Zz RS Back').state !== 'reset' && ev("pwResetFor('Zz RS Back').rebuilt") === true);
+    // Slipping under where it started: not an excuse either.
+    ser('Zz RS Slip', reps(8).map(() => [70, [10, 9, 8]]), 36);
+    L('Zz RS Slip', 29, [[60, 12], [60, 10]], {decisions: {'Zz RS Slip': {code: 'inv-override', from: 70, to: 60, moved: true}}});
+    ser('Zz RS Slip', [[60, [12, 12, 10]], [50, [12, 11]], [50, [10, 10]]], 8);
+    r = R('Zz RS Slip');
+    ok('reset: two sessions under where the reset started is amber, and says it is slipping', r && r.state === 'reset' && r.lvl === 'amber' && /slipping under where the reset started/.test(r.sig[0].txt), JSON.stringify(r && r.sig));
+    // A reset in force (his Cable Row: 165, under 180, with the override still active).
+    ser('Zz RS Row', reps(8).map(() => [180, [8, 8, 8]]), 12);
+    ev("invState().overrides['Zz RS Row'] = {w: 165, until: mesoAddDays(todayKey(), 10), at: Date.parse(mesoAddDays(todayKey(), -5) + 'T09:00:00'), sessions: 2, note: 'test'};");
+    L('Zz RS Row', 3, [[165, 10], [165, 12], [165, 10]], {decisions: {'Zz RS Row': {code: 'inv-override', from: 150, to: 165, moved: true}}});
+    r = R('Zz RS Row');
+    ok('reset: an override in force under the top set going in is a reset, with no clean session at it yet (the hold is left out)', r && r.state === 'reset' &&
+       r.reset.from === 180 && r.reset.to === 165 && /no clean session at it yet$/.test(r.sig[0].txt) && r.excluded.some(x => x.why === 'reset weight'), JSON.stringify(r && r.sig));
+
+    // ---- his plan §8: a reset binds the agents' requests (his call: never the engine) ----
+    split(['Zz RS Curl', 'Zz RS Row']);
+    const VF = (fx) => ev('JSON.stringify(agValidateFix(' + JSON.stringify(fx) + ", 'delta') || null)");
+    const RR = (fx) => ev('agRejectReason(' + JSON.stringify(fx) + ", 'delta')");
+    const upCurl = {type: 'liftReset', payload: {name: 'Zz RS Curl', w: 65, days: 14}};
+    ok('reset: a heavier liftReset on a lift in a reset is refused, and the reason names it', VF(upCurl) === 'null' && /is in a reset at 60 lb since/.test(RR(upCurl)), RR(upCurl));
+    ok('reset: one at or under the reset weight still passes', JSON.parse(VF({type: 'liftReset', payload: {name: 'Zz RS Curl', w: 55, days: 14}})).payload.w === 55);
+    const setsUp = {type: 'setCount', payload: {exercise: 'Zz RS Curl', day: 'D1', sets: 4}};
+    ok('reset: no added sets while it rebuilds', VF(setsUp) === 'null' && /is in a reset \(60 lb since .+\), so no added sets until it rebuilds/.test(RR(setsUp)), RR(setsUp));
+    ok('reset: taking sets off is still allowed', JSON.parse(VF({type: 'setCount', payload: {exercise: 'Zz RS Curl', day: 'D1', sets: 2}})).payload.sets === 2);
+    ok('reset: the engine is untouched: LIVE still prescribes for it as before (no reset rule in recommend())', !/pwReset/.test(ev('recommend.toString()')) && !/pwReset/.test(ev('classifyDecision.toString()')));
+    // The plates: an agent weight lands on the lift's own ladder; Investigation's does now too.
+    split(['Zz RS Curl', 'Zz RS Row', {name: 'Zz ST Leg Extension', inc: 15}]);
+    ser('Zz ST Leg Extension', [[185, [12, 12, 12]], [200, [12, 12, 12]], [200, [12, 12, 10]]], 1);
+    ok('ladder: an agent asking 205 on a 15-lb stack at 200 is stored on the stack (200), never 205',
+       JSON.parse(VF({type: 'liftReset', payload: {name: 'Zz ST Leg Extension', w: 205, days: 14}})).payload.w === 200);
+    ok('ladder: Investigation’s 90% of 200 on that stack is 185, not 180 (roundToInc counted from zero)', ev("invResetWeight('Zz ST Leg Extension', 200, 0.9)") === 185);
+
+    // ---- the drop question, and his answers (his plan §1) ----
+    split(['Zz DQ Mine', 'Zz DQ Bad', 'Zz DQ Plan', 'Zz DQ Up', 'Zz QN Hold', 'Zz QN Wrong']);
+    ser('Zz DQ Mine', reps(8).map(() => [100, [10, 9, 8]]), 15);
+    ser('Zz DQ Mine', [[85, [12, 11, 10]], [85, [12, 11, 10]]], 1);
+    r = R('Zz DQ Mine');
+    ok('drop: a clean session he took lighter, and has stayed lighter since, is asked about once', r && r.drop && r.drop.from === 100 && r.drop.to === 85 && r.drop.date === ev("mesoAddDays(todayKey(), -8)"), JSON.stringify(r && r.drop));
+    ok('drop: the reasoning asks it, with its two answers', (h => /Lighter since .+ 85 lb, from 100\. On purpose\?/.test(h) && /data-k="reset"/.test(h) && /data-k="badday"/.test(h))(ev("pwReasonHTML(plateauRisk('Zz DQ Mine'))")));
+    ev("S.meta.changedAt = 1;");
+    ev("pwMark('Zz DQ Mine', 'reset');");
+    const ln1 = JSON.parse(ev('JSON.stringify(S.liftNotes)'));
+    ok('drop: "Intentional reset" stores his answer: the drop session, its weights, through save() (touch and push)', ln1.length === 1 && ln1[0].kind === 'reset' && ln1[0].from === 100 && ln1[0].to === 85 &&
+       ln1[0].date === ev("mesoAddDays(todayKey(), -8)") && ln1[0].t > 0 && ev('S.meta.changedAt') > 1, JSON.stringify(ln1));
+    r = R('Zz DQ Mine');
+    ok('drop: ...and the lift is now a reset in progress he marked, measured from 85, asking nothing more', r && r.state === 'reset' && r.reset.by === 'you' && r.reset.to === 85 && r.drop === null, JSON.stringify(r && r.reset));
+    ser('Zz DQ Bad', reps(8).map(() => [100, [10, 9, 8]]), 15);
+    ser('Zz DQ Bad', [[85, [12, 11, 10]], [85, [12, 11, 10]]], 1);
+    ev("pwMark('Zz DQ Bad', 'badday');");
+    r = R('Zz DQ Bad');
+    ok('drop: "Just a bad day" is no reset, and the question does not come back', r && r.state !== 'reset' && r.drop === null, JSON.stringify(r && [r.state, r.drop]));
+    ser('Zz DQ Plan', reps(8).map(() => [100, [10, 9, 8]]), 15);
+    ser('Zz DQ Plan', [[85, [12, 11, 10]], [85, [12, 11, 10]]], 1, () => ({plan: {'Zz DQ Plan': {w: 85, lo: 8, hi: 12, n: 3}}}));
+    ok('drop: not asked when the engine prescribed the lighter weight', R('Zz DQ Plan').drop === null);
+    ser('Zz DQ Up', reps(8).map(() => [100, [10, 9, 8]]), 15);
+    ser('Zz DQ Up', [[85, [12, 11, 10]], [100, [10, 9, 9]]], 1);
+    ok('drop: not asked once he is back up', R('Zz DQ Up').drop === null);
+    // The summary asks, on the session it happened in.
+    ser('Zz DQ Sum', reps(8).map(() => [100, [10, 9, 8]]), 8);
+    L('Zz DQ Sum', 1, [[85, 12], [85, 11]]);
+    const sumLog = ev("JSON.stringify(S.logs[S.logs.length - 1])");
+    const sumD = JSON.parse(ev("JSON.stringify(sessionSummary(" + sumLog + ").drops || [])"));
+    ok('summary: the session summary carries the drop it would ask about', sumD.length === 1 && sumD[0].name === 'Zz DQ Sum' && sumD[0].from === 100 && sumD[0].to === 85, JSON.stringify(sumD));
+    ev("(function(){ var l = S.logs[S.logs.length - 1]; showSummary({logId: l.id, sum: sessionSummary(l), exercises: 1, sets: 2, vol: 0, prs: [], note: ''}); })();");
+    ok('summary: and asks it, with the two answers', /Zz DQ Sum at 85 lb, down from 100\. On purpose\?/.test(ev("document.getElementById('sumDrops').textContent")) &&
+       ev("document.querySelectorAll('#sumDrops button[data-k]').length") === 2);
+    ev("document.querySelector('#sumDrops button[data-k=\"reset\"]').click();");
+    ok('summary: a tap answers it there and then: stored, and the question goes', ev("S.liftNotes.some(function(n){ return n.lift === 'Zz DQ Sum' && n.kind === 'reset'; })") === true &&
+       ev("document.getElementById('sumDrops').innerHTML") === '');
+    ev("closeSummary();");
+
+    // ---- "This is intentional" and "This is wrong" (his plan §7) ----
+    const flat9 = [[80, [10, 9, 8]], [85, [10, 9, 8]], [90, [10, 9, 8]], [95, [10, 9, 8]]].concat(reps(5).map(() => [100, [10, 9, 8]]));
+    ser('Zz QN Hold', flat9);
+    ser('Zz QN Wrong', flat9);
+    ok('notes: control, both are amber holding before he says anything', R('Zz QN Hold').lvl === 'amber' && R('Zz QN Wrong').lvl === 'amber');
+    ev("pwMark('Zz QN Hold', 'intended');");
+    r = R('Zz QN Hold');
+    ok('notes: "This is intentional" makes it neutral, and the row says he said so', r && r.lvl === 'calm' && r.state === 'holding' && r.quiet && r.quiet.kind === 'intended' &&
+       r.sig.some(s => /^you said this is on purpose \(/.test(s.txt)), JSON.stringify(r && r.sig));
+    ev("invState().flags.push({id: 'qnf1', cat: 'lift', key: 'lift:Zz QN Wrong', severity: 'red', title: 'Zz QN Wrong declining', status: 'active', created: todayKey(), updated: todayKey()});");
+    ev("pwMark('Zz QN Wrong', 'wrong');");
+    r = R('Zz QN Wrong');
+    ok('notes: "This is wrong" makes it neutral too', r && r.lvl === 'calm' && r.sig.some(s => /^you marked this wrong \(/.test(s.txt)), JSON.stringify(r && r.sig));
+    ok('notes: ...and dismisses the lift’s open Investigation flag, under the existing 14-day rule', ev("invActiveFlags().some(function(f){ return f.key === 'lift:Zz QN Wrong'; })") === false &&
+       ev("invRecentlyDismissed('lift:Zz QN Wrong', 14)") === true);
+    // Three worse sessions after the nine: rebuilt from scratch so they are the newest.
+    ev("S.logs = S.logs.filter(function(l){ return !l.entries.some(function(e){ return e.exercise === 'Zz QN Wrong'; }); });");
+    ser('Zz QN Wrong', flat9.concat([[95, [9, 8, 8]], [92.5, [9, 8, 7]], [90, [9, 8, 7]]]));
+    r = R('Zz QN Wrong');
+    ok('notes: "wrong" does not hide it once it gets worse: falling now, red', r && r.state === 'falling' && r.lvl === 'red', JSON.stringify(r && [r.state, r.lvl, r.sig]));
+    ok('notes: his notes sync as history (k|), and one written since the last snapshot survives a pull', ev("SYNC_HISTORY.liftNotes ? SYNC_HISTORY.liftNotes.key({id: 'x'}) : 'missing'") === 'k|x' &&
+       ev("(function(){ var keep = S.liftNotes; var mine = {liftNotes: keep.slice()}; S.liftNotes = []; var n = mergeUnseenHistory(mine, Date.now() - 60000); var ok = n >= 1 && S.liftNotes.length === keep.length; S.liftNotes = keep; return ok; })()") === true);
+    ok('notes: an unknown kind writes nothing', (function(){ const n0 = ev('S.liftNotes.length'); ev("pwMark('Zz QN Hold', 'approve');"); return ev('S.liftNotes.length') === n0; })());
+
+    // ---- MAXED under a weight he has lifted (his leg curl) ----
+    split([{name: 'Zz MX Curl', inc: 15, maxed: true}]);
+    ser('Zz MX Curl', [[200, [10, 10, 10]]].concat(reps(7).map(() => [185, [12, 12, 12]])));
+    r = R('Zz MX Curl');
+    ok('maxed: under a weight logged on it, MAXED is not "at the top", and says MAXED may be out of date', r && r.state !== 'top' && r.maxedStale && r.maxedStale.w === 200);
+    ev("S.meta.changedAt = 1; pwMaxedOff('Zz MX Curl');");
+    ok('maxed: "Turn MAXED off" is one confirmed tap, through save()', ev("isMaxed('Zz MX Curl')") === false && ev('S.meta.changedAt') > 1);
+
+    // ---- the shapes his export showed ----
+    // Dips is Form Focus (12-20) in his split, so 12-13 reps is the bottom of its range, not the top.
+    split([{name: 'Zz SH Dips', formFocus: true}, 'Zz SH Leg Raise', 'Zz SH JM Press']);
+    ser('Zz SH JM Press', [[155, [10]], [165, [10]], [155, [12]], [165, [12]], [155, [12]], [145, [12]], [145, [12]], [155, [10]]]);
+    r = R('Zz SH JM Press');
+    ok('shape: JM Press, median e1RM 7% under the 4 before on a compound, is falling, red (the old slope rule missed it)', r && r.state === 'falling' && r.lvl === 'red' &&
+       /^e1RM down 7%: 203 over the last 3 sessions, 218\.5 over the 4 before$/.test(r.sig[0].txt) && !ev("pwSlopeFall(e1rmSeries('Zz SH JM Press'))"), JSON.stringify(r && r.sig));
+    ev("S.weights = [56, 42, 28, 14, 1].map(function(d, i){ return stampRec({date: mesoAddDays(todayKey(), -d), lbs: 169 + i * 0.6}); });");
+    ser('Zz SH Dips', [[0.5, [12, 12, 12]], [0.5, [14, 12, 12]], [0.5, [15, 15, 12]], [0.5, [15, 15, 15]], [0.5, [15, 15, 15]], [0.5, [12, 12, 12]], [0.5, [12, 12, 12]], [0.5, [12, 13, 12]]]);
+    r = R('Zz SH Dips');
+    ok('shape: Dips, a bodyweight lift, is watched on its reps (his weigh-in added) and reads falling: best set 12, 15 before', r && r.bw === true && r.state === 'falling' &&
+       r.sig[0].txt === 'best set 12 reps lately, 15 before', JSON.stringify(r && r.sig));
+    ser('Zz SH Leg Raise', [[0.5, [15, 15, 12]], [0.5, [15, 15, 12]], [0.5, [15, 15, 12]], [0.5, [15, 15, 12]], [0.5, [15, 15]], [0.5, [12, 12]], [0.5, [12, 12]], [0.5, [12, 12]]]);
+    r = R('Zz SH Leg Raise');
+    ok('shape: a bodyweight raise going 15 -> 12 inside its 8-12 range is at the top of it, not falling', r && r.state !== 'falling' && r.state === 'holding' && r.sig[0].k === 'capped', JSON.stringify(r && r.sig));
+    ev("S.weights = [];");
+
+    // ---- after a deload: the first session back is data, never the bar (his plan §2) ----
+    // s2 rebounds off the deload at 160; counted as a reference, the 128s after read as a 10% fall; it is not one.
+    [[64, 100, 10], [57, 112.5, 10], [43, 120, 10], [36, 100, 10], [29, 100, 10], [22, 96, 10], [15, 96, 10], [8, 96, 10]].forEach(x => L('Zz PD Post', x[0], [[x[1], x[2]]]));
+    L('Zz PD Other', 50, [[60, 10]], {deload: true});
+    r = R('Zz PD Post');
+    ok('deload: the first clean session after a deload is marked, and is not the level the next ones are judged by', r && r.state !== 'falling' &&
+       r.used.some(u => u.post && u.v === 160), JSON.stringify(r && [r.state, r.used]));
+
+    // ---- the volume rule never reads looser than before (it is part of agValidateFix) ----
+    // Flat at 100 for five clean sessions (the old watch: stalled), the newest a new e1RM best off a high-rep set, so the
+    // card now reads it on track; the recover day after it keeps the every-session reading from seeing the stall.
+    split(['Zz VR Old']);
+    ser('Zz VR Old', reps(6).map(() => [100, [10, 9, 8], 'grind']), 8);
+    L('Zz VR Old', 4, [[85, 20, 'grind'], [100, 10, 'grind'], [100, 9, 'grind'], [100, 8, 'grind']]);
+    L('Zz VR Old', 1, [[80, 10, 'grind'], [80, 9, 'grind']], {call: {call: 'recover'}});
+    ok('volume rule: control, the card reads it on track and the every-session reading sees no stall', R('Zz VR Old').state === 'ok' && ev("liftProfile('Zz VR Old').stalled3") === false);
+    ok('volume rule: still refuses more sets on it while it grinds (the old watch’s stall still counts)', /^volume last: Zz VR Old has stalled/.test(ev("agVolumeLastBlock('Zz VR Old')")), ev("agVolumeLastBlock('Zz VR Old')"));
+
+    // ---- one program note instead of several red rows (his plan §5) ----
+    const fallList = [[100, [10]], [100, [10]], [100, [9]], [100, [10]], [95, [9]], [92.5, [9]], [90, [9]], [90, [8]]];
+    ser('Zz PN Cable Fly', fallList);
+    ser('Zz PN Chest Press', fallList);
+    split(['Zz PN Cable Fly', 'Zz PN Chest Press']);
+    // Steady chest volume for the control (20 sets in 2 weeks, 40 in the 4 before), so only the volume differs below.
+    ev("weeklyVolumeByGroup = function(a, b){ return b === todayKey() ? {Chest: 20} : {Chest: 40}; };");
+    let rows = JSON.parse(ev('JSON.stringify(plateauWatch())'));
+    ok('program: control, two chest lifts falling with normal volume are two red rows and no note', rows.filter(x => x.lvl === 'red').length === 2 && ev("pwProgramNotes(plateauWatch()).length") === 0,
+       rows.map(x => x.lift + ':' + x.lvl).join(','));
+    ev("weeklyVolumeByGroup = function(a, b){ return b === todayKey() ? {Chest: 39} : {Chest: 42}; };");
+    rows = JSON.parse(ev('JSON.stringify(plateauWatch())'));
+    const notes = JSON.parse(ev('JSON.stringify(pwProgramNotes(plateauWatch()))'));
+    ok('program: after chest sets rose 86%, the two dips are one note, carrying their red', notes.length === 1 && notes[0].g === 'Chest' && notes[0].pct === 86 && notes[0].lvl === 'red' &&
+       notes[0].lifts.length === 2 && /^Chest sets up 86% on the 4 weeks before \(19\.5\/wk\), and 2 chest lifts softened together/.test(notes[0].txt), JSON.stringify(notes));
+    ok('program: ...and their rows are neutral, pointing at it, not two red flags', rows.every(x => x.lvl === 'calm' && x.lvlWas === 'red' && x.sig.some(s => s.k === 'program')),
+       rows.map(x => x.lift + ':' + x.lvl + '/' + x.lvlWas).join(','));
+    ok('program: Today shows the note as one chip, so the lifts are still seen', /Chest volume<\/span><span class="cc-chip-v"[^>]*>2 lifts/.test(ev('pwChipsHTML(plateauWatch())')));
+    ok('program: DELTA is still asked about them, with the note first', ev("pdTargets(plateauWatch()).length") === 2 && /Program note: Chest sets up 86%/.test(ev("pdContextLine(pdTargets(plateauWatch()))")));
+    ok('program: Overload still reads them as needing attention', JSON.parse(ev("JSON.stringify(olSignals().filter(function(s){ return /Zz PN/.test(s.lift); }).map(function(s){ return s.verdict; }))")).every(v => v === 'attention'));
+    ok('program: the program check names the volume first', /^Program check: chest sets \+86%/.test(ev("pwProgramCheck(plateauWatch())")), ev("pwProgramCheck(plateauWatch())"));
+    ev("weeklyVolumeByGroup = window.__pwk.weeklyVolumeByGroup;");
+
+    // ---- one result: the card, the summary, DELTA's prompt and DELTA's read say the same thing (his plan §6) ----
+    split(['Zz QN Hold', 'Zz RS Curl', 'Zz SH JM Press', 'Zz MX Curl']);
+    rows = JSON.parse(ev('JSON.stringify(plateauWatch())'));
+    const sumTxt = (ev('intelSummary()').match(/Plateau watch \(the colours[^\n]*/) || [''])[0];
+    const off = rows.filter(x => x.state !== 'ok' && x.state !== 'thin' && x.state !== 'stale' && sumTxt.indexOf(x.lift + ' (' + x.word) < 0);
+    ok('one result: the summary carries each lift with the word the card shows', rows.length >= 3 && off.length === 0, sumTxt + ' || missing: ' + off.map(x => x.lift).join(','));
+    const tg = JSON.parse(ev('JSON.stringify(pdTargets(plateauWatch()))'));
+    const pdc = ev('pdContextLine(pdTargets(plateauWatch()))');
+    ok('one result: DELTA’s prompt names each lift it is asked about with the card’s word, and never a reset', tg.length > 0 && tg.every(x => pdc.indexOf('- ' + x.lift + ': ' + x.word + ' (') >= 0) &&
+       !tg.some(x => x.state === 'reset'), pdc);
+    const dgv = JSON.parse(ev("JSON.stringify(agValidateDiagnosis([{lift: 'Zz SH JM Press', read: 'Down since the triceps volume jump.', agree: ['volume']}], pdTargets(plateauWatch())))"));
+    ok('one result: a diagnosis keeps the state it was asked about', dgv.length === 1 && dgv[0].state === 'falling', JSON.stringify(dgv));
+    ev("agState().diagnoses = {'Zz SH JM Press': {read: 'Still climbing.', state: 'ok', lvl: 'green', at: new Date().toISOString(), day: todayKey()}," +
+       " 'Zz QN Hold': {read: 'Holding at 100.', state: 'holding', lvl: 'amber', at: new Date().toISOString(), day: todayKey()}," +
+       " 'Zz RS Curl': {read: 'Stalled at 70.', lvl: 'red', at: new Date().toISOString(), day: todayKey()}};");
+    ok('one result: DELTA’s read is not shown under a card that now says something else ("still climbing" beside falling)', ev("pdReadHTML('Zz SH JM Press', plateauRisk('Zz SH JM Press'))") === '');
+    ok('one result: ...and is, while the lift reads the way DELTA was asked about it', /Holding at 100\./.test(ev("pdReadHTML('Zz QN Hold', plateauRisk('Zz QN Hold'))")));
+    ok('one result: a read from before states were kept shows only while the lift is flagged (a reset is not)', ev("pdReadHTML('Zz RS Curl', plateauRisk('Zz RS Curl'))") === '');
+
+    // ---- the reasoning view (his plan §7) ----
+    const rh = ev("pwReasonHTML(plateauRisk('Zz QN Wrong'))");
+    ok('reasoning: the rule, the sessions read, what to do, and his two corrections', /<b>Rule<\/b> Falling: /.test(rh) && /<b>Read from<\/b> \d+ clean sessions\. Newest:/.test(rh) &&
+       /<b>What to do:<\/b> Back off one step/.test(rh), rh.slice(0, 400));
+    ok('reasoning: a neutral row with no flag offers no corrections (an answer would change nothing)', !/data-k=/.test(ev("pwReasonHTML(plateauRisk('Zz MX Curl'))")) &&
+       ev("plateauRisk('Zz MX Curl').state") === 'holding');
+    ok('reasoning: once he has answered, the buttons go and his answer shows', !/data-k=/.test(ev("pwReasonHTML(plateauRisk('Zz QN Hold'))")) &&
+       /you said this is on purpose/.test(ev("pwReasonHTML(plateauRisk('Zz QN Hold')) + JSON.stringify(plateauRisk('Zz QN Hold').sig)")));
+    ok('reasoning: a reset offers no "this is wrong" (it is already his or the app’s call)', !/data-k="wrong"/.test(ev("pwReasonHTML(plateauRisk('Zz RS Curl'))")));
+    ok('reasoning: the sessions left out are listed with why', /<b>Left out<\/b> .+reset weight/.test(ev("pwReasonHTML(plateauRisk('Zz RS Row'))")));
+    ser('Zz <b>Q', flat9);
+    const eh = ev("pwReasonHTML(plateauRisk('Zz <b>Q')) + pwChipsHTML(plateauWatch())");
+    ok('reasoning: a lift name is escaped in the markup and travels in data-lift', eh.indexOf('<b>Q') < 0 && /data-lift="Zz &lt;b&gt;Q"/.test(ev("pwReasonHTML(plateauRisk('Zz <b>Q'))")));
+    const before = ev('JSON.stringify(S)');
+    ev("plateauWatch(); pwProgramCheck(plateauWatch()); pwReasonHTML(plateauRisk('Zz QN Wrong')); pwChipsHTML(plateauWatch()); intelSummary(); pdContextLine(pdTargets(plateauWatch()));");
+    ok('nothing written: the watch, its notes, its reasoning and what the agents are told only read', ev('JSON.stringify(S)') === before);
+  } catch (e) {
+    ok('plateau watch context section', false, e.stack);
+  } finally {
+    ev("try{ if(window.__pwk){ pwBlockAt = window.__pwk.pwBlockAt; fatigueIndex = window.__pwk.fatigueIndex; lastDeloadEndKey = window.__pwk.lastDeloadEndKey; weeklyVolumeByGroup = window.__pwk.weeklyVolumeByGroup; } }catch(e){} delete window.__pwk; _sumLogId = null;");
+    ev('if(window.__pwcSaved){ S = JSON.parse(window.__pwcSaved); delete window.__pwcSaved; }');
   }
 
   console.log('=== TRAIN IN A × C: PLAN, LOG, LIBRARY (2026-10-05) ===');

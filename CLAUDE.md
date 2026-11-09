@@ -84,7 +84,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 4076 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 4176 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -301,7 +301,7 @@ pushes. Now:
 | Winter Arc | `winterState()`, `waPhase()`, `waCardHTML()`; his dates `waEditHTML()` / `waReadDates()` / `waSaveTargets()`, `waStartTime()` / `waEndTime()`, `waWallMs()` / `waEndMs()`; the countdown `waGoLiveMs()`, `waSeasonRead()`, `waCountState()` / `waCountHTML()`, `waCountTick()` (`#waCount`), `waLaunchHTML()` |
 | Recap | `recapSlides()`, `recapYear()` / `recapFinal()` / `recapTitle()`, `recapRender()` / `recapOpen()` / `recapGo()` / `recapClose()`, `recapCardHTML()` |
 | Meal timing & radar | `liveAteHTML()` / `liveAteSet()`, `MT_BUCKETS`, `mtScore()`, `mealTimingRead()`, `mealTimingCardHTML()`; `radarData()`, `ckRadar()`, `strengthRadarHTML()`, `muscleResponse(weeks, {clean})` |
-| Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()`, `plateauWatch()`, `pwLifts()`, `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
+| Plateau watch | Strength hero `strHeroHTML()` / `strWhyHTML()` / `strRiskHTML()`, marks `ckMarks()` / `ckEventMarks()`; `plateauRisk()` (one row: `state`, `lvl`, `conf`, `rule`, `used`, `excluded`), `plateauWatch()`, `pwIssue()` / `pwFlagged()` / `pwCol()`, evidence `pwSeries()` / `pwExcludeWhy()` / `pwCleanHist()` / `pwRange()` / `pwCapped()` / `pwBwLift()`, resets `pwResetFor()` / `pwResetActive()`, `pwDropFor()`, his corrections `pwMark()` (`S.liftNotes`) / `pwMaxedOff()`, the program `pwApplyProgram()` / `pwProgramNotes()` / `pwProgramCheck()` / `pwProgramHTML()`, `pwReasonHTML()` / `pwDoText()`, `sessionDrops()` / `summaryDropsHTML()`, `pwOlVerdict()`, `pwSlopeFall()`, `invResetWeight()`; `plateauCauses()`, `pwCauseWindow()`, `liftDips()`, `pwRising()` / `pwAsOf()`, `pwNotifItems()`, `pwChipsHTML()`, `pwLineHTML()`, `calTargetOn()` |
 | Agents' summary | `intelSummary()` (DELTA, ECHO and ZULU via `agBaseContext()`; not CHARLIE, which gets `svSheet()` / `svContextLine()` instead) |
 | What the agents see | nightly `agCalendarContext()` (shares `agCalDayLine()` / `agCalPlanLine()` / `agCalNextDays()` with chat's `agTodayContext()`), `agSplitLiftText()`, `agFeelLine()`, chat `agLastNightLine()`; events `agEvents()` / `agEventsLine()` (`EV_FOR`, `EV_DAYS`), tools `get_events` / `get_recovery` |
 | Cross-review & volume | `agVolumeLastBlock()` / `liftHardShare()` (`VOL_GRIND_PCT`); `agTonightRequests()`, `agHoldSpecLine()`, `agValidateHolds()`, `agApplyHolds()`, `agShowAnyway()`, `agHeld()` |
@@ -1529,26 +1529,66 @@ date; V4's removal of date overrides stands.
 - On his data (Oct 5), Glutes read +36%, because Hip Thrust Machine is a new lift still gaining fast.
   That is honest, but worth knowing before trusting the shape.
 
-**The plateau watch is on the device, free, and never stored** (V4 stage 5, 2026-10-04).
-`plateauRisk(nm)` gives each lift green / amber / red, from clean sessions only (`pwCleanHist()`,
-`e1rmSeries(…, {excludeHome, excludeMod})`).
-- **Red:** stalled (`stalled3` for `PW_STALL_RED` (4)+ sessions), falling (the last 6 down more than
-  `PW_FALL_PCT`%/wk AND the newest under the 3 before it), or two amber signs ("stalling").
-- **Amber:** three sessions flat, slowing, effort creeping, or more misses. Slowing means the last 4
-  sessions gain under half of the 4 before, and it waits across a change of block, because a new rep
-  range is a different e1RM ruler. Effort creeping means the lever going DOWN at the same weight: 0 is a
-  failed rep, 90 easy, so the lever runs the opposite way to RPE.
-- **Sessions, not weeks:** he trains most lifts once an 8-day cycle, so four weeks is three points.
-- **The lifts watched (`pwLifts()`):** in the split, trained in the last `PW_STALE_DAYS` (28), and
-  loaded.
-- **What lowers or raises it:** a MAXED lift goes no higher than amber ("at the top"). An open
-  red/orange Investigation flag makes it at least amber.
-- **The Overload verdict takes the watch as a floor**, not the other way round. Its 0.3 lb/wk band
-  called Row Machine falling at -0.02%/wk, and its 10-session trend read Lat Pulldown "on track"
-  beside "stalled, 5 sessions at 165". A watched lift that is not green is at least "stalling" in
-  `olSignals()`.
-- **On his real data (2026-10-04):** 27 lifts watched, 9 red (all real stalls of 4-12 sessions),
-  5 amber.
+**The plateau watch is on the device, free, never stored, and ONE result** (V4 stage 5, 2026-10-04; made
+context-aware and honest about how sure it is on 2026-11-08, his plan `iron_hub_stall_detection_plan.md`). His
+export showed about 4 of 13 flags describing something real: a bench at its best e1RM called stalled, two resets he
+chose judged against the old weight, a leg curl called "at the top" 15 lb under a weight he had lifted, an EZ curl at
+the top of its range waiting on a 17% jump, a pushdown flagged off 4 clean sessions, Form Focus lifts adding reps at
+one weight called falling; JM Press (-7%) and Dips (15 -> 12 reps) were missed.
+- **One row per lift, read by everything:** `plateauRisk(nm, ctx)` returns `{state, word, lvl, col, conf, sig, rule,
+  used, excluded, reset, drop, maxedStale, quiet, flag, program, doText}` plus the old fields. The Strength hero, the
+  chips, the Library, Overload, `intelSummary()` (its pattern line, the "Lifts the watch calls holding" facts and the
+  watch line, neutral rows included) and DELTA's diagnosis all read it.
+- **States, first match wins:** `pain` (a level 2+ flag in `PW_PAIN_DAYS`) > `stale` (no session in max(21 d, 2x its
+  usual gap)) > `reset` > `thin` (under `PW_MIN_CLEAN` (6) clean sessions or `PW_MIN_SPAN` (21) days) > `stale` (no
+  clean session lately, the reasons named) > `top` (MAXED AND at the heaviest weight logged in 90 days) > the evidence:
+  `falling` > `holding` (a stall) > `slowing` (gain halved, effort creeping, misses) > `holding` (three flat, or at the
+  top of its range) > `ok`.
+- **Colour follows confidence (his call):** red only for falling on firm evidence (`PW_FIRM` (8)+ clean sessions, a
+  21-day window, no deload ended in the last week); amber for a firm stall or slowdown; everything else is `lvl:'calm'`
+  (neutral). `pwIssue(r)` (red/amber) is what feeds DELTA's diagnosis, the bell and the Overload verdict; `pwFlagged(r)`
+  (any state but on track, or `lvl` for a row without a state) is what gets a word on a chip. A stall reads **holding**,
+  never "stalled" (his word).
+- **Clean sessions:** `pwExcludeWhy()` is the one list (deload, home, coach plan, a kept easy/recover call, swap, reset
+  weight, recover step-down, lift deload, 1RM test, today's change, and "short on time", which is watch-only so
+  `sessionModLift()` and predictions do not move). Bench Practice lives in `S.practice` and never reaches it. The first
+  clean session after a deload is `post`: data, never a reference.
+- **The rules:** falling is the last 3 clean sessions' median e1RM under the 4 before by 4% on a compound
+  (`mesoIsCompound`), or max(6%, one increment's share) on an isolation lift, with EVERY one of the 3 under (one good
+  day says it did not fall: his leg press 540 x 13), and not when it sits at the top of its range at the same weight.
+  A recent best is a new high in the last 2 sessions, strictly above the 6 before (a lift that never moves ties its
+  best every session, and that is a stall). Capped (`pwCapped()`) is the best set at the top and the mean within a
+  rep, judged by the range the session was LOGGED under (`logRec.plan`), not today's.
+- **Bodyweight lifts** (0.5-lb marker) are watched on their reps, with his weigh-in added to the e1RM.
+- **Resets (`pwResetFor()`, read only):** an override in force under his top set going in, an `inv-override` decision
+  with to under from (it outlives the 2-session hold), or his "Intentional reset" tap. In progress `PW_RESET_DAYS` (42)
+  or until a clean session regains the level before; then judged as usual ACROSS it. Slipping under its own first
+  session is amber. It binds the agents only (his call): `agConflict()` refuses a heavier `liftReset` or added sets on a
+  lift in a reset; the engine is untouched.
+- **His corrections (`liftNotes`, a `SYNC_HISTORY` collection `'k|'`, immutable rows, `pwMark()` with `save()`):**
+  `reset` / `badday` answer the drop question (`pwDropFor()`: a clean session at least max(1 increment, 8%) under the 3
+  before, still lower since, not explained by the plan or a reset, asked once, in the session summary and on the row);
+  `intended` and `wrong` quiet a row `PW_QUIET_DAYS` (14), and `wrong` also archives the lift's open Investigation flag
+  (the existing 14-day suppression), and stops counting once the row gets worse. The buttons show only where an answer
+  changes something. A MAXED lift under its heaviest logged weight offers **Turn MAXED off** (confirmed, `applyExFlag()`).
+- **An open Investigation flag is a line on the card, not a floor (his call).** On Overload a red/orange flag still means
+  "needs attention", as Investigation's own verdict.
+- **Program before exercise (`pwApplyProgram()`):** 2+ flagged lifts sharing a group whose own `plateauCauses()` show
+  that group's sets up 30%+ become one note (it carries their red; the rows go neutral with `lvlWas`), shown first in the
+  risk list, Overload, a chip on Today, the summary and `pdContextLine()`, with `pwProgramCheck()` (volume, the bulk band,
+  a recovery slump, weeks since the last deload). DELTA is still asked about the rows; the bell reads `lvlWas`.
+- **Overload (`olSignals()`):** for a watched lift the verdict is the watch's (`pwOlVerdict()`, floor and ceiling); a lift
+  nobody trained in `PW_STALE_DAYS` is `stale` ("No recent data"), sorted last and kept out of `olAgentContext()`.
+- **DELTA's read is shown only while it applies:** `agValidateDiagnosis()` stores the asked row's `state`, and `pdRead(nm,
+  row)` hides a read once the lift's state has changed (a legacy read only while flagged).
+- **The volume rule never loosened:** `agVolumeLastBlock()` is the old watch's reading rebuilt test by test (stalled3 on
+  4+ clean sessions, `pwSlopeFall()`, `slowRaw`, effort and misses signs, a red/orange flag) plus a flagged row or a reset.
+- **Investigation's reset weight is on the lift's ladder** (`invResetWeight()`, `agSnapWeight()` from his last top set):
+  90% of 200 on his 15-lb leg machines is 185, not 180. Agent weights were already snapped.
+- **Sessions, not weeks:** he trains most lifts once an 8-day cycle. Split lifts trained in `PW_LIST_DAYS` (90) are listed.
+- **On his real data (2026-11-08):** Bench on track; Cable Row, Preacher Curl and Leg Extension resets in progress; Leg Curl
+  and Reverse EZ holding at the top of their range; Single Arm Pushdown not enough data; Squat slowing; Hanging Leg Raise
+  holding; Dips and JM Press falling, grouped as one triceps note (triceps sets +72%).
 
 Around it:
 - **Likely factors:** `plateauCauses(nm, endKey, days)` returns at most 3: recovery, food, volume,
@@ -1572,8 +1612,9 @@ Around it:
 - **Where it shows:**
   - Today's and the Hub's chips (`pwChipsHTML()`): his main lifts, then one chip for the rest. The
     name travels in `data-lift`, never in an onclick string.
-  - On Overload, a line under each non-green row that opens its factors. The open state is
-    module-scoped (`pwOpen`).
+  - On Overload, a line under each row that is not on track, opening its factors (flagged rows) and how it was read
+    (`pwReasonHTML()`: the rule, the sessions read, the ones left out and why, one "What to do" from `pwDoText()`, and
+    his corrections). The hero's why section shows the same view. The open state is module-scoped (`pwOpen`).
 
 **A jump earned on grinders repeats once** (`grind-hold`, in both `recommend()` and
 `classifyDecision()`). At the ceiling with grind or fail top sets, the weight repeats. It goes up
