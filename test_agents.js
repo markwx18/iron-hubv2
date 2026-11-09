@@ -13901,7 +13901,7 @@ setTimeout(async () => {
     ev("S.settings.ghToken = ''; S.settings.gistId = ''; S.settings.apiKey = ''; S.settings.gdocUrl = ''; S.settings.gdocSecret = ''; S.settings.spendCap = 20; S.whoop = {};");
     const glance = () => JSON.parse(ev("JSON.stringify(setGlance().map(function(r){ return r.k + '|' + r.tone + '|' + r.line; }))"));
     let g = glance();
-    ok('glance: five rows, in order: sync, WHOOP relay, API key, schedule doc, server', g.length === 5 && g.map(x => x.split('|')[0]).join() === 'sync,relay,api,gdoc,server', JSON.stringify(g));
+    ok('glance: five rows, in order: sync, WHOOP relay, API key, schedule doc, server (one row: GitHub’s slot check first, else runnerHealth())', g.length === 5 && g.map(x => x.split('|')[0]).join() === 'sync,relay,api,gdoc,server' && g[4] === 'server|off|Needs sync on this device', JSON.stringify(g));
     ok('glance: a device with nothing connected says so, row by row', g[0] === 'sync|bad|Not connected on this device' && g[1] === 'relay|off|Needs sync on this device' &&
        g[2] === 'api|warn|Not set on this device, so agents and chat can’t run here' && g[3] === 'gdoc|off|Not set up on this device', JSON.stringify(g));
     ev("S.settings.ghToken = 't'; S.settings.gistId = 'gist0000000000'; S.meta.lastSync = Date.now() - 120000;");
@@ -16880,6 +16880,98 @@ setTimeout(async () => {
     ev("callClaudeWithData = window.__fcReal; scheduledDayFor = window.__fcSched; window.confirm = window.__fcConfirm; S = JSON.parse(window.__fcS); localStorage.setItem(LS_KEY, JSON.stringify(S));" +
        "fcDraft = {}; fcErr = null; fcAgent = 'delta'; fcAll = false; fcKindSel.delta = 'liftDate'; fcKindSel.echo = 'bwAt';" +
        "delete window.__fcS; delete window.__fcReal; delete window.__fcSched; delete window.__fcConfirm; delete window.__fcCalls; delete window.__fcAns;");
+  }
+
+  console.log('=== THE SERVER CLOCK: A MISSED SLOT IS ASKED OF GITHUB, AND SAID (2026-11-03) ===');
+  ev("window.__rcS = JSON.stringify(S); window.__rcFetch = window.fetch;");
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    const P = iso => Date.parse(iso);
+    // The app's slots are the clock's: read clock/src/worker.js, the file Cloudflare runs.
+    const wsrc = fs.readFileSync(path.join(__dirname, 'clock', 'src', 'worker.js'), 'utf8');
+    const arr = name => JSON.parse(wsrc.match(new RegExp('export const ' + name + ' = (\\[[^\\]]*\\])'))[1].replace(/'/g, '"'));
+    ok('slots: the app checks exactly the clock’s night and morning slots',
+       JSON.stringify(J('RUNNER_NIGHT_SLOTS')) === JSON.stringify(arr('NIGHT')) && JSON.stringify(J('RUNNER_MORNING_SLOTS')) === JSON.stringify(arr('MORNING')));
+    // Nov 1 2026 is the day daylight time ends: 9 PM the night before is 01:00Z, 6 AM that morning is 11:00Z.
+    const dst = J("runnerClockSlots(" + P('2026-11-01T14:00:00Z') + ")");
+    ok('slots: read on the Eastern clock across the change, never the device’s zone',
+       dst.includes(P('2026-11-01T01:00:00Z')) && dst.includes(P('2026-11-01T11:00:00Z')) && !dst.includes(P('2026-11-01T10:00:00Z')) && dst.every(s => s <= P('2026-11-01T13:50:00Z')), JSON.stringify(dst.map(s => new Date(s).toISOString())));
+
+    // --- the judge, on what GitHub actually held at 9:33 PM on Nov 3 ---
+    const real = [
+      {created: P('2026-11-03T12:36:50Z'), status: 'completed', conclusion: 'success'},   // his Reload, not a slot
+      {created: P('2026-11-03T02:30:45Z'), status: 'completed', conclusion: 'success'},
+      {created: P('2026-11-03T02:00:45Z'), status: 'completed', conclusion: 'success'},
+    ];
+    const now = P('2026-11-04T02:33:00Z');
+    const jr = J("runnerClockJudge(" + JSON.stringify(real) + ", " + now + ")");
+    ok('judge: Nov 3 reads missed since 10 PM the night before, 12 slots, and the 7:36 Reload is not a slot’s run',
+       jr.state === 'missed' && jr.since === P('2026-11-03T03:00:00Z') && jr.slots.length === 12 && jr.last === P('2026-11-03T02:30:00Z'), JSON.stringify(jr));
+    ok('judge: it says when, in his time, and what to do', ev("runnerSlotLabel(" + jr.since + ", " + now + ")") === '10:00 PM yesterday' &&
+       /since 10:00 PM yesterday \(12 slots missed\)/.test(ev("runnerClockText(" + JSON.stringify(jr) + ", " + now + ")")) && /wrangler secret put GH_TOKEN/.test(ev("runnerClockText(" + JSON.stringify(jr) + ", " + now + ")")));
+    const jr2 = J("runnerClockJudge(" + JSON.stringify(real) + ", " + (now + 3600000) + ")");
+    ok('judge: the outage keeps its start as more slots go by, so a dismissed warning stays dismissed', jr2.state === 'missed' && jr2.since === jr.since && jr2.slots.length === jr.slots.length + 2);
+    // Every slot hit, then variations on the newest.
+    const slots = J("runnerClockSlots(" + now + ")");
+    const hits = (skip, newestConclusion) => slots.filter((s, i) => i < slots.length - skip).map((s, i, a) =>
+      ({created: s + 45000, status: 'completed', conclusion: i === a.length - 1 && newestConclusion ? newestConclusion : 'success'}));
+    ok('judge: every slot started is on time', J("runnerClockJudge(" + JSON.stringify(hits(0)) + ", " + now + ")").state === 'ok');
+    ok('judge: one missed slot alone is not a warning (it can be GitHub’s hiccup)', J("runnerClockJudge(" + JSON.stringify(hits(1)) + ", " + now + ")").state === 'ok');
+    ok('judge: two in a row is', J("runnerClockJudge(" + JSON.stringify(hits(2)) + ", " + now + ")").state === 'missed');
+    const jf = J("runnerClockJudge(" + JSON.stringify(hits(0, 'failure')) + ", " + now + ")");
+    ok('judge: the newest slot’s run started and failed', jf.state === 'failed' && jf.since === slots[slots.length - 1]);
+    ok('judge: an older failure that a later run got past is not', J("runnerClockJudge(" + JSON.stringify(hits(0).map((r, i) => i === 3 ? Object.assign({}, r, {conclusion: 'failure'}) : r)) + ", " + now + ")").state === 'ok');
+
+    // --- the check on the device: one GET, nothing written ---
+    // An automatic run did something 20 h ago (autoAt), so runnerHealth() alone reads green: the Server row is ONE row
+    // since 2026-11-09, and GitHub's missed slots below must outrank that green, then hand back to it once on time.
+    ev("S.settings.ghToken = 'ghp_test'; S.settings.gistId = 'g1'; agState().runner = {at: Date.now() - 20 * 3600000, did:'brief', autoAt: Date.now() - 20 * 3600000}; _runnerClock = null; _runnerClockAt = 0; _runnerClockBusy = false;");
+    ok('check: control, before GitHub is asked the one Server row is runnerHealth()’s green', J("setGlance().filter(function(r){ return r.k === 'server'; })").length === 1 &&
+       J("setGlance().filter(function(r){ return r.k === 'server'; })[0].tone") === 'good');
+    ev("window.__rcCalls = []; window.fetch = function(u, o){ window.__rcCalls.push({u: String(u), auth: !!(o && o.headers && o.headers.Authorization)}); return window.__rcResp(u, o); };");
+    const live = J("runnerClockSlots(Date.now())");
+    const body = runs => "window.__rcResp = function(){ return Promise.resolve({ok:true, status:200, json:function(){ return Promise.resolve({workflow_runs:" +
+      JSON.stringify(runs.map(s => ({created_at: new Date(s + 40000).toISOString(), status: 'completed', conclusion: 'success', html_url: 'https://github.com/x'}))) + "}); }}); };";
+    ev(body(live.slice(0, -3)));
+    const s0 = ev('JSON.stringify(S)');
+    await ev('runnerClockCheck(true)');
+    const c1 = J('window.__rcCalls');
+    ok('check: one GET of agents.yml’s dispatched runs over the last day, without his token', c1.length === 1 && !c1[0].auth &&
+       c1[0].u.indexOf('/repos/markwx18/iron-hubv2/actions/workflows/agents.yml/runs?event=workflow_dispatch') > 0 && /created=%3E%3D\d{4}-/.test(c1[0].u), JSON.stringify(c1));
+    ok('check: three slots with no run read missed, and S is untouched', ev("_runnerClock.state") === 'missed' && ev("_runnerClock.since") === live[live.length - 3] && ev('JSON.stringify(S)') === s0);
+    const nf = J("notifItems().filter(function(i){ return /^clock:/.test(i.id); })");
+    ok('check: the bell says it, once', nf.length === 1 && nf[0].id === 'clock:missed:' + live[live.length - 3] && /missed its runs/.test(nf[0].title) && /GH_TOKEN/.test(nf[0].body));
+    const row = J("setGlance().filter(function(r){ return r.k === 'server'; })[0]");
+    ok('check: Settings shows it at a glance, red, and the folded Connections line names it', row && row.tone === 'bad' && /check the clock’s GitHub token/.test(row.line) &&
+       /Server clock missed its runs/.test(ev("settingsSummaries().connections")), JSON.stringify(row));
+    ok('check: and it is still ONE Server row and one warning, never two (2026-11-09)', J("setGlance().filter(function(r){ return r.k === 'server'; })").length === 1 &&
+       (ev("settingsSummaries().connections").match(/Server (clock|run)/g) || []).length === 1, ev("settingsSummaries().connections"));
+    ev("window.__rcCalls = [];"); await ev('runnerClockCheck()');
+    ok('check: asked again within 10 minutes, it does not go out', J('window.__rcCalls').length === 0);
+    ev("window.__rcResp = function(){ return Promise.reject(new TypeError('Failed to fetch')); };");
+    await ev('runnerClockCheck(true)');
+    ok('check: a failed check keeps what it knew', ev("_runnerClock && _runnerClock.state") === 'missed');
+    // Anonymous requests run out on a shared IP; then it asks again with this device's token.
+    ev("window.__rcCalls = []; window.__rcOk = " + JSON.stringify(live.map(s => ({created_at: new Date(s + 40000).toISOString(), status: 'completed', conclusion: 'success'}))) + ";" +
+       "window.__rcResp = function(u, o){ return (o && o.headers && o.headers.Authorization) ? Promise.resolve({ok:true, status:200, json:function(){ return Promise.resolve({workflow_runs: window.__rcOk}); }}) : Promise.resolve({ok:false, status:403, json:function(){ return Promise.resolve({}); }}); };");
+    await ev('runnerClockCheck(true)');
+    const c2 = J('window.__rcCalls');
+    ok('check: refused anonymously, it asks with the token, and back on time the warning is gone',
+       c2.length === 2 && !c2[0].auth && c2[1].auth && ev("_runnerClock.state") === 'ok' && J("notifItems().filter(function(i){ return /^clock:/.test(i.id); })").length === 0 &&
+       J("setGlance().filter(function(r){ return r.k === 'server'; })[0].tone") === 'good');
+    ev("delete agState().runner; window.__rcCalls = [];");
+    await ev('runnerClockCheck(true)');
+    ok('check: with no server run seen, there is nothing to ask and nothing to say', J('window.__rcCalls').length === 0 && ev('_runnerClock') === null &&
+       J("setGlance().filter(function(r){ return r.k === 'server'; })[0].tone") === 'off');
+    ev("agState().runner = {at: Date.now() - 3600000, did:'night'}; window.IRONHUB_HEADLESS = true;");
+    await ev('runnerClockCheck(true)');
+    ok('check: the server itself never asks', J('window.__rcCalls').length === 0);
+    ev("delete window.IRONHUB_HEADLESS;");
+  } catch (e) {
+    ok('server clock section', false, e.stack);
+  } finally {
+    ev("window.fetch = window.__rcFetch; S = JSON.parse(window.__rcS); localStorage.setItem(LS_KEY, JSON.stringify(S)); _runnerClock = null; _runnerClockAt = 0; _runnerClockBusy = false;" +
+       "delete window.IRONHUB_HEADLESS; ['__rcS','__rcFetch','__rcCalls','__rcResp','__rcOk'].forEach(function(k){ delete window[k]; });");
   }
 
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');

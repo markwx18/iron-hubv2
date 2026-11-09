@@ -84,7 +84,7 @@ with `${}` interpolation.
 node test_agents.js
 ```
 
-Currently 4176 assertions. Must be `0 failed`. A red suite is never shipped.
+Currently 4197 assertions. Must be `0 failed`. A red suite is never shipped.
 
 Tests must not depend on what day the suite is run. `currentDayKey()` resolves
 against the real calendar, so a test that assumes today is a training day is red
@@ -324,7 +324,7 @@ pushes. Now:
 | Investigation | `investigateLift()`, `invActiveFlags()`, `invUpdateBadge()`, `invTipsFor()` (the WHAT TO DO bullets on a flag card, derived from the title at render, never stored); resets `invOverrideFor()`, `invOverrideState()`, `invResetRecord()`, `RESET_HOLD_SESSIONS` |
 | Agent questions | `qaDue()`, `qaTurn()` / `qaOfferTo()` (`QA_ORDER`), `qaSpecLine()`, `agValidateQuestion()` / `qaSimilar()`, `qaIngest()`, `qaOpen()`, `qaAnswer()` / `qaSkip()` / `qaUndo()`, `qaContextLine()`, `qaCardHTML()`, `qaHubHTML()`, `S.agents.questions` |
 | Track records & diagnosis | `agOutcome()`, `agTrack()` / `agTrackText()` / `agTrackLine()`, `hubTrackHTML()`; `pdTargets()`, `pdContextLine()` / `pdSpecLine()`, `agValidateDiagnosis()`, `pdReadHTML()`, `S.agents.diagnoses` |
-| Server runner | `runnerTick(mode)` / `runnerFlush()` (driven by `scripts/agents/run.js`), `runnerHeadless()` (`IRONHUB_HEADLESS`), `runnerSeen()` / `runnerClockAlive()` / `runnerGraceLeft()` (`S.agents.runner`, `autoAt`, `RUNNER_GRACE_MIN`, `RUNNER_CLOCK_HOURS`), `runnerHealth()` / `runnerClockNote()`, Reload `briefReload()` / `briefReloadState()` / `briefReloadNote()` (`_briefReload`, `RUNNER_WORKFLOW`); `clock/src/worker.js` (`plan()`, `easternSlot()`, `tick()`) |
+| Server runner | `runnerTick(mode)` / `runnerFlush()` (driven by `scripts/agents/run.js`), `runnerHeadless()` (`IRONHUB_HEADLESS`), `runnerSeen()` / `runnerClockAlive()` / `runnerGraceLeft()` (`S.agents.runner`, `autoAt`, `RUNNER_GRACE_MIN`, `RUNNER_CLOCK_HOURS`), `runnerHealth()` / `runnerClockNote()`, GitHub's record `runnerClockCheck()` / `runnerClockJudge()` / `runnerClockFault()` / `runnerClockNotif()` (`_runnerClock`, `RUNNER_NIGHT_SLOTS` / `RUNNER_MORNING_SLOTS`, `runnerWatched()`), Reload `briefReload()` / `briefReloadState()` / `briefReloadNote()` (`_briefReload`, `RUNNER_WORKFLOW`); `clock/src/worker.js` (`plan()`, `easternSlot()`, `tick()`) |
 | Agents | `agRunAll()`, `agValidateFix()` (`AG_FIX_ALLOWED`, `agResetCeiling()`; `agValidateFixShape()` then `agConflict()`), `agApplyFix()`, `agApprove()`, `agSendChat()`, `renderOps()` (the Hub: `hubFed()`, `hubStatus()`, `hubMapHTML()`, `hubAgentHTML()`, `hubSpendHTML()`), `coachValidateAction()` |
 | Chat actions | `CHAT_LANES` / `CHAT_ALL` / `chatActionsFor()`, `coachToolDefs(agent)`, `coachValidateAction(name, inp, agent)`, `coachExecuteAction()`, `coachStageProposals()`, `coachFindProposal()`, `coachApplyProposal()`, undo `coachUndoProposal()` / `chatUndoStore()` / `CHAT_UNDO_KEYS`, `chatHistoryMsgs()`; every chat's context and loop `chatContext()`, `agTodayContext()`, `chatActionRules()`, `chatActionHandler()` (`refused`); today-only `S.todayAdjust`, `todayAdjFor()` / `todayAdjApply()`, `liveTodayAdjRebuild()`, `todaySessionNames()` / `liveSessionNames()` |
 | Exercise names | `exSplitNote()`, `exResolveKnown()`, `exAcceptName()`, `agResolveExName()`, `exRenameEverywhere()` |
@@ -1824,6 +1824,17 @@ an automatic rewrite at 10.
   - **A dead clock leaves evidence.** A device that runs the night because the clock did not logs one CHARLIE line
     (`runnerClockNote()`), Settings' glance has a **Server** row (`runnerHealth()`), and a stopped clock is named in the
     folded Connections summary.
+  - **GitHub is asked too, within minutes** (`runnerClockCheck()`, his ask, 2026-11-03; merged 2026-11-09). `autoAt` takes
+    up to 30 hours to say the clock stopped, and a morning slot with nothing to write never stamps it. So the device
+    sends one public GET of `agents.yml`'s dispatched runs over the last 26 hours (at most every 10 minutes, from
+    `agForegroundCheck()`, this device's token only if refused anonymously) and matches them to the clock's own slots on
+    the Eastern clock (`RUNNER_NIGHT_SLOTS` / `RUNNER_MORNING_SLOTS`, checked against `clock/src/worker.js`).
+    `runnerClockJudge()`: two slots missed in a row is `missed`, the newest slot's run failing is `failed`, and a Reload is
+    no slot's run. The result is module-scoped (`_runnerClock`), never `S`, and only asked once the server has run in
+    `RUNNER_WATCH_DAYS` (14); the server itself never asks.
+  - **One Server row and one warning, never two** (his pick, 2026-11-09): GitHub's `missed` / `failed` (`runnerClockFault()`)
+    outranks `runnerHealth()`'s line, in the glance row and the Connections summary; the bell carries `runnerClockNotif()`.
+    `runnerHealth()` / `runnerClockAlive()` alone still decide whether a device takes over at 9 PM.
   - **The clock keeps its logs** (`[observability]` in `clock/wrangler.toml`): `wrangler tail` cannot connect from his
     home network, which blocks `*.workers.dev`, so read them in the dashboard (Workers › ironhub-clock › Logs).
 - **Reload** (`briefReload()`, every brief button) dispatches `mode: reload` after `spendManualOk()`, with `over:'1'` when

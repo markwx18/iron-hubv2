@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-09-v1">
+<meta name="ironhub-build" content="2026-11-09-v2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -9942,7 +9942,13 @@ function settingsSummaries(){
   else if(rn && !rn.ok) parts.push(bad(rn.kind === 'run' ? 'WHOOP relay runs are failing' : 'WHOOP relay can\u2019t run from this device'));
   const gn = gdocNote(), gc = gdocCfg();
   if(gc && gn && gn.ok === false) parts.push(bad('Schedule doc not updating'));
-  try{ if(runnerHealth().stopped) parts.push(bad('Server clock stopped')); }catch(e){}
+  // The server, as ONE warning (2026-11-09): GitHub's own record of a missed or failed slot (runnerClockFault(), minutes
+  // after it happens) outranks the slower autoAt reading (runnerHealth(), 30 hours), which still decides the 9 PM takeover.
+  try{
+    const cf = runnerClockFault();
+    if(cf) parts.push(bad(cf.state === 'missed' ? 'Server clock missed its runs' : 'Server run failed'));
+    else if(runnerHealth().stopped) parts.push(bad('Server clock stopped'));
+  }catch(e){}
   out.connections = parts.join(' \u00b7 ');
   const ex = +uiPref()['app.lastExport'] || 0;
   out.app = 'Build '+esc(appBuild())+(_updRemote ? ' \u00b7 <b class="sum-new">update ready</b>' : '')+
@@ -9981,8 +9987,14 @@ function setGlance(){
   if(!gc) rows.push({k:'gdoc', t:'Schedule doc', tone:'off', line:'Not set up on this device'});
   else if(gn && gn.ok === false) rows.push({k:'gdoc', t:'Schedule doc', tone:'bad', line:'Not updating'+(gn.msg ? ': '+String(gn.msg).slice(0, 60) : '')});
   else rows.push({k:'gdoc', t:'Schedule doc', tone:'good', line:gn && gn.ok ? 'Writing this week' : 'Set up, not written yet'});
-  // The server runner: whether its clock is starting the 9 PM cycle and the brief with no device open.
-  try{ const rh = runnerHealth(); rows.push({k:'server', t:'Server', tone:rh.tone, line:rh.line}); }catch(e){}
+  // The server, as ONE row (2026-11-09): GitHub's record of a missed or failed slot first (runnerClockCheck(), within
+  // minutes), else whether an automatic run has done something lately (runnerHealth(), which also decides 9 PM).
+  try{
+    const cf = runnerClockFault();
+    if(cf && cf.state === 'missed') rows.push({k:'server', t:'Server', tone:'bad', line:'None since '+runnerSlotLabel(cf.since)+': check the clock’s GitHub token'});
+    else if(cf) rows.push({k:'server', t:'Server', tone:'bad', line:'The '+runnerSlotLabel(cf.since)+' run failed'});
+    else { const rh = runnerHealth(); rows.push({k:'server', t:'Server', tone:rh.tone, line:rh.line}); }
+  }catch(e){}
   return rows;
 }
 function setGlanceHTML(){
@@ -27214,6 +27226,8 @@ function notifItems(){
   try{ fcNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   // A pantry update from the family drop box, until he applies or ignores it.
   try{ const fi = famInboxNotif(); if(fi) out.push(fi); }catch(e){}
+  // The server's clock missed its slots, or a server run failed (runnerClockCheck()).
+  try{ const ci = runnerClockNotif(); if(ci) out.push(ci); }catch(e){}
   const wr = waterReminder();
   if(wr) out.push({id:'water:'+todayKey(), tone:'var(--cyan)', title:'Water', body:wr, when:null});
   // Spend at 80% of the monthly cap, and again (a new id) when it is reached.
@@ -28075,6 +28089,125 @@ async function runnerFlush(){
   return !pending();
 }
 
+/* ---- Did the clock start the server? (his ask, 2026-11-03) ----
+   On Nov 2 the clock's GitHub token expired, and from 10 PM GitHub refused every dispatch. The Worker's log said so
+   where nobody looks, and the app could not tell: the server stamps S.agents.runner only when it DID something, so a
+   slot with nothing to do and a slot that never ran look the same from here. A whole day of slots went by (the
+   morning brief included) before the device stepped in at 9:45 the next night. So the device asks GitHub directly:
+   one public GET of agents.yml's runs over the last day, matched against the clock's own slots. The result is
+   module-scoped, never S: it is a fact re-asked from GitHub, not something to sync. */
+const RUNNER_NIGHT_SLOTS = ['21:00', '21:30', '22:00'];   // clock/src/worker.js NIGHT and MORNING (the suite checks they match)
+const RUNNER_MORNING_SLOTS = ['06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30'];
+const RUNNER_SLOT_LATE_MIN = 10;      // a slot is judged this long after it; a dispatch starts within seconds
+const RUNNER_SLOT_HIT_MIN = 5;        // a run created this long after a slot is that slot's run (a Reload at 7:36 is not)
+const RUNNER_SLOT_MISSES = 2;         // missed in a row before it is a warning: one alone can be GitHub's hiccup
+const RUNNER_CLOCK_LOOK_H = 26;
+const RUNNER_CLOCK_EVERY_MS = 10 * 60000;
+const RUNNER_WATCH_DAYS = 14;         // a server not seen for two weeks is taken as switched off, not broken
+let _runnerClock = null;              // {state:'ok'|'missed'|'failed', since, slots, last, url}
+let _runnerClockAt = 0, _runnerClockBusy = false;
+/* Watched once the server has run at least once lately; without it there is no clock to miss. */
+function runnerWatched(now){
+  const r = S.agents && S.agents.runner;
+  return !!(syncReady() && r && +r.at > 0 && (now || Date.now()) - r.at < RUNNER_WATCH_DAYS * 864e5);
+}
+function runnerEtKey(ms){ return new Date(ms + waZoneOffsetMs(ms)).toISOString().slice(0, 10); }
+/* The clock's slots that are at least RUNNER_SLOT_LATE_MIN old, within the look-back, oldest first. */
+function runnerClockSlots(now){
+  const out = [], lo = now - RUNNER_CLOCK_LOOK_H * 3600000, hi = now - RUNNER_SLOT_LATE_MIN * 60000;
+  const today = runnerEtKey(now);
+  [mesoAddDays(today, -2), mesoAddDays(today, -1), today].forEach(function(k){
+    RUNNER_MORNING_SLOTS.concat(RUNNER_NIGHT_SLOTS).forEach(function(t){
+      const ms = waWallMs(k, t);
+      if(ms > lo && ms <= hi) out.push(ms);
+    });
+  });
+  return out.sort(function(a, b){ return a - b; });
+}
+/* Pure: runs [{created, status, conclusion, url}] against the slots. Missed when the newest RUNNER_SLOT_MISSES
+   slots in a row have no run; `since` is the first slot of that run of misses, so the bell's id holds still for
+   the whole outage and a dismissal sticks. Otherwise failed when the newest slot's run failed. */
+function runnerClockJudge(runs, now){
+  const slots = runnerClockSlots(now);
+  if(!slots.length) return null;
+  const hitOf = function(s){
+    return (runs || []).filter(function(r){ return r.created >= s - 60000 && r.created <= s + RUNNER_SLOT_HIT_MIN * 60000; })
+      .sort(function(a, b){ return b.created - a.created; })[0] || null;
+  };
+  const missed = [];
+  let last = null;
+  for(let i = slots.length - 1; i >= 0; i--){
+    const h = hitOf(slots[i]);
+    if(h){ last = {slot:slots[i], run:h}; break; }
+    missed.unshift(slots[i]);
+  }
+  if(missed.length >= RUNNER_SLOT_MISSES)
+    return {state:'missed', since:missed[0], slots:missed, last:last ? last.slot : 0};
+  if(last && missed.length === 0 && last.run.status === 'completed' && last.run.conclusion === 'failure')
+    return {state:'failed', since:last.slot, slots:[], last:last.slot, url:last.run.url || ''};
+  return {state:'ok', since:0, slots:missed, last:last ? last.slot : 0};
+}
+function runnerSlotLabel(ms, now){
+  let t = '';
+  try{ t = new Intl.DateTimeFormat('en-US', {timeZone:WA_TZ, hour:'numeric', minute:'2-digit'}).format(new Date(ms)); }
+  catch(e){ t = new Date(ms).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}); }
+  const d = runnerEtKey(ms), today = runnerEtKey(now || Date.now());
+  return t + (d === today ? '' : d === mesoAddDays(today, -1) ? ' yesterday' : ' ' + homeShortDate(d));
+}
+function runnerClockText(c, now){
+  if(!c) return '';
+  if(c.state === 'missed') return 'No server run has started since ' + runnerSlotLabel(c.since, now) + ' (' + c.slots.length +
+    ' slots missed), so the clock is not reaching GitHub. Most likely its GitHub token has expired, which is what stopped it on ' +
+    'Nov 2: make a new one (iron-hubv2 only, Actions: Read and write), then in clock/ run npx wrangler secret put GH_TOKEN. ' +
+    'Until then the night runs here from 9:45 PM when this app is open, and the brief when you open it in the morning.';
+  if(c.state === 'failed') return 'The server run at ' + runnerSlotLabel(c.since, now) + ' started and failed. GitHub › Actions › Agents has the line.';
+  return '';
+}
+/* One GET, from agForegroundCheck(), at most every RUNNER_CLOCK_EVERY_MS. Without a token first (the repo is
+   public), with this device's token if that is refused (a shared school IP can run out of anonymous requests). A
+   failed check keeps what it had. Nothing is written to S, and S is not read after the await. */
+async function runnerClockCheck(force){
+  if(runnerHeadless() || !runnerWatched()){ _runnerClock = null; return null; }
+  if(_runnerClockBusy || (!force && Date.now() - _runnerClockAt < RUNNER_CLOCK_EVERY_MS)) return _runnerClock;
+  if(!force && typeof document !== 'undefined' && document.visibilityState === 'hidden') return _runnerClock;
+  const tok = S.settings.ghToken, hdr = tok ? ghHeaders() : null;
+  _runnerClockBusy = true; _runnerClockAt = Date.now();
+  let runs = null;
+  try{
+    const since = new Date(Date.now() - RUNNER_CLOCK_LOOK_H * 3600000).toISOString().slice(0, 19) + 'Z';
+    const url = 'https://api.github.com/repos/' + WHOOP_REPO + '/actions/workflows/' + RUNNER_WORKFLOW +
+      '/runs?event=workflow_dispatch&per_page=100&created=' + encodeURIComponent('>=' + since);
+    let res = await fetch(url, {headers:{'Accept':'application/vnd.github+json'}});
+    if(!res.ok && hdr) res = await fetch(url, {headers:hdr});
+    if(res.ok){
+      const j = await res.json();
+      runs = (j && Array.isArray(j.workflow_runs) ? j.workflow_runs : []).map(function(r){
+        return {created:Date.parse(r.created_at), status:String(r.status || ''), conclusion:String(r.conclusion || ''), url:String(r.html_url || '')};
+      }).filter(function(r){ return isFinite(r.created); });
+    }
+  }catch(e){ /* offline, or GitHub down: keep the last answer */ }
+  finally{ _runnerClockBusy = false; }
+  if(!runs) return _runnerClock;
+  const key = function(c){ return c ? c.state + ':' + c.since : ''; };
+  const was = key(_runnerClock);
+  _runnerClock = runnerClockJudge(runs, Date.now());
+  if(was !== key(_runnerClock)){ try{ renderNotif(); }catch(e){} try{ rerenderActive(); }catch(e){} }
+  return _runnerClock;
+}
+/* The warning, while the server is watched. Read-only. */
+function runnerClockFault(){
+  const c = _runnerClock;
+  if(!c || (c.state !== 'missed' && c.state !== 'failed') || !runnerWatched()) return null;
+  return c;
+}
+function runnerClockNotif(){
+  const c = runnerClockFault();
+  if(!c) return null;
+  return {id:'clock:' + c.state + ':' + c.since, tone:'var(--bad)',
+    title:c.state === 'missed' ? 'The server missed its runs' : 'A server run failed',
+    body:runnerClockText(c), when:null, go:"showMainTab('settings')"};
+}
+
 /* ---- Reload on the brief ----
    Module-scoped, never S: it is this device's tap, and the 30 s repaint must not lose it. */
 let _briefReload = null;   // {at, state:'sent'|'here'|'device', msg}
@@ -28242,6 +28375,8 @@ function agForegroundCheck(){
   try{ expTick(); }catch(e){}
   // A pantry update the family submitted. One GET, only while a share from the last 4 weeks is out.
   try{ Promise.resolve(famInboxCheck()).catch(function(){}); }catch(e){}
+  // Whether the clock started the server's runs (runnerClockCheck()). One GET, at most every 10 minutes.
+  try{ Promise.resolve(runnerClockCheck()).catch(function(){}); }catch(e){}
 }
 
 /* ============================================================
@@ -28273,6 +28408,7 @@ function tabSignature(){
     MODE, activeMainTab, navMemory[activeMainTab] || activeReviewTab,
     notifOpen?1:0,
     _famInbox ? _famInbox.id : '',
+    _runnerClock ? _runnerClock.state + ':' + _runnerClock.since + ':' + _runnerClock.last : '',
     S.meta ? S.meta.changedAt : 0,
     S.logs.length, S.weights.length, S.nutrition.length, S.readiness.length,
     (a.proposals||[]).length, (a.log||[]).length,
