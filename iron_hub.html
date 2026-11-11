@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-09-v2">
+<meta name="ironhub-build" content="2026-11-11-v5a">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2378,6 +2378,8 @@ const DEFAULT_STATE = {
   forecastRatings: [],         // {id: forecastId, rating 1-5, note, at, day, t} — his rating of a big-picture forecast.
   liftNotes: [],               // {id, lift, kind:'reset'|'badday'|'intended'|'wrong', date, from?, to?, state, lvl, at, t} — his
                                // corrections to the plateau watch. Immutable rows, newest wins. See pwMark().
+  overhaul: {},                // V5 switches he has CHANGED, and nothing else: {key:boolean, at:{key:'YYYY-MM-DD'}}.
+                               // Sparse on purpose: the defaults live in code. Never read directly; ask ovOn(). See OV.
   photos: {gistId:'', index:[]},  // INDEX only — the images live in their own gist, see photoState()
   whoop: null,                 // {fetchedAt, recovery:{date,score,hrv,rhr}, sleep:{...}, strain:{...}}
                                // written ONLY by applyWhoop() from the gist; never pushed back
@@ -2428,6 +2430,88 @@ function load(){
      benchPracticeFreq   — DELTA’s frequency target for it, set through the retired bpFreq fix.
      audit               — the weekly audit's proposals, retired 2026-09-28 (see staleExercises()). */
 const REMOVED_STATE_KEYS = ['dateOverrides','tempStrengthSplit','tempStrengthWindow','benchPractice','benchPracticeFreq','audit'];
+/* ---- V5 switches (S.overhaul, 2026-11-11) ----
+   Each V5 stage sits behind one switch, so a stage can be turned off without a redeploy. A free part is on unless
+   he turned it off; a paid part is off until he turns it on in Settings, which is also the kill switch.
+   - S.overhaul holds ONLY what he changed, and the defaults live here. load() merges one level deep, so a stored
+     S.overhaul is taken whole: a switch added in a later build would come back ABSENT, not at its default (the
+     `meta` trap, one level down). Nothing may read S.overhaul directly; ask ovOn().
+   - An unknown key is off, and OV is asked for its OWN keys: a typo in a later stage, or a name every object has
+     ("constructor"), must not be able to turn a paid route on.
+   - It lives in S, not in a per-device pref, because the server runner boots from the gist and has to honour the
+     same switches. It is not history: a pull replaces it whole, so every change is his tap and a save().
+   - A stage adds its row to OV when it ships. Until one does, Settings shows no card. */
+const OV = {};                 // key -> {label, paid:boolean, note}. Never register a key called "at".
+const OV_PAID_GAP_DAYS = 7;    // his rule (2026-10-04): paid pieces go on one at a time, a week apart on the ledger
+function ovHas(k){ return Object.prototype.hasOwnProperty.call(OV, k) && k !== 'at'; }
+function ovDefault(k){ return ovHas(k) && !OV[k].paid; }
+function ovOn(k){
+  if(!ovHas(k)) return false;
+  const o = S.overhaul;
+  if(o && typeof o === 'object' && typeof o[k] === 'boolean') return o[k];
+  return ovDefault(k);
+}
+/* The newest day a paid part went on, and which one: what "a week apart" is measured from. A part turned off again
+   does not count, and neither does the one being asked about. */
+function ovLastPaidOn(except){
+  const at = (S.overhaul && typeof S.overhaul === 'object' && S.overhaul.at) || {};
+  let best = null;
+  Object.keys(at).forEach(function(k){
+    if(k === except || !ovHas(k) || !OV[k].paid || !ovOn(k) || !/^\d{4}-\d{2}-\d{2}$/.test(at[k])) return;
+    if(!best || at[k] > best.day) best = {key:k, day:at[k]};
+  });
+  return best;
+}
+/* Days still to wait before this paid part, by his own rule; 0 when clear. A warning and not a lock: the rule is his. */
+function ovPaidWait(k){
+  if(!ovHas(k) || !OV[k].paid) return 0;
+  const last = ovLastPaidOn(k); if(!last) return 0;
+  const gone = Math.round((new Date(todayKey()+'T12:00:00') - new Date(last.day+'T12:00:00')) / 864e5);
+  return Math.max(0, OV_PAID_GAP_DAYS - gone);
+}
+function ovSet(k, on){
+  if(!ovHas(k)) return false;
+  on = !!on;
+  if(!S.overhaul || typeof S.overhaul !== 'object' || Array.isArray(S.overhaul)) S.overhaul = {};
+  const o = S.overhaul;
+  if(on === ovDefault(k)) delete o[k]; else o[k] = on;       // sparse: back at its default, the key is gone
+  if(OV[k].paid){
+    if(!o.at || typeof o.at !== 'object') o.at = {};
+    if(on) o.at[k] = todayKey(); else delete o.at[k];
+    if(!Object.keys(o.at).length) delete o.at;
+  }
+  save();   // his tap: touch and push. save(false) could be reverted by the next background pull.
+  return true;
+}
+/* The box in Settings. Turning a paid part ON asks first, and names the rule when it is early. Turning anything
+   OFF never asks. The key travels in data-ov, never inside the onclick string. */
+function ovToggle(el){
+  const k = el && el.getAttribute && el.getAttribute('data-ov');
+  if(!ovHas(k)) return;
+  const on = !!el.checked;
+  if(on && OV[k].paid){
+    const wait = ovPaidWait(k), last = ovLastPaidOn(k);
+    const early = (wait && last) ? 'Your rule is one paid piece a week. '+OV[last.key].label+' went on '+last.day+', so '+wait+' more day'+(wait === 1 ? '' : 's')+
+      ' keeps them apart on the spend ledger.\n\n' : '';
+    if(!confirm(early+'Turn on '+OV[k].label+'? '+(OV[k].note || 'It adds to the monthly API spend.'))){ el.checked = false; return; }
+  }
+  ovSet(k, on);
+  try{ renderSettings(); }catch(e){}
+}
+function ovCardHTML(){
+  const keys = Object.keys(OV).filter(ovHas);
+  if(!keys.length) return '';
+  const at = (S.overhaul && typeof S.overhaul === 'object' && S.overhaul.at) || {};
+  return '<h2>V5 switches</h2><div class="card"><p class="small">Each part of V5 can be turned off here. Free parts are on. '+
+    'Paid parts stay off until you turn them on, one a week.</p>'+
+    keys.map(function(k){
+      const d = OV[k], on = ovOn(k);
+      return '<label style="display:flex;align-items:flex-start;gap:10px;margin-top:12px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
+        '<input type="checkbox" style="width:auto;margin-top:2px" data-ov="'+esc(k)+'" '+(on ? 'checked' : '')+' onchange="ovToggle(this)">'+
+        '<span><b>'+esc(d.label || k)+'</b> <span class="pill" style="color:var(--'+(d.paid ? 'warn' : 'good')+')">'+(d.paid ? 'paid' : 'free')+'</span>'+
+        '<br><span class="small">'+esc(d.note || '')+(d.paid && on && at[k] ? ' On since '+esc(at[k])+'.' : '')+'</span></span></label>';
+    }).join('')+'</div>';
+}
 /* ---- one-time data corrections ----
    A correction to logged history that he asked for. Each runs ONCE, marked in S.dataFixes, which syncs
    with the data it changed, so a second device that pulls the corrected data also pulls the mark and
@@ -10171,6 +10255,7 @@ function renderSettings(){
     '<div style="flex:none"><button class="btn sm ghost" onclick="resetAll()" style="color:var(--bad);border-color:var(--bad)">Reset Everything</button></div></div>'+
     '<p class="small" style="margin-top:8px">Export regularly — localStorage can be wiped by browser cleanup. The JSON file is your backup.</p></div>';
   app += html;
+  app += ovCardHTML();   // V5 switches: empty until a stage registers one
   // Folded by default and remembered per device: eleven sections on one page was the complaint.
   el.innerHTML = '<div class="set-head"><span class="cc-eyebrow">This device</span><h2 class="hub-title">Settings</h2></div>'+
     setGlanceHTML()+

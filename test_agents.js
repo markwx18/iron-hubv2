@@ -16974,6 +16974,80 @@ setTimeout(async () => {
        "delete window.IRONHUB_HEADLESS; ['__rcS','__rcFetch','__rcCalls','__rcResp','__rcOk'].forEach(function(k){ delete window[k]; });");
   }
 
+  // ===== V5 stage 0: the switches (S.overhaul, 2026-11-11) =====
+  console.log('\n=== V5 SWITCHES: SPARSE, DEFAULTS IN CODE, AN UNKNOWN KEY IS OFF, PAID ONES A WEEK APART (2026-11-11) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    // Later stages register real switches; this section clears the registry, uses its own, and puts theirs back.
+    ev("window.__ovS = JSON.stringify(S); window.__ovLS = localStorage.getItem(LS_KEY); window.__ovConfirm = window.confirm; window.__ovStash = Object.assign({}, OV);" +
+       "Object.keys(OV).forEach(function(k){ delete OV[k]; });");
+    ok('default state carries an empty overhaul: the defaults live in code, not in state', JSON.stringify(J('DEFAULT_STATE.overhaul')) === '{}');
+    ok('with no switch registered, Settings has no V5 card', ev('ovCardHTML()') === '');
+    ev("OV.tFree = {label:'Test <b>free</b>', paid:false, note:'A free part.'}; OV.tPaid = {label:'Test paid', paid:true, note:'About a dollar a month.'}; OV.tPaid2 = {label:'Second paid', paid:true, note:'More.'};");
+    // Every shape S.overhaul can arrive in: fresh, absent (a state saved before the key existed), null, and junk.
+    ['{}', 'undefined', 'null', '[]', '"x"'].forEach(function (v) {
+      ev("S.overhaul = " + v + ";");
+      ok('S.overhaul = ' + v + ': a free part is on and a paid part is off', ev("ovOn('tFree')") === true && ev("ovOn('tPaid')") === false);
+    });
+    ev("S.overhaul = {nope:true, constructor:true, toString:true, at:true};");
+    ok('an unknown key is off even when state says on: a typo cannot turn a paid route on', ev("ovOn('nope')") === false && ev("ovSet('nope', true)") === false);
+    ok('a name every object has is not a switch (OV is asked for its OWN keys)', ev("ovOn('constructor')") === false && ev("ovOn('toString')") === false && ev("ovSet('constructor', true)") === false);
+    // S.overhaul.at is true here, and a later stage registers a switch called "at" by mistake: it must stay a non-switch.
+    ev("OV.at = {label:'Oops', paid:false, note:''};");
+    ok('"at" holds the dates and can never be a switch, even if one is registered', ev("ovOn('at')") === false && ev("ovSet('at', true)") === false && ev('ovCardHTML()').indexOf('Oops') < 0);
+    ev("delete OV.at;");
+    // The meta trap, one level down: load() takes a stored overhaul whole, so a switch added later is absent from it.
+    ev("S.overhaul = {tFree:false}; localStorage.setItem(LS_KEY, JSON.stringify(S)); S = load(); OV.tLater = {label:'Added later', paid:false, note:''};");
+    ok('load() keeps what he changed', JSON.stringify(J('S.overhaul')) === '{"tFree":false}' && ev("ovOn('tFree')") === false);
+    ok('and a switch added in a later build reads its default from code, not "absent means off"', ev("ovOn('tLater')") === true);
+    ev("delete OV.tLater; S.overhaul = {};");
+    // Sparse: only what he changed is stored, and going back to the default removes the key.
+    ev("S.meta.changedAt = 1;");
+    ok('turning a free part off stores it', ev("ovSet('tFree', false)") === true && JSON.stringify(J('S.overhaul')) === '{"tFree":false}' && ev("ovOn('tFree')") === false);
+    ok('and it is his tap, so it touches and pushes (save(), not save(false))', ev('S.meta.changedAt') > 1);
+    ok('back at its default, the key is gone', ev("ovSet('tFree', true)") === true && JSON.stringify(J('S.overhaul')) === '{}');
+    const today = ev('todayKey()');
+    ok('a paid part turned on records the day', ev("ovSet('tPaid', true)") === true && JSON.stringify(J('S.overhaul')) === JSON.stringify({tPaid: true, at: {tPaid: today}}) && ev("ovOn('tPaid')") === true);
+    ok('the server sees the same switches: they ride the sync payload', JSON.stringify(JSON.parse(ev('syncPayload()')).data.overhaul) === JSON.stringify({tPaid: true, at: {tPaid: today}}));
+    // His rule: paid pieces a week apart.
+    ok('a second paid part the same day is 7 days early', ev("ovPaidWait('tPaid2')") === 7);
+    ev("S.overhaul.at.tPaid = mesoAddDays(todayKey(), -3);");
+    ok('three days on, 4 to go', ev("ovPaidWait('tPaid2')") === 4);
+    ev("S.overhaul.at.tPaid = mesoAddDays(todayKey(), -7);");
+    ok('a week on, clear', ev("ovPaidWait('tPaid2')") === 0);
+    ok('a free part never waits, and a part does not wait on itself', ev("ovPaidWait('tFree')") === 0 && ev("ovPaidWait('tPaid')") === 0);
+    ev("S.overhaul.at.tPaid = mesoAddDays(todayKey(), -3);");
+    // The toggle: a paid part asks first, and names the rule when it is early.
+    ev("window.__ovAsked = []; window.confirm = function(m){ window.__ovAsked.push(String(m)); return false; };");
+    ev("window.__ovEl = {checked:true, getAttribute:function(){ return 'tPaid2'; }}; ovToggle(window.__ovEl);");
+    const asked = J('window.__ovAsked');
+    ok('turning a paid part on asks first, and says what went on and how long to wait', asked.length === 1 && /Test paid went on/.test(asked[0]) && /4 more days/.test(asked[0]) && /Turn on Second paid\?/.test(asked[0]), JSON.stringify(asked));
+    ok('a no leaves it off and unticks the box', ev("ovOn('tPaid2')") === false && ev('window.__ovEl.checked') === false);
+    ev("window.confirm = function(m){ window.__ovAsked.push(String(m)); return true; }; window.__ovEl.checked = true; ovToggle(window.__ovEl);");
+    ok('a yes turns it on (the rule is his: a warning, not a lock)', ev("ovOn('tPaid2')") === true && J('window.__ovAsked').length === 2);
+    ev("window.__ovAsked = []; ovToggle({checked:false, getAttribute:function(){ return 'tPaid2'; }}); ovToggle({checked:false, getAttribute:function(){ return 'tFree'; }});");
+    ok('turning anything off never asks: it is the kill switch', J('window.__ovAsked').length === 0 && ev("ovOn('tPaid2')") === false && ev("ovOn('tFree')") === false);
+    ok('a paid part turned off drops its date', J('S.overhaul.at').tPaid2 === undefined && !!J('S.overhaul.at').tPaid);
+    ev("ovSet('tPaid2', true); S.overhaul.at.tPaid2 = todayKey(); S.overhaul.tPaid2 = false;");
+    ok('and a part that is off does not count toward the week, whatever date it left behind', ev("ovPaidWait('tPaid')") === 0 && ev("ovLastPaidOn('tPaid')") === null);
+    ev("ovSet('tPaid2', false); ovSet('tPaid', false);");
+    ok('with no paid part on, nothing waits and no dates are kept', ev("ovPaidWait('tPaid2')") === 0 && J('S.overhaul').at === undefined);
+    // The card.
+    ev("ovSet('tPaid', true);");
+    const card = ev('ovCardHTML()');
+    ok('the card lists every part with its box, escaped', /V5 switches/.test(card) && /Test &lt;b&gt;free&lt;\/b&gt;/.test(card) && !/<b>free<\/b>/.test(card) && (card.match(/data-ov="/g) || []).length === 3, card);
+    ok('it says which are paid, which are on, and since when', />paid</.test(card) && />free</.test(card) && /data-ov="tPaid" checked/.test(card) && !/data-ov="tFree" checked/.test(card) && card.indexOf('On since ' + today) > 0, card);
+    ev('renderSettings()');
+    ok('and Settings draws it, still in four groups', ev("document.querySelectorAll('#settings [data-ov]').length") === 3 && ev("document.querySelectorAll('#settings > .sub.grp').length") === 4);
+  } catch (e) {
+    ok('V5 switches section', false, e.stack);
+  } finally {
+    ev("Object.keys(OV).forEach(function(k){ delete OV[k]; }); Object.assign(OV, window.__ovStash); window.confirm = window.__ovConfirm; S = JSON.parse(window.__ovS);" +
+       "if(window.__ovLS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__ovLS);" +
+       "['__ovS','__ovLS','__ovConfirm','__ovStash','__ovAsked','__ovEl'].forEach(function(k){ delete window[k]; });");
+    try { ev('renderSettings()'); } catch (e) {}
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
