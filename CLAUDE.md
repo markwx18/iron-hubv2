@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 4326 assertions, about 1 m 45 s. Must be
+**Test suite:** `node test_agents.js`. Currently 4414 assertions, about 1 m 45 s. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -158,6 +158,7 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | Live session | `renderLive()`, `liveSetToLog()`, `endLiveSession()`, `sessionMods()`, `liftLoad()` |
 | Bodyweight and intake | `bulkRate()`, `bulkBand()`, `calTarget()`, `nutTierCal()`, `nutTierPro()` |
 | Plateau watch | `plateauRisk()` (one row per lift), `pwIssue()`, `plateauCauses()`, `pwAsOf()`, `pwMainRows()` |
+| Holds | `holdBlocks()`, `holdOn()`, `holdAdd()` / `holdCancel()`, `stdHeldBy()`, `holdContextLine()`, `holdCardHTML()`, `awayRun()`, `awayClean()` |
 | Standards | `stdState()` (one row per pillar), `stdWalk()`, `stdHeldBy()`, `dayExcuse()`, `svJudgeable()`, `stdMotion()`, `stdCardHTML()`, `stdContextLine()` |
 | Forecasts and records | `anFanProject()` / `anFanAt()`, `predTick()` / `predResolve()`, `fcRun()` / `fcResolve()` |
 | Agents, nightly | `agRunAll()`, `agBaseContext()`, `intelSummary()`, `svSheet()`, `agIngest()`, `agLog()` |
@@ -417,7 +418,7 @@ motion", and a fast-gain amber.
 
 **Rules every stage follows**
 - New history is a `SYNC_HISTORY` collection with immutable rows and its own key prefix. Taken:
-  `w n r l p x b m q f v k $ g y`.
+  `w n r l p x b m q f v k $ g y h`.
 - Anything an analyst shows is worked out when read, never stored and never posted to the Desk.
 - A stage ends with: acorn, the suite at 0 failed, a mutant per new rule, `scripts/clock_run.js`,
   the build marker, the copy to `index.html`, this file and `UPDATE_LOG.md`, a commit and a
@@ -442,8 +443,26 @@ motion", and a fast-gain amber.
 - **Today reads the Standards once a repaint**; `_stdPass` never outlives `renderNotif()`.
 - The thresholds are named constants (`STD_*`); `stdHeldBy()` is the hook holds fill.
 
+**Stage 2, Holds** (`ovOn('holds')`, free; the trip plan is `ovOn('awayPlan')`, paid, off)
+- **A hold block is read-only context.** `S.holds` (key `h|`): immutable rows, and removing one is a cancel row. What is
+  in force is `holdBlocks()`, worked out when read; a row that fails `holdRowOk()` is ignored, never repaired.
+  `scheduledDayFor()` does not know holds exist, and nothing here brings date overrides back.
+- **A day in a block is not a miss**, through `dayExcuse()` (so `svSheet()`, the streak and Showing up agree), and it
+  holds whatever the Standards switch says. A session trained inside a block still counts.
+- **A hold freezes a Standard, it never clears one** (`stdHeldBy()`): the block's days plus `HOLD_AFTER_DAYS`. A trip
+  holds Showing up and Bulk pace; sick and exams also Intake; Lifts and Recovery are never held. A miss in the days
+  after a block is still a miss and shows when the hold lifts.
+- A block far off adds nothing to any prompt (`holdContextLine()`, within `HOLD_SOON_DAYS`). His note is quoted as data.
+- **The trip plan is one call per block, only by his tap** (`awayPlanSubmit()` → `awayRun()`, route `awayplan`, modelled
+  on `wpRun()`): asked through `spendManualOk()`, input saved before the call, re-resolved after the await, closed by
+  any reply that came back. Its changes are ordinary requests through `wpFilterProposals()` and `agValidateFix()`.
+- **Nothing states what a break costs.** The prompt names the app's defaults as defaults, not research, and
+  `awayClean()` drops any line that claims a loss or puts a percentage on it. Do not loosen `AWAY_CLAIM_RE` to keep a line.
+- The limits are named constants (`HOLD_*`). The form's draft is module-scoped (`holdDraft`), read before any repaint.
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
 | 1 Standards: five computed pillars, reasons, plan in motion | built 2026-11-12 (`v5b`) |
-| 2 Holds · 3 Evidence · 4 Analysts · 5 Selector · 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |
+| 2 Holds: one block type for trips, sickness and exams, and the trip plan | built 2026-11-12 (`v5c`) |
+| 3 Evidence · 4 Analysts · 5 Selector · 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |

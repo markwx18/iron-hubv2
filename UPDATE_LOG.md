@@ -195,3 +195,17 @@ The app now decides, from your own numbers, when something is off, and it stays 
 - **A red cannot be dismissed.** While one is red with nothing being tried, a small "Red" mark sits in the top bar, the bell keeps its item, and the agents are told to be direct about it. You can add a reason to any red; outside Showing up it is a note, and it does not clear anything.
 - **ZULU's morning brief leads with a Standard that turned red since the last brief.** Same call as before, no extra cost.
 - **You can turn all of it off** in Settings, under V5 switches.
+
+## Time away: trips, sick days and exams (Nov 12)
+
+You can now tell the app about days you will not be training as usual, weeks ahead or after the fact.
+
+- **A "Time away" card on Today.** Tap **Add days**, pick Trip, Sick or Exams, the first and last day, and for a trip whether there is no gym, a hotel gym or a home gym. Your Dec 28 to Jan 1 trip can go in now. Longest: 21 days for a trip, 14 for exams, 10 for sick days. A block can start up to 14 days back, so you can add sick days after they happened.
+- **Those days are not misses.** The streak does not break, CHARLIE's sheet lists them as "not counted", and Showing up does not go amber or red for them.
+- **The Standards a break skews are held.** A trip holds Showing up and Bulk pace for the trip and 7 days after, because weigh-ins take about a week to settle. Sick days and exams hold Intake as well. A held row says "Held" and until when. Lifts and Recovery are never held.
+- **A hold pauses a Standard, it does not clear it.** A red stays red underneath, and a scheduled day you skip in the week after a trip is still a miss; it shows when the hold lifts.
+- **On the day**, Today shows "Away, day 2 of 5", and the Train at home button when you said there is a gym.
+- **The agents know.** From three weeks before, their calendar lists the block, so nobody calls a planned trip slacking.
+- **Nothing on your schedule moves.** It is context only. Remove a block any time and its days count as ordinary days again.
+- **Plan my trip (paid, off until you turn it on).** In Settings, under V5 switches, turn on **Plan my trip**. Then a trip gets a button: one call to ZULU, about 3 cents, which writes a note for the days before, each away day, and your first sessions back. It is advice on screen; any change to your plan comes as a normal request you approve. The app does not let it tell you how much strength or muscle a break costs, because it has not measured that.
+- **You can turn all of it off** in Settings, under V5 switches (Holds).

@@ -2549,3 +2549,68 @@ the card, the top bar and the V5 switches card (the first registered switch) wit
 Turning the switch off in Settings left the mark up until the next repaint, so `ovToggle()` now repaints the bell.
 
 Not built in this stage: the plan's "the Hub focuses on that pillar" (the Hub is reorganised in stage 8).
+
+### V5 stage 2: Holds and the trip plan (2026-11-12, `v5c`)
+
+**A hold block is read-only context.** One block type for trips, sickness and exams:
+`{id, from, to, kind:'trip'|'sick'|'exams', gym:'none'|'hotel'|'home', note, at, t}` in `S.holds`, a `SYNC_HISTORY`
+collection (key `h|`). Rows are immutable; removing a block writes `{id, cancel:<block id>, from, at, t}`, the way
+`liftNotes` and `dayReasons` take corrections, so a pull can neither lose a block nor bring a removed one back (the suite
+reverses the rows to prove the order does not matter). `holdBlocks()` is every valid row no cancel row names, and
+`holdRowOk()` is asked of stored rows too: a row from another build that is too long, has an unreal date (Nov 31) or an
+unknown kind is ignored, never repaired. V4 removed date overrides on purpose, so `scheduledDayFor()` is untouched and
+the suite checks the block's days resolve exactly as before it existed.
+
+Limits, each a named constant: the longest block is 21 days for a trip, 14 for exams, 10 for sick (`HOLD_MAX_DAYS`); a
+block may start up to 14 days back (`HOLD_BACK_DAYS`: he was sick from Monday and says so on Thursday) and a year ahead;
+two blocks may not overlap (the form says which one is in the way). A block that is not a trip never carries a gym.
+
+**A day in a block is not a miss.** `dayExcuse()` asks `holdOn(d)` first, before the Standards switch, so `svSheet()`,
+the streak and Showing up agree and the Standards switch being off does not turn a trip into five misses. CHARLIE's
+sheet lists the days as "not counted as missed (away)". A session trained inside a block still counts as trained.
+
+**A hold freezes a Standard, it never clears one.** Stage 1 left `stdHeldBy(pillar, day)` returning null; it now returns
+`{until, why, id}` for the block's days plus `HOLD_AFTER_DAYS` (7: weigh-ins take a week to settle after travel). A trip
+holds Showing up and Bulk pace. Sick and exams hold Intake as well. Lifts and Recovery are never held. `stdWalk()` skips
+a held day (it neither raises nor clears), `stdBulk()` skips a week with a held day in it, and `stdState()` shows the
+row as Held with "Until Fri, Jan 8 (away Dec 28 to Jan 1)". The seven days after are held, but they are not excused: a
+scheduled day skipped on Jan 4 is recorded as a miss and reads amber on Jan 9 when the hold lifts.
+
+**The agents' line.** `holdContextLine()` is one line in the nightly CALENDAR and in chat's TODAY: a block in force
+("day 2 of 5"), one starting within `HOLD_SOON_DAYS` (21), or one that ended inside its hold. Further off it is empty,
+and the suite checks the nightly and chat prompts are byte-identical to before the block was entered. His note is quoted
+with `JSON.stringify` and labelled as his words, not instructions. Capped at `HOLD_CTX_MAX`.
+
+**Today.** On a held day a banner under the Standards card reads "Away, day 2 of 5" (or Sick, Exams), says what is held
+and until when, and carries the existing HOME toggle when the block's gym is hotel or home. A "Time away" card after the
+Sunday check-in lists every block that is coming, running or still holding a Standard, each with Remove (it asks first),
+and the form to add one. The form's draft and its open state are module-scoped (`holdDraft`); a tap on a chip reads the
+typed dates before it repaints. Checked in a real browser at 393 and 320 with a seeded state: no overflow in the banner,
+the card or the form (the two date fields stack at 320).
+
+**The trip plan.** "Plan my trip" is one call per block, modelled on `wpRun()`: route `awayplan` (its own row on the
+usage card, "Trip plan"), no tools, medium effort, 4000 tokens, started only by his tap, asked through
+`spendManualOk()`, what he asked saved in `S.awayPlans[blockId]` before the call, the plan re-resolved after the await
+(the suite swaps `S` mid-reply), the in-flight flag released in `finally`. A reply that came back closes the plan even
+when it was unreadable, because it was billed; only a request that never got a reply may be tried again. The reply is a
+lead-in note, a note per away day and a re-entry note; `awayValidateReply()` keeps only notes dated inside the block,
+one a day. Any change is an ordinary request through `wpFilterProposals()` (deload or setCount, at most one) and
+`agIngest()` → `agValidateFix()`. Removing a block removes its plan.
+
+It sits behind its own paid switch, `awayPlan`, off, because the pipeline's rule is that a new call is a paid switch
+even when only a tap can start it. With it off the card says where to turn it on, and neither the tap nor `awayRun()`
+can send anything. Estimated cost: about 3 cents a plan (the spec's figure; no real call has been made).
+
+**Nothing states what a break costs.** The plan's default advice (no taper, the week before normal, first session back at
+normal weights and the low end of the set range, no catch-up sets, `dayCall()` judges it) is given to the model as "the
+app's defaults, NOT research findings", and the prompt forbids any amount, percentage or timeline for losing or
+regaining strength or muscle, and any claim that a taper or deload before a trip helps. A prompt is not enforcement, so
+`awayClean()` drops any line matching `AWAY_CLAIM_RE` (a number with a percent sign, "detrain", "atrophy", or lose/loss
+near strength/muscle/size/gains/progress in either order) and the app's own default line stands in
+(`AWAY_LEAD_DEFAULT`, `AWAY_BACK_DEFAULT`). `awayEvidence()` is the hook stage 3 fills with the cited "break" entries.
+
+**Tests.** 88 assertions with `todayKey()` stubbed to named days: Nov 12 (entering Dec 28 to Jan 1), Dec 14, Dec 27,
+Dec 28, Jan 1, Jan 2, Jan 6, Jan 9, Jan 11, a block across Nov 1 2026 (the 25-hour day) and one across Mar 14 2027 (the
+23-hour day). 38 mutants, each red. Two traps met on the way: a request created under a stubbed future `todayKey()`
+gets its expiry from the real clock, so the test does not assert its status; and a fixture trip entered 15 days back was
+refused by the very limit under test.

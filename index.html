@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-12-v5b">
+<meta name="ironhub-build" content="2026-11-12-v5c">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2095,6 +2095,16 @@
   .wp-tile{display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 2px; border-radius:10px; background:var(--panel2); min-width:0;}
   .wp-tile.rest{background:none; box-shadow:inset 0 0 0 1px var(--line2);}
   .wp-tile.on{background:color-mix(in srgb, var(--amber) 16%, transparent);}
+  /* Hold blocks (V5 stage 2): the Today banner and the Time away card. */
+  .hold-today{border-left:3px solid var(--muted);}
+  .hold-head{display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap;}
+  .hold-head b{font-family:var(--disp); font-weight:700; font-size:17px; letter-spacing:.04em; text-transform:uppercase;}
+  .hold-row{padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);}
+  .hold-plan{margin-top:8px; padding:8px 10px; background:var(--panel2); border-radius:var(--r-ctl);}
+  .hold-plan p + p{margin-top:4px;}
+  .hold-dates{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .hold-dates label{flex:1 1 130px; min-width:0; font-size:12px; color:var(--muted);}
+  .hold-dates input{width:100%; box-sizing:border-box; margin-top:4px;}
   .wp-dow{font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);}
   .wp-k{font-family:var(--disp); font-weight:700; font-size:13px; letter-spacing:.03em; text-transform:uppercase; max-width:100%;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -2409,6 +2419,11 @@ const DEFAULT_STATE = {
                                // corrections to the plateau watch. Immutable rows, newest wins. See pwMark().
   dayReasons: [],              // {id, pillar, date, why, at, t} — his reason for a missed day or beside a Standard. Immutable
                                // rows, newest wins, an empty `why` is his undo. See stdReasonSet().
+  holds: [],                   // {id, from, to, kind:'trip'|'sick'|'exams', gym:'none'|'hotel'|'home', note, at, t} — a block of days
+                               // he is away, sick or in exams, or {id, cancel:<block id>, from, at, t}, his removal of one.
+                               // Immutable rows. Read-only context: nothing here moves a scheduled day. See holdBlocks().
+  awayPlans: {},               // {<block id>: {hold, input:{from,to,gym,note}, at, reply?, err?, closed?}} — the trip plan he
+                               // asked for, one call per block. Replaced whole on a pull, like weekPlan. See awayRun().
   overhaul: {},                // V5 switches he has CHANGED, and nothing else: {key:boolean, at:{key:'YYYY-MM-DD'}}.
                                // Sparse on purpose: the defaults live in code. Never read directly; ask ovOn(). See OV.
   photos: {gistId:'', index:[]},  // INDEX only — the images live in their own gist, see photoState()
@@ -2727,6 +2742,7 @@ const SYNC_HISTORY = {
   forecastRatings: {key: r=>'v|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.id||''), cap:()=>FC_KEEP},
   liftNotes: {key: r=>'k|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>LN_KEEP},
   dayReasons: {key: r=>'y|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>DR_KEEP},
+  holds: {key: r=>'h|'+r.id, ord: r=>String(r.from||'')+'|'+String(r.id||''), cap:()=>HOLD_KEEP},
   spend:    {key: r=>'$|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.dev||''), cap:()=>SPEND_REC_MAX},
   targetHist: {key: r=>'g|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>TARGET_HIST_MAX}
 };
@@ -6145,7 +6161,7 @@ function aiUsageSummary(days){
   return {days:n, calls:calls, total:total, by:by, first:first, cut:cut};
 }
 const AI_ROUTE_LABEL = {night:'Nightly cycle', brief:'Morning brief', letter:'Weekly letter', chat:'Chats',
-  live:'Mid-workout DELTA', audit:'Weekly audit', meals:'Meal ideas', import:'Screenshot import', weekplan:'Week plan', forecast:'Forecasts', other:'Other'};
+  live:'Mid-workout DELTA', audit:'Weekly audit', meals:'Meal ideas', import:'Screenshot import', weekplan:'Week plan', awayplan:'Trip plan', forecast:'Forecasts', other:'Other'};
 function aiUsageCardHTML(){
   const u = aiUsageSummary(30);
   let body;
@@ -24703,6 +24719,7 @@ function agTodayContext(id){
   const line = function(f){ try{ const x = f(); if(x) L.push(x); }catch(e){} };
   line(function(){ return agCalDayLine(t); });
   line(function(){ return agCalPlanLine(t); });
+  line(function(){ return holdContextLine(t); });
   line(function(){
     const dw = deloadWindow(); if(!dw) return '';
     return 'Deload in force through '+fmtDate(dw.until)+'. LIVE already gives EVERY lift 2 light sets at about 60% of its working weight by '+
@@ -24778,6 +24795,7 @@ function agCalendarContext(){
   });
   line(function(){ return homeActiveToday() ? 'HOME session today: gym lifts are swapped or skipped for his home equipment.' : ''; });
   line(function(){ return agCalPlanLine(t); });
+  line(function(){ return holdContextLine(t); });
   line(function(){
     const dw = deloadWindow(); if(!dw) return '';
     return 'Deload in force through '+fmtDate(dw.until)+' (LIVE gives every lift 2 light sets at about 60%).';
@@ -25030,6 +25048,9 @@ function dayReasonFor(pillar, date){
 }
 /* Why a scheduled day with no session is not a miss, or null. svSheet(), the streak and the Standards all ask here. */
 function dayExcuse(d){
+  // A day inside a hold block he entered (V5 stage 2) is not a miss, whatever the Standards switch says.
+  const hb = holdOn(d);
+  if(hb) return {why:'hold', label:HOLD_WORD[hb.kind], hold:hb.id, auto:true};
   if(!ovOn('standards')) return null;
   const r = dayReasonFor('show', d);
   if(r) return {why:r.why, label:DR_WHY[r.why]};
@@ -25080,8 +25101,343 @@ function stdNoteFor(pillar, endKey){
   });
   return (best && best.why && Object.prototype.hasOwnProperty.call(DR_WHY, best.why)) ? best : null;
 }
-/* A hold that freezes a pillar on a day: {until, why} or null. Stage 2 (hold blocks) fills this in. */
-function stdHeldBy(pillar, dayKey){ return null; }
+/* ---- V5 stage 2: hold blocks (S.holds, 2026-11-12) ----
+   A block of days he is away, sick or in exams, entered by him, weeks ahead if he likes. One type for all three.
+   - S.holds is a SYNC_HISTORY collection (key 'h|'): immutable rows, and removing a block is another row
+     ({cancel:<id>}), so a pull can neither lose a block nor bring a removed one back. What is in force is worked
+     out when read (holdBlocks()), and a row that does not pass holdRowOk() is ignored, never repaired.
+   - It is read-only context. scheduledDayFor() does not know it exists: V4 removed date overrides on purpose, and
+     nothing here moves a day. What reads it: dayExcuse() (a day in a block is not a miss, so svSheet(), the streak
+     and Showing up agree), stdHeldBy() (the Standards a break skews are held for the block and HOLD_AFTER_DAYS after
+     it), holdContextLine() (the agents' CALENDAR), and Today.
+   - Nothing here states what a break costs. The trip plan's prompt says so too, and awayClean() drops a line that
+     claims it anyway. */
+OV.holds = {label:'Holds (away, sick, exams)', paid:false, note:'Tell the app about a trip, sick days or exams. Those days are not misses and the Standards a break skews are held. No model call.'};
+OV.awayPlan = {label:'Plan my trip', paid:true, note:'One call to ZULU each time you tap Plan my trip, about 3 cents. Nothing runs by itself. Needs Holds on.'};
+const HOLD_KEEP = 120, HOLD_NOTE_MAX = 80, HOLD_CTX_MAX = 420;
+const HOLD_KINDS = ['trip', 'sick', 'exams'];
+const HOLD_WORD = {trip:'away', sick:'sick', exams:'exams'};          // the reason beside an excused day
+const HOLD_TITLE = {trip:'Away', sick:'Sick', exams:'Exams'};
+const HOLD_PHRASE = {trip:'a trip', sick:'sick days', exams:'exams'};
+const HOLD_GYMS = {none:'No gym', hotel:'Hotel gym', home:'Home gym'};
+const HOLD_MAX_DAYS = {trip:21, exams:14, sick:10};                    // the longest block of each kind
+const HOLD_PILLARS = {trip:['show', 'bulk'], sick:['show', 'bulk', 'intake'], exams:['show', 'bulk', 'intake']};
+const HOLD_AFTER_DAYS = 7;       // a held Standard stays held this long after the block: weigh-ins take a week to settle
+const HOLD_BACK_DAYS = 14;       // how far back a block may start (he was sick from Tuesday and says so on Thursday)
+const HOLD_AHEAD_DAYS = 366;     // how far ahead a block may start
+const HOLD_SOON_DAYS = 21;       // the agents hear about a block this many days before it starts
+const HOLD_SHOW_AFTER = 3;       // days after a trip its plan's re-entry note stays on Today
+function holdOwn(o, k){ return typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k); }
+function holdDayOk(k){
+  if(typeof k !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(k)) return false;
+  try{ return mesoAddDays(k, 0) === k; }catch(e){ return false; }    // Feb 31 rolls over, so it is not a day
+}
+function holdLen(b){ return daysBetween(b.from, b.to) + 1; }
+function holdRowOk(r){
+  return !!r && typeof r.id === 'string' && !!r.id && HOLD_KINDS.indexOf(r.kind) >= 0 && holdDayOk(r.from) && holdDayOk(r.to) &&
+    r.to >= r.from && holdLen(r) <= HOLD_MAX_DAYS[r.kind] && holdOwn(HOLD_GYMS, r.gym);
+}
+/* The blocks in force: every valid row that no cancel row names, oldest first. Past ones included. */
+function holdBlocks(){
+  const rows = Array.isArray(S.holds) ? S.holds : [], gone = {};
+  rows.forEach(function(r){ if(r && typeof r.cancel === 'string') gone[r.cancel] = 1; });
+  return rows.filter(function(r){ return r && !r.cancel && !gone[r.id] && holdRowOk(r); })
+    .sort(function(a, b){ return a.from < b.from ? -1 : a.from > b.from ? 1 : (+a.at || 0) - (+b.at || 0); });
+}
+function holdById(id){ return holdBlocks().filter(function(b){ return b.id === id; })[0] || null; }
+/* The block a day falls in, or null. With the switch off there are no holds anywhere. */
+function holdOn(d){
+  if(!ovOn('holds')) return null;
+  return holdBlocks().filter(function(b){ return d >= b.from && d <= b.to; })[0] || null;
+}
+function holdSpan(b){ return b.from === b.to ? homeShortDate(b.from) : homeShortDate(b.from)+' to '+homeShortDate(b.to); }
+function holdHeldNames(b){ return HOLD_PILLARS[b.kind].map(function(p){ return STD_LABEL[p]; }).join(', ').replace(/, ([^,]*)$/, ' and $1'); }
+/* His tap: checked, then one immutable row and a save() (touch and push). Returns {ok, id} or {ok:false, error}. */
+function holdAdd(inp){
+  inp = inp || {};
+  if(!ovOn('holds')) return {ok:false, error:'Holds are switched off in Settings.'};
+  const kind = inp.kind, t = todayKey();
+  if(HOLD_KINDS.indexOf(kind) < 0) return {ok:false, error:'Pick trip, sick or exams.'};
+  if(!holdDayOk(inp.from) || !holdDayOk(inp.to)) return {ok:false, error:'Pick a first day and a last day.'};
+  if(inp.to < inp.from) return {ok:false, error:'The last day is before the first.'};
+  const n = daysBetween(inp.from, inp.to) + 1;
+  if(n > HOLD_MAX_DAYS[kind]) return {ok:false, error:HOLD_TITLE[kind]+' blocks run '+HOLD_MAX_DAYS[kind]+' days at most. That is '+n+'.'};
+  if(inp.from < mesoAddDays(t, -HOLD_BACK_DAYS)) return {ok:false, error:'The first day can be at most '+HOLD_BACK_DAYS+' days back.'};
+  if(inp.from > mesoAddDays(t, HOLD_AHEAD_DAYS)) return {ok:false, error:'That is more than a year away.'};
+  const gym = kind === 'trip' ? (inp.gym || 'none') : 'none';
+  if(!holdOwn(HOLD_GYMS, gym)) return {ok:false, error:'Pick no gym, hotel gym or home gym.'};
+  const clash = holdBlocks().filter(function(b){ return !(inp.to < b.from || inp.from > b.to); })[0];
+  if(clash) return {ok:false, error:'That overlaps '+HOLD_TITLE[clash.kind]+' '+holdSpan(clash)+'. Remove that one first.'};
+  const row = {id:'hb'+Date.now().toString(36)+Math.random().toString(36).slice(2, 6), from:inp.from, to:inp.to, kind:kind, gym:gym,
+    note:String(inp.note || '').replace(/\s+/g, ' ').trim().slice(0, HOLD_NOTE_MAX), at:Date.now()};
+  if(!Array.isArray(S.holds)) S.holds = [];
+  S.holds.push(stampRec(row));
+  if(S.holds.length > HOLD_KEEP) S.holds = S.holds.slice(-HOLD_KEEP);
+  save();
+  return {ok:true, id:row.id};
+}
+/* Removing a block is a row too. Its trip plan goes with it: the plan was written for those dates. */
+function holdCancel(id){
+  const b = holdById(id);
+  if(!b) return false;
+  S.holds.push(stampRec({id:'hc'+Date.now().toString(36)+Math.random().toString(36).slice(2, 6), cancel:b.id, from:b.from, at:Date.now()}));
+  if(S.awayPlans && typeof S.awayPlans === 'object' && holdOwn(S.awayPlans, b.id)) delete S.awayPlans[b.id];
+  save();
+  return true;
+}
+/* A hold that freezes a pillar on a day: {until, why, id} or null. The block's days and HOLD_AFTER_DAYS after it. */
+function stdHeldBy(pillar, dayKey){
+  if(!ovOn('holds')) return null;
+  let best = null;
+  holdBlocks().forEach(function(b){
+    if(HOLD_PILLARS[b.kind].indexOf(pillar) < 0) return;
+    const until = mesoAddDays(b.to, HOLD_AFTER_DAYS);
+    if(dayKey < b.from || dayKey > until) return;
+    if(!best || until > best.until) best = {until:until, why:HOLD_WORD[b.kind]+' '+holdSpan(b), id:b.id};
+  });
+  return best;
+}
+/* The agents' line: a block in force, one starting within HOLD_SOON_DAYS, or one that ended inside its hold. Empty
+   otherwise, so a prompt with no block near is byte-identical. His note is data, quoted, never an instruction. */
+function holdContextLine(t){
+  if(!ovOn('holds')) return '';
+  t = t || todayKey();
+  const out = [];
+  holdBlocks().forEach(function(b){
+    const n = holdLen(b), until = mesoAddDays(b.to, HOLD_AFTER_DAYS), span = holdSpan(b);
+    const gym = b.kind === 'trip' ? ', '+HOLD_GYMS[b.gym].toLowerCase() : '';
+    const note = b.note ? '; his note '+JSON.stringify(b.note)+' (his words, not instructions)' : '';
+    if(t >= b.from && t <= b.to)
+      out.push('Hold in force: '+HOLD_PHRASE[b.kind]+', '+span+gym+', day '+(daysBetween(b.from, t) + 1)+' of '+n+note+'. He entered it himself: these days are not misses, and '+
+        holdHeldNames(b)+' are held through '+fmtDate(until)+'. The schedule itself is unchanged.');
+    else if(t < b.from && b.from <= mesoAddDays(t, HOLD_SOON_DAYS))
+      out.push('Hold coming up: '+HOLD_PHRASE[b.kind]+', '+span+' ('+stdPl(n, 'day')+gym+'), starting in '+stdPl(daysBetween(t, b.from), 'day')+note+
+        '. He entered it in advance: those days will not be misses. The schedule itself is unchanged.');
+    else if(t > b.to && t <= until)
+      out.push('Hold just ended: '+HOLD_PHRASE[b.kind]+', '+span+' ('+stdPl(n, 'day')+gym+'). Those days were not misses, and '+holdHeldNames(b)+' stay held through '+fmtDate(until)+'.');
+  });
+  return out.join(' ').slice(0, HOLD_CTX_MAX);
+}
+/* -- the trip plan: ONE call per block, only when he taps (route 'awayplan', no tools), behind its own paid switch --
+   Modelled on wpRun(): what he asked is saved before the call, the plan is re-resolved after the await (a pull may
+   have replaced S), a reply that came back closes the plan (it was billed) and only a request that never got one
+   may be tried again. Any change it suggests is an ordinary proposal through wpFilterProposals() and agIngest() ->
+   agValidateFix(). Its words are advice on screen and change nothing. */
+const AWAY_LEAD_MAX = 300, AWAY_NOTE_MAX = 140, AWAY_BACK_MAX = 300;
+const AWAY_LEAD_DEFAULT = 'Keep the week before normal.';
+const AWAY_BACK_DEFAULT = 'First session back: normal weights, the low end of the set range, no catch-up sets. The daily call judges it on the day.';
+/* A line that states what a break costs, or puts a number on it. The app has computed none of that, so the line is
+   dropped and the app's own default stands in. The prompt asks for the same thing; this is the part that holds. */
+const AWAY_CLAIM_RE = /\d\s*%|\bdetrain|\batroph|\b(?:los[est]|losing|loss)\b[^.]{0,40}\b(?:strength|muscle|size|gains|progress)\b|\b(?:strength|muscle|size|gains|progress)\b[^.]{0,40}\b(?:los[est]|losing|loss|fade|drop|decline)/i;
+function awayClean(v, max){
+  const s = typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '';
+  return (s && !AWAY_CLAIM_RE.test(s)) ? s : '';
+}
+let _awayRunning = '';           // the block being planned; module-scoped, like _wpRunning: S is replaced on a pull
+function awayPlanGet(id){
+  const m = S.awayPlans;
+  return (m && typeof m === 'object' && !Array.isArray(m) && holdOwn(m, id) && m[id] && typeof m[id] === 'object') ? m[id] : null;
+}
+function awayValidateReply(parsed, b){
+  const seen = {};
+  const days = (Array.isArray(parsed && parsed.days) ? parsed.days : []).filter(function(d){
+    if(!d || !holdDayOk(d.date) || d.date < b.from || d.date > b.to || seen[d.date] || !awayClean(d.note, AWAY_NOTE_MAX)) return false;
+    seen[d.date] = 1; return true;
+  }).map(function(d){ return {date:d.date, note:awayClean(d.note, AWAY_NOTE_MAX)}; }).slice(0, HOLD_MAX_DAYS.trip);
+  return {lead:awayClean(parsed && parsed.lead, AWAY_LEAD_MAX) || AWAY_LEAD_DEFAULT, days:days, back:awayClean(parsed && parsed.back, AWAY_BACK_MAX) || AWAY_BACK_DEFAULT};
+}
+/* Cited principles for a break, once the Evidence Library is on (stage 3). Empty until then. */
+function awayEvidence(){ return ''; }
+function awaySystem(b){
+  const lines = [];
+  for(let d = mesoAddDays(b.from, -3); d <= mesoAddDays(b.to, 3); d = mesoAddDays(d, 1)){
+    const k = scheduledDayFor(d);
+    lines.push('  '+fmtDate(d)+' ('+d+'): '+(k === 'REST' ? 'REST' : k+' '+dayName(k))+(d >= b.from && d <= b.to ? ' · AWAY' : ''));
+  }
+  let dl = '';
+  try{ const dw = deloadWindow(); if(dw) dl = 'A deload is on through '+dw.until+'. '; const fc = deloadForecast(); if(fc && fc.quiet) dl += deloadQuietAgentLine(fc.until)+' '; else if(fc && fc.text) dl += 'Deload forecast: '+fc.text; }catch(e){}
+  let intel = ''; try{ intel = intelSummary(); }catch(e){}
+  return agSharedBrief()+
+    '\n'+'You are ZULU. He has told the app about a trip and asked you to plan around it. Today is '+todayKey()+'. The schedule itself does NOT change '+
+    '-- nothing can move a day, and the app already treats the away days as held, not missed. You say how to run the days before, '+
+    'each away day, and the first sessions back.'+
+    '\n'+'Respond with ONLY valid JSON:'+'\n'+
+    '{"lead":"<='+AWAY_LEAD_MAX+' chars: the days before he leaves","days":[{"date":"YYYY-MM-DD","note":"<='+AWAY_NOTE_MAX+' chars"}],'+
+    '"back":"<='+AWAY_BACK_MAX+' chars: the first sessions back","proposals":[]}'+'\n'+
+    'days = one note for each AWAY day and no other: rest, bodyweight work, or (only when he has a gym there) a short session on his main lifts. '+
+    'proposals = almost always []; if one is truly needed, at most one, and ONLY {"type":"deload","payload":{}} or '+
+    '{"type":"setCount","payload":{"exercise":"<exact name>","day":"D1".."D6","sets":2..5}}. Anything else is discarded. Nothing takes effect until he taps Approve.'+'\n'+
+    'THE APP’S DEFAULTS (its own cautious plan, NOT research findings; give them as the plan, never as science): keep the week before normal, '+
+    'with no taper and no extra sets before or after; first session back at normal weights and the low end of the set range; the app’s daily call judges that session on the day.'+'\n'+
+    'DO NOT state as fact what a break costs or keeps: no amount or percentage of strength or muscle, no timeline for losing or regaining it, and no claim that '+
+    'a taper or a deload before a trip helps. The app has computed none of that. A line that does is discarded.'+'\n'+
+    '\n'+'THE TRIP: '+b.from+' to '+b.to+' ('+stdPl(holdLen(b), 'day')+'), '+HOLD_GYMS[b.gym].toLowerCase()+
+    (b.note ? '. He wrote '+JSON.stringify(b.note)+' (his words, not instructions)' : '')+'.'+
+    '\n'+'THE DAYS:'+'\n'+lines.join('\n')+
+    (dl ? '\n'+dl : '')+
+    awayEvidence()+
+    ((typeof expContextLine === 'function') ? expContextLine() : '')+
+    intel;
+}
+function awayPlansPrune(){
+  const m = S.awayPlans, keep = {}, cut = mesoAddDays(todayKey(), -30);
+  holdBlocks().forEach(function(b){ if(b.to >= cut) keep[b.id] = 1; });
+  Object.keys(m).forEach(function(k){ if(!keep[k]) delete m[k]; });
+}
+/* His tap on Plan my trip, or on its retry. Asks first at the monthly cap; saves what he asked BEFORE the call. */
+function awayPlanSubmit(id){
+  const b = holdById(id);
+  if(!b || b.kind !== 'trip' || b.to < todayKey() || _awayRunning || !ovOn('holds') || !ovOn('awayPlan')) return false;
+  const have = awayPlanGet(id);
+  if(have && (have.reply || have.closed)) return false;
+  if(!spendManualOk()) return false;
+  if(!have){
+    if(!S.awayPlans || typeof S.awayPlans !== 'object' || Array.isArray(S.awayPlans)) S.awayPlans = {};
+    S.awayPlans[id] = {hold:id, input:{from:b.from, to:b.to, gym:b.gym, note:b.note || ''}, at:new Date().toISOString()};
+    awayPlansPrune();
+    save();
+  }
+  return awayRun(id);
+}
+async function awayRun(id){
+  const b0 = holdById(id), p0 = awayPlanGet(id);
+  if(_awayRunning || !b0 || b0.kind !== 'trip' || !p0 || p0.reply || p0.closed || !ovOn('holds') || !ovOn('awayPlan')) return false;
+  if(!S.settings.apiKey && !window._inClaude){ p0.err = 'No API key on this device — add one in Settings, then tap Plan my trip again.'; save(false); try{ renderHome(); }catch(e){} return false; }
+  _awayRunning = id;
+  try{
+    try{ renderHome(); }catch(e){}
+    const text = await callClaude([{role:'user', content:'Plan my trip.'}], awaySystem(b0), 4000, {effort:'medium', route:'awayplan'});
+    const parsed = parseLooseJSON(text);
+    if(!parsed || typeof parsed !== 'object') throw new Error('The reply could not be read.');
+    const p = awayPlanGet(id), b = holdById(id);     // re-resolved: a pull may have landed
+    if(!p || !b) return false;
+    const rep = awayValidateReply(parsed, b);
+    rep.at = new Date().toISOString();
+    p.reply = rep;
+    delete p.err;
+    const keep = wpFilterProposals(parsed.proposals, todayKey());
+    if(keep.length) agIngest(agState(), 'zulu', {proposals:keep});
+    agLog('zulu', 'Your trip is planned'+(keep.length ? ', with one proposal waiting on you' : '')+'.');
+    save();
+    return true;
+  }catch(e){
+    const p = awayPlanGet(id);
+    if(p){
+      p.err = String((e && e.message) || e).slice(0, 200);
+      if(!agIsNetworkErr(e)) p.closed = true;       // a reply that came back is billed work: one call per plan
+      save();
+    }
+    try{ agLog('zulu', 'I couldn’t plan your trip ('+String((e && e.message) || e).slice(0, 160)+').'); }catch(_){}
+    return false;
+  }finally{
+    _awayRunning = '';
+    try{ renderHome(); }catch(e){}
+    try{ renderOps(); }catch(e){}
+  }
+}
+/* The plan under a trip's row: the button, the wait, or what ZULU wrote. */
+function awayPlanHTML(b, t){
+  if(b.kind !== 'trip' || t > mesoAddDays(b.to, HOLD_SHOW_AFTER)) return '';
+  const p = awayPlanGet(b.id), open = t <= b.to;
+  if(p && p.reply){
+    const r = p.reply, today = (r.days || []).filter(function(d){ return d.date === t; })[0];
+    let h = '<div class="hold-plan">';
+    if(t < b.from) h += '<p class="small"><b>Before you go:</b> '+esc(r.lead)+'</p>'+
+      (r.days || []).map(function(d){ return '<p class="small"><b>'+esc(fmtDate(d.date))+':</b> '+esc(d.note)+'</p>'; }).join('');
+    else if(t <= b.to) h += (today ? '<p class="small"><b>Today:</b> '+esc(today.note)+'</p>' : '')+
+      (r.days || []).filter(function(d){ return d.date > t; }).map(function(d){ return '<p class="small"><b>'+esc(fmtDate(d.date))+':</b> '+esc(d.note)+'</p>'; }).join('');
+    if(t >= b.from || t >= mesoAddDays(b.from, -2)) h += '<p class="small"><b>Coming back:</b> '+esc(r.back)+'</p>';
+    return h+'<p class="small" style="color:var(--dim);margin-top:6px">ZULU · trip plan · advice only, the schedule is unchanged</p></div>';
+  }
+  if(!open) return '';
+  if(!ovOn('awayPlan')) return '<p class="small" style="color:var(--dim);margin-top:8px">Plan my trip is a paid part (about 3 cents a plan) and is off. Turn it on in Settings, under V5 switches.</p>';
+  if(_awayRunning === b.id) return '<p class="small" style="margin-top:8px">ZULU is planning your trip…</p>';
+  if(p && p.closed) return '<p class="small" style="margin-top:8px;color:var(--warn)">▲ The trip plan did not come back readable'+(p.err ? ' ('+esc(p.err)+')' : '')+'. It was one call, so it is closed.</p>';
+  return (p && p.err ? '<p class="small" style="margin-top:8px;color:var(--warn)">▲ '+esc(p.err)+'</p>' : '')+
+    '<button class="btn sm" style="margin-top:8px" data-id="'+esc(b.id)+'" onclick="awayPlanSubmit(this.dataset.id)">'+(p ? 'Try again' : 'Plan my trip')+'</button>'+
+    '<span class="small" style="color:var(--dim);margin-left:8px">One call to ZULU.</span>';
+}
+/* Today, on a held day: "Away, day 2 of 5", and the HOME toggle when there is a gym where he is. */
+function holdTodayHTML(){
+  const t = todayKey(), b = holdOn(t);
+  if(!b) return '';
+  const p = awayPlanGet(b.id), note = p && p.reply ? (p.reply.days || []).filter(function(d){ return d.date === t; })[0] : null;
+  const homeOn = homeActiveToday();
+  return '<div class="card hold-today" id="holdToday"><div class="hold-head"><b>'+STD_ICON.held+' '+HOLD_TITLE[b.kind]+', day '+(daysBetween(b.from, t) + 1)+' of '+holdLen(b)+'</b>'+
+    '<span class="small">'+esc(holdSpan(b))+(b.kind === 'trip' ? ' · '+esc(HOLD_GYMS[b.gym]) : '')+'</span></div>'+
+    '<p class="small" style="margin-top:6px">Days in this block are not misses. '+esc(holdHeldNames(b))+' '+(HOLD_PILLARS[b.kind].length > 1 ? 'are' : 'is')+' held through '+esc(fmtDate(mesoAddDays(b.to, HOLD_AFTER_DAYS)))+'.</p>'+
+    (note ? '<p class="small" style="margin-top:6px"><b>Today:</b> '+esc(note.note)+'</p>' : '')+
+    (b.gym !== 'none' ? '<button class="btn ghost sm" style="margin-top:8px'+(homeOn ? ';color:var(--good);border-color:var(--good);font-weight:800' : '')+'" onclick="toggleHomeToday();renderHome()">'+
+      (homeOn ? '✓ Training at home today' : 'Train at home today')+'</button>' : '')+'</div>';
+}
+/* The card: every block that is coming, running or still holding a Standard, and the form to add one. The draft and
+   whether the form is open are module-scoped, so the 30 s repaint keeps them. */
+let holdDraft = {open:false, kind:'trip', from:'', to:'', gym:'none', note:'', err:''};
+function holdDraftReset(){ holdDraft = {open:false, kind:'trip', from:'', to:'', gym:'none', note:'', err:''}; }
+function holdFormOpen(on){ if(on){ holdDraftReset(); holdDraft.open = true; } else holdDraftReset(); try{ renderHome(); }catch(e){} }
+function holdDraftSet(k, v){
+  holdDraftRead();
+  if(k === 'kind' && HOLD_KINDS.indexOf(v) >= 0) holdDraft.kind = v;
+  if(k === 'gym' && holdOwn(HOLD_GYMS, v)) holdDraft.gym = v;
+  holdDraft.err = '';
+  try{ renderHome(); }catch(e){}
+}
+/* What is typed in the form's fields, taken before anything repaints it. */
+function holdDraftRead(){
+  const g = function(id){ const el = document.getElementById(id); return el ? String(el.value || '') : null; };
+  const f = g('holdFrom'), to = g('holdTo'), n = g('holdNote');
+  if(f !== null) holdDraft.from = f;
+  if(to !== null) holdDraft.to = to;
+  if(n !== null) holdDraft.note = n;
+}
+function holdDraftSave(){
+  holdDraftRead();
+  const r = holdAdd({kind:holdDraft.kind, from:holdDraft.from, to:holdDraft.to || holdDraft.from, gym:holdDraft.gym, note:holdDraft.note});
+  if(r.ok) holdDraftReset(); else holdDraft.err = r.error;
+  try{ renderHome(); }catch(e){}
+  try{ renderNotif(); }catch(e){}
+  return r.ok;
+}
+function holdCancelTap(el){
+  const id = el && el.dataset && el.dataset.id, b = holdById(id);
+  if(!b) return;
+  if(!confirm('Remove '+HOLD_TITLE[b.kind]+' '+holdSpan(b)+'? Its days count as ordinary days again.')) return;
+  holdCancel(id);
+  try{ renderHome(); }catch(e){}
+  try{ renderNotif(); }catch(e){}
+}
+function holdCardHTML(){
+  if(!ovOn('holds')) return '';
+  const t = todayKey();
+  const rows = holdBlocks().filter(function(b){ return mesoAddDays(b.to, HOLD_AFTER_DAYS) >= t; });
+  let h = '<div class="dash-sec">Time away</div><div class="card" id="holdCard">';
+  rows.forEach(function(b){
+    const n = holdLen(b);
+    const when = t < b.from ? 'in '+stdPl(daysBetween(t, b.from), 'day') : t <= b.to ? 'day '+(daysBetween(b.from, t) + 1)+' of '+n
+      : 'over · holding through '+homeShortDate(mesoAddDays(b.to, HOLD_AFTER_DAYS));
+    h += '<div class="hold-row"><div class="hold-head"><b>'+HOLD_TITLE[b.kind]+' · '+esc(holdSpan(b))+'</b><span class="small">'+esc(when)+'</span></div>'+
+      '<p class="small">'+stdPl(n, 'day')+(b.kind === 'trip' ? ' · '+esc(HOLD_GYMS[b.gym]) : '')+' · holds '+esc(holdHeldNames(b))+(b.note ? ' · '+esc(b.note) : '')+'</p>'+
+      awayPlanHTML(b, t)+
+      '<div><button class="btn ghost sm" style="margin-top:8px" data-id="'+esc(b.id)+'" onclick="holdCancelTap(this)">Remove</button></div></div>';
+  });
+  if(!holdDraft.open){
+    return h+(rows.length ? '' : '<p class="small">A trip, sick days or exams coming up? Add the days and they are not counted as misses. The schedule itself doesn’t change.</p>')+
+      '<button class="btn ghost sm" style="margin-top:8px" onclick="holdFormOpen(true)">Add days</button></div>';
+  }
+  const pill = function(on, k, v, lab){ return '<button class="rd3-pill'+(on ? ' on' : '')+'" style="min-width:0;padding:8px 4px;font-size:12px" onclick="holdDraftSet(\''+k+'\',\''+v+'\')">'+esc(lab)+'</button>'; };
+  h += '<div class="hold-form"><div class="rd3-group"><span class="rd3-gl">What is it</span><div class="rd3-pills">'+
+    HOLD_KINDS.map(function(k){ return pill(holdDraft.kind === k, 'kind', k, k === 'trip' ? 'Trip' : HOLD_TITLE[k]); }).join('')+'</div></div>'+
+    '<div class="hold-dates"><label>First day<input type="date" id="holdFrom" value="'+esc(holdDraft.from)+'" oninput="holdDraft.from=this.value"></label>'+
+    '<label>Last day<input type="date" id="holdTo" value="'+esc(holdDraft.to)+'" oninput="holdDraft.to=this.value"></label></div>'+
+    (holdDraft.kind === 'trip' ? '<div class="rd3-group" style="margin-top:10px"><span class="rd3-gl">Gym there</span><div class="rd3-pills">'+
+      Object.keys(HOLD_GYMS).map(function(g){ return pill(holdDraft.gym === g, 'gym', g, HOLD_GYMS[g]); }).join('')+'</div></div>' : '')+
+    '<input id="holdNote" class="s-feel-note" style="width:100%;box-sizing:border-box;margin-top:10px" maxlength="'+HOLD_NOTE_MAX+'" placeholder="A note (optional)" value="'+esc(holdDraft.note)+'" oninput="holdDraft.note=this.value">'+
+    '<p class="small" style="margin-top:8px;color:var(--dim)">Longest: '+HOLD_MAX_DAYS[holdDraft.kind]+' days. Holds '+esc(holdHeldNames({kind:holdDraft.kind}))+' until '+HOLD_AFTER_DAYS+' days after.</p>'+
+    (holdDraft.err ? '<p class="small" id="holdErr" style="margin-top:6px;color:var(--bad)">✖ '+esc(holdDraft.err)+'</p>' : '')+
+    '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn sm" onclick="holdDraftSave()">Save</button>'+
+    '<button class="btn ghost sm" onclick="holdFormOpen(false)">Cancel</button></div></div>';
+  return h+'</div>';
+}
 /* The level a pillar carries. facts(d) answers {exit, red, amber} for one day. A held day neither raises nor clears. */
 function stdWalk(pillar, endKey, facts){
   let lvl = 'ok', since = null;
@@ -27777,6 +28133,7 @@ function renderHome(){
   // The Standards lead the page (V5 stage 1). Computed here and nowhere stored: Today still only reads.
   let stdNow = null;   // read once for the card and the top-bar mark
   try{ if(stdOn()){ stdNow = stdState(); h += stdCardHTML(stdNow); } }catch(e){ console.warn('standards card failed', e); }
+  try{ h += holdTodayHTML(); }catch(e){ console.warn('hold banner failed', e); }
   try{ h += waLaunchHTML(); }catch(e){ console.warn('winter arc launch card failed', e); }
 
   /* -- what the day holds -- */
@@ -27817,6 +28174,7 @@ function renderHome(){
     }
   }catch(e){ console.warn('debrief card failed', e); }
   try{ h += wpCardHTML(); }catch(e){ console.warn('week plan card failed', e); }
+  try{ h += holdCardHTML(); }catch(e){ console.warn('holds card failed', e); }
   // A pantry update the family submitted, until he applies or ignores it.
   try{ const fin = famInboxCardHTML(); if(fin) h += '<div class="dash-sec">Pantry</div>'+fin; }catch(e){ console.warn('pantry update card failed', e); }
   // The Fuel Planner's Monday stock check, until he confirms it.
