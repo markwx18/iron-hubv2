@@ -177,3 +177,21 @@ Every screen now has the same warm, dark, "command centre" feel: big numbers, ro
 - **The agents learn from their misses.** Each time you ask, the agent sees its record and its biggest misses first, along with what it was thinking when it made them, and says how it's correcting. Its record is in its nightly check and its chat too.
 - **From chat and from Goal Roads.** Ask an agent "when will I hit 225?" in chat and it can offer a card that opens the form already filled in. Each Goal Road has an **Ask DELTA for a forecast** button. You can also **Ask again** partway through; the first call still gets scored.
 - **Cost:** one call per forecast, about 4¢, and only when you tap Ask. Nothing in your plan changes.
+
+---
+
+# V5 (November 2026)
+
+## Standards (Nov 12)
+
+The app now decides, from your own numbers, when something is off, and it stays visibly off until it is fixed. No model is involved and it costs nothing.
+
+- **A Standards card leads Today.** Five rows: Bulk pace, Showing up, Lifts, Intake, Recovery. Each is On track, Slipping (amber), Off standard (red), No data, or Held. A row that is amber or red is always open and says why, what it costs you in numbers, and exactly what clears it. The rest sit behind one row of chips.
+- **Bulk pace is your rule.** One losing week is amber, a second before it has cleared is red, and two weeks in a row at or above 0.5 lb/week clear it. Only finished weeks count, and a week with fewer than 3 weigh-ins is not judged. Two weeks over 1.6 lb/week is an amber for gaining fast.
+- **Showing up.** One scheduled day missed with no reason in 14 days is amber, two is red, and a clean week clears it. Each missed day takes a one-tap reason (sick, travel, planned rest, other), and a day with a reason is not a miss. A session you did a day early or up to two days late on a rest day counts as made up. Neither breaks your streak any more.
+- **Lifts** follows the plateau watch for your six main lifts. If you have already approved a fix for a lift that is red, the row stays red but says "Plan in motion", what is being tried and when it is read again, and it stops nagging.
+- **Intake** only reads days you logged. An unlogged day is unknown, never "under". Under 4 logged days in 7 it says No data.
+- **Recovery** compares WHOOP with your own usual. No WHOOP data is No data, never red.
+- **A red cannot be dismissed.** While one is red with nothing being tried, a small "Red" mark sits in the top bar, the bell keeps its item, and the agents are told to be direct about it. You can add a reason to any red; outside Showing up it is a note, and it does not clear anything.
+- **ZULU's morning brief leads with a Standard that turned red since the last brief.** Same call as before, no extra cost.
+- **You can turn all of it off** in Settings, under V5 switches.

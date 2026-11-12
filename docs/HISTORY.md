@@ -2467,3 +2467,85 @@ stop and flag the tradeoff in plain terms before writing code:
   beyond fitness/training)
 - Any change letting an agent write state outside the existing agApplyFix path
 - Any new backend infrastructure where none existed before
+
+---
+
+## V5
+
+### V5 stage 1: Standards (2026-11-12, `v5b`)
+
+**The Standards are computed when read, on the device, free, and ONE result.** `stdState(endKey)` returns one row per pillar
+(`{pillar, lvl, since, why, consequence, clearsWhen}`), and the card on Today, the top-bar mark, the bell, every agent's
+context line, the strict voice line and the brief's lead all read that one function. Nothing is stored. The numbers below
+come from a day-by-day replay over his live state (the sync gist, read without a token, 2026-08-17 to 2026-11-12, 88 days):
+one jsdom, the clock moved to 9 PM of each day, the state cut to that day.
+
+**A level is carried, not windowed.** The first draft counted inside a sliding window, so a red could clear by ageing out.
+His plan says only the exit condition clears a red. `stdWalk()` walks forward 42 days and applies exit, then red, then
+amber, else HOLD. The test that proves it is intake: seven days under target, then he stops logging. It stays red and says
+the level holds; without the hold it would read "no data", and a red could be escaped by not logging.
+
+**Bulk pace is expressed through `bulkRate(2, sunday)` and `bulkBand()`, with no new band.** `BULK_LO` (0.5) already equals
+his clear line. Completed weeks only (Monday to Sunday, `weekKeyOf()`), and a week is judged only when it AND the week before
+each have `STD_BW_MIN_WEIGHS` (3) weigh-ins, because a week-over-week rate against one odd morning is noise. Red is a second
+losing week before the spell has cleared, back to back or not (`STD_BW_RED_IN_A_ROW` false). The replay is why: his weeks of
+Oct 12 (-1.4 lb), Oct 19 (+0.6), Oct 26 (-0.3) and Nov 2 (+1.0) leave the weekly average where it was a month earlier
+(161.8 to 161.7). Back-to-back-only reads that as amber for 25 days and never red. As built it is amber on Oct 19 and red on
+Nov 2, with one clearing week of two in. Known limit: `bulkBand()` calls any rate under 0 "losing", and -0.3 between two
+7-day averages is inside scale noise. The 1.5 lb/week goal (`STD_BULK_GOAL`) is only ever a consequence line, never a
+level. The consequence is arithmetic on the one rate, (1.5 - rate) x 4 weeks, and the bodyweight fan
+(`anFanAt(bwProjectFor())`) adds where his longer trend puts the scale that day. The fan alone would have contradicted the
+rate named in the same sentence.
+
+**A day before the cycle's anchor cannot be a miss** (`svJudgeable()`). The first replay had Showing up red for 57 of 88
+days. His cycle's anchor moved on Oct 15, and `cyclePosition()` wraps the pattern backwards, so every empty day before it
+was judged against a rotation he never had. `svSheet()` had the same blind spot and now asks the same function. A plan's own
+rotation is dated, so it still counts. **A day trained on a rest day within two days was made up** (`dayMadeUp()`): on
+Oct 17 he skipped D3 and trained it on Oct 18, a rest day, and a week of amber for a session he did is wrong. Same day key,
+and only on a day the plan had as rest, so a session that was itself scheduled can never cover for another. With both, the
+replay has no unexplained miss since the anchor: 88 days ok. `dayExcuse()` is the one answer for the Standards, the
+supervisor's sheet and the streak, so the streak no longer breaks on a day with a reason or a made-up day (his read 18, now 20).
+
+**A reason is his tap and an immutable row** (`S.dayReasons`, key `y|`; the plan's `r|` was already readiness). The newest
+row for a pillar and a day wins and an empty `why` is his undo. For Showing up the date is the missed day and the day was
+not a miss. On any other pillar it is a note beside the row and in the agents' line: it never changes a level, which is what
+"he can add a reason but cannot dismiss a red" means.
+
+**Lifts reads the watch's main rows** (`pwMainRows()`, `predLifts()`: the list the plateau chips already lead with). On
+Nov 12 the six are Bench, Incline Dumbbell Press, Back Squat, Plate Loaded Overhead Press, JM Press and Lat Pulldown. Dips
+reads falling and red on the watch but is not one of the six, so it does not count; JM Press does. **Plan in motion stops the
+escalation, not the red** (`stdMotion()`): an approved request on that lift (or an approved deload) until its read date, 28
+days (14 for a deload), or the running experiment on it. JM Press has the reset he approved on Nov 8, so Lifts opens red with
+"Plan in motion ... read again Dec 6", and with no mark, no strict line and a bell item he can dismiss. A program note's
+lifts are neutral rows on the watch, and the Standards read the row as the watch shows it. The row's `since` is the session
+the level began at (the watch re-read before each of its newest clean sessions, at most 6, kept per lift). That is a
+session date, and the watch can also turn on a date rule alone (a deload ending 7 days ago makes a read firm), which is why
+the brief does not ask `since`.
+
+**The brief records what was red when it was written** (`brief.std`, `brief.stdLed`, taken before the await and written
+after it, like `hadWhoop`). "Turned red since the last brief" is red now and not in the last brief's list; a rewrite the same
+morning leads with what that morning's led with; a brief from before this build has no list, and then the day the level
+began decides (gate on the field being present). `agState()` drops a brief whose stamp is not on its day, which the first
+test fixture ran into.
+
+**Intake and Recovery ship his plan's proposed thresholds, and the replay says Intake needs his eye.** Under target (any
+amount: `nutTierCal()` "slight" or "way") on 3 of 7 logged days is amber and 5 is red. Against his 3,900 then 4,200 target
+that was red on 76 of 88 days, amber on 8 and ok on 4, while the scale was mostly in the band. `STD_INTAKE_UNDER` is the one
+place to change which tiers count. Recovery: 15 or more points under his usual (`PC_REC_UNDER`, the number the plateau
+causes already use) on 3 days of 7 is amber, 5 is red, two days in a row back clears, and under days are counted only since
+the last two good days in a row, so a slump he has come back from is not counted again. Amber for 5 days in the replay
+(early September and Nov 10 to 11), never red. Today's reading counts only once it is final (`whoopProvisional()`).
+
+**No data is never red, and never a clean bill.** A pillar that cannot be judged (thin weigh-ins, under 4 logged days, no
+WHOOP, no main lift with history) or that throws reads `nodata`.
+
+**Today reads the Standards once a repaint.** `stdState()` costs about 16 ms in node on his data (12 of it the watch).
+`renderHome()` reads it once for the card and the mark, and `renderNotif()` hands its one read down the repaint through
+`_stdPass`, cleared in `finally`. It is not a cache: nothing outlives the synchronous repaint.
+
+**On a phone the countdown gives way to the mark.** At 393px the Winter Arc countdown was squeezed to a sliver beside the
+mark, so under 480px it is hidden while the mark shows (it is still on Today). Checked in a real browser at 393 and 320:
+the card, the top bar and the V5 switches card (the first registered switch) with no overflow; reason buttons are 38px tall.
+Turning the switch off in Settings left the mark up until the next repaint, so `ovToggle()` now repaints the bell.
+
+Not built in this stage: the plan's "the Hub focuses on that pillar" (the Hub is reorganised in stage 8).

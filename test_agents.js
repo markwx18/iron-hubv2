@@ -17048,6 +17048,273 @@ setTimeout(async () => {
     try { ev('renderSettings()'); } catch (e) {}
   }
 
+  // ===== V5 stage 1: Standards (2026-11-12) =====
+  console.log('\n=== STANDARDS: FIVE COMPUTED PILLARS, CARRIED LEVELS, REASONS, PLAN IN MOTION, EVERY SURFACE BEHIND THE SWITCH (2026-11-12) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    ev("window.__sdS = JSON.stringify(S); window.__sdLS = localStorage.getItem(LS_KEY); window.__sdPW = plateauWatch; window.__sdPL = predLifts; window.__sdOpen = stdOpen;");
+    // Every day is a training day (no weekday in the fixture), every past day trained, and nothing else logged.
+    ev(`window.__d = function(n){ return mesoAddDays(todayKey(), n); };
+      window.__base = function(skip, extra){
+        S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+        S.scheduleMode = 'dow'; S.schedule = {0:'D1',1:'D1',2:'D1',3:'D1',4:'D1',5:'D1',6:'D1'};
+        for(var i = 60; i >= 1; i--){ if((skip || []).indexOf(i) >= 0) continue; S.logs.push({id:'sd'+i, date:__d(-i), day:'D1', scheduled:'D1', entries:[]}); }
+        (extra || []).forEach(function(l){ S.logs.push(l); });
+        window.__pw = []; window.__main = []; _stdSince = {};
+      };
+      plateauWatch = function(){ return window.__pw; }; predLifts = function(){ return window.__main; };
+      window.__row = function(p){ return stdState().filter(function(r){ return r.pillar === p; })[0]; };
+      // Weekly weigh-ins: one change a week, oldest first, the newest being last week. Fixed offsets, never random.
+      window.__bw = function(deltas, counts){
+        var mon0 = weekKeyOf(todayKey()), off = [0.2,-0.1,0.3,-0.2,0.1,0,-0.3], m = 150, out = [];
+        deltas.forEach(function(dl, idx){
+          m += dl; var mon = mesoAddDays(mon0, -7 * (deltas.length - idx)), n = (counts && counts[idx] != null) ? counts[idx] : 7;
+          for(var j = 0; j < n; j++) out.push({date:mesoAddDays(mon, 6 - j), lbs:Math.round((m + off[j]) * 100) / 100});
+        });
+        S.weights = out;
+      };
+      window.__nut = function(vals){ S.nutrition = []; vals.forEach(function(v, i){ if(v) S.nutrition.push({date:__d(-(vals.length - i)), cals:v, protein:150}); }); };
+      // WHOOP: 40 days around 70 with fixed offsets, then the given last days (oldest first, the last one is today).
+      window.__wh = function(last){
+        var off = [3,-2,1,-3,2,0,-1], h = [];
+        for(var i = 40 + last.length - 1; i >= last.length; i--) h.push({date:__d(-i), recovery:70 + off[i % 7], hrv:60, rhr:50, sleepHours:7.5});
+        last.forEach(function(v, k){ var back = last.length - 1 - k; if(v == null || back === 0) return; h.push({date:__d(-back), recovery:v, hrv:60, rhr:50, sleepHours:7.5}); });
+        var t = last[last.length - 1];
+        S.whoop = {history:h, recovery:(t == null ? null : {date:todayKey(), score:t, hrv:60, rhr:50}), sleep:null};
+      };`);
+    const row = p => J("__row('" + p + "')");
+    const G = [0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7];   // nine steady weeks before the three that matter
+
+    // ---- the registry and the collection ----
+    ok('standards is a registered free switch, on by default', ev("ovOn('standards')") === true && ev("OV.standards.paid") === false);
+    ok('dayReasons is a history collection with its own key prefix', ev("SYNC_HISTORY.dayReasons.key({id:'a'})") === 'y|a' && Array.isArray(J('DEFAULT_STATE.dayReasons')));
+    ev('__base()');
+    ok('one row per pillar, in order, each with the five fields', (() => { const r = J('stdState()');
+      return r.map(x => x.pillar).join() === 'bulk,show,lifts,intake,recovery' && r.every(x => 'lvl' in x && 'since' in x && 'why' in x && 'consequence' in x && 'clearsWhen' in x); })());
+    ok('nothing logged but sessions: showing up is ok and the rest say no data, never red', (() => { const r = J('stdState()');
+      return r[1].lvl === 'ok' && [0, 2, 3, 4].every(i => r[i].lvl === 'nodata'); })(), JSON.stringify(J('stdState()').map(x => x.lvl)));
+    ok('and then the agents get nothing', ev('stdContextLine()') === '' && ev('stdStrictLine()') === '' && ev('stdBriefLine()') === '' && J('stdNotifItems()').length === 0);
+    ok('a quiet night: the nightly and chat prompts are byte-identical with the switch on and off', (() => {
+      const on = [ev("agBaseContext('charlie')"), ev("chatContext('echo')")];
+      ev("S.overhaul = {standards:false};"); const off = [ev("agBaseContext('charlie')"), ev("chatContext('echo')")]; ev("S.overhaul = {};");
+      return on[0] === off[0] && on[1] === off[1] && on[0].length > 50; })());
+
+    // ---- bulk pace: bulkRate(2) through bulkBand(), completed weeks, carried ----
+    const bulk = (last3, counts) => { ev('__base(); __bw(' + JSON.stringify(G.concat(last3)) + (counts ? ',' + JSON.stringify(counts) : '') + ')'); return row('bulk'); };
+    let b = bulk([0.7, 0.7, 0.7]);
+    ok('bulk: steady gain in the band is ok', b.lvl === 'ok' && /\+0\.70 lb\/week/.test(b.why), JSON.stringify(b));
+    ok('bulk: an ok row still carries the shortfall against the 1.5 line as a consequence, not a level', /3\.2 lb behind the 1\.5 lb\/week line/.test(b.consequence), b.consequence);
+    b = bulk([0.7, 0.7, -0.4]);
+    ok('bulk: one losing week is amber, from the Monday it became known', b.lvl === 'amber' && b.since === ev('weekKeyOf(todayKey())') && /Lost weight last week/.test(b.why), JSON.stringify(b));
+    ok('bulk: the consequence is arithmetic on the one rate: (1.5 + 0.4) x 4 weeks', /At −0\.40 lb\/week you are 7\.6 lb behind/.test(b.consequence), b.consequence);
+    b = bulk([0.7, -0.4, -0.3]);
+    ok('bulk: two losing weeks are red', b.lvl === 'red' && /2 losing weeks in a row/.test(b.why), JSON.stringify(b));
+    b = bulk([-0.4, 0.6, -0.3]);
+    ok('bulk: a second losing week before it cleared is red, back to back or not', b.lvl === 'red' && /2 losing weeks since it last cleared/.test(b.why), JSON.stringify(b));
+    b = bulk([-0.4, -0.3, 0.6]);
+    ok('bulk: one week back over 0.5 does not clear a red, and says how far along it is', b.lvl === 'red' && /1 of 2 so far/.test(b.clearsWhen), JSON.stringify(b));
+    b = bulk([-0.4, 0.6, 0.6]);
+    ok('bulk: two weeks in a row at or over 0.5 clear it', b.lvl === 'ok', JSON.stringify(b));
+    b = bulk([-0.4, 0.6, 0.3]);
+    ok('bulk: a week under 0.5 in between breaks the run, so it holds', b.lvl === 'amber' && !/of 2 so far/.test(b.clearsWhen), JSON.stringify(b));
+    b = bulk([0.7, 0.7, -0.4], G.map(() => 7).concat([7, 7, 2]));
+    ok('bulk: a week with two weigh-ins cannot be judged: no data, not amber', b.lvl === 'nodata' && /2 weigh-ins/.test(b.why), JSON.stringify(b));
+    b = bulk([0.7, 0.7, -0.4], G.map(() => 7).concat([7, 2, 7]));
+    ok('bulk: nor can a week be judged against a thin one', b.lvl === 'nodata' && /nothing to be judged against/.test(b.why), JSON.stringify(b));
+    b = bulk([0.7, -0.4, -0.4], G.map(() => 7).concat([7, 7, 2]));
+    ok('bulk: an amber holds through a week that cannot be judged', b.lvl === 'amber' && /holds until a week can be judged/.test(b.why), JSON.stringify(b));
+    b = bulk([0.7, 1.8, 1.9]);
+    ok('bulk: two weeks over 1.6 are his fast-gain amber', b.lvl === 'amber' && b.kind === 'fast' && /against 4 at the top of the band/.test(b.consequence), JSON.stringify(b));
+    b = bulk([0.7, 0.7, 1.9]);
+    ok('bulk: one fast week is not', b.lvl === 'ok', JSON.stringify(b));
+    ev("__base(); __bw(" + JSON.stringify(G.concat([0.7, 0.7, 0.7])) + "); S.weights.push({date:todayKey(), lbs:120});");
+    ok('bulk: the week still running is never judged', row('bulk').lvl === 'ok');
+
+    // ---- showing up ----
+    const show = (skip, extra) => { ev('__base(' + JSON.stringify(skip) + (extra ? ',' + extra : '') + ')'); return row('show'); };
+    let s = show([3]);
+    ok('show: one unexplained miss in 14 days is amber, from the day after it', s.lvl === 'amber' && s.since === ev('__d(-2)') && s.misses.length === 1 && s.misses[0].date === ev('__d(-3)'), JSON.stringify(s));
+    ok('show: its misses are the supervisor sheet’s misses', JSON.stringify(s.misses) === JSON.stringify(J('svSheet().missed')));
+    ok('show: it says when it can clear', s.clearsWhen.indexOf(ev('fmtDate(__d(5))')) > 0, s.clearsWhen);
+    s = show([3, 10]);
+    ok('show: two are red', s.lvl === 'red' && s.misses.length === 2, JSON.stringify(s));
+    s = show([9, 12]);
+    ok('show: a full week with no unexplained miss clears it, even with two in the 14', s.lvl === 'ok' && s.misses.length === 0, JSON.stringify(s));
+    s = show([]);
+    ev("S.logs = S.logs.filter(function(l){ return l.date !== todayKey(); });");
+    ok('show: today is never a miss', row('show').lvl === 'ok');
+    ev('__base([3])');
+    const chg0 = ev('S.meta.changedAt');
+    ok('reason: a tap writes an immutable row and saves (touch and push)', ev("stdReasonSet('show', __d(-3), 'sick')") === true && J('S.dayReasons').length === 1 && ev('S.meta.changedAt') >= chg0 && ev('S.meta.changedAt') > 0);
+    s = row('show');
+    ok('reason: a missed day with a reason is not a miss', s.lvl === 'ok' && s.excused.length === 1 && s.excused[0].why === 'sick' && J('svSheet().missed').length === 0 && J('svSheet().excused').length === 1, JSON.stringify(s));
+    ok('reason: and it does not break the streak', ev('streakStats().current') === 59, String(ev('streakStats().current')));
+    ok('reason: CHARLIE’s sheet says so', /not counted as missed: .*sick/.test(ev('svContextLine()')));
+    ev("stdReasonSet('show', __d(-3), '')");
+    ok('reason: undo is another row, and the miss is back', J('S.dayReasons').length === 2 && row('show').lvl === 'amber' && ev('streakStats().current') === 2);
+    ok('reason: junk is refused', ev("stdReasonSet('show', __d(-3), 'because')") === false && ev("stdReasonSet('nope', __d(-3), 'sick')") === false && ev("stdReasonSet('show', __d(1), 'sick')") === false && ev("stdReasonSet('show', 'yesterday', 'sick')") === false);
+    s = show([3], "[{id:'mk', date:__d(-2), day:'D1', scheduled:'REST', entries:[]}]");
+    ev("S.logs = S.logs.filter(function(l){ return l.id !== 'sd2'; });");
+    s = row('show');
+    ok('make-up: a missed day trained on a rest day within two days was made up', s.lvl === 'ok' && s.excused.length === 1 && s.excused[0].auto === true && /made up/.test(s.excused[0].why), JSON.stringify(s));
+    ev("S.logs.forEach(function(l){ if(l.id === 'mk') l.scheduled = 'D1'; });");
+    ok('make-up: a session that was itself scheduled cannot cover for another', row('show').lvl === 'amber');
+    ev("__base([3, 8]); S.scheduleMode = 'cycle'; S.cycleSchedule = {anchor:__d(-5), pattern:['D1']};");
+    s = row('show');
+    ok('cycle mode: an empty day before the anchor cannot be judged, one after it can', s.lvl === 'amber' && s.misses.length === 1 && s.misses[0].date === ev('__d(-3)') && J('svSheet().missed').length === 1, JSON.stringify(s));
+    // The 25-hour day DST ends (2026-11-01): the walk steps by calendar day, so the miss is on that day and the level starts the next.
+    ev(`__base(); S.logs = []; for(var q = new Date('2026-10-10T12:00:00'); q <= new Date('2026-11-06T12:00:00'); q.setDate(q.getDate() + 1)){
+      var k = dateKeyOf(q); if(k !== '2026-11-01') S.logs.push({id:'dst'+k, date:k, day:'D1', scheduled:'D1', entries:[]}); }`);
+    s = J("stdShow('2026-11-04')");
+    ok('DST: a miss on the 25-hour day is counted once, on its own day', s.lvl === 'amber' && s.misses.length === 1 && s.misses[0].date === '2026-11-01' && s.since === '2026-11-02', JSON.stringify(s));
+
+    // ---- intake: logged days only ----
+    const intake = vals => { ev('__base(); __nut(' + JSON.stringify(vals) + ')'); return row('intake'); };
+    let n = intake([3100, 3100, 3100, 3100, 2900, 2900, 2500]);
+    ok('intake: under target on 3 of 7 is amber', n.lvl === 'amber' && n.under === 3 && /3 of 7 logged days/.test(n.why), JSON.stringify(n));
+    ok('intake: the consequence adds the logged days up', /700 kcal under target/.test(n.consequence) === false && /add up to \d+ kcal under target/.test(n.consequence), n.consequence);
+    n = intake([3100, 3100, 2900, 2900, 2900, 2900, 2500]);
+    ok('intake: 5 of 7 is red', n.lvl === 'red', JSON.stringify(n));
+    n = intake([3100, 3100, 3100, 3100, 3100, 2900, 2500]);
+    ok('intake: 2 of 7 is ok', n.lvl === 'ok', JSON.stringify(n));
+    n = intake([0, 0, 0, 0, 2500, 2500, 2500]);
+    ok('intake: three logged days cannot be judged, however low: no data', n.lvl === 'nodata' && /3 of the last 7/.test(n.why), JSON.stringify(n));
+    n = intake([0, 0, 0, 3100, 3100, 2500, 2500]);
+    ok('intake: an unlogged day is unknown, never under', n.lvl === 'ok' && n.under === 2 && n.logged === 4, JSON.stringify(n));
+    n = intake([2500, 2500, 2500, 2500, 2500, 2500, 2500, 0, 0, 0, 0, 0, 3100, 3100]);
+    ok('intake: a red does not lapse when he stops logging: it holds', n.lvl === 'red' && /level holds/.test(n.why), JSON.stringify(n));
+    n = intake([2500, 2500, 2500, 2500, 2500, 2500, 2500, 2900, 2900, 3100, 3100, 3100, 3100, 3100]);
+    ok('intake: 5 of the last 7 at or over target clears it', n.lvl === 'ok', JSON.stringify(n));
+    n = intake([2500, 2500, 2500, 2500, 2500, 2500, 2500, 2900, 2900, 2900, 3100, 3100, 3100, 3100]);
+    ok('intake: 4 of 7 on target does not, though only 3 are under', n.lvl === 'red' && n.under === 3, JSON.stringify(n));
+    ev("__base(); __nut([0, 3100, 3100, 3100, 3100, 2900, 2500]); S.nutrition.push({date:todayKey(), cals:1000, protein:10});");
+    ok('intake: today is not finished, so it is not counted', row('intake').lvl === 'ok');
+
+    // ---- recovery: against his own usual, never red on no data ----
+    const rec = last => { ev('__base(); __wh(' + JSON.stringify(last) + ')'); return row('recovery'); };
+    let r = rec([70, 71, 69, 70, 40, 42, 41]);
+    ok('recovery: three days 15+ under his usual is amber', r.lvl === 'amber' && r.under === 3, JSON.stringify(r));
+    r = rec([70, 71, 40, 42, 41, 39, 43]);
+    ok('recovery: five is red', r.lvl === 'red' && r.under === 5, JSON.stringify(r));
+    r = rec([40, 42, 41, 39, 43, 69, 71]);
+    ok('recovery: two days back at his usual clear it', r.lvl === 'ok', JSON.stringify(r));
+    r = rec([40, 42, 41, 39, 43, 69, 44]);
+    ok('recovery: one day back does not', r.lvl === 'red', JSON.stringify(r));
+    r = rec([70, 71, 69, 70, 60, 58, 57]);
+    ok('recovery: 12 under is not "under his usual"', r.lvl === 'ok', JSON.stringify(r));
+    r = rec([null, null, null, null, 40, 42, 41]);
+    ok('recovery: three readings in seven days cannot be judged', r.lvl === 'nodata' && /3 of the last 7/.test(r.why), JSON.stringify(r));
+    ev('__base(); S.whoop = null;');
+    ok('recovery: no WHOOP at all is no data, never red', row('recovery').lvl === 'nodata');
+    ev("__base(); __wh([70, 71, 69, 70, 40, 42, 41]); S.whoop.history = S.whoop.history.slice(-9);");
+    ok('recovery: no baseline yet (under a week of history before the window) is no data', row('recovery').lvl === 'nodata', JSON.stringify(row('recovery')));
+
+    // ---- lifts: the watch's main rows, and a plan in motion ----
+    const pw = (lift, lvl, word) => ({lift, lvl, state:word, word, sig:[{k:word, lvl, txt:'e1RM down 6%'}], used:[], lastDate:ev('__d(-2)'), sessions:9, pctPerWeek:-1.2});
+    const lifts = (rows, main) => { ev('__base(); window.__pw = ' + JSON.stringify(rows) + '; window.__main = ' + JSON.stringify(main) + ';'); return row('lifts'); };
+    let l = lifts([pw('Bench', 'green', 'on track'), pw('Dips', 'red', 'falling')], ['Bench']);
+    ok('lifts: a red lift that is not a main lift does not count', l.lvl === 'ok', JSON.stringify(l));
+    ok('lifts: the chips and the Standards read the same main list', J('pwMainRows(window.__pw)').map(x => x.lift).join() === 'Bench');
+    l = lifts([pw('Bench', 'amber', 'slowing')], ['Bench']);
+    ok('lifts: a main lift amber on the watch is amber', l.lvl === 'amber' && /Bench: slowing/.test(l.why) && !l.motion, JSON.stringify(l));
+    l = lifts([pw('Bench', 'red', 'falling'), pw('Squat', 'calm', 'holding')], ['Bench', 'Squat']);
+    ok('lifts: a main lift red on the watch is red, since its newest session', l.lvl === 'red' && l.since === ev('__d(-2)') && /watch reads Bench on track/.test(l.clearsWhen), JSON.stringify(l));
+    ok('lifts: with nothing being tried it is strict', J('stdStrictRows(stdState())').length === 1 && /STRICT MODE/.test(ev('stdStrictLine()')));
+    ev("S.agents = S.agents || {}; S.agents.proposals = [{id:'p1', agent:'delta', status:'approved', created:__d(-6), closed:__d(-5), title:'Reset', fix:{type:'liftReset', payload:{name:'Bench', w:150, days:14}}}];");
+    l = row('lifts');
+    ok('plan in motion: an approved fix on the lift keeps it red but names what is being tried and when it is read', l.lvl === 'red' && /Bench: .*approved/.test(l.motion || '') && (l.motion || '').indexOf('read again ' + ev('fmtDate(__d(23))')) > 0, JSON.stringify(l));
+    ok('plan in motion: it stops escalating: no strict line, no mark, a bell item he can dismiss', J('stdStrictRows(stdState())').length === 0 && ev('stdStrictLine()') === '' && J('stdNotifItems()')[0].sticky === false);
+    ok('plan in motion: the agents are told not to escalate it', /PLAN IN MOTION: Bench/.test(ev('stdContextLine()')) && /Lifts: RED/.test(ev('stdContextLine()')));
+    ev("S.agents.proposals[0].closed = __d(-28);");
+    ok('plan in motion: past its read date the red escalates again', !row('lifts').motion && J('stdStrictRows(stdState())').length === 1);
+    ev("S.agents.proposals[0].closed = __d(-5); S.agents.proposals[0].fix.payload.name = 'Squat';");
+    ok('plan in motion: a fix on another lift does not count', !row('lifts').motion);
+    ev("S.agents.proposals[0].status = 'pending';  S.agents.proposals[0].fix.payload.name = 'Bench';");
+    ok('plan in motion: a request he has not approved does not count', !row('lifts').motion);
+    ev("S.agents.proposals = []; S.experiments = {active:{id:'x1', template:'repRange', lift:'Bench', requiredSessions:4, startedAt:__d(-3), status:'running', baselineIds:[]}, history:[], declined:{}, lastEnded:''};");
+    ok('plan in motion: a running experiment on the lift counts, read by sessions', /experiment/.test(row('lifts').motion || '') && /4 clean sessions/.test(row('lifts').motion || ''), JSON.stringify(row('lifts')));
+    ev("S.experiments.active = null;");
+
+    // ---- the surfaces, with one strict red (lifts) and one amber (showing up) ----
+    ev("__base([3]); window.__pw = " + JSON.stringify([pw('Bench', 'red', 'falling')]) + "; window.__main = ['Bench'];");
+    const ctx = ev('stdContextLine()');
+    ok('agents: the line lists each flagged row with its level, why and exit', /^\nSTANDARDS/.test(ctx) && /- Showing up: AMBER since /.test(ctx) && /- Lifts: RED since /.test(ctx) && /Clears when: /.test(ctx) && ctx.length <= 1300, ctx);
+    ok('agents: it is in the nightly context and every chat', ['charlie', 'delta', 'echo', 'zulu'].every(id => ev("agBaseContext('" + id + "')").indexOf(ctx) >= 0 && ev("chatContext('" + id + "')").indexOf(ctx) >= 0));
+    ok('agents: the strict line never names another agent', !/You are /.test(ev('stdStrictLine()')));
+    ev("stdReasonSet('lifts', todayKey(), 'exams')");
+    ok('reason: on any other pillar it is a note beside the row and never changes the level', row('lifts').lvl === 'red' && row('lifts').note.why === 'exams' && /His reason, .*exams/.test(ev('stdContextLine()')) && J('stdStrictRows(stdState())').length === 1);
+    const items = J('stdNotifItems()');
+    ok('bell: amber and red each have an item, with an icon and a word in the title', items.length === 2 && items.every(i => /^std:/.test(i.id) && /— (slipping|off standard)$/.test(i.title) && /^[▲✖] /.test(i.title)), JSON.stringify(items.map(i => i.title)));
+    ok('bell: the id carries the level and the day it began', items.some(i => i.id === 'std:show:amber:' + ev('__d(-2)')));
+    ev('notifClear()');
+    const vis = J('notifVisible()').filter(i => /^std:/.test(i.id));
+    ok('bell: a red with nothing being tried cannot be cleared; an amber can', vis.length === 1 && /^std:lifts:red/.test(vis[0].id), JSON.stringify(vis.map(i => i.id)));
+    ev("notifOpen = true; renderNotif();");
+    ok('bell: and it has no dismiss button', (() => { const el = [...w.document.querySelectorAll('#notifPanel .notif-item')].find(x => /Lifts/.test(x.textContent)); return !!el && !el.querySelector('.notif-x'); })());
+    ok('bell: the pass-through never outlives the repaint', ev('_stdPass') === null);
+    ev("notifOpen = false; renderNotif(); MODE = 'review';");
+    ev('renderHome()');   // the first paint of a fresh state fills in its lazy keys (agState(), fuelInit()): not the Standards
+    const before = ev('JSON.stringify(S)');
+    ev('renderHome()');
+    ok('Today only reads: rendering it with flagged Standards leaves S byte-identical', ev('JSON.stringify(S)') === before);
+    const card = w.document.getElementById('stdCard');
+    ok('card: at the top of Today, before everything else in the page body', !!card && card === w.document.querySelector('#home .cc-main').firstElementChild);
+    ok('card: each flagged row has an icon and a word, and the red is first', (() => { const rs = [...card.querySelectorAll('.std-row')];
+      return rs.length === 2 && rs[0].classList.contains('red') && /✖\s*Off standard/.test(rs[0].textContent) && rs[1].classList.contains('amber') && /▲\s*Slipping/.test(rs[1].textContent); })(), card ? card.textContent.slice(0, 300) : '');
+    ok('card: nothing on it dismisses a red', !/dismiss|notifDismiss/i.test(card.innerHTML) && card.querySelectorAll('.std-row.red button').length === 1 && /Undo/.test(card.querySelector('.std-row.red').textContent));
+    ok('card: the missed day takes a one-tap reason, the key in data- attributes', card.querySelectorAll('.std-row.amber .std-rb[data-p="show"][data-d="' + ev('__d(-3)') + '"]').length === 4);
+    ok('card: the rest sit behind chips, and the summary counts every level', card.querySelectorAll('.std-chip').length === 3 && /1 off standard · 1 slipping · 3 no data/.test(card.querySelector('.std-sum').textContent), card.querySelector('.std-sum').textContent);
+    ev('stdToggle()');
+    ok('card: opening the rest survives a repaint (module-scoped)', (() => { ev('renderHome()'); return w.document.querySelectorAll('#stdCard .std-row').length === 5; })());
+    ev('stdToggle()');
+    const mark = w.document.getElementById('stdMark');
+    ok('top bar: the mark shows while a red is strict, with an icon and a word', !!mark && mark.hidden === false && /✖/.test(mark.textContent) && /Red/.test(mark.textContent) && /Lifts/.test(mark.getAttribute('aria-label')));
+    card.querySelector('.std-row.amber .std-rb[data-w="travel"]').click();
+    ok('card: tapping a reason writes it and repaints', J("dayReasonFor('show', __d(-3))").why === 'travel' && w.document.querySelectorAll('#stdCard .std-row.amber').length === 0);
+    ev("window.__pw = []; renderHome();");
+    ok('top bar: the mark goes when nothing is strict', w.document.getElementById('stdMark').hidden === true);
+
+    // ---- the morning brief leads with a Standard that turned red since the last one ----
+    ev("__base(); window.__pw = " + JSON.stringify([pw('Bench', 'red', 'falling')]) + "; window.__main = ['Bench']; window.__bd = function(n){ var b = agState().brief; b.date = __d(n); b.at = new Date(__d(n)+'T08:00:00').toISOString(); };" +
+       "agState().brief = {text:'x', hadWhoop:false, std:[]}; __bd(-1);");   // agState() drops a brief whose stamp is not on its day
+    ok('brief: red now and not red when the last brief was written leads this one', /TURNED RED SINCE YOUR LAST BRIEF/.test(ev('stdBriefLine()')) && /- Lifts: RED/.test(ev('stdBriefLine()')));
+    const snap = J('stdBriefSnap()');
+    ev("agSetBrief('new', false, null, " + JSON.stringify(snap) + ");");
+    ok('brief: the brief records what was red and what it led with', J('agBrief().std').join() === 'lifts' && J('agBrief().stdLed').join() === 'lifts');
+    ok('brief: a rewrite the same morning still leads with it', /Lifts: RED/.test(ev('stdBriefLine()')));
+    ev("__bd(-1);");
+    ok('brief: the next morning it does not lead again', ev('stdBriefLine()') === '');
+    ev("delete agState().brief.std; delete agState().brief.stdLed;");
+    ok('brief: a brief from before this build falls back to the day the level began', /Lifts: RED/.test(ev('stdBriefLine()')) === (ev('__d(-2)') > ev('__d(-1)')) && ev('stdBriefLine()') === '');
+    ev("__bd(-4);");
+    ok('brief: and leads when the level began after it', /Lifts: RED/.test(ev('stdBriefLine()')));
+    ev("agSetBrief('plain', false, null, null);");
+    ok('brief: with no snapshot the record is as it always was', !('std' in J('agBrief()')));
+
+    // ---- the switch gates every surface ----
+    ev("__base([3]); window.__pw = " + JSON.stringify([pw('Bench', 'red', 'falling')]) + "; window.__main = ['Bench']; stdReasonSet('show', __d(-3), 'sick'); S.overhaul = {standards:false};");
+    ev('renderHome(); renderNotif();');
+    ok('switch off: no card, no mark, no bell item, nothing in any prompt, no snapshot', !w.document.getElementById('stdCard') && w.document.getElementById('stdMark').hidden === true &&
+      J('notifItems()').every(i => !/^std:/.test(i.id)) && ev('stdContextLine()') === '' && ev('stdStrictLine()') === '' && ev('stdBriefLine()') === '' && ev('stdBriefSnap()') === null);
+    ok('switch off: a reason no longer excuses a day (the sheet and the streak are as before)', J('svSheet().missed').length === 1 && J('svSheet().excused').length === 0 && ev('dayExcuse(__d(-3))') === null);
+    ev("S.overhaul = {}; renderNotif();");
+    ok('switch: back on, the mark is back', w.document.getElementById('stdMark').hidden === false);
+    ev("window.__ovEl = {checked:false, getAttribute:function(){ return 'standards'; }}; ovToggle(window.__ovEl); delete window.__ovEl;");
+    ok('switch: turning it off in Settings takes the mark down at once, not at the next repaint', ev("ovOn('standards')") === false && w.document.getElementById('stdMark').hidden === true);
+    ev("S.overhaul = {};");
+    // A pillar that throws reads "no data": never a red, never a clean bill.
+    ev("window.__sb = STD_READ.bulk; STD_READ.bulk = function(){ throw new Error('boom'); };");
+    ok('a pillar that cannot be read says so and the others still read', row('bulk').lvl === 'nodata' && /could not be read/.test(row('bulk').why) && row('lifts').lvl === 'red');
+    ev("STD_READ.bulk = window.__sb;");
+  } catch (e) {
+    ok('standards section', false, e.stack);
+  } finally {
+    ev("plateauWatch = window.__sdPW; predLifts = window.__sdPL; stdOpen = window.__sdOpen; notifOpen = false; _stdSince = {}; S = JSON.parse(window.__sdS);" +
+       "if(window.__sdLS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__sdLS);" +
+       "['__sdS','__sdLS','__sdPW','__sdPL','__sdOpen','__d','__base','__row','__bw','__nut','__wh','__pw','__main','__sb','__bd'].forEach(function(k){ delete window[k]; });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-11-v5a">
+<meta name="ironhub-build" content="2026-11-12-v5b">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1544,6 +1544,34 @@
   .cc-chip.pw-more{background:none; border:1px solid var(--line2); color:var(--muted); font-weight:500;}
   .hub-pw{margin-top:18px;}
   .hub-pw + .cc-chips{margin-top:8px;}
+  /* Standards (V5 stage 1): the card at the top of Today, and the mark in the top bar while one is red */
+  .std{min-width:0;}
+  .std-sum{margin-left:auto; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); text-align:right;}
+  .std-rows{display:flex; flex-direction:column; gap:8px; margin-top:8px;}
+  .std-row{background:var(--panel); border-radius:var(--r-card); padding:12px 14px; border-left:3px solid var(--line2); min-width:0;}
+  .std-row.red{border-left-color:var(--bad);} .std-row.amber{border-left-color:var(--warn);} .std-row.ok{border-left-color:var(--good);}
+  .std-h{display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 10px;}
+  .std-n{font-family:var(--disp); font-weight:700; font-size:17px; letter-spacing:.03em; text-transform:uppercase; line-height:1.1;}
+  .std-w{font-family:var(--mono); font-size:11px; letter-spacing:.04em; text-transform:uppercase;}
+  .std-p{margin:6px 0 0; font-size:13.5px; line-height:1.4; color:var(--text); overflow-wrap:anywhere;}
+  .std-p.c{color:var(--muted);}
+  .std-k{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);}
+  .std-miss{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:10px;}
+  .std-miss .std-k{flex:1 1 100%;}
+  .std-rb{min-height:38px; padding:6px 12px; border:1px solid var(--line2); border-radius:var(--r-ctl); background:var(--panel2); color:var(--text);
+    font:inherit; font-size:13px; font-weight:600; cursor:pointer;}
+  .std-rb:hover{border-color:var(--amber);}
+  .std-chips{display:flex; flex-wrap:wrap; align-items:center; gap:7px; width:100%; margin-top:8px; padding:0; border:none; background:none; color:inherit;
+    font:inherit; text-align:left; cursor:pointer;}
+  .std-chip{display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:5px 10px; border-radius:12px; background:var(--panel); font-size:13px; font-weight:600;}
+  .std-chip i{font-style:normal; font-weight:500; font-size:12px; color:var(--muted);}
+  .std-more{margin-left:auto; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); padding:0 4px;}
+  .std-mark{display:inline-flex; align-items:center; gap:5px; flex:none; min-height:32px; padding:4px 9px; border:1px solid var(--bad); border-radius:var(--r-ctl);
+    background:transparent; color:var(--bad); font-family:var(--disp); font-weight:700; font-size:13px; letter-spacing:.06em; text-transform:uppercase;
+    line-height:1; white-space:nowrap; cursor:pointer;}
+  .std-mark[hidden]{display:none;}
+  /* On a phone the bar has no room for both: while a Standard is red the countdown gives way (it is still on Today). */
+  @media (max-width:480px){ .topbar:has(.std-mark:not([hidden])) .wa-count{display:none;} }
   /* plateau watch line under an Overload row, and its likely factors (V4 stage 5) */
   .pw-line{display:flex; align-items:center; gap:8px; width:100%; min-height:36px; margin:0 0 6px; padding:6px 0 6px 26px; border:none; background:none;
     color:var(--text); font:inherit; font-size:12.5px; text-align:left; cursor:pointer;}
@@ -2210,6 +2238,7 @@
     <span class="logo-mark"></span>
     <div class="brand-txt">Iron Hub</div>
     <div class="spacer wa-slot"><button class="wa-count" id="waCount" hidden onclick="setMode('review');showMainTab('home')" aria-label="Winter Arc"></button></div>
+    <button class="std-mark" id="stdMark" hidden onclick="stdGo()" title="A standard is off" aria-label="A standard is off"></button>
     <button class="notif-btn" id="notifBtn" onclick="notifToggle()" title="Notifications" aria-label="Notifications">
       <span class="notif-ic">◉</span><span class="notif-badge" id="notifBadge"></span>
     </button>
@@ -2378,6 +2407,8 @@ const DEFAULT_STATE = {
   forecastRatings: [],         // {id: forecastId, rating 1-5, note, at, day, t} — his rating of a big-picture forecast.
   liftNotes: [],               // {id, lift, kind:'reset'|'badday'|'intended'|'wrong', date, from?, to?, state, lvl, at, t} — his
                                // corrections to the plateau watch. Immutable rows, newest wins. See pwMark().
+  dayReasons: [],              // {id, pillar, date, why, at, t} — his reason for a missed day or beside a Standard. Immutable
+                               // rows, newest wins, an empty `why` is his undo. See stdReasonSet().
   overhaul: {},                // V5 switches he has CHANGED, and nothing else: {key:boolean, at:{key:'YYYY-MM-DD'}}.
                                // Sparse on purpose: the defaults live in code. Never read directly; ask ovOn(). See OV.
   photos: {gistId:'', index:[]},  // INDEX only — the images live in their own gist, see photoState()
@@ -2497,6 +2528,7 @@ function ovToggle(el){
   }
   ovSet(k, on);
   try{ renderSettings(); }catch(e){}
+  try{ renderNotif(); }catch(e){}   // the bell and the top-bar mark belong to switches too: off means off now, not at the next repaint
 }
 function ovCardHTML(){
   const keys = Object.keys(OV).filter(ovHas);
@@ -2694,7 +2726,8 @@ const SYNC_HISTORY = {
   forecasts: {key: r=>'f|'+r.id, ord: r=>String(r.madeOn||'')+'|'+String(r.id||''), cap:()=>FC_KEEP},
   forecastRatings: {key: r=>'v|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.id||''), cap:()=>FC_KEEP},
   liftNotes: {key: r=>'k|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>LN_KEEP},
-  spend:     {key: r=>'$|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.dev||''), cap:()=>SPEND_REC_MAX},
+  dayReasons: {key: r=>'y|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>DR_KEEP},
+  spend:    {key: r=>'$|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.dev||''), cap:()=>SPEND_REC_MAX},
   targetHist: {key: r=>'g|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>TARGET_HIST_MAX}
 };
 /* Write time of a history record. The merge needs it to tell "the other device has not heard
@@ -6512,7 +6545,7 @@ async function sendChat(){
     const system = 'You are ZULU, the lead agent in Mark\u2019s Iron Hub app and the strength coach '+
       'for a motivated 18-year-old natural lifter on a bulk. You oversee three specialist agents \u2014 CHARLIE '+
       '(app logistics, data health, training schedule), DELTA (workouts, splits, progressive overload) and '+
-      'ECHO (bulk, fuel, bodyweight trend). Speak as ZULU. '+AG_VOICE.zulu+' If a question sits squarely in one of their domains '+
+      'ECHO (bulk, fuel, bodyweight trend). Speak as ZULU. '+AG_VOICE.zulu+stdStrictLine()+' If a question sits squarely in one of their domains '+
       'you can note that, but still answer it yourself \u2014 don\u2019t deflect. '+
       'Be direct and concrete. No fluff, no over-hedging. If he asks for a whole new program, explain the principles '+
       'and offer to change his existing split with your tools rather than writing one from memory. '+
@@ -10905,7 +10938,7 @@ function streakStats(){
   while(k <= t && guard++ < 3700){
     if(scheduledDayFor(k) !== 'REST'){
       if(have.has(k)){ cur++; if(cur > longest) longest = cur; }
-      else if(k !== t) cur = 0;
+      else if(k !== t && !dayExcuse(k)) cur = 0;   // a day with a reason neither counts nor breaks it (V5 stage 1)
     }
     k = mesoAddDays(k, 1);
   }
@@ -24557,7 +24590,7 @@ function agContext(){
    each card before it answers. */
 function chatContext(id){
   const part = function(f){ try{ return f() || ''; }catch(e){ return ''; } };
-  return part(coachMemContext)+part(trainingContext)+part(agContext)+
+  return part(coachMemContext)+part(trainingContext)+part(agContext)+part(stdContextLine)+
     ((id === 'delta' || id === 'echo' || id === 'zulu') ? part(intelSummary) : '')+
     part(function(){ return agEventsLine(id); })+
     part(function(){ return agLiftRefLine(id); })+
@@ -24777,11 +24810,19 @@ function svSheet(t){
   const logs = (S.logs || []).filter(function(l){ return l && l.date; });
   const by = {};
   logs.forEach(function(l){ (by[l.date] = by[l.date] || []).push(l); });
-  const sched = function(d){ const g = by[d], s = g && g[0] && g[0].scheduled; return s || scheduledDayFor(d); };
-  const o = {t:t, from:mesoAddDays(t, -SV_DAYS), planned:0, done:0, missed:[], extra:[], swapped:[], recovered:0, dowMiss:[]};
+  const sched = function(d){ return svSchedOn(by, d); };
+  const o = {t:t, from:mesoAddDays(t, -SV_DAYS), planned:0, done:0, missed:[], excused:[], extra:[], swapped:[], recovered:0, dowMiss:[]};
   for(let d = o.from; d < t; d = mesoAddDays(d, 1)){
     const k = sched(d), got = by[d] || [];
-    if(k !== 'REST'){ o.planned++; if(got.length) o.done++; else o.missed.push({date:d, day:k}); }
+    if(k !== 'REST'){
+      if(got.length){ o.planned++; o.done++; }
+      else if(svJudgeable(d)){
+        // A day he gave a reason for, or made up on a rest day, is not a miss (V5 stage 1): listed apart, with why.
+        o.planned++;
+        const ex = dayExcuse(d);
+        if(ex) o.excused.push({date:d, day:k, why:ex.label}); else o.missed.push({date:d, day:k});
+      }
+    }
     else if(got.length) o.extra.push({date:d, day:got[0].day});
     got.forEach(function(l){
       if(k !== 'REST' && l.day && l.day !== k) o.swapped.push({date:d, did:l.day, was:k});
@@ -24793,7 +24834,8 @@ function svSheet(t){
   for(let d = mesoAddDays(t, -28); d < t; d = mesoAddDays(d, 1)){
     if(sched(d) === 'REST') continue;
     const w = new Date(d+'T12:00:00').getDay(), r = dm[w] || (dm[w] = {dow:w, planned:0, missed:0});
-    r.planned++; if(!by[d]) r.missed++;
+    if(!by[d] && !svJudgeable(d)) continue;
+    r.planned++; if(!by[d] && !dayExcuse(d)) r.missed++;
   }
   Object.keys(dm).forEach(function(w){ const r = dm[w]; if(r.missed >= 2 && r.missed * 2 >= r.planned) o.dowMiss.push(r); });
   const mon = mesoMondayOf(t);
@@ -24801,7 +24843,7 @@ function svSheet(t){
   for(let i = 0; i < 7; i++){
     const d = mesoAddDays(mon, i), k = sched(d);
     if(k === 'REST') continue;
-    if(d < t){ o.week.planned++; if(by[d]) o.week.done++; }
+    if(d < t){ if(!by[d] && !svJudgeable(d)) continue; o.week.planned++; if(by[d]) o.week.done++; }
     else if(d > t) o.week.left++;
   }
   try{ o.streak = streakStats(); }catch(e){ o.streak = null; }
@@ -24868,6 +24910,7 @@ function svContextLine(t){
   line(function(){
     return 'Last '+SV_DAYS+' days (today not counted): trained '+s.done+' of '+s.planned+' planned days'+
       (s.missed.length ? '; missed '+s.missed.map(function(m){ return dd(m.date)+' ('+m.day+')'; }).join(', ') : '; none missed')+
+      (s.excused && s.excused.length ? '; not counted as missed: '+s.excused.map(function(m){ return dd(m.date)+' ('+m.day+', '+m.why+')'; }).join(', ') : '')+
       (s.extra.length ? '; also trained on rest days '+s.extra.map(function(x){ return dd(x.date)+' ('+x.day+')'; }).join(', ') : '')+'.';
   });
   line(function(){
@@ -24930,6 +24973,560 @@ function svContextLine(t){
   });
   if(!L.length) return '';
   return '\nSUPERVISOR’S SHEET (the app’s own count tonight; trust it over counting the logs yourself):\n- '+L.join('\n- ')+'\n';
+}
+/* ============================================================
+   STANDARDS (V5 stage 1, 2026-11-11). The app, not a model, decides when something is off, and it stays visibly off
+   until its exit condition is met. Five pillars, one row each, worked out when read and never stored:
+     bulk      his rule: amber after one losing week, red after two, clear after two weeks in a row at or over BULK_LO.
+               Week over week is bulkRate(2, that week's Sunday) through bulkBand(): no new band. Completed weeks only,
+               and a week is judged only when it and the week before each have STD_BW_MIN_WEIGHS weigh-ins. His
+               fast-gain amber: two weeks in a row over BULK_FAST.
+     show      a scheduled day missed with no reason in SV_DAYS is amber, two is red, a clean week clears. A day with a
+               reason (S.dayReasons) is not a miss.
+     lifts     a MAIN lift (pwMainRows(), the chips' own list) amber or red on the plateau watch, which gives red only
+               on firm evidence. "Plan in motion": an approved fix or a running experiment on that lift keeps the row
+               red but stops it escalating (stdMotion()).
+     intake    logged days only: an unlogged day is unknown, never "under".
+     recovery  WHOOP against his own usual. No data is "nodata", never red.
+   A level is CARRIED from day to day (stdWalk()): an exit clears it, an entry raises it, anything else holds it, so a
+   red cannot age out of a window. Reads only: rendering Today leaves S byte-identical. Every surface is behind
+   ovOn('standards'). A consequence line is arithmetic on his own numbers and the fan (anFanAt()), never model text.
+   ============================================================ */
+OV.standards = {label:'Standards', paid:false, note:'Five computed standards on Today, in the bell and in the agents’ context. No model call.'};
+const STD_PILLARS = ['bulk', 'show', 'lifts', 'intake', 'recovery'];
+const STD_LABEL = {bulk:'Bulk pace', show:'Showing up', lifts:'Lifts', intake:'Intake', recovery:'Recovery'};
+const STD_WORD = {ok:'On track', amber:'Slipping', red:'Off standard', nodata:'No data', held:'Held'};
+const STD_ICON = {ok:'✓', amber:'▲', red:'✖', nodata:'–', held:'‖'};
+const STD_COL = {ok:'var(--good)', amber:'var(--warn)', red:'var(--bad)', nodata:'var(--dim)', held:'var(--muted)'};
+const STD_RANK = {ok:0, nodata:0, held:0, amber:1, red:2};
+// The defaults, each named once so he can change one without hunting for it.
+const STD_BW_MIN_WEIGHS = 3;      // weigh-ins a week needs before it can be judged
+const STD_BW_WEEKS = 12;          // completed weeks the bulk level is carried over
+const STD_BW_RED_LOSSES = 2;      // losing weeks that make it red...
+const STD_BW_RED_IN_A_ROW = false; // ...counted across one uncleared spell (false), or only back to back (true)
+const STD_MAKEUP_DAYS = 2;        // a missed day trained on a rest day within this many days after it was made up
+const STD_INTAKE_UNDER = {way:1, slight:1};   // the nutTierCal() tiers that count as a day under target
+const STD_BULK_GOAL = 1.5;        // lb/week: the line a consequence is measured against. A goal, never a band.
+const STD_HORIZON_DAYS = 28;      // how far ahead a consequence line looks
+const STD_SHOW_AMBER = 1, STD_SHOW_RED = 2, STD_SHOW_CLEAR_DAYS = 7;
+const STD_INTAKE_DAYS = 7, STD_INTAKE_MIN = 4, STD_INTAKE_AMBER = 3, STD_INTAKE_RED = 5, STD_INTAKE_CLEAR = 5;
+const STD_REC_DAYS = 7, STD_REC_MIN = 4, STD_REC_AMBER = 3, STD_REC_RED = 5, STD_REC_CLEAR = 2;
+const STD_WALK_DAYS = 42;         // how far back a daily level is carried from
+const STD_MOTION_DAYS = 28, STD_MOTION_DELOAD_DAYS = 14;   // how long an approved fix counts as a plan in motion
+const STD_LIFT_BACK = 6, STD_NOTE_DAYS = 14, STD_CTX_MAX = 1200;
+/* His reasons (S.dayReasons, a SYNC_HISTORY collection, key 'y|'): immutable rows, the newest for a pillar and a day
+   wins, and a row with an empty `why` is his undo. For Showing up the date is the missed day and the reason means it
+   was not a miss. For any other pillar it is a note beside the row: it never changes the level. */
+const DR_KEEP = 300;
+const DR_WHY = {sick:'sick', travel:'travel', rest:'planned rest', exams:'exams', other:'other'};
+const DR_OFFER_SHOW = ['sick', 'travel', 'rest', 'other'], DR_OFFER_NOTE = ['sick', 'travel', 'exams', 'other'];
+function dayReasonRows(){ return Array.isArray(S.dayReasons) ? S.dayReasons : []; }
+function dayReasonFor(pillar, date){
+  let best = null;
+  dayReasonRows().forEach(function(r){
+    if(r && r.pillar === pillar && r.date === date && (!best || (+r.at || 0) >= (+best.at || 0))) best = r;
+  });
+  return (best && best.why && Object.prototype.hasOwnProperty.call(DR_WHY, best.why)) ? best : null;
+}
+/* Why a scheduled day with no session is not a miss, or null. svSheet(), the streak and the Standards all ask here. */
+function dayExcuse(d){
+  if(!ovOn('standards')) return null;
+  const r = dayReasonFor('show', d);
+  if(r) return {why:r.why, label:DR_WHY[r.why]};
+  const m = dayMadeUp(d);
+  return m ? {why:'madeup', label:'made up '+homeShortDate(m), auto:true} : null;
+}
+/* A scheduled day he trained a day early or up to STD_MAKEUP_DAYS late, on a rest day: the session was done, so it is
+   not a miss (his Oct 17 D3, trained Oct 18). The same day key, and only on a day the plan had as rest, so a session
+   that was itself scheduled can never cover for another. Returns the day it was done, or null. */
+function dayMadeUp(d){
+  let k = null;
+  try{ k = scheduledDayFor(d); }catch(e){ k = null; }
+  if(!k || k === 'REST') return null;
+  const lo = mesoAddDays(d, -1), hi = mesoAddDays(d, STD_MAKEUP_DAYS);
+  let hit = null;
+  (S.logs || []).forEach(function(l){
+    if(hit || !l || !l.date || l.date === d || l.date < lo || l.date > hi || l.day !== k) return;
+    if((l.scheduled || scheduledDayFor(l.date)) === 'REST') hit = l.date;
+  });
+  return hit;
+}
+/* Whether a past day with NO session can be called a miss at all. In cycle mode the rotation only exists from its
+   anchor: a day before it resolves by wrapping the pattern backwards, which is a schedule he never had (his anchor
+   moved on Oct 15, and every empty day before it read as a miss). A plan's own rotation is dated, so it still counts. */
+function svJudgeable(d){
+  try{
+    if(scheduleMode() !== 'cycle') return true;
+    if(d >= S.cycleSchedule.anchor) return true;
+    return !!mesoRotationDayFor(d);
+  }catch(e){ return true; }
+}
+/* His tap, so save() (touch and push): save(false) could be reverted by the next background pull. */
+function stdReasonSet(pillar, date, why){
+  if(STD_PILLARS.indexOf(pillar) < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) || date > todayKey()) return false;
+  if(why && !Object.prototype.hasOwnProperty.call(DR_WHY, why)) return false;
+  if(!Array.isArray(S.dayReasons)) S.dayReasons = [];
+  S.dayReasons.push(stampRec({id:'dr'+Date.now().toString(36)+Math.random().toString(36).slice(2, 6), pillar:pillar, date:date, why:why || '', at:Date.now()}));
+  if(S.dayReasons.length > DR_KEEP) S.dayReasons = S.dayReasons.slice(-DR_KEEP);
+  save();
+  return true;
+}
+function stdNoteFor(pillar, endKey){
+  const from = mesoAddDays(endKey, -STD_NOTE_DAYS);
+  let best = null;
+  dayReasonRows().forEach(function(r){
+    if(!r || r.pillar !== pillar || !(r.date > from) || r.date > endKey) return;
+    if(!best || r.date > best.date || (r.date === best.date && (+r.at || 0) >= (+best.at || 0))) best = r;
+  });
+  return (best && best.why && Object.prototype.hasOwnProperty.call(DR_WHY, best.why)) ? best : null;
+}
+/* A hold that freezes a pillar on a day: {until, why} or null. Stage 2 (hold blocks) fills this in. */
+function stdHeldBy(pillar, dayKey){ return null; }
+/* The level a pillar carries. facts(d) answers {exit, red, amber} for one day. A held day neither raises nor clears. */
+function stdWalk(pillar, endKey, facts){
+  let lvl = 'ok', since = null;
+  for(let d = mesoAddDays(endKey, -STD_WALK_DAYS); d <= endKey; d = mesoAddDays(d, 1)){
+    if(stdHeldBy(pillar, d)) continue;
+    const f = facts(d);
+    const next = f.exit ? 'ok' : f.red ? 'red' : (f.amber && lvl === 'ok') ? 'amber' : lvl;
+    if(next !== lvl){ lvl = next; since = d; }
+  }
+  return {lvl:lvl, since:since};
+}
+function stdRate(v){ return (v < 0 ? '−' : '+')+Math.abs(v).toFixed(2); }
+function stdN1(v){ return String(Math.round(v * 10) / 10); }
+function stdPl(n, w){ return n+' '+w+(n === 1 ? '' : 's'); }
+const STD_BAND_WORD = {losing:'losing', flat:'flat', under:'under the band', pocket:'in the band', hot:'over the band'};
+function stdBulk(endKey){
+  const cnt = {};
+  (S.weights || []).forEach(function(x){
+    if(x && x.date && +x.lbs > 0 && x.date <= endKey){ const wk = weekKeyOf(x.date); cnt[wk] = (cnt[wk] || 0) + 1; }
+  });
+  const thisMon = weekKeyOf(endKey);
+  let lvl = 'ok', since = null, lossRun = 0, losses = 0, okRun = 0, fastRun = 0, fastSince = null, last = null, lastWk = null;
+  for(let i = STD_BW_WEEKS; i >= 1; i--){
+    const mon = mesoAddDays(thisMon, -7 * i), sun = mesoAddDays(mon, 6), day = mesoAddDays(mon, 7);
+    const w = {mon:mon, n:cnt[mon] || 0, prevN:cnt[mesoAddDays(mon, -7)] || 0, rate:null, held:false};
+    lastWk = w;
+    for(let j = 0; j < 7 && !w.held; j++) if(stdHeldBy('bulk', mesoAddDays(mon, j))) w.held = true;
+    if(w.held || w.n < STD_BW_MIN_WEIGHS || w.prevN < STD_BW_MIN_WEIGHS) continue;
+    const r = bulkRate(2, sun);
+    if(!r || !isFinite(r.rate)) continue;
+    w.rate = r.rate; last = w;
+    if(bulkBand(r.rate) === 'losing'){
+      // A second losing week before it has cleared is red, back to back or not: loss, +0.5, loss is still a month
+      // going nowhere (his Oct 12 and Oct 26 weeks). STD_BW_RED_IN_A_ROW asks for back to back instead.
+      okRun = 0; lossRun++; losses++;
+      const nx = ((STD_BW_RED_IN_A_ROW ? lossRun : losses) >= STD_BW_RED_LOSSES || lvl === 'red') ? 'red' : 'amber';
+      if(nx !== lvl){ lvl = nx; since = day; }
+    } else if(r.rate >= BULK_LO){
+      lossRun = 0; okRun++;
+      if(okRun >= 2){ losses = 0; if(lvl !== 'ok'){ lvl = 'ok'; since = day; } }
+    } else { lossRun = 0; okRun = 0; }
+    if(r.rate > BULK_FAST){ fastRun++; if(fastRun === 2) fastSince = day; } else { fastRun = 0; fastSince = null; }
+  }
+  const out = {lvl:lvl, since:since, why:'', consequence:'', clearsWhen:'', rate:last ? last.rate : null};
+  const judgedLast = !!(last && lastWk && last.mon === lastWk.mon);
+  const thin = !lastWk ? '' : lastWk.held ? 'Last week is held.'
+    : lastWk.n < STD_BW_MIN_WEIGHS ? 'Last week had '+stdPl(lastWk.n, 'weigh-in')+', and it takes '+STD_BW_MIN_WEIGHS+' to judge a week.'
+    : lastWk.prevN < STD_BW_MIN_WEIGHS ? 'The week before last had '+stdPl(lastWk.prevN, 'weigh-in')+', so last week has nothing to be judged against.'
+    : 'Not enough weeks of weigh-ins to judge yet.';
+  if(lvl === 'ok' && fastRun >= 2){
+    out.lvl = 'amber'; out.kind = 'fast'; out.since = fastSince;
+    out.why = 'Gaining fast: '+stdRate(last.rate)+' lb/week last week, the second week in a row over '+BULK_FAST+'.';
+    out.clearsWhen = 'A week at or under '+BULK_FAST+' lb/week.';
+  } else if(lvl === 'ok'){
+    out.since = null;
+    if(!judgedLast){ out.lvl = 'nodata'; out.why = thin; }
+    else out.why = 'Last week: '+stdRate(last.rate)+' lb/week ('+STD_BAND_WORD[bulkBand(last.rate)]+').';
+  } else {
+    out.kind = 'loss';
+    out.why = !judgedLast ? thin+' The level holds until a week can be judged.'
+      : bulkBand(last.rate) === 'losing' ? 'Lost weight last week ('+stdRate(last.rate)+' lb/week)'+
+          (lossRun >= 2 ? ': '+lossRun+' losing weeks in a row.' : losses >= 2 ? ': '+losses+' losing weeks since it last cleared.' : '.')
+      : 'Last week: '+stdRate(last.rate)+' lb/week ('+STD_BAND_WORD[bulkBand(last.rate)]+'), after '+stdPl(losses, 'losing week')+'. It has not cleared yet.';
+    out.clearsWhen = 'Two weeks in a row at or above '+BULK_LO+' lb/week'+(okRun ? ' ('+okRun+' of 2 so far)' : '')+'.';
+  }
+  if(last){
+    const wks = STD_HORIZON_DAYS / 7, on = mesoAddDays(endKey, STD_HORIZON_DAYS), r = last.rate;
+    if(r > BULK_FAST) out.consequence = 'At '+stdRate(r)+' lb/week that is '+stdN1(r * wks)+' lb by '+fmtDate(on)+', against '+stdN1(BULK_HI * wks)+' at the top of the band.';
+    else if(r < STD_BULK_GOAL) out.consequence = 'At '+stdRate(r)+' lb/week you are '+stdN1((STD_BULK_GOAL - r) * wks)+' lb behind the '+STD_BULK_GOAL+' lb/week line by '+fmtDate(on)+'.';
+    // Where his longer trend puts the scale that day, from the fan. anFanAt() is anchored on today, so only for today.
+    if(out.consequence && endKey === todayKey()){
+      try{ const a = anFanAt(bwProjectFor(STD_HORIZON_DAYS), on); if(a) out.consequence += ' Your longer trend reads '+a.p50+' lb that day ('+a.p10+'–'+a.p90+').'; }catch(e){}
+    }
+  }
+  return out;
+}
+/* What was scheduled on a past day: as logged that day (`scheduled`, since 2026-09-28), else as the schedule stands. */
+function svSchedOn(by, d){ const g = by[d], s = g && g[0] && g[0].scheduled; return s || scheduledDayFor(d); }
+function stdShow(endKey){
+  const by = {};
+  let first = null;
+  (S.logs || []).forEach(function(l){
+    if(!l || !l.date) return;
+    (by[l.date] = by[l.date] || []).push(l);
+    if(!first || l.date < first) first = l.date;
+  });
+  const out = {lvl:'nodata', since:null, why:'No session logged yet.', consequence:'', clearsWhen:'', misses:[], excused:[]};
+  if(!first || first >= endKey) return out;
+  const from = mesoAddDays(endKey, -(STD_WALK_DAYS + SV_DAYS)), a14 = mesoAddDays(endKey, -SV_DAYS), miss = [], excused = [];
+  let planned = 0, done = 0;
+  for(let d = (from > first ? from : first); d < endKey; d = mesoAddDays(d, 1)){
+    const k = svSchedOn(by, d);
+    if(k === 'REST') continue;
+    const got = !!by[d];
+    if(!got && !svJudgeable(d)) continue;              // no schedule it can be judged against
+    if(d >= a14){ planned++; if(got) done++; }
+    if(got) continue;
+    const ex = dayExcuse(d);
+    if(ex) excused.push({date:d, day:k, why:ex.label, auto:!!ex.auto}); else miss.push({date:d, day:k});
+  }
+  // Today is never a miss: he may still be about to train. So a day is judged from the days before it.
+  const facts = function(d){
+    const a = mesoAddDays(d, -SV_DAYS), b = mesoAddDays(d, -STD_SHOW_CLEAR_DAYS);
+    const m14 = miss.filter(function(x){ return x.date >= a && x.date < d; });
+    return {m14:m14, exit:!m14.some(function(x){ return x.date >= b; }), red:m14.length >= STD_SHOW_RED, amber:m14.length >= STD_SHOW_AMBER};
+  };
+  const w = stdWalk('show', endKey, facts), f = facts(endKey), n = f.m14.length;
+  const dd = function(x){ return fmtDate(x.date)+' ('+x.day+')'; };
+  out.lvl = w.lvl; out.since = w.lvl === 'ok' ? null : w.since;
+  out.misses = w.lvl === 'ok' ? [] : f.m14;
+  out.excused = excused.filter(function(x){ return x.date >= a14; });
+  if(w.lvl === 'ok') out.why = 'No scheduled day missed without a reason in the last '+STD_SHOW_CLEAR_DAYS+' days.';
+  else out.why = stdPl(n, 'scheduled day')+' missed with no reason in the last '+SV_DAYS+' days: '+f.m14.map(dd).join(', ')+'.'+
+    (w.lvl === 'red' && n < STD_SHOW_RED ? ' It went red at '+STD_SHOW_RED+' and stays red until a clean week.' : '');
+  if(out.excused.length) out.why += ' With a reason: '+out.excused.map(function(x){ return homeShortDate(x.date)+' ('+x.why+')'; }).join(', ')+'.';
+  if(planned){
+    out.consequence = 'You trained '+done+' of '+planned+' planned days in the last '+SV_DAYS+'.';
+    if(endKey === todayKey()){ try{ const s = streakStats(); out.consequence += ' Your run of sessions stands at '+s.current+(s.longest > s.current ? ' (best '+s.longest+')' : '')+'.'; }catch(e){} }
+  }
+  if(w.lvl !== 'ok' && n){
+    const newest = f.m14[n - 1].date;
+    out.clearsWhen = 'A full week with no unexplained miss: '+fmtDate(mesoAddDays(newest, STD_SHOW_CLEAR_DAYS + 1))+' at the earliest.';
+  }
+  return out;
+}
+/* The watch's main rows: the lifts the plateau chips lead with (predLifts()), in that order. The one list. */
+function pwMainRows(rows){
+  const by = {};
+  (rows || []).forEach(function(r){ if(r && r.lift) by[r.lift] = r; });
+  try{ return predLifts().filter(function(n){ return by[n]; }).map(function(n){ return by[n]; }); }catch(e){ return []; }
+}
+/* What is already being tried on a lift: an approved request that targets it (or an approved deload), until its
+   read date, or the running experiment on it. null when nothing is, and then a red Lifts row escalates. */
+function stdMotion(lift, endKey){
+  const x = expActive();
+  if(x && x.lift === lift && x.status === 'running'){
+    const T = expT(x);
+    let clean = 0;
+    try{ clean = expSessions(x).filter(function(z){ return z.state === 'clean'; }).length; }catch(e){}
+    return {what:'an experiment ('+((T && T.label) || x.template)+') started '+fmtDate(x.startedAt), read:'read after '+x.requiredSessions+' clean sessions ('+clean+' so far)'};
+  }
+  const props = (S.agents && Array.isArray(S.agents.proposals)) ? S.agents.proposals : [];
+  let best = null;
+  props.forEach(function(p){
+    if(!p || p.status !== 'approved' || !p.fix || !p.closed || p.closed > endKey) return;
+    const fx = p.fix, q = fx.payload || {};
+    const hit = fx.type === 'liftReset' ? q.name === lift : fx.type === 'setCount' ? q.exercise === lift
+      : fx.type === 'swapEx' ? (q.from === lift || q.to === lift) : fx.type === 'experiment' ? q.lift === lift : fx.type === 'deload';
+    if(!hit) return;
+    const readOn = mesoAddDays(p.closed, fx.type === 'deload' ? STD_MOTION_DELOAD_DAYS : STD_MOTION_DAYS);
+    if(readOn <= endKey) return;                       // its time is up: the row escalates again
+    if(!best || p.closed > best.on) best = {on:p.closed, readOn:readOn, fx:fx};
+  });
+  if(!best) return null;
+  let what = best.fx.type;
+  try{ what = agFixSummary(best.fx); }catch(e){}
+  return {what:what+', approved '+fmtDate(best.on), read:'read again '+fmtDate(best.readOn)};
+}
+/* The day a lift reached its level: the watch re-read as it stood before each of its newest clean sessions. Bounded,
+   and kept per lift and session count so the 30-second repaint does not redo it. Derived, never state. */
+let _stdSince = {};
+function stdLiftSince(r){
+  const key = [todayKey(), r.lift, r.lvl, r.lastDate, r.sessions, (S.logs || []).length].join('|');
+  if(Object.prototype.hasOwnProperty.call(_stdSince, key)) return _stdSince[key];
+  if(Object.keys(_stdSince).length > 24) _stdSince = {};
+  let since = r.lastDate;
+  const dates = (r.used || []).map(function(u){ return u.date; });
+  for(let i = 0; i < Math.min(dates.length, STD_LIFT_BACK); i++){
+    let before = null;
+    try{ before = pwAsOf(dates[i], function(){
+      const ctx = {topsets:[], flags:{}};
+      try{ ctx.topsets = predTopsets(); }catch(e){}
+      return plateauRisk(r.lift, ctx);
+    }); }catch(e){ before = null; }
+    since = dates[i];
+    if(!before || (PW_RANK[before.lvl] || 0) < (PW_RANK[r.lvl] || 0)) break;
+  }
+  _stdSince[key] = since;
+  return since;
+}
+function stdLifts(endKey){
+  const t = todayKey(), out = {lvl:'nodata', since:null, why:'No main lift has enough history yet.', consequence:'', clearsWhen:'', lifts:[]};
+  let rows = [];
+  // A past day reads the logs up to it; the watch's own clock stays today's, so the replay moves the clock instead.
+  try{ rows = endKey < t ? pwAsOf(mesoAddDays(endKey, 1), plateauWatch) : plateauWatch(); }catch(e){ rows = []; }
+  const main = pwMainRows(rows);
+  if(!main.length) return out;
+  const bad = main.filter(pwIssue).sort(function(a, b){ return PW_RANK[b.lvl] - PW_RANK[a.lvl]; });
+  if(!bad.length){ out.lvl = 'ok'; out.why = stdPl(main.length, 'main lift')+' on the plateau watch, none flagged.'; return out; }
+  out.lvl = bad[0].lvl === 'red' ? 'red' : 'amber';
+  const top = bad.filter(function(r){ return r.lvl === bad[0].lvl; });
+  out.lifts = bad.map(function(r){ return {lift:r.lift, lvl:r.lvl, word:r.word}; });
+  out.why = bad.slice(0, 3).map(function(r){ return r.lift+': '+r.word+((r.sig && r.sig[0] && r.sig[0].txt) ? ' ('+r.sig[0].txt+')' : ''); }).join('; ')+
+    (bad.length > 3 ? '; +'+(bad.length - 3)+' more' : '')+'.';
+  out.clearsWhen = 'The plateau watch reads '+(top.length === 1 ? top[0].lift : 'each of them')+' on track again.';
+  try{ out.since = top.map(function(r){ return endKey < t ? r.lastDate : stdLiftSince(r); }).sort()[0] || null; }catch(e){ out.since = top[0].lastDate || null; }
+  if(endKey === t){
+    try{
+      const on = mesoAddDays(t, STD_HORIZON_DAYS), res = anEnsembleFor(top[0].lift, STD_HORIZON_DAYS), a = anFanAt(res, on);
+      if(a) out.consequence = 'On its current line '+top[0].lift+' reads e1RM '+Math.round(a.p50)+' on '+fmtDate(on)+' (range '+Math.round(a.p10)+'–'+Math.round(a.p90)+'), against a best of '+Math.round(res.cur)+'.';
+    }catch(e){}
+  }
+  if(!out.consequence && top[0].pctPerWeek != null) out.consequence = top[0].lift+' is moving '+stdRate(top[0].pctPerWeek)+'% a week over its last clean sessions.';
+  if(out.lvl === 'red'){
+    const m = top.map(function(r){ return {lift:r.lift, m:stdMotion(r.lift, endKey)}; });
+    if(m.every(function(x){ return !!x.m; })) out.motion = m.map(function(x){ return x.lift+': '+x.m.what+', '+x.m.read; }).join('; ')+'.';
+  }
+  return out;
+}
+function stdIntake(endKey){
+  const byDate = {};
+  (S.nutrition || []).forEach(function(n){ if(n && n.date && +n.cals > 0) byDate[n.date] = n; });
+  // The 7 days BEFORE the day: today's intake is not finished. An unlogged day is unknown, never under.
+  const facts = function(d){
+    let n = 0, u = 0, on = 0, sum = 0, tsum = 0;
+    for(let i = STD_INTAKE_DAYS; i >= 1; i--){
+      const k = mesoAddDays(d, -i), r = byDate[k];
+      if(!r) continue;
+      const tg = calTargetOn(k), tier = nutTierCal(r.cals, tg);
+      n++; sum += +r.cals; tsum += tg;
+      if(STD_INTAKE_UNDER[tier]) u++; else on++;
+    }
+    const thin = n < STD_INTAKE_MIN;
+    return {n:n, u:u, on:on, short:tsum - sum, thin:thin, exit:on >= STD_INTAKE_CLEAR, red:!thin && u >= STD_INTAKE_RED, amber:!thin && u >= STD_INTAKE_AMBER};
+  };
+  const w = stdWalk('intake', endKey, facts), f = facts(endKey);
+  const out = {lvl:w.lvl, since:w.lvl === 'ok' ? null : w.since, why:'', consequence:'', clearsWhen:'', logged:f.n, under:f.u};
+  if(w.lvl === 'ok' && f.thin){
+    out.lvl = 'nodata';
+    out.why = 'Intake is logged on '+f.n+' of the last '+STD_INTAKE_DAYS+' days, and it takes '+STD_INTAKE_MIN+' to judge.';
+    return out;
+  }
+  if(w.lvl === 'ok') out.why = 'At or over target on '+f.on+' of '+stdPl(f.n, 'logged day')+' in the last '+STD_INTAKE_DAYS+'.';
+  else {
+    out.why = 'Calories under target on '+f.u+' of '+stdPl(f.n, 'logged day')+' in the last '+STD_INTAKE_DAYS+'.'+
+      (f.thin ? ' Too few days are logged to judge, so the level holds.' : '');
+    if(f.n && f.short > 0) out.consequence = 'Those '+stdPl(f.n, 'day')+' add up to '+Math.round(f.short)+' kcal under target, about '+Math.round(f.short / f.n)+' a day.';
+    out.clearsWhen = STD_INTAKE_CLEAR+' of the last '+STD_INTAKE_DAYS+' days at or over target.';
+  }
+  return out;
+}
+function stdRecovery(endKey){
+  const t = todayKey(), day = {};
+  const read = function(k){
+    if(Object.prototype.hasOwnProperty.call(day, k)) return day[k];
+    let v = null;
+    try{
+      const wr = whoopOn(k), b = recoveryBaseline(k);
+      // Today's reading counts once it is final: dated today is not the same as final (whoopProvisional()).
+      if(wr && typeof wr.recovery === 'number' && b && !(k === t && wr.provisional))
+        v = {rec:wr.recovery, base:b.recovery, under:(wr.recovery - b.recovery) <= -PC_REC_UNDER};
+    }catch(e){}
+    return (day[k] = v);
+  };
+  // Under days since the last STD_REC_CLEAR good days in a row: an old slump he has come back from is not counted again.
+  const facts = function(d){
+    const seq = [];
+    for(let i = STD_REC_DAYS - 1; i >= 0; i--){ const k = mesoAddDays(d, -i), v = read(k); if(v) seq.push(v); }
+    let run = 0, cnt = 0;
+    seq.forEach(function(x){ if(x.under){ cnt++; run = 0; } else if(++run >= STD_REC_CLEAR) cnt = 0; });
+    const thin = seq.length < STD_REC_MIN;
+    return {n:seq.length, u:cnt, base:seq.length ? seq[seq.length - 1].base : null, thin:thin,
+      exit:run >= STD_REC_CLEAR, red:!thin && cnt >= STD_REC_RED, amber:!thin && cnt >= STD_REC_AMBER};
+  };
+  const w = stdWalk('recovery', endKey, facts), f = facts(endKey);
+  const out = {lvl:w.lvl, since:w.lvl === 'ok' ? null : w.since, why:'', consequence:'', clearsWhen:'', days:f.n, under:f.u};
+  if(w.lvl === 'ok' && f.thin){
+    out.lvl = 'nodata';
+    out.why = f.n ? 'WHOOP recovery against your usual on '+f.n+' of the last '+STD_REC_DAYS+' days, and it takes '+STD_REC_MIN+' to judge.'
+                  : 'No WHOOP recovery to read against your usual in the last '+STD_REC_DAYS+' days.';
+    return out;
+  }
+  if(w.lvl === 'ok') out.why = 'Recovery within '+PC_REC_UNDER+' points of your usual'+(f.base != null ? ' ('+Math.round(f.base)+'%)' : '')+' on the days that count.';
+  else {
+    out.why = 'Recovery '+PC_REC_UNDER+' or more points under your usual'+(f.base != null ? ' ('+Math.round(f.base)+'%)' : '')+' on '+f.u+' of the last '+stdPl(f.n, 'day')+' with a reading.'+
+      (f.thin ? ' Too few readings to judge, so the level holds.' : '');
+    try{
+      const c = whoopResponse(), b = c.buckets;
+      if(c.calibrated && b.below.prRate != null && b.normal.prRate != null)
+        out.consequence = 'On your days this far under, a PR came in '+Math.round(b.below.prRate * 100)+'% of sessions, against '+
+          Math.round(b.normal.prRate * 100)+'% at your usual ('+b.below.n+' and '+b.normal.n+' sessions). What happened, not why.';
+    }catch(e){}
+    out.clearsWhen = STD_REC_CLEAR+' days in a row back within '+PC_REC_UNDER+' points of your usual.';
+  }
+  return out;
+}
+/* THE read: one row per pillar, {pillar, label, lvl, since, why, consequence, clearsWhen} and what each pillar adds.
+   Pure. A pillar that throws reads "nodata": a broken read never shows as a red, and never as a clean bill either. */
+const STD_READ = {bulk:stdBulk, show:stdShow, lifts:stdLifts, intake:stdIntake, recovery:stdRecovery};
+function stdState(endKey){
+  const t = endKey || todayKey();
+  return STD_PILLARS.map(function(p){
+    let r;
+    try{ r = STD_READ[p](t); }catch(e){ r = {lvl:'nodata', since:null, why:'This could not be read.', consequence:'', clearsWhen:''}; }
+    r.pillar = p; r.label = STD_LABEL[p];
+    let h = null;
+    try{ h = stdHeldBy(p, t); }catch(e){ h = null; }
+    if(h){ r.was = r.lvl; r.lvl = 'held'; r.held = h; r.motion = ''; r.clearsWhen = 'Until '+fmtDate(h.until)+(h.why ? ' ('+h.why+')' : '')+'.'; }
+    if(p !== 'show' && STD_RANK[r.lvl] > 0){ const n = stdNoteFor(p, t); if(n) r.note = {date:n.date, why:DR_WHY[n.why]}; }
+    return r;
+  });
+}
+function stdOn(){ return ovOn('standards'); }
+function stdFlagged(rows){ return (rows || []).filter(function(r){ return STD_RANK[r.lvl] > 0; }); }
+/* Strict mode: a red with nothing being tried on it. A red with a plan in motion is still red, but does not escalate. */
+function stdStrictRows(rows){ return (rows || []).filter(function(r){ return r.lvl === 'red' && !r.motion; }); }
+function stdRowLine(r){
+  return r.label+': '+(r.lvl === 'red' ? 'RED' : 'AMBER')+(r.since ? ' since '+fmtDate(r.since) : '')+'. '+r.why+(r.consequence ? ' '+r.consequence : '')+
+    (r.motion ? ' PLAN IN MOTION: '+r.motion+' Do not escalate this one; say what is being tried and when it is read again.' : '')+
+    (r.clearsWhen ? ' Clears when: '+r.clearsWhen : '')+(r.note ? ' His reason, '+fmtDate(r.note.date)+': '+r.note.why+'.' : '');
+}
+/* For every agent, nightly and in chat. Empty when nothing is amber or red, so a quiet prompt is byte-identical. */
+function stdContextLine(){
+  if(!stdOn()) return '';
+  let bad; try{ bad = stdFlagged(stdState()); }catch(e){ return ''; }
+  if(!bad.length) return '';
+  return ('\nSTANDARDS (the app’s own verdicts from his data. They are facts: only the exit condition clears one, and you never soften or dismiss one):\n- '+
+    bad.map(stdRowLine).join('\n- ')).slice(0, STD_CTX_MAX)+'\n';
+}
+/* One line beside the agent's voice while a Standard is red with nothing being tried. A hint; the card is the guarantee. */
+function stdStrictLine(){
+  if(!stdOn()) return '';
+  let n = 0; try{ n = stdStrictRows(stdState()).length; }catch(e){ n = 0; }
+  if(!n) return '';
+  return ' STRICT MODE: a Standard is red (see STANDARDS). Be direct about it: name the Standard and the consequence the app computed, with no softening and no "but overall". Quote only the numbers given there.';
+}
+/* For the morning brief: the Standards that turned red since the last brief. Empty otherwise. */
+/* Which red Standards the next brief leads with. Each brief records the Standards that were red when it was written
+   (brief.std) and the ones it led with (brief.stdLed), so "turned red since the last brief" is asked of the brief
+   itself: a level can turn on a date rule with no new session, and a `since` date would miss that. A rewrite of
+   today's brief leads with what this morning's led with. A brief from before this build carries no list (gate on the
+   field being present), and then the day the level began decides. */
+function stdBriefRows(){
+  const t = todayKey(), b = agBrief(), strict = stdStrictRows(stdState());
+  if(b && Array.isArray(b.std)){
+    const led = (b.date === t && Array.isArray(b.stdLed)) ? b.stdLed : [];
+    return strict.filter(function(r){ return b.std.indexOf(r.pillar) < 0 || led.indexOf(r.pillar) >= 0; });
+  }
+  const after = (b && b.date && b.date < t) ? b.date : mesoAddDays(t, -1);
+  return strict.filter(function(r){ return r.since && r.since > after; });
+}
+/* What agRunBrief() reads BEFORE the request and stores on the brief it writes. null with the switch off. */
+function stdBriefSnap(){
+  if(!stdOn()) return null;
+  try{ return {red:stdStrictRows(stdState()).map(function(r){ return r.pillar; }), led:stdBriefRows().map(function(r){ return r.pillar; })}; }
+  catch(e){ return null; }
+}
+function stdBriefLine(){
+  if(!stdOn()) return '';
+  try{
+    const rows = stdBriefRows();
+    if(!rows.length) return '';
+    return '\nA STANDARD TURNED RED SINCE YOUR LAST BRIEF. Lead the brief with it, before recovery: one plain sentence naming the Standard and its consequence as computed here, then the usual brief.\n- '+
+      rows.map(stdRowLine).join('\n- ').slice(0, STD_CTX_MAX)+'\n';
+  }catch(e){ return ''; }
+}
+/* The bell. A red with nothing being tried cannot be dismissed (sticky); the id carries the level and the day it
+   began, so an amber he dismissed comes back only as a new event. */
+let _stdPass = null;   // the rows, handed down ONE synchronous repaint of the bell so it reads the Standards once
+function stdNotifItems(){
+  if(!stdOn()) return [];
+  return stdFlagged(_stdPass || stdState()).map(function(r){
+    return {id:'std:'+r.pillar+':'+r.lvl+':'+(r.since || ''), tone:STD_COL[r.lvl], title:STD_ICON[r.lvl]+' '+r.label+' — '+STD_WORD[r.lvl].toLowerCase(),
+      body:r.why+(r.consequence ? ' '+r.consequence : '')+(r.motion ? ' Plan in motion: '+r.motion : '')+(r.clearsWhen ? ' Clears when: '+r.clearsWhen : ''),
+      when:null, go:'stdGo()', sticky:r.lvl === 'red' && !r.motion};
+  });
+}
+/* ---- on screen ---- */
+let stdOpen = false;   // "the rest" opened. Module-scoped: Today is regenerated every 30 s and must not close it.
+function stdToggle(){ stdOpen = !stdOpen; try{ renderHome(); }catch(e){} }
+function stdGo(){
+  try{ setMode('review'); showMainTab('home'); }catch(e){}
+  try{ const el = document.getElementById('stdCard'); if(el) smoothScroll(el, 'start'); }catch(e){}
+}
+function stdReasonTap(el){
+  if(!el || !el.getAttribute) return;
+  if(!stdReasonSet(el.getAttribute('data-p'), el.getAttribute('data-d'), el.getAttribute('data-w') || '')) return;
+  try{ renderHome(); }catch(e){}
+  try{ renderNotif(); }catch(e){}
+}
+function stdReasonBtns(pillar, date, offer){
+  return offer.map(function(k){
+    return '<button class="std-rb" data-p="'+esc(pillar)+'" data-d="'+esc(date)+'" data-w="'+esc(k)+'" onclick="stdReasonTap(this)">'+esc(DR_WHY[k].charAt(0).toUpperCase()+DR_WHY[k].slice(1))+'</button>';
+  }).join('');
+}
+function stdRowHTML(r){
+  const col = STD_COL[r.lvl], bad = STD_RANK[r.lvl] > 0;
+  let h = '<div class="std-row '+r.lvl+'"><div class="std-h"><span class="std-n">'+esc(r.label)+'</span>'+
+    '<span class="std-w" style="color:'+col+'"><b aria-hidden="true">'+STD_ICON[r.lvl]+'</b> '+esc(STD_WORD[r.lvl])+
+    (bad && r.since ? ' · since '+esc(homeShortDate(r.since)) : '')+'</span></div>';
+  if(r.why) h += '<p class="std-p">'+esc(r.why)+'</p>';
+  if(r.consequence) h += '<p class="std-p c">'+esc(r.consequence)+'</p>';
+  if(r.motion) h += '<p class="std-p c"><span class="std-k">Plan in motion</span> '+esc(r.motion)+'</p>';
+  if(r.clearsWhen) h += '<p class="std-p c"><span class="std-k">'+(r.lvl === 'held' ? 'Held' : 'Clears when')+'</span> '+esc(r.clearsWhen)+'</p>';
+  if(r.pillar === 'show'){
+    // A reason is one tap per missed day, and it is the only thing here that changes a level: a day with a reason was not a miss.
+    (r.misses || []).forEach(function(m){
+      h += '<div class="std-miss"><span class="std-k">'+esc(fmtDate(m.date))+' · '+esc(m.day)+'</span>'+stdReasonBtns('show', m.date, DR_OFFER_SHOW)+'</div>';
+    });
+    (r.excused || []).forEach(function(m){
+      h += '<div class="std-miss"><span class="std-k">'+esc(fmtDate(m.date))+' · '+esc(m.why)+'</span>'+
+        (m.auto ? '' : '<button class="std-rb" data-p="show" data-d="'+esc(m.date)+'" data-w="" onclick="stdReasonTap(this)">Undo</button>')+'</div>';
+    });
+  } else if(bad){
+    // Any other pillar takes a reason as a note. It rides beside the row and to the agents; it never clears the level.
+    h += r.note
+      ? '<div class="std-miss"><span class="std-k">Your reason, '+esc(homeShortDate(r.note.date))+': '+esc(r.note.why)+'</span>'+
+        '<button class="std-rb" data-p="'+esc(r.pillar)+'" data-d="'+esc(r.note.date)+'" data-w="" onclick="stdReasonTap(this)">Undo</button></div>'
+      : '<div class="std-miss"><span class="std-k">Add a reason</span>'+stdReasonBtns(r.pillar, todayKey(), DR_OFFER_NOTE)+'</div>';
+  }
+  return h+'</div>';
+}
+/* The Standards card, at the top of Today. Amber and red rows are always open: a fold must never hide a failure, and
+   there is no way to dismiss one. The rest sit behind one row of chips. */
+function stdCardHTML(given){
+  if(!stdOn()) return '';
+  let rows; try{ rows = given || stdState(); }catch(e){ console.warn('standards failed', e); return ''; }
+  const bad = stdFlagged(rows).sort(function(a, b){ return STD_RANK[b.lvl] - STD_RANK[a.lvl]; });
+  const rest = rows.filter(function(r){ return !(STD_RANK[r.lvl] > 0); });
+  const cnt = {};
+  rows.forEach(function(r){ cnt[r.lvl] = (cnt[r.lvl] || 0) + 1; });
+  const sum = ['red', 'amber', 'ok', 'held', 'nodata'].filter(function(k){ return cnt[k]; })
+    .map(function(k){ return cnt[k]+' '+STD_WORD[k].toLowerCase(); }).join(' · ');
+  let h = '<div class="std" id="stdCard"><div class="cc-head"><span class="dash-sec">Standards</span><span class="std-sum">'+esc(sum)+'</span></div>';
+  if(bad.length) h += '<div class="std-rows">'+bad.map(stdRowHTML).join('')+'</div>';
+  if(rest.length){
+    h += '<button class="std-chips" onclick="stdToggle()" aria-expanded="'+(stdOpen ? 'true' : 'false')+'">'+rest.map(function(r){
+      return '<span class="std-chip"><b aria-hidden="true" style="color:'+STD_COL[r.lvl]+'">'+STD_ICON[r.lvl]+'</b>'+esc(r.label)+
+        (r.lvl === 'ok' ? '' : '<i>'+esc(STD_WORD[r.lvl].toLowerCase())+'</i>')+'</span>';
+    }).join('')+'<span class="std-more">'+(stdOpen ? 'Hide' : 'Details')+'</span></button>';
+    if(stdOpen) h += '<div class="std-rows">'+rest.map(stdRowHTML).join('')+'</div>';
+  }
+  return h+'</div>';
+}
+/* The mark in the top bar while a Standard is red with nothing being tried: an icon and a word, never colour alone. */
+function stdMarkTick(given){
+  const el = document.getElementById('stdMark');
+  if(!el) return;
+  let rows = [];
+  try{ if(stdOn()) rows = stdStrictRows(given || _stdPass || stdState()); }catch(e){ rows = []; }
+  if(!rows.length){ if(!el.hidden){ el.hidden = true; el.innerHTML = ''; } return; }
+  const h = '<b aria-hidden="true">'+STD_ICON.red+'</b><span>'+(rows.length > 1 ? rows.length+' red' : 'Red')+'</span>';
+  if(el.innerHTML !== h) el.innerHTML = h;
+  el.setAttribute('aria-label', 'Off standard: '+rows.map(function(r){ return r.label; }).join(', ')+'. Open Today.');
+  el.hidden = false;
 }
 function agSharedBrief(){
   return 'You are the agent team inside Iron Hub, a training app built by and for Mark (18, lean bulking, '+
@@ -25121,7 +25718,10 @@ function agBaseContext(id){
   let lref = '', desk = '';
   try{ lref = agLiftRefLine(id); }catch(e){ lref = ''; }
   try{ desk = agDeskLine(id).txt; }catch(e){ desk = ''; }
-  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+intel+evl+lref+desk+
+  // The Standards (V5 stage 1) go to all four, straight after the calendar. Empty unless one is amber or red.
+  let std = '';
+  try{ std = stdContextLine(); }catch(e){ std = ''; }
+  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+std+intel+evl+lref+desk+
     ((id==='delta' || id==='zulu') ? agFeelLine()+agPracticeLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+fcTrackLine(id)+qaContextLine(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext()+pdContextLine(pdTargets()) : '');
 }
@@ -25618,7 +26218,7 @@ function agFuelToolNote(){
 const AG_NIGHT_EFFORT = {charlie:'high', delta:'medium', echo:'high'};
 /* Run ONE specialist. Returns {summary, proposals} or null if it failed. */
 async function agRunSpecialist(id, manual){
-  const sys = agSharedBrief()+'\n'+AG_ROLE_BRIEF[id]+'\n'+AG_VOICE[id]+'\n'+agToolNote()+(id==='echo' ? agFuelToolNote() : '')+agJsonSpec(id)+agBaseContext(id);
+  const sys = agSharedBrief()+'\n'+AG_ROLE_BRIEF[id]+'\n'+AG_VOICE[id]+stdStrictLine()+'\n'+agToolNote()+(id==='echo' ? agFuelToolNote() : '')+agJsonSpec(id)+agBaseContext(id);
   // Which agents it may answer tonight, taken before the await like the debrief's session.
   const rtPeers = agPeersOffered(id);
   // Which session the debrief (if asked for) is about -- an id, taken before the await, so a sync
@@ -25967,7 +26567,7 @@ async function agRunLead(digest, manual, okIds, newReqs){
     'and what each of them actually said is below. Your job is '+
     'synthesis and conflict-spotting, not repeating them. You rarely propose a fix of your own; '+
     'when two of them pull in opposite directions, say so and give him the options.'+
-    '\n'+AG_VOICE.zulu+
+    '\n'+AG_VOICE.zulu+stdStrictLine()+
     agToolNote()+
     '\n'+'Respond with ONLY valid JSON:'+'\n'+
     '{"summary":"...","proposals":[]}'+'\n'+
@@ -26093,9 +26693,11 @@ const AG_BRIEF_LATEST = 18;
    score that has actually landed. That is a fifth call a day; it runs at effort 'medium'
    rather than the cycle's 'high' because it is summarising findings the specialists already
    did the thinking for, not deriving them. */
-function agSetBrief(text, hadWhoop, snap){
+function agSetBrief(text, hadWhoop, snap, std){
   const a = agState();
   a.brief = {text:text, at:new Date().toISOString(), date:todayKey(), hadWhoop:!!hadWhoop};
+  // The Standards that were red when it was written, and the ones it led with (stdBriefRows() asks these next time).
+  if(std && Array.isArray(std.red)){ a.brief.std = std.red.slice(); if(std.led && std.led.length) a.brief.stdLed = std.led.slice(); }
   // The numbers it was written WITH, so a later rescore can be recognised (briefWhoopDrift).
   if(snap){
     if(typeof snap.score === 'number') a.brief.whoopScore = snap.score;
@@ -26180,7 +26782,7 @@ async function agSendChat(id){
     const sys = agSharedBrief()+
       '\nYou are '+AGENTS[id].name+'. Answer only within your own domain ('+AGENTS[id].role+'). '+
       'If the question belongs to another agent, say which one and give a short answer anyway if you can. '+
-      'Anything outside your area belongs to another agent: say which. '+AG_VOICE[id]+'\n'+chatVoiceRules()+chatActionRules(id)+
+      'Anything outside your area belongs to another agent: say which. '+AG_VOICE[id]+stdStrictLine()+'\n'+chatVoiceRules()+chatActionRules(id)+
       agToolNote()+(isEcho ? agFuelToolNote() : '')+'\n'+chatContext(id);
     const msgs = chatHistoryMsgs(a.chats[id], 14);
     // Read tools, plus this agent's own action cards (coachToolDefs(id)). A card is only staged here; it is
@@ -26914,8 +27516,7 @@ function pwChipsHTML(rows){
   if(!rows || !rows.length) return '';
   const by = {};
   rows.forEach(function(r){ by[r.lift] = r; });
-  let main = [];
-  try{ main = predLifts().filter(function(n){ return by[n]; }).map(function(n){ return by[n]; }); }catch(e){ main = []; }
+  let main = pwMainRows(rows);   // the one list of main lifts: the Standards read the same one
   if(!main.length) main = rows.slice(0, 6);
   // A note's lifts are neutral rows, so without its own chip they would vanish from Today (Dips and JM Press were the
   // two lifts the old watch missed, 2026-11-08).
@@ -27173,6 +27774,9 @@ function renderHome(){
   else if(rd) why = 'Readiness '+rd.label+(rd.source === 'WHOOP' ? ', from WHOOP.' : ', from your check-in.');
   else why = 'No readiness reading yet — you’ll be asked when you start a session.';
   h += '<p class="cc-why">'+esc(why)+'</p></div><div class="cc-main">';
+  // The Standards lead the page (V5 stage 1). Computed here and nowhere stored: Today still only reads.
+  let stdNow = null;   // read once for the card and the top-bar mark
+  try{ if(stdOn()){ stdNow = stdState(); h += stdCardHTML(stdNow); } }catch(e){ console.warn('standards card failed', e); }
   try{ h += waLaunchHTML(); }catch(e){ console.warn('winter arc launch card failed', e); }
 
   /* -- what the day holds -- */
@@ -27265,6 +27869,7 @@ function renderHome(){
     {pref:'home.details', summary:'tiles · today’s call · '+(waVisible ? '' : 'Winter Arc · ')+'fuel timing · jump to', cls:'grp'});
   h += '</div></div>';
   el.innerHTML = h;
+  try{ stdMarkTick(stdNow); }catch(e){}
 }
 
 /* ---- notification centre ----
@@ -27307,6 +27912,8 @@ function notifItems(){
   }catch(e){}
   // V4 stage 5: what the plateau watch and the forecasts found. Worked out here, never stored.
   try{ pwNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
+  // V5 stage 1: a Standard that is amber or red. Worked out here, never stored.
+  try{ stdNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   // Forecasts that settled, and a big picture waiting on his rating (2026-11-03).
   try{ fcNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   // A pantry update from the family drop box, until he applies or ignores it.
@@ -27340,7 +27947,8 @@ function notifClearedIds(){
 }
 function notifVisible(){
   const cleared = notifClearedIds();
-  return notifItems().filter(function(i){ return cleared.indexOf(i.id) < 0; });
+  // A sticky item (a red Standard with nothing being tried) cannot be cleared: only its exit condition removes it.
+  return notifItems().filter(function(i){ return i.sticky || cleared.indexOf(i.id) < 0; });
 }
 /* Clearing is a real user action -- it should not resurface on his other device just because
    this one has not synced yet -- so it touches+pushes like any other entry point. */
@@ -27378,10 +27986,17 @@ function notifCount(){
   return notifVisible().length;
 }
 function renderNotif(){
+  // One read of the Standards for this whole repaint (the mark, the count, the list). Cleared in finally: it must
+  // never outlive the repaint, or a later read would be stale.
+  try{ _stdPass = stdOn() ? stdState() : null; }catch(e){ _stdPass = null; }
+  try{ renderNotifDraw(); }finally{ _stdPass = null; }
+}
+function renderNotifDraw(){
   const btn = document.getElementById('notifBtn');
   const badge = document.getElementById('notifBadge');
   const panel = document.getElementById('notifPanel');
   if(!btn || !panel) return;
+  try{ stdMarkTick(); }catch(e){}
   const n = notifCount();
   if(badge){
     badge.textContent = n > 9 ? '9+' : String(n);
@@ -27397,7 +28012,7 @@ function renderNotif(){
   h += items.length ? items.map(function(i){
         return '<div class="notif-item" style="border-left-color:'+i.tone+'"'+
           (i.go?' onclick="notifToggle();'+i.go+'" style="cursor:pointer;border-left-color:'+i.tone+'"':'')+'>'+
-          '<button class="notif-x" aria-label="Dismiss" onclick="event.stopPropagation();notifDismiss(\''+jsq(i.id)+'\')">\u00d7</button>'+
+          (i.sticky ? '' : '<button class="notif-x" aria-label="Dismiss" onclick="event.stopPropagation();notifDismiss(\''+jsq(i.id)+'\')">\u00d7</button>')+
           '<div class="notif-t">'+esc(i.title)+'</div>'+
           '<div class="notif-b">'+esc(i.body)+'</div>'+
           (i.when?'<div class="notif-when">'+esc(agTimeAgo(i.when))+'</div>':'')+'</div>';
@@ -27838,7 +28453,7 @@ async function agWriteBrief(manual){
   const sys = agSharedBrief()+
     '\n'+'You are ZULU, writing Mark\u2019s Daily Brief for this morning. He is reading this '+
     'now, with the day in front of him.'+
-    '\n'+AG_VOICE.zulu+
+    '\n'+AG_VOICE.zulu+stdStrictLine()+
     '\n'+'Respond with ONLY valid JSON:'+'\n'+
     '{"brief":"..."}'+'\n'+
     'brief = 2-4 short sentences: how recovered he is THIS MORNING, what is scheduled today, and '+
@@ -27854,6 +28469,9 @@ async function agWriteBrief(manual){
           'not quote an older one as though it were this morning\u2019s \u2014 write the brief without it.'+'\n')+
     '\n'+'TODAY IS: '+(sc==='REST'?'a REST day':sc+' \u2014 '+dayName(sc))+
     '\n'+'WAITING ON HIS APPROVAL: '+(pend.length?pend.join('; '):'nothing')+
+    // V5 stage 1: a Standard that turned red since the last brief leads this one. Read before the request, like the
+    // rest of the prompt; empty on every other morning, so the prompt is unchanged. No extra call.
+    stdBriefLine()+
     '\n'+'WHAT THE SPECIALISTS FOUND LAST NIGHT:'+'\n'+(digest.length?digest.join('\n'):'(no cycle ran)')+
     agBriefDebriefLine()+
     '\n'+'\n'+agBaseContext('zulu');
@@ -27901,6 +28519,8 @@ async function agRunBrief(manual){
       sleep: (S.whoop.sleep && S.whoop.sleep.date === todayKey() && typeof S.whoop.sleep.hours === 'number') ? S.whoop.sleep.hours : null,
       rescored: !!(prevToday && (prevToday.hadWhoop || prevToday.rescored))
     } : null;
+    // And the Standards it is written with, for the same reason: taken before the await, stored after it.
+    const stdSnap = stdBriefSnap();
     const text = await agWriteBrief(manual);
     // Re-resolve AFTER the await. applyPulled() may have replaced S while the request was in
     // flight, and agSetBrief() resolves through agState() internally, so this is safe -- but
@@ -27912,7 +28532,7 @@ async function agRunBrief(manual){
     if(text && !manual && landed){
       agLog('zulu','Another device had already written this morning\u2019s brief by the time mine was ready \u2014 I kept theirs.');
     }
-    else if(text){ agSetBrief(text, hadWhoop, snap); agLog('zulu','Wrote this morning\u2019s brief.'); }
+    else if(text){ agSetBrief(text, hadWhoop, snap, stdSnap); agLog('zulu','Wrote this morning\u2019s brief.'); }
     else agLog('zulu','I couldn\u2019t write this morning\u2019s brief (unreadable reply). Nothing else changed.');
   }catch(e){
     agLog('zulu','I couldn\u2019t write this morning\u2019s brief ('+e.message+'). Nothing else changed.');

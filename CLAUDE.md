@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 4228 assertions, about 1 m 45 s. Must be
+**Test suite:** `node test_agents.js`. Currently 4326 assertions, about 1 m 45 s. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -157,7 +157,8 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | Today's call | `dayCall()`, `callTier()`, `recoveryBaseline()`, `whoopResponse()`, `fatigueIndex()` |
 | Live session | `renderLive()`, `liveSetToLog()`, `endLiveSession()`, `sessionMods()`, `liftLoad()` |
 | Bodyweight and intake | `bulkRate()`, `bulkBand()`, `calTarget()`, `nutTierCal()`, `nutTierPro()` |
-| Plateau watch | `plateauRisk()` (one row per lift), `pwIssue()`, `plateauCauses()`, `pwAsOf()` |
+| Plateau watch | `plateauRisk()` (one row per lift), `pwIssue()`, `plateauCauses()`, `pwAsOf()`, `pwMainRows()` |
+| Standards | `stdState()` (one row per pillar), `stdWalk()`, `stdHeldBy()`, `dayExcuse()`, `svJudgeable()`, `stdMotion()`, `stdCardHTML()`, `stdContextLine()` |
 | Forecasts and records | `anFanProject()` / `anFanAt()`, `predTick()` / `predResolve()`, `fcRun()` / `fcResolve()` |
 | Agents, nightly | `agRunAll()`, `agBaseContext()`, `intelSummary()`, `svSheet()`, `agIngest()`, `agLog()` |
 | Agents, the queue | `agValidateFix()` = `agValidateFixShape()` then `agConflict()`, `agApprove()`, `agApplyFix()` |
@@ -416,13 +417,33 @@ motion", and a fast-gain amber.
 
 **Rules every stage follows**
 - New history is a `SYNC_HISTORY` collection with immutable rows and its own key prefix. Taken:
-  `w n r l p x b m q f v k $ g`.
+  `w n r l p x b m q f v k $ g y`.
 - Anything an analyst shows is worked out when read, never stored and never posted to the Desk.
 - A stage ends with: acorn, the suite at 0 failed, a mutant per new rule, `scripts/clock_run.js`,
   the build marker, the copy to `index.html`, this file and `UPDATE_LOG.md`, a commit and a
   `v5-stage-N` tag.
 
+**Stage 1, Standards** (`ovOn('standards')`, free)
+- **The Standards are computed when read, on the device, free, and ONE result**: `stdState()`. The card, the top-bar
+  mark, the bell, the agents' line and the brief's lead all read it. Never stored, never model-written; a consequence
+  line is arithmetic on his numbers.
+- **A level is carried, not windowed** (`stdWalk()`): exit clears, an entry raises, anything else holds. Only its exit
+  condition clears a red, and there is no dismiss.
+- **No data is never red, and never a clean bill.** Thin data, or a pillar that throws, reads `nodata`.
+- **Bulk pace is expressed through `bulkRate(2, sunday)` and `bulkBand()`, with no new band.** Completed weeks only.
+- **A reason is his tap and an immutable row** (`S.dayReasons`, `stdReasonSet()`, a `save()`). For Showing up the day
+  was not a miss; on any other pillar it is a note and never changes a level.
+- `dayExcuse()` is the one answer to "was that a miss" for the Standards, `svSheet()` and the streak. **A day before
+  the cycle's anchor cannot be a miss** (`svJudgeable()`). **A day trained on a rest day within two days was made up.**
+- **Lifts reads the watch's main rows** (`pwMainRows()`, the chips' own list). **Plan in motion stops the escalation,
+  not the red** (`stdMotion()`, `stdStrictRows()`).
+- A quiet Standard adds nothing to any prompt (`stdContextLine()`, `stdStrictLine()`, `stdBriefLine()` are empty).
+- **The brief records what was red when it was written** (`brief.std`, read before the await). Gate on the field.
+- **Today reads the Standards once a repaint**; `_stdPass` never outlives `renderNotif()`.
+- The thresholds are named constants (`STD_*`); `stdHeldBy()` is the hook holds fill.
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
-| 1 Standards · 2 Holds · 3 Evidence · 4 Analysts · 5 Selector · 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |
+| 1 Standards: five computed pillars, reasons, plan in motion | built 2026-11-12 (`v5b`) |
+| 2 Holds · 3 Evidence · 4 Analysts · 5 Selector · 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |
