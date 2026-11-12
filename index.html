@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-12-v5c">
+<meta name="ironhub-build" content="2026-11-12-v5d">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2095,6 +2095,14 @@
   .wp-tile{display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 2px; border-radius:10px; background:var(--panel2); min-width:0;}
   .wp-tile.rest{background:none; box-shadow:inset 0 0 0 1px var(--line2);}
   .wp-tile.on{background:color-mix(in srgb, var(--amber) 16%, transparent);}
+  /* Evidence (V5 stage 3): the source line on a request, a Desk post or a trip plan. */
+  .ev-cite{display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px;}
+  .ev-none{font-size:11px; color:var(--dim);}
+  .ev-chip{font-family:var(--mono); font-size:11px; padding:9px 11px; border:1px solid var(--line2); border-radius:999px; color:var(--text); text-decoration:none; white-space:nowrap;}
+  .ev-more{background:none; border:none; color:var(--muted); font-size:11px; text-decoration:underline; cursor:pointer; padding:10px 6px; font-family:var(--body);}
+  .ev-body{flex:1 1 100%; min-width:0; padding:8px 10px; background:var(--panel2); border-radius:var(--r-ctl);}
+  .ev-body p + p{margin-top:4px;}
+  .ev-check{margin-top:12px; padding-top:12px; border-top:1px solid var(--line);}
   /* Hold blocks (V5 stage 2): the Today banner and the Time away card. */
   .hold-today{border-left:3px solid var(--muted);}
   .hold-head{display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap;}
@@ -2490,7 +2498,9 @@ const REMOVED_STATE_KEYS = ['dateOverrides','tempStrengthSplit','tempStrengthWin
 const OV = {};                 // key -> {label, paid:boolean, note}. Never register a key called "at".
 const OV_PAID_GAP_DAYS = 7;    // his rule (2026-10-04): paid pieces go on one at a time, a week apart on the ledger
 function ovHas(k){ return Object.prototype.hasOwnProperty.call(OV, k) && k !== 'at'; }
-function ovDefault(k){ return ovHas(k) && !OV[k].paid; }
+/* `hold:true` on a free row (V5 stage 3): free, but OFF until he turns it on. For a part that costs nothing and still
+   should not start by itself, because he has to look at it first (the Evidence Library is guidance he spot-checks). */
+function ovDefault(k){ return ovHas(k) && !OV[k].paid && !OV[k].hold; }
 function ovOn(k){
   if(!ovHas(k)) return false;
   const o = S.overhaul;
@@ -2541,6 +2551,10 @@ function ovToggle(el){
       ' keeps them apart on the spend ledger.\n\n' : '';
     if(!confirm(early+'Turn on '+OV[k].label+'? '+(OV[k].note || 'It adds to the monthly API spend.'))){ el.checked = false; return; }
   }
+  // A held free part asks too: it is off because he was meant to look at something first.
+  if(on && !OV[k].paid && OV[k].hold){
+    if(!confirm('Turn on '+OV[k].label+'? '+(OV[k].note || ''))){ el.checked = false; return; }
+  }
   ovSet(k, on);
   try{ renderSettings(); }catch(e){}
   try{ renderNotif(); }catch(e){}   // the bell and the top-bar mark belong to switches too: off means off now, not at the next repaint
@@ -2549,15 +2563,16 @@ function ovCardHTML(){
   const keys = Object.keys(OV).filter(ovHas);
   if(!keys.length) return '';
   const at = (S.overhaul && typeof S.overhaul === 'object' && S.overhaul.at) || {};
-  return '<h2>V5 switches</h2><div class="card"><p class="small">Each part of V5 can be turned off here. Free parts are on. '+
-    'Paid parts stay off until you turn them on, one a week.</p>'+
+  return '<h2>V5 switches</h2><div class="card"><p class="small">Each part of V5 can be turned off here. Free parts are on, except one marked '+
+    '“waiting on you”. Paid parts stay off until you turn them on, one a week.</p>'+
     keys.map(function(k){
       const d = OV[k], on = ovOn(k);
       return '<label style="display:flex;align-items:flex-start;gap:10px;margin-top:12px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">'+
         '<input type="checkbox" style="width:auto;margin-top:2px" data-ov="'+esc(k)+'" '+(on ? 'checked' : '')+' onchange="ovToggle(this)">'+
         '<span><b>'+esc(d.label || k)+'</b> <span class="pill" style="color:var(--'+(d.paid ? 'warn' : 'good')+')">'+(d.paid ? 'paid' : 'free')+'</span>'+
+        (!d.paid && d.hold && !on ? ' <span class="pill" style="color:var(--warn)">waiting on you</span>' : '')+
         '<br><span class="small">'+esc(d.note || '')+(d.paid && on && at[k] ? ' On since '+esc(at[k])+'.' : '')+'</span></span></label>';
-    }).join('')+'</div>';
+    }).join('')+'</div>'+((typeof evCheckHTML === 'function') ? evCheckHTML() : '');
 }
 /* ---- one-time data corrections ----
    A correction to logged history that he asked for. Each runs ONCE, marked in S.dataFixes, which syncs
@@ -3596,6 +3611,225 @@ function musclesFor(ex){
   return {p:[],s:[]};
 }
 const MUSCLE_GROUPS = ['Chest','Back','Shoulders','Biceps','Triceps','Quads','Hamstrings','Glutes','Abs'];
+/* ---- V5 stage 3: the Evidence Library (EVIDENCE, 2026-11-12) ----
+   A reviewed set of training and nutrition findings, researched once at build time (2026-11-11) and kept in the file
+   like FOOD_DB and LIFT_FACTS: no fetch, no tool, no backend. Each entry is what ONE source reports (`finding`), how
+   strong that kind of evidence is (`strength`), and the app's own inference for him (`means`), which the source never
+   said and which is labelled that way wherever it is shown.
+   - Every entry is checked against evEntryOk() as the file loads, and one that fails is dropped, never repaired.
+   - It is guidance on training and food, so it is OFF until he has spot-checked ten entries against their sources:
+     OV.evidence is a free switch with hold:true. Off means off his screen and out of every prompt.
+   - In the agents' nightly prompts it is a second, paid switch (OV.evidencePrompts), which also needs the first.
+     With either off the prompt is byte-identical, and the suite checks it.
+   - A cite from a model is a list of ids. evCiteClean() keeps the ids that exist and nothing else; the card draws
+     the chip, the link and the text from this constant, never from the model. No cite reads "coach's judgement". */
+const EVD_TAGS = ['overload', 'volume', 'frequency', 'failure', 'rest', 'deload', 'bulk', 'protein', 'timing', 'sleep', 'plateau', 'variation',
+  'selection', 'break', 'tech-bench', 'tech-squat', 'tech-jm', 'tech-dips', 'tech-lateral'];
+const EVD_STRENGTH = {strong:0, moderate:1, limited:2};
+const EVD_MEANS_LEAD = 'For a lifter like him this suggests';   // every inference opens with it: it is never the paper's claim
+const EVD_HOSTS = ['pubmed.ncbi.nlm.nih.gov', 'pmc.ncbi.nlm.nih.gov', 'elitefts.com'];
+const EVD_FINDING_MAX = 450, EVD_MEANS_MAX = 260;
+const EVD_MAX_CHARS = 1500;      // the cap on what one prompt is given, like EV_MAX_CHARS
+const EVD_CITE_MAX = 3;          // ids one request or Desk post may carry
+/* The ten he checks before turning it on: the entries his trip, his bulk rate, his protein, sleep, volume, effort
+   and deloads lean on hardest. */
+const EVD_CHECK_FIRST = ['E45', 'E47', 'E48', 'E22', 'E23', 'E27', 'E34', 'E04', 'E12', 'E19'];
+function evEntryOk(e){
+  if(!e || typeof e !== 'object' || typeof e.id !== 'string' || !/^E\d{2,3}$/.test(e.id)) return false;
+  if(!Array.isArray(e.tags) || !e.tags.length || !e.tags.every(function(t){ return EVD_TAGS.indexOf(t) >= 0; })) return false;
+  if(typeof e.finding !== 'string' || e.finding.length < 40 || e.finding.length > EVD_FINDING_MAX) return false;
+  if(!Object.prototype.hasOwnProperty.call(EVD_STRENGTH, e.strength)) return false;
+  if(typeof e.means !== 'string' || e.means.indexOf(EVD_MEANS_LEAD) !== 0 || e.means.length > EVD_MEANS_MAX) return false;
+  const s = e.source;
+  if(!s || typeof s !== 'object' || typeof s.title !== 'string' || s.title.length < 8 || typeof s.url !== 'string') return false;
+  const m = /^https:\/\/([a-z0-9.-]+)\/\S*$/.exec(s.url);
+  if(!m || EVD_HOSTS.indexOf(m[1]) < 0) return false;
+  if(!(Number.isInteger(s.year) && s.year >= 1950 && s.year <= 2026)) return false;
+  if(typeof e.checked !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(e.checked)) return false;
+  if(e.read !== 'full' && e.read !== 'abstract') return false;
+  return !/[<>]/.test(e.finding + e.means + s.title + s.url);
+}
+const EVIDENCE_RAW = [
+  {"id":"E01","tags":["overload"],"finding":"The ACSM position stand says training has to keep progressing to keep producing gains, and recommends raising the load by about 2 to 10% once a lifter can do one or two repetitions more than the target with the current weight.","strength":"moderate","means":"For a lifter like him this suggests double progression is a recognised way to progress: fill the rep range first, then add the smallest weight step the gym allows.","source":{"title":"American College of Sports Medicine position stand. Progression models in resistance training for healthy adults","url":"https://pubmed.ncbi.nlm.nih.gov/19204579/","year":2009},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E02","tags":["overload"],"finding":"In an 8-week trial of 43 lifters with at least a year of training, adding repetitions at a fixed weight built as much leg muscle as adding weight inside a fixed 8 to 12 rep range, with a slight and uncertain edge in squat strength for adding weight.","strength":"limited","means":"For a lifter like him this suggests a session where he adds a rep instead of a plate still counts as progress, though the evidence is one short trial on legs.","source":{"title":"Progressive overload without progressing load? The effects of load or repetition progression on muscular adaptations","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC9528903/","year":2022},"checked":"2026-11-11","read":"full"},
+  {"id":"E03","tags":["overload"],"finding":"A network meta-analysis of 28 studies in which sets were taken to failure found similar muscle growth with light, moderate and heavy loads, while one-rep-max strength rose more with moderate and heavy loads than with light ones.","strength":"moderate","means":"For a lifter like him this suggests the 6 to 12 rep zone is a practical choice for size and not a magic one, and that heavier work matters most on the lifts he wants to be strong at; three quarters of the studies used untrained people.","source":{"title":"Resistance Training Load Effects on Muscle Hypertrophy and Strength Gain: Systematic Review and Network Meta-analysis","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC8126497/","year":2021},"checked":"2026-11-11","read":"full"},
+  {"id":"E04","tags":["volume","frequency"],"finding":"Meta-regressions of 67 studies found that muscle growth and strength both rise as weekly sets rise, with diminishing returns that are much sharper for strength, and that training a muscle more often had a clear effect on strength but not on growth.","strength":"strong","means":"For a lifter like him this suggests extra sets are a slow lever for size and a weak one for strength, so more sets alone are unlikely to rescue a stalled lift.","source":{"title":"The Resistance Training Dose Response: Meta-Regressions Exploring the Effects of Weekly Volume and Frequency on Muscle Hypertrophy and Strength Gains","url":"https://pubmed.ncbi.nlm.nih.gov/41343037/","year":2026},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E05","tags":["volume"],"finding":"A systematic review of trials in young men with at least a year of training found no clear difference in quadriceps or biceps growth between 12 to 20 and more than 20 weekly sets per muscle, a possible advantage of higher volume for triceps, and concluded that 12 to 20 weekly sets is a reasonable standard range; it rests on only seven studies.","strength":"moderate","means":"For a lifter like him this suggests 12 to 20 hard sets per muscle a week is a sensible working band, with no evidence here that going past 20 pays off for most muscles.","source":{"title":"A Systematic Review of The Effects of Different Resistance Training Volumes on Muscle Hypertrophy","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC8884877/","year":2022},"checked":"2026-11-11","read":"full"},
+  {"id":"E06","tags":["volume","break"],"finding":"A systematic review of six studies in resistance-trained men found that a single hard set of 6 to 12 reps at roughly 70 to 85% of one-rep max, done two or three times a week for 8 to 12 weeks, still raised squat and bench press strength, though by less than higher doses.","strength":"moderate","means":"For a lifter like him this suggests a very short session still does real work, which matters for a crowded week or a hotel gym, and not that one set is the best plan.","source":{"title":"The Minimum Effective Training Dose Required to Increase 1RM Strength in Resistance-Trained Men: A Systematic Review and Meta-Analysis","url":"https://pubmed.ncbi.nlm.nih.gov/31797219/","year":2020},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E07","tags":["volume","plateau"],"finding":"In 16 trained lifters, the leg given 20% more weekly sets than that person had been doing grew more over 8 weeks than the other leg given a standard 22 sets a week.","strength":"limited","means":"For a lifter like him this suggests the useful question about volume is how it compares with what he was already doing, and not whether it matches a textbook number; it is one small study.","source":{"title":"Muscle Hypertrophy Response Is Affected by Previous Resistance Training Volume in Trained Individuals","url":"https://pubmed.ncbi.nlm.nih.gov/32108724/","year":2022},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E08","tags":["frequency"],"finding":"A meta-analysis of 25 studies found that when weekly volume is equal, how many days a week a muscle is trained makes no meaningful difference to its growth.","strength":"strong","means":"For a lifter like him this suggests his split can follow his schedule and preference, as long as the weekly sets per muscle are there.","source":{"title":"How many times per week should a muscle be trained to maximize muscle hypertrophy? A systematic review and meta-analysis of studies examining the effects of resistance training frequency","url":"https://pubmed.ncbi.nlm.nih.gov/30558493/","year":2019},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E09","tags":["frequency"],"finding":"A meta-analysis of 22 studies found larger strength gains with higher training frequencies, but the advantage disappeared when weekly volume was matched, and most of the studies were in untrained people.","strength":"moderate","means":"For a lifter like him this suggests frequency helps strength mainly by fitting in more good sets, so pressing twice a week is a way to spread the work and not a requirement.","source":{"title":"Effect of Resistance Training Frequency on Gains in Muscular Strength: A Systematic Review and Meta-Analysis","url":"https://pubmed.ncbi.nlm.nih.gov/29470825/","year":2018},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E10","tags":["frequency"],"finding":"A meta-analysis of 14 studies with 392 people found no difference between split and full-body routines for bench press strength, lower-body strength or muscle growth when volume was matched.","strength":"moderate","means":"For a lifter like him this suggests changing the split is not a fix for a stall by itself; what the week adds up to matters more than how the days are labelled.","source":{"title":"Efficacy of Split Versus Full-Body Resistance Training on Strength and Muscle Growth: A Systematic Review With Meta-Analysis","url":"https://pubmed.ncbi.nlm.nih.gov/38595233/","year":2024},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E11","tags":["failure"],"finding":"A meta-analysis of 15 studies found no evidence that training to momentary failure builds more muscle than stopping short of it; a small advantage appeared only under looser definitions of failure, and the authors treat that result with caution.","strength":"moderate","means":"For a lifter like him this suggests sets need to be hard but do not all need to reach failure to grow.","source":{"title":"Influence of Resistance Training Proximity-to-Failure on Skeletal Muscle Hypertrophy: A Systematic Review with Meta-analysis","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC9935748/","year":2023},"checked":"2026-11-11","read":"full"},
+  {"id":"E12","tags":["failure"],"finding":"Exploratory meta-regressions found that muscle growth increased as sets ended closer to failure, while strength gains were similar across a wide range of repetitions in reserve; the authors call the exact relationship unclear because proximity to failure had to be estimated.","strength":"moderate","means":"For a lifter like him this suggests keeping size and accessory work close to failure, while heavy strength sets on bench and squat can leave more in reserve without costing strength.","source":{"title":"Exploring the Dose-Response Relationship Between Estimated Resistance Training Proximity to Failure, Strength Gain, and Muscle Hypertrophy: A Series of Meta-Regressions","url":"https://pubmed.ncbi.nlm.nih.gov/38970765/","year":2024},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E13","tags":["failure"],"finding":"This practice review describes rating a set by repetitions in reserve (RPE 10 is none left, 9 is one, 8 is two), reports that lifters judge it more accurately close to failure and with experience, and advises novices to practise logging it before basing loads on it; it is expert guidance built on a few studies, not a trial.","strength":"limited","means":"For a lifter like him this suggests his effort ratings are most trustworthy on hard sets and are worth logging every session, since the skill improves with practice.","source":{"title":"Application of the Repetitions in Reserve-Based Rating of Perceived Exertion Scale for Resistance Training","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC4961270/","year":2016},"checked":"2026-11-11","read":"full"},
+  {"id":"E14","tags":["failure"],"finding":"A meta-analysis of 12 studies with 414 people found lifters underestimate how many reps they have left by about one on average, with better accuracy closer to failure, on sets of 12 reps or fewer and in later sets, and no clear effect of training experience.","strength":"moderate","means":"For a lifter like him this suggests a set he logs as two in reserve may really have had three, so an occasional true top set is a useful check on his ratings.","source":{"title":"Accuracy in Predicting Repetitions to Task Failure in Resistance Exercise: A Scoping Review and Exploratory Meta-analysis","url":"https://pubmed.ncbi.nlm.nih.gov/34542869/","year":2022},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E15","tags":["failure"],"finding":"A meta-analysis of crossover studies found that sets taken to failure cause more short-term fatigue than sets stopped short: a bigger drop in performance measures, more signs of muscle damage two days later and higher perceived exertion.","strength":"moderate","means":"For a lifter like him this suggests failure has a recovery cost, so on a five or six day week it is better spent on last sets and small lifts than on every set of bench and squat.","source":{"title":"Effects of Resistance Training to Muscle Failure on Acute Fatigue: A Systematic Review and Meta-Analysis","url":"https://pubmed.ncbi.nlm.nih.gov/34881412/","year":2022},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E16","tags":["rest"],"finding":"A Bayesian meta-analysis of 9 studies found a small and uncertain growth benefit from resting more than 60 seconds between sets, and no detectable further benefit from resting longer than 90 seconds; most studies were short and in untrained people.","strength":"moderate","means":"For a lifter like him this suggests that for size work rests of about one and a half to two minutes are enough, and longer rests are a choice for heavy sets and not a need.","source":{"title":"Give it a rest: a systematic review with Bayesian meta-analysis on the effect of inter-set rest interval duration on muscle hypertrophy","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC11349676/","year":2024},"checked":"2026-11-11","read":"full"},
+  {"id":"E17","tags":["rest"],"finding":"A systematic review of 23 studies found strength improves even with rests under a minute, but that trained lifters appear to need more than two minutes between sets to maximise strength gains, while one to two minutes is enough for untrained people.","strength":"moderate","means":"For a lifter like him this suggests resting over two minutes on his main bench and squat sets, and that cutting those rests to save time trades away some strength.","source":{"title":"Effects of Rest Interval Duration in Resistance Training on Measures of Muscular Strength: A Systematic Review","url":"https://pubmed.ncbi.nlm.nih.gov/28933024/","year":2018},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E18","tags":["deload"],"finding":"A Delphi panel of strength and physique coaches agreed that a deload is a period of reduced training stress meant to ease physical and mental fatigue, and that training volume should come down during it, but reached no standard for how often or exactly how to run one; this is expert opinion, and the paper notes deloading is under-researched.","strength":"limited","means":"For a lifter like him this suggests a deload is best done by cutting sets, and timed by how he is actually recovering and not by a fixed rule.","source":{"title":"Integrating Deloading into Strength and Physique Sports Training Programmes: An International Delphi Consensus Approach","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC10511399/","year":2023},"checked":"2026-11-11","read":"full"},
+  {"id":"E19","tags":["deload","break"],"finding":"In a 9-week trial of 39 trained lifters, taking the middle week completely off left muscle growth the same as training straight through, while lower-body strength gains were somewhat smaller in the group that took the week off.","strength":"limited","means":"For a lifter like him this suggests a week away costs no muscle and at most a little strength momentum, and that a full week off is not needed as a routine deload.","source":{"title":"Gaining more from doing less? The effects of a one-week deload period during supervised resistance training on muscular adaptations","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC10809978/","year":2024},"checked":"2026-11-11","read":"full"},
+  {"id":"E20","tags":["deload"],"finding":"A survey of 246 competitive strength and physique athletes found they typically deload for about 6 days roughly every 5 to 6 weeks, mostly by cutting sets and reps and easing load and effort while keeping the same exercises and training days; it describes practice and does not test whether deloads work.","strength":"limited","means":"For a lifter like him this suggests an easier week every five or six weeks is what experienced lifters commonly do, which is a custom to borrow from and not proof that it is needed.","source":{"title":"Deloading Practices in Strength and Physique Sports: A Cross-sectional Survey","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC10948666/","year":2024},"checked":"2026-11-11","read":"full"},
+  {"id":"E21","tags":["deload","plateau"],"finding":"A scoping review of 47 papers found that short periods of very hard resistance training can cause a temporary dip followed by recovery, that long stretches of high volume or intensity can produce a longer-lasting slump, and that there is minimal evidence of true overtraining syndrome from lifting.","strength":"limited","means":"For a lifter like him this suggests a stalled lift is far more likely to be ordinary accumulated fatigue or a programming issue than overtraining.","source":{"title":"Overreaching and overtraining in strength sports and resistance training: A scoping review","url":"https://pubmed.ncbi.nlm.nih.gov/32602418/","year":2020},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E22","tags":["bulk"],"finding":"A narrative review for natural bodybuilders recommends a modest energy surplus of about 10 to 20% with a weight gain of about 0.25 to 0.5% of bodyweight per week for novice and intermediate lifters, and a more conservative rate for advanced lifters; the authors note the lack of long-term studies behind these figures.","strength":"limited","means":"For a lifter like him this suggests a gain of roughly 0.25 to 0.5% of bodyweight a week is a reasonable target for his stage, as expert guidance and not a tested threshold.","source":{"title":"Nutrition Recommendations for Bodybuilders in the Off-Season: A Narrative Review","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC6680710/","year":2019},"checked":"2026-11-11","read":"full"},
+  {"id":"E23","tags":["bulk"],"finding":"In an 8-week trial that finished with 17 trained lifters, faster body-mass gain was clearly linked to larger increases in skinfold thickness but not to greater gains in muscle thickness or squat strength, although the highest-surplus group gained more bench press strength; the planned surpluses were not followed closely.","strength":"limited","means":"For a lifter like him this suggests gaining faster than planned mostly adds fat and not muscle, though a study this small cannot settle it.","source":{"title":"Effect of Small and Large Energy Surpluses on Strength, Muscle, and Skinfold Thickness in Resistance-Trained Individuals: A Parallel Groups Design","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC10620361/","year":2023},"checked":"2026-11-11","read":"full"},
+  {"id":"E24","tags":["bulk"],"finding":"In 39 elite athletes aged about 19, those given a meal plan with a larger energy intake over 8 to 12 weeks gained more body weight and far more fat than those eating as they chose, with no difference in lean mass gained and similar strength improvements.","strength":"limited","means":"For a lifter like him this suggests that for a young lifter a bigger surplus does not automatically buy more muscle, which supports keeping the rate of gain moderate.","source":{"title":"Effect of nutritional intervention on body composition and performance in elite athletes","url":"https://pubmed.ncbi.nlm.nih.gov/23679146/","year":2013},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E25","tags":["bulk","plateau"],"finding":"A meta-analysis found that lifting during a sustained energy deficit produced smaller lean-mass gains than lifting without one, while strength gains were similar, and that a deficit of about 500 kcal a day was enough to prevent lean-mass gain.","strength":"moderate","means":"For a lifter like him this suggests that stretches of eating below maintenance are a likely cause of stalled size even when strength still moves, so intake is worth checking before the programme is blamed.","source":{"title":"Energy deficiency impairs resistance training gains in lean mass but not strength: A meta-analysis and meta-regression","url":"https://pubmed.ncbi.nlm.nih.gov/34623696/","year":2022},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E26","tags":["protein"],"finding":"A meta-analysis of 49 trials with 1,863 people found that protein supplementation adds a small amount to the muscle and strength gained from training, and that intakes above about 1.6 g per kg of bodyweight a day gave no further gain in fat-free mass, with an upper confidence limit of 2.2 g per kg.","strength":"strong","means":"For a lifter like him this suggests aiming for at least 1.6 g of protein per kg a day, with anything up to about 2.2 g per kg as a margin and not a requirement.","source":{"title":"A systematic review, meta-analysis and meta-regression of the effect of protein supplementation on resistance training-induced gains in muscle mass and strength in healthy adults","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC5867436/","year":2018},"checked":"2026-11-11","read":"full"},
+  {"id":"E27","tags":["protein"],"finding":"The International Society of Sports Nutrition position stand states that 1.4 to 2.0 g of protein per kg of bodyweight a day is sufficient for most exercising people to build and keep muscle, and that total daily protein and energy intake matter most.","strength":"moderate","means":"For a lifter like him this suggests that hitting the daily total, mainly from ordinary food, is what counts.","source":{"title":"International Society of Sports Nutrition Position Stand: protein and exercise","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC5477153/","year":2017},"checked":"2026-11-11","read":"full"},
+  {"id":"E28","tags":["protein","timing"],"finding":"This review argues there is no hard cap on the protein the body can use from one meal, and suggests about 0.4 g per kg per meal across at least four meals to reach 1.6 g per kg a day, rising to 0.55 g per kg per meal for 2.2 g per kg a day; it is a reasoned recommendation, not a tested protocol.","strength":"limited","means":"For a lifter like him this suggests spreading protein over four or so meals is a tidy way to reach the daily total, and that a large serving in one meal is not wasted.","source":{"title":"How much protein can the body use in a single meal for muscle-building? Implications for daily protein distribution","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC5828430/","year":2018},"checked":"2026-11-11","read":"full"},
+  {"id":"E29","tags":["timing","protein"],"finding":"A meta-analysis found that eating protein within about an hour of training had no significant effect on strength, and that an apparent effect on muscle growth disappeared once total daily protein intake was accounted for.","strength":"moderate","means":"For a lifter like him this suggests there is no need to rush protein in straight after training; the total for the day is what the evidence supports.","source":{"title":"The effect of protein timing on muscle strength and hypertrophy: a meta-analysis","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC3879660/","year":2013},"checked":"2026-11-11","read":"full"},
+  {"id":"E30","tags":["timing"],"finding":"The International Society of Sports Nutrition position stand on nutrient timing gives priority to meeting total daily protein, preferably in 20 to 40 g feedings every three to four hours, describes protein eaten up to two hours after training as effective, and reports that meal frequency itself has shown limited effect on body composition.","strength":"moderate","means":"For a lifter like him this suggests regular protein-containing meals through the day, one of them within a couple of hours after training, cover what timing has to offer.","source":{"title":"International society of sports nutrition position stand: nutrient timing","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC5596471/","year":2017},"checked":"2026-11-11","read":"full"},
+  {"id":"E31","tags":["timing"],"finding":"A systematic review of 49 studies found that carbohydrate intake did not improve resistance-training performance in a fed state for sessions of up to about 10 sets per muscle group, with benefits appearing mainly against fasted comparisons and in longer, higher-volume sessions.","strength":"moderate","means":"For a lifter like him this suggests that having eaten in the hours before training matters more than a specific pre-workout carbohydrate amount, and that long high-volume sessions are where extra carbohydrate is most likely to help.","source":{"title":"The Effect of Carbohydrate Intake on Strength and Resistance Training Performance: A Systematic Review","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC8878406/","year":2022},"checked":"2026-11-11","read":"full"},
+  {"id":"E32","tags":["sleep"],"finding":"A meta-analysis of 77 studies found that a night of 6 hours of sleep or less lowers next-day physical performance on average, most consistently after no sleep or an early wake-up and for tasks done later in the day; for maximal strength the drop was clear only after a full night without sleep.","strength":"moderate","means":"For a lifter like him this suggests one short night is no reason to skip a session, that training earlier in the day limits the effect, and that very heavy attempts after a sleepless night deserve some caution.","source":{"title":"Effects of Acute Sleep Loss on Physical Performance: A Systematic and Meta-Analytical Review","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC9584849/","year":2022},"checked":"2026-11-11","read":"full"},
+  {"id":"E33","tags":["sleep"],"finding":"A systematic review of 17 studies found that a single night without sleep had little effect on muscle strength, whereas several consecutive nights of restricted sleep could reduce force output in multi-joint lifts but not single-joint ones; the included studies were rated moderate or weak in quality.","strength":"moderate","means":"For a lifter like him this suggests a run of short nights, such as an exam week, is more likely to show up on bench and squat than one bad night is.","source":{"title":"Inadequate sleep and muscle strength: Implications for resistance training","url":"https://pubmed.ncbi.nlm.nih.gov/29422383/","year":2018},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E34","tags":["sleep"],"finding":"The American Academy of Sleep Medicine consensus statement recommends that teenagers aged 13 to 18 sleep 8 to 10 hours per 24 hours on a regular basis, based on a 13-member expert panel that reviewed 864 articles on sleep duration and health.","strength":"moderate","means":"For a lifter like him this suggests treating 8 hours as the floor to aim for at 18, the top of the age band this statement covers; it is a general health recommendation and not one about training results.","source":{"title":"Recommended Amount of Sleep for Pediatric Populations: A Consensus Statement of the American Academy of Sleep Medicine","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC4877308/","year":2016},"checked":"2026-11-11","read":"full"},
+  {"id":"E35","tags":["sleep"],"finding":"A systematic review of 25 studies in athletes found that sleeping longer at night and napping were the interventions that most consistently improved performance, while sleep-hygiene education and removing screens at night showed no effect in the few studies available; the authors rate the evidence as limited and low in quality.","strength":"limited","means":"For a lifter like him this suggests that when sleep has been short, actually getting more of it, a nap included, is the lever with support behind it.","source":{"title":"The Impact of Sleep Interventions on Athletic Performance: A Systematic Review","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC10354314/","year":2023},"checked":"2026-11-11","read":"full"},
+  {"id":"E36","tags":["plateau"],"finding":"Competition records from 1,897 powerlifters over 15 years showed that the strongest men gained strength more slowly than the least strong men, with no such difference among women; it is observational data with no information on training.","strength":"limited","means":"For a lifter like him this suggests progress on each lift will slow as he gets stronger, so a slower rate after his first months is expected and is not by itself a plateau.","source":{"title":"Long-Term Strength Adaptation: A 15-Year Analysis of Powerlifting Athletes","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC7448836/","year":2020},"checked":"2026-11-11","read":"full"},
+  {"id":"E37","tags":["plateau","variation"],"finding":"A meta-analysis of 18 studies found that periodised programmes, which vary loading over time, produced greater one-rep-max gains than non-periodised programmes, with undulating models doing somewhat better and untrained people improving more.","strength":"moderate","means":"For a lifter like him this suggests planned changes in rep ranges and loads across weeks are a supported way to keep strength moving when a fixed scheme stalls.","source":{"title":"Comparison of Periodized and Non-Periodized Resistance Training on Maximal Strength: A Meta-Analysis","url":"https://pubmed.ncbi.nlm.nih.gov/28497285/","year":2017},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E38","tags":["plateau"],"finding":"Among 135 undergraduates in a 12-week weight-training class, those reporting high life stress gained significantly less bench press and squat strength than those reporting low stress.","strength":"limited","means":"For a lifter like him this suggests a stressful stretch at school can blunt progress by itself, so a stall during exams is not automatically a programming fault; it is one observational study.","source":{"title":"Strength gains after resistance training: the effect of stressful, negative life events","url":"https://pubmed.ncbi.nlm.nih.gov/18545186/","year":2008},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E39","tags":["variation"],"finding":"A systematic review of 8 studies in young men concluded that some planned variation in exercises can improve growth across the regions of a muscle and dynamic strength, while frequent or random rotation of exercises may reduce gains.","strength":"moderate","means":"For a lifter like him this suggests keeping the main lifts in place long enough to progress and changing accessories deliberately every block or so, not week to week.","source":{"title":"Does Varying Resistance Exercises Promote Superior Muscle Hypertrophy and Strength Gains? A Systematic Review","url":"https://pubmed.ncbi.nlm.nih.gov/35438660/","year":2022},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E40","tags":["variation"],"finding":"In an 8-week trial of 19 trained men, having an app pick the exercises at random each session produced strength and quadriceps growth similar to a fixed exercise list and raised motivation to train, though the fixed group showed the larger raw bench press gain.","strength":"limited","means":"For a lifter like him this suggests variety can help him stay keen without costing much, but a lift he wants to push, like bench, is better kept fixed.","source":{"title":"The effects of exercise variation in muscle thickness, maximal strength and motivation in resistance trained men","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC6934277/","year":2019},"checked":"2026-11-11","read":"full"},
+  {"id":"E41","tags":["selection"],"finding":"A meta-analysis of 13 studies found that free weights and machines produce similar muscle growth, and that strength improves most on whichever type of equipment the lifter trained with.","strength":"moderate","means":"For a lifter like him this suggests swapping a machine for a free-weight version of an accessory, or the reverse, will not cost growth, while the barbell lifts he wants to be strong at need to be trained with the barbell.","source":{"title":"Effect of free-weight vs. machine-based strength training on maximal strength, hypertrophy and jump performance - a systematic review and meta-analysis","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC10426227/","year":2023},"checked":"2026-11-11","read":"full"},
+  {"id":"E42","tags":["selection"],"finding":"A meta-analysis of 16 studies found that training through a full range of motion produced greater strength gains and greater lower-limb muscle growth than partial range of motion.","strength":"moderate","means":"For a lifter like him this suggests using a full range as the default on his lifts and treating a shortened rep as a different stimulus that needs its own reason.","source":{"title":"Effects of range of motion on resistance training adaptations: A systematic review and meta-analysis","url":"https://pubmed.ncbi.nlm.nih.gov/34170576/","year":2021},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E43","tags":["selection"],"finding":"A meta-analysis of 11 studies found that strength gains are largest for the exercises done first in a session, while exercise order made no difference to muscle growth.","strength":"moderate","means":"For a lifter like him this suggests putting the lift he most wants to improve first in the session, and not worrying about order for size.","source":{"title":"What influence does resistance exercise order have on muscular strength gains and muscle hypertrophy? A systematic review and meta-analysis","url":"https://pubmed.ncbi.nlm.nih.gov/32077380/","year":2021},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E44","tags":["selection"],"finding":"In 38 untrained people over 8 weeks, a group that only practised heavy single attempts gained as much one-rep-max strength as a group doing four hard sets of 8 to 12, although the higher-volume group gained more muscle.","strength":"limited","means":"For a lifter like him this suggests that practising a lift heavy improves the skill of lifting it heavy, which is the idea behind bench practice, while size still needs volume; the study was in beginners.","source":{"title":"Practicing the Test Produces Strength Equivalent to Higher Volume Training","url":"https://pubmed.ncbi.nlm.nih.gov/28463902/","year":2017},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E45","tags":["break"],"finding":"In 19 strength-trained athletes, three or five days without training after a four-week block left lower-body maximal strength unchanged, but upper-body strength measured by isometric bench press showed a small drop after five days and none after three.","strength":"limited","means":"For a lifter like him this suggests a five-day break is safe for squat strength and may cost a small, temporary amount on bench in the first session back; it is one small study of older, more trained lifters.","source":{"title":"The Effects of 3 vs. 5 Days of Training Cessation on Maximal Strength","url":"https://pubmed.ncbi.nlm.nih.gov/35180185/","year":2022},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E46","tags":["break"],"finding":"Eight resistance-trained men tested after about three and a half and five and a half days without training showed no loss of strength on either occasion; jump height and isometric bench press force were higher than before the four-week training block, which the authors attribute to reduced fatigue.","strength":"limited","means":"For a lifter like him this suggests a few days off can leave him fresher and not weaker, though eight people is too few to lean on.","source":{"title":"Short-Term Training Cessation as a Method of Tapering to Improve Maximal Strength","url":"https://pubmed.ncbi.nlm.nih.gov/29369954/","year":2018},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E47","tags":["break"],"finding":"In 25 strength-trained men retested on the bench press 2, 3, 4 or 5 days after their last session with no training in between, the groups performed similarly, with small and short-lived improvements showing at 2 to 4 days on slow-speed tests only.","strength":"limited","means":"For a lifter like him this suggests bench press strength holds across a gap of up to five days; the study did not look at what training should follow the gap.","source":{"title":"Strength/power augmentation subsequent to short-term training abstinence","url":"https://pubmed.ncbi.nlm.nih.gov/15574080/","year":2004},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E48","tags":["break"],"finding":"A meta-analysis of 103 studies found that stopping resistance training reduces maximal strength, submaximal strength and power, that the loss grows with the length of the break, and that it is larger in older and in inactive people than in recreational athletes.","strength":"strong","means":"For a lifter like him this suggests the cost of time off scales with its length, so days are a different matter from weeks; the abstract gives no figure for a break as short as five days.","source":{"title":"Effect of training cessation on muscular performance: a meta-analysis","url":"https://pubmed.ncbi.nlm.nih.gov/23347054/","year":2013},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E49","tags":["break"],"finding":"Twenty resistance-trained men aged about 21 who stopped training for two weeks showed no decrease in leg press strength and kept their lean mass.","strength":"limited","means":"For a lifter like him this suggests even two weeks off does not undo recent strength gains at his age, which makes a five-day gap a small event.","source":{"title":"Resistance Training-Induced Elevations in Muscular Strength in Trained Men Are Maintained After 2 Weeks of Detraining and Not Differentially Affected by Whey Protein Supplementation","url":"https://pubmed.ncbi.nlm.nih.gov/28328712/","year":2017},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E50","tags":["break"],"finding":"Over 24 weeks, young men who trained the bench press in six-week blocks separated by three-week breaks ended with gains in muscle size and strength similar to men who trained continuously, because progress was faster after each break.","strength":"limited","means":"For a lifter like him this suggests an occasional break does not need to be made up with extra volume, since the group that simply resumed the same programme caught up; it was 14 men and breaks of three weeks, not five days.","source":{"title":"Comparison of muscle hypertrophy following 6-month of continuous and periodic strength training","url":"https://pubmed.ncbi.nlm.nih.gov/23053130/","year":2013},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E51","tags":["break"],"finding":"A review of 16 small studies describes a taper as a planned cut in training load used to peak strength for a competition, and reports that two to seven days of no training maintained or slightly improved maximal strength while breaks longer than about a week brought losses of roughly 1 to 4%; it does not examine tapering before an ordinary break.","strength":"limited","means":"For a lifter like him this suggests a taper is a competition tool that a holiday does not call for, which is an inference, because no study has tested tapering before a non-competition break.","source":{"title":"Tapering and Peaking Maximal Strength for Powerlifting Performance: A Review","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC7552788/","year":2020},"checked":"2026-11-11","read":"full"},
+  {"id":"E52","tags":["break"],"finding":"A narrative review concludes that younger adults can maintain strength and muscle size for up to 32 weeks on as little as one session a week with one set per exercise, provided the relative load is kept up.","strength":"limited","means":"For a lifter like him this suggests that if there is a hotel gym, a short session or two at close to normal weights with far fewer sets is what holds his level, and that light weights are not what this evidence describes.","source":{"title":"Maintaining Physical Performance: The Minimal Dose of Exercise Needed to Preserve Endurance and Strength Over Time","url":"https://pubmed.ncbi.nlm.nih.gov/33629972/","year":2021},"checked":"2026-11-11","read":"abstract"},
+  {"id":"E53","tags":["tech-bench"],"finding":"In 14 trained men, a wide or medium bench press grip (about 1.7 or 1.4 times shoulder width) allowed a heavier one-rep max than a shoulder-width grip, while chest and front-deltoid activity did not differ by grip and one triceps head was more active with the medium and narrow grips; this is a single-session laboratory study.","strength":"limited","means":"For a lifter like him this suggests a medium grip is a sound default for a strong bench, with a narrower grip as a triceps-emphasis variation and not his main grip.","source":{"title":"A Biomechanical Analysis of Wide, Medium, and Narrow Grip Width Effects on Kinematics, Horizontal Kinetics, and Muscle Activity on the Sticking Region in Recreationally Trained Males During 1-RM Bench Pressing","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC7862765/","year":2020},"checked":"2026-11-11","read":"full"},
+  {"id":"E54","tags":["tech-bench"],"finding":"A musculoskeletal modelling study of 10 experienced lifters found that pulling the shoulder blades back and using a grip narrower than about 1.5 times shoulder width lowered the estimated forces at the shoulder joints during the bench press, while a grip of twice shoulder width raised them; these are modelled loads at a light weight, not injury outcomes.","strength":"limited","means":"For a lifter like him this suggests the usual coaching cues of setting the shoulder blades back and avoiding a very wide grip have some mechanical support, though not proof that they prevent problems.","source":{"title":"Effects of bench press technique variations on musculoskeletal shoulder loads and potential injury risk","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC11224528/","year":2024},"checked":"2026-11-11","read":"full"},
+  {"id":"E55","tags":["tech-squat"],"finding":"This expert assessment framework for the back squat lists the positions coaches look for: gaze forward with a neutral neck, chest up with the trunk roughly parallel to the shins, knees tracking over the toes, heels down, and a controlled descent until the top of the thigh is at least parallel to the floor; these are expert practice criteria and were not tested in a trial.","strength":"limited","means":"For a lifter like him this suggests a short checklist for watching his own squat on video, as coaching convention and not proven rules.","source":{"title":"The back squat: A proposed assessment of functional deficits and technical factors that limit performance","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC4262933/","year":2014},"checked":"2026-11-11","read":"full"},
+  {"id":"E56","tags":["tech-squat"],"finding":"A biomechanics commentary explains that leaning the trunk forward shifts squat demand toward the hips, that letting the shins travel forward or raising the heels shifts it toward the knees and quadriceps, and that both hip and knee demand tend to rise with depth; it summarises laboratory studies and is expert-level evidence.","strength":"limited","means":"For a lifter like him this suggests he can bias a squat toward quads or hips with trunk and shin angle, which is a way to choose a squat variation and not a matter of right or wrong technique.","source":{"title":"A Biomechanical Review of the Squat Exercise: Implications for Clinical Practice","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC10987311/","year":2024},"checked":"2026-11-11","read":"full"},
+  {"id":"E57","tags":["tech-jm"],"finding":"No controlled study of the JM press was found, so this is expert practice only: a coaching article relaying the instructions of the lift's inventor describes a close grip of about 15 to 18 inches, elbows held about 45 degrees out and kept high, the bar lowered toward the chin or throat until the forearms meet the biceps, then pressed straight up, and it stresses starting light because the lift loads the elbows heavily.","strength":"limited","means":"For a lifter like him this suggests treating the JM press as a skill lift: learn the bar path with light weights, add load slowly, and take the weight down if the elbows complain.","source":{"title":"How to Perform the JM Press: A Step-by-Step Guide from the Inventor","url":"https://elitefts.com/blogs/training/how-to-perform-the-jm-press-a-step-by-step-guide-from-the-inventor","year":2026},"checked":"2026-11-11","read":"full"},
+  {"id":"E58","tags":["tech-dips"],"finding":"A motion-capture and EMG study of 13 experienced men found that bar dips used about 88% of the shoulder-extension range the lifters showed in a maximal test, bench dips went slightly beyond it and ring dips used the least, and that bar dips activated the triceps, chest and front deltoid more than bench dips; it measured four bodyweight reps, not training results.","strength":"limited","means":"For a lifter like him this suggests bar dips are the better-supported choice over bench dips, done to a depth he controls and not the deepest position he can reach.","source":{"title":"Bench, Bar, and Ring Dips: Do Kinematics and Muscle Activity Differ?","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC9603242/","year":2022},"checked":"2026-11-11","read":"full"},
+  {"id":"E59","tags":["tech-lateral"],"finding":"An EMG study of 10 competitive bodybuilders found that a lateral raise with a straight arm and neutral rotation gave the highest middle-deltoid activity when lifting, that turning the arm inward (thumbs down) shifted activity toward the rear deltoid and upper trapezius, and that bending the elbow to 90 degrees lowered middle-deltoid activity; muscle activity is not the same as muscle growth.","strength":"limited","means":"For a lifter like him this suggests a plain lateral raise with a nearly straight arm and neutral hand position is the default for the side delts, and that a thumbs-down raise turns it into more of a trap and rear-delt movement.","source":{"title":"An Electromyographic Analysis of Lateral Raise Variations and Frontal Raise in Competitive Bodybuilders","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC7503819/","year":2020},"checked":"2026-11-11","read":"full"},
+  {"id":"E60","tags":["tech-lateral","selection"],"finding":"In an 8-week within-person trial of 24 trained lifters, dumbbell and cable lateral raises taken to failure produced similar growth of the side deltoid; the changes were small relative to measurement error and the study was funded by an equipment company.","strength":"limited","means":"For a lifter like him this suggests choosing dumbbells or cables for lateral raises by feel and availability, since neither showed an advantage.","source":{"title":"Dumbbell versus cable lateral raises for lateral deltoid hypertrophy: an experimental study","url":"https://pmc.ncbi.nlm.nih.gov/articles/PMC12277279/","year":2025},"checked":"2026-11-11","read":"full"}
+];
+/* The library is the rows that pass, the first of any repeated id. A row that fails is left out, never repaired. */
+function evBuild(raw){
+  const seen = {};
+  return (Array.isArray(raw) ? raw : []).filter(function(e){ if(!evEntryOk(e) || seen[e.id]) return false; seen[e.id] = 1; return true; });
+}
+const EVIDENCE = evBuild(EVIDENCE_RAW);
+const EVD_BY_ID = (function(){ const m = {}; EVIDENCE.forEach(function(e){ m[e.id] = e; }); return m; })();
+function evHas(id){ return typeof id === 'string' && Object.prototype.hasOwnProperty.call(EVD_BY_ID, id); }
+OV.evidence = {label:'Evidence Library', paid:false, hold:true, note:'Source chips on requests and Desk posts, from 60 cited findings. Free, and off until you have checked ten of them against their sources (the list is under these switches).'};
+OV.evidencePrompts = {label:'Evidence in the agents’ prompts', paid:true, note:'Adds up to 1,500 characters of cited findings to each nightly prompt, an estimated 15 to 40 cents a month. Needs Evidence Library on.'};
+function evOn(){ return ovOn('evidence') && EVIDENCE.length > 0; }
+function evPromptsOn(){ return evOn() && ovOn('evidencePrompts'); }
+function evLine(e){ return '['+e.id+'] ('+e.strength+' evidence) '+e.finding+' The app’s inference, not the source’s claim: '+e.means; }
+/* Entries for a list of tags, earlier tags first: one entry per tag in turn until the character cap. Inside a tag the
+   strongest evidence leads, and the start moves on by one each day so a prompt sees the whole shelf over time rather
+   than the same three lines every night. Pure: the day is an argument, and the same day gives the same answer. */
+function evidenceFor(tags, max, dayKey){
+  max = +max > 0 ? +max : EVD_MAX_CHARS;
+  const day = Math.abs(daysBetween('2026-01-01', dayKey || todayKey())) || 0;
+  const pools = [];
+  (Array.isArray(tags) ? tags : []).forEach(function(t){
+    if(EVD_TAGS.indexOf(t) < 0 || pools.some(function(p){ return p.tag === t; })) return;
+    const list = EVIDENCE.filter(function(e){ return e.tags.indexOf(t) >= 0; })
+      .sort(function(a, b){ return (EVD_STRENGTH[a.strength] - EVD_STRENGTH[b.strength]) || (a.id < b.id ? -1 : 1); });
+    if(!list.length) return;
+    const k = day % list.length;
+    pools.push({tag:t, list:list.slice(k).concat(list.slice(0, k))});
+  });
+  const out = [], seen = {};
+  let n = 0, deep = 0;
+  pools.forEach(function(p){ deep = Math.max(deep, p.list.length); });
+  for(let r = 0; r < deep; r++){
+    for(let i = 0; i < pools.length; i++){
+      const e = pools[i].list[r];
+      if(!e || seen[e.id]) continue;
+      const len = evLine(e).length + 3;
+      if(n + len > max) return out;
+      seen[e.id] = 1; out.push(e); n += len;
+    }
+  }
+  return out;
+}
+function evidenceBlock(tags, max, dayKey){
+  const list = evidenceFor(tags, max, dayKey);
+  if(!list.length) return '';
+  return '\nPRINCIPLES (cited, from the app’s reviewed library. Each line is what one source reports, then the app’s own inference, which the source did not claim. '+
+    '"limited" means limited: never sound surer than the line. A proposal or a Desk post that rests on one may add "cite":["'+list[0].id+'"]; '+
+    'an id that is not listed here is dropped, and anything with no cite is shown to him as coach’s judgement):\n- '+list.map(evLine).join('\n- ')+'\n';
+}
+/* Which shelves an agent is handed: what is going on first (a hold near, a main lift off track, a deload), then its lane. */
+const EVD_ROLE = {zulu:['overload', 'bulk', 'sleep'], charlie:['sleep'],
+  delta:['overload', 'failure', 'volume', 'frequency', 'rest', 'variation', 'selection'], echo:['bulk', 'protein', 'timing', 'sleep']};
+function evTagsFor(id){
+  if(!Object.prototype.hasOwnProperty.call(EVD_ROLE, id)) return [];
+  const sit = [];
+  try{ if(holdContextLine()) sit.push('break'); }catch(e){}
+  if(id === 'delta' || id === 'zulu'){
+    try{ if(pwMainRows(plateauWatch()).some(function(r){ return r && (r.lvl === 'amber' || r.lvl === 'red'); })) sit.push('plateau', 'variation'); }catch(e){}
+    try{ if(deloadActive()) sit.push('deload'); }catch(e){}
+  }
+  return sit.concat(EVD_ROLE[id]);
+}
+/* The nightly block for one agent. Empty unless BOTH switches are on, so the prompt is byte-identical otherwise. */
+function agEvidenceBlock(id){
+  if(!evPromptsOn()) return '';
+  try{ return evidenceBlock(evTagsFor(id), EVD_MAX_CHARS); }catch(e){ return ''; }
+}
+/* What a model sent as a cite, kept only where it names entries that exist: an array of exact ids, at most
+   EVD_CITE_MAX, each once. Anything else is discarded, not tidied. With the library off nothing is kept. */
+function evCiteClean(raw){
+  if(!evOn() || !Array.isArray(raw)) return [];
+  const out = [];
+  raw.forEach(function(id){ if(evHas(id) && out.indexOf(id) < 0 && out.length < EVD_CITE_MAX) out.push(id); });
+  return out;
+}
+/* The source line on a request, a Desk post or a trip plan. Chips link out to the source; "What it says" opens the
+   finding and the inference, labelled as the app's. Open state is module-scoped: these cards are regenerated. */
+let evOpen = {};
+function evCiteToggle(el){
+  const k = el && el.dataset && el.dataset.k;
+  if(!k) return;
+  evOpen[k] = !evOpen[k];
+  // Only what he is looking at: painting the Desk while it is hidden would mark its posts as read.
+  try{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }catch(e){}
+  try{ rerenderActive(true); }catch(e){}
+}
+function evEntryHTML(e){
+  return '<div class="ev-body"><p class="small"><b>'+e.id+' · '+e.strength+' evidence'+(e.read === 'abstract' ? ' · abstract only' : '')+'.</b> '+esc(e.finding)+'</p>'+
+    '<p class="small"><b>What it means for you (the app’s inference, not the paper’s claim):</b> '+esc(e.means)+'</p>'+
+    '<p class="small" style="color:var(--dim)">'+esc(e.source.title)+' ('+e.source.year+')</p></div>';
+}
+function evChipHTML(e){
+  return '<a class="ev-chip" href="'+esc(e.source.url)+'" target="_blank" rel="noopener noreferrer" title="'+esc(e.source.title)+'">'+e.id+' · '+e.strength+' ↗</a>';
+}
+function evCiteHTML(cite, key){
+  if(!evOn()) return '';
+  const ids = (Array.isArray(cite) ? cite : []).filter(evHas).slice(0, EVD_CITE_MAX);
+  if(!ids.length) return '<div class="ev-cite"><span class="ev-none">Source: coach’s judgement</span></div>';
+  const open = !!evOpen[key];
+  return '<div class="ev-cite"><span class="ev-none">Source</span>'+ids.map(function(id){ return evChipHTML(EVD_BY_ID[id]); }).join('')+
+    '<button class="ev-more" data-k="'+esc(key)+'" onclick="evCiteToggle(this)">'+(open ? 'Hide' : 'What it says')+'</button>'+
+    (open ? ids.map(function(id){ return evEntryHTML(EVD_BY_ID[id]); }).join('') : '')+'</div>';
+}
+/* Settings, under the switches: what the library is, and the ten to check first, each with its link. */
+let evCheckOpen = false;
+function evCheckToggle(){ evCheckOpen = !evCheckOpen; try{ renderSettings(); }catch(e){} }
+function evCheckHTML(){
+  if(!ovHas('evidence') || !EVIDENCE.length) return '';
+  const on = ovOn('evidence');
+  let h = '<div class="card" id="evCheck"><p class="small"><b>Evidence Library: '+(on ? 'on' : 'check ten before you turn it on')+'.</b> '+EVIDENCE.length+
+    ' findings, each with its source. They are training and nutrition guidance, so nothing shows them and no agent is given them until you turn the switch on. '+
+    'Open a link, read the abstract, and compare it with the finding. “What it means for you” is the app’s inference, not the paper’s claim.</p>'+
+    '<button class="btn ghost sm" style="margin-top:8px" onclick="evCheckToggle()">'+(evCheckOpen ? 'Hide the ten' : 'Show the ten to check first')+'</button>';
+  if(evCheckOpen) h += EVD_CHECK_FIRST.filter(evHas).map(function(id){
+    const e = EVD_BY_ID[id];
+    return '<div class="ev-check">'+evEntryHTML(e)+'<a class="btn ghost sm" style="margin-top:6px;display:inline-block;text-decoration:none" href="'+esc(e.source.url)+'" target="_blank" rel="noopener noreferrer">Open the source ↗</a></div>';
+  }).join('');
+  return h+'</div>';
+}
 /* What a lift trains, in settled anatomy, for the agents (2026-10-21). DELTA told him a low-to-high cable fly works the
    lower chest, then agreed it had it backwards when he corrected it: no prompt said what a lift trains, so the model
    answered from memory. This is the reference they are given instead, and it wins over memory. Only long-settled
@@ -25244,10 +25478,18 @@ function awayValidateReply(parsed, b){
     if(!d || !holdDayOk(d.date) || d.date < b.from || d.date > b.to || seen[d.date] || !awayClean(d.note, AWAY_NOTE_MAX)) return false;
     seen[d.date] = 1; return true;
   }).map(function(d){ return {date:d.date, note:awayClean(d.note, AWAY_NOTE_MAX)}; }).slice(0, HOLD_MAX_DAYS.trip);
-  return {lead:awayClean(parsed && parsed.lead, AWAY_LEAD_MAX) || AWAY_LEAD_DEFAULT, days:days, back:awayClean(parsed && parsed.back, AWAY_BACK_MAX) || AWAY_BACK_DEFAULT};
+  const rep = {lead:awayClean(parsed && parsed.lead, AWAY_LEAD_MAX) || AWAY_LEAD_DEFAULT, days:days, back:awayClean(parsed && parsed.back, AWAY_BACK_MAX) || AWAY_BACK_DEFAULT};
+  const ct = evCiteClean(parsed && parsed.cite);      // only ids that exist, and only with the Evidence Library on
+  if(ct.length) rep.cite = ct;
+  return rep;
 }
 /* Cited principles for a break, once the Evidence Library is on (stage 3). Empty until then. */
-function awayEvidence(){ return ''; }
+function awayEvidence(){
+  if(!evOn()) return '';
+  let b = '';
+  try{ b = evidenceBlock(['break'], EVD_MAX_CHARS); }catch(e){ b = ''; }
+  return b ? b+'Your reply may carry "cite":["E.."] at its top level, with ids from that list only. The ban above still holds: cite a line, never restate what a break costs as fact.\n' : '';
+}
 function awaySystem(b){
   const lines = [];
   for(let d = mesoAddDays(b.from, -3); d <= mesoAddDays(b.to, 3); d = mesoAddDays(d, 1)){
@@ -25347,7 +25589,7 @@ function awayPlanHTML(b, t){
     else if(t <= b.to) h += (today ? '<p class="small"><b>Today:</b> '+esc(today.note)+'</p>' : '')+
       (r.days || []).filter(function(d){ return d.date > t; }).map(function(d){ return '<p class="small"><b>'+esc(fmtDate(d.date))+':</b> '+esc(d.note)+'</p>'; }).join('');
     if(t >= b.from || t >= mesoAddDays(b.from, -2)) h += '<p class="small"><b>Coming back:</b> '+esc(r.back)+'</p>';
-    return h+'<p class="small" style="color:var(--dim);margin-top:6px">ZULU · trip plan · advice only, the schedule is unchanged</p></div>';
+    return h+evCiteHTML(r.cite, 'away:'+b.id)+'<p class="small" style="color:var(--dim);margin-top:6px">ZULU · trip plan · advice only, the schedule is unchanged</p></div>';
   }
   if(!open) return '';
   if(!ovOn('awayPlan')) return '<p class="small" style="color:var(--dim);margin-top:8px">Plan my trip is a paid part (about 3 cents a plan) and is off. Turn it on in Settings, under V5 switches.</p>';
@@ -26077,7 +26319,10 @@ function agBaseContext(id){
   // The Standards (V5 stage 1) go to all four, straight after the calendar. Empty unless one is amber or red.
   let std = '';
   try{ std = stdContextLine(); }catch(e){ std = ''; }
-  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+std+intel+evl+lref+desk+
+  // Cited principles (V5 stage 3): only with BOTH evidence switches on. Empty otherwise, before DELTA's tail.
+  let evd = '';
+  try{ evd = agEvidenceBlock(id); }catch(e){ evd = ''; }
+  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+std+intel+evl+lref+desk+evd+
     ((id==='delta' || id==='zulu') ? agFeelLine()+agPracticeLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+fcTrackLine(id)+qaContextLine(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext()+pdContextLine(pdTargets()) : '');
 }
@@ -26357,6 +26602,8 @@ function agValidateDesk(raw, id, shown){
       if(dOk(f) && dOk(u) && f <= u && u <= t && f >= mesoAddDays(t, -EV_DAYS) && daysBetween(f, u) <= DESK_EV_SPAN && label) it.event = {from:f, to:u, label:label};
       else drop.push('event');
     }
+    const ct = evCiteClean(x.cite);
+    if(ct.length) it.cite = ct;
     if(drop.length) it._drop = drop;
     res.items.push(it);
   });
@@ -26447,6 +26694,7 @@ function deskItemHTML(x, reply){
     '<p class="desk-i-x">'+esc(x.text)+'</p>'+
     (x.event ? '<span class="desk-ev" style="color:'+A.col+'">Flagged · '+esc(deskEvText(x.event))+'</span>' : '')+
     (x.chart ? '<div class="desk-ch"><span class="desk-ch-l">'+esc(deskChartLabel(x.chart))+'</span>'+deskSparkSVG(x)+'</div>' : '')+
+    evCiteHTML(x.cite, 'desk:'+x.id)+
     '</div>';
 }
 /* The Hub's Desk: last night's table on top, then the items, newest first, each reply under what it answers. */
@@ -26671,13 +26919,16 @@ function agIngest(a2, id, blk){
       agLog(id, 'Replacing my earlier \u201c'+q.title+'\u201d with \u201c'+String(pr.title)+
         '\u201d \u2014 same call, updated numbers. Only the newer one is in the queue.');
     });
+    // A cite is a list of Evidence ids and nothing else (V5 stage 3). Absent unless one exists, so a request with
+    // none is the same record it always was.
+    const _cite = evCiteClean(pr.cite);
     a2.proposals.unshift(Object.assign({
       id:agUid(), agent:id, title:String(pr.title),
       reasoning:String(pr.reasoning||''), fix,
       created:todayKey(),
       expires:dateKeyOf(new Date(Date.now()+AG_PROP_TTL*86400000)),
       status:'pending'
-    }, _agLogRun ? {run:_agLogRun.id} : {}));
+    }, _agLogRun ? {run:_agLogRun.id} : {}, _cite.length ? {cite:_cite} : {}));
     raised++;
   });
   return raised;
@@ -28400,6 +28651,7 @@ function agPropHTML(p){
     '<span class="ag-st" style="margin-left:auto">expires '+fmtDate(p.expires)+'</span></div>'+
     (p.reasoning?'<p class="ag-prop-r">'+esc(p.reasoning)+'</p>':'')+
     '<div class="ag-prop-fx">\u25b8 '+esc(agFixSummary(p.fix))+'</div>'+
+    evCiteHTML(p.cite, 'prop:'+p.id)+
     '<div class="ag-acts">'+
       '<button class="btn sm" onclick="agApprove(\''+p.id+'\')">Approve</button>'+
       '<button class="btn ghost sm" onclick="agReject(\''+p.id+'\')">Reject</button>'+

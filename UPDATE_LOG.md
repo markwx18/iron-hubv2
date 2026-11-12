@@ -209,3 +209,14 @@ You can now tell the app about days you will not be training as usual, weeks ahe
 - **Nothing on your schedule moves.** It is context only. Remove a block any time and its days count as ordinary days again.
 - **Plan my trip (paid, off until you turn it on).** In Settings, under V5 switches, turn on **Plan my trip**. Then a trip gets a button: one call to ZULU, about 3 cents, which writes a note for the days before, each away day, and your first sessions back. It is advice on screen; any change to your plan comes as a normal request you approve. The app does not let it tell you how much strength or muscle a break costs, because it has not measured that.
 - **You can turn all of it off** in Settings, under V5 switches (Holds).
+
+## Evidence Library (Nov 12): built, and off until you check it
+
+The app now carries 60 research findings on training and nutrition, each with a link to the paper it came from. It is **off**, and nothing shows it or uses it until you turn it on.
+
+- **Check ten first.** In Settings, under V5 switches, there is a card called Evidence Library. Tap **Show the ten to check first**. For each one, open the source, read the abstract, and see whether the finding says what the paper says. These ten are the ones your trip, your bulk rate, protein, sleep, volume, effort and deloads lean on most.
+- **Then turn it on** with the Evidence Library switch above the card (it reads "waiting on you" until you do). It is free.
+- **What changes when it is on.** A request or a Desk post from an agent can carry source chips, like "E19 · limited". Tap a chip to open the paper. Tap **What it says** to read the finding. Anything with no source says "Source: coach's judgement".
+- **Two different things are kept apart.** The finding is what the paper reports. "What it means for you" is the app's own inference, and it is labelled that way every time. Most findings are marked "limited", because that is the state of the research.
+- **The agents only see it if you turn on a second switch**, "Evidence in the agents' prompts". That one is paid: an estimated 15 to 40 cents a month. Until then their prompts are exactly what they were.
+- **Plan my trip** uses the findings on short breaks once the library is on. It still may not tell you how much strength or muscle a break costs.

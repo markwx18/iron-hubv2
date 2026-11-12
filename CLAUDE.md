@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 4414 assertions, about 1 m 45 s. Must be
+**Test suite:** `node test_agents.js`. Currently 4486 assertions, about 1 m 45 s. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -151,7 +151,8 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | Area | Start from |
 |---|---|
 | State and sync | `S`, `load()`, `save()`, `DEFAULT_STATE`, `SYNC_HISTORY`, `applyPulled()`, `syncPush()`, `REMOVED_STATE_KEYS` |
-| V5 switches | `OV`, `ovOn()`, `ovSet()`, `ovPaidWait()`, `ovCardHTML()` |
+| V5 switches | `OV`, `ovOn()`, `ovDefault()`, `ovSet()`, `ovPaidWait()`, `ovCardHTML()` |
+| Evidence | `EVIDENCE`, `evEntryOk()`, `evBuild()`, `evidenceFor()`, `evTagsFor()`, `agEvidenceBlock()`, `evCiteClean()`, `evCiteHTML()`, `evCheckHTML()` |
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()`, `activeSplitObj()`, `mesoRotationDayFor()` |
 | Progression | `recommend()` and `classifyDecision()` (two trees, kept in step), `buildOneLiveExercise()`, `intraAdvice()` |
 | Today's call | `dayCall()`, `callTier()`, `recoveryBaseline()`, `whoopResponse()`, `fatigueIndex()` |
@@ -410,7 +411,7 @@ motion", and a fast-gain amber.
 **Every V5 stage sits behind a switch** (`OV`, `S.overhaul`).
 - Ask `ovOn(key)`. Never read `S.overhaul`: it holds only what he changed, and the defaults live in
   code, because `load()` would hand back a stored object without any switch added later.
-- A free part defaults on, a paid part off. An unknown key is off, so a typo cannot start a paid
+- A free part defaults on (unless its row has `hold:true`), a paid part off. An unknown key is off, so a typo cannot start a paid
   route. `ovSet()` is his tap and a `save()`; the server reads the same switches from the gist.
 - Turning a paid part on asks first and names his week-apart rule when it is early
   (`ovPaidWait()`); turning anything off never asks. A stage registers its row in `OV` when it
@@ -460,9 +461,27 @@ motion", and a fast-gain amber.
   `awayClean()` drops any line that claims a loss or puts a percentage on it. Do not loosen `AWAY_CLAIM_RE` to keep a line.
 - The limits are named constants (`HOLD_*`). The form's draft is module-scoped (`holdDraft`), read before any repaint.
 
+**Stage 3, Evidence** (`ovOn('evidence')`, free but held off; in prompts `ovOn('evidencePrompts')`, paid, off)
+- **`hold:true` on a free `OV` row means off until he turns it on** (`ovDefault()`), and turning it on asks. Use it
+  for anything free that he must look at first. The Evidence Library is training and nutrition guidance: it stays off
+  his screen and out of every prompt until he has spot-checked ten entries (`EVD_CHECK_FIRST`, listed in Settings).
+- **`EVIDENCE` is a checked constant.** `evBuild()` keeps only rows that pass `evEntryOk()`; a failing row is dropped,
+  never repaired. An entry is what ONE source reports (`finding`), its `strength`, and `means`, the app's inference.
+- **The inference is always labelled as the app's, never the paper's claim**, in a prompt (`evLine()`) and on a card
+  (`evEntryHTML()`). Every `means` opens with `EVD_MEANS_LEAD`, and the schema checks it.
+- **A cite is a list of ids and nothing else.** `evCiteClean()` keeps exact ids that exist, at most `EVD_CITE_MAX`, and
+  only with the library on; it is absent from a record otherwise. The chip, link and text are drawn from the constant
+  (`evCiteHTML()`), never from a model. No cite reads "coach's judgement". A cite never helps a fix pass.
+- **Evidence in the nightly prompts needs both switches** (`evPromptsOn()`, `agEvidenceBlock()`); with either off every
+  prompt is byte-identical. Chat gets none. The trip plan gets the `break` shelf whenever the library is on.
+- `evidenceFor(tags, max, day)` is pure: situation tags first (`evTagsFor()`), one entry per tag in turn, capped at
+  `EVD_MAX_CHARS`, rotated by the day. The names are `EVD_*` because `EV_*` belongs to the events.
+- A refresh of the library is a Code session that opens each source; never add an entry from memory.
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
 | 1 Standards: five computed pillars, reasons, plan in motion | built 2026-11-12 (`v5b`) |
 | 2 Holds: one block type for trips, sickness and exams, and the trip plan | built 2026-11-12 (`v5c`) |
-| 3 Evidence · 4 Analysts · 5 Selector · 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |
+| 3 Evidence: the cited library, source chips, held off until he checks ten | built 2026-11-12 (`v5d`) |
+| 4 Analysts · 5 Selector · 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |

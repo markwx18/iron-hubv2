@@ -2614,3 +2614,72 @@ Dec 28, Jan 1, Jan 2, Jan 6, Jan 9, Jan 11, a block across Nov 1 2026 (the 25-ho
 23-hour day). 38 mutants, each red. Two traps met on the way: a request created under a stubbed future `todayKey()`
 gets its expiry from the real clock, so the test does not assert its status; and a fixture trip entered 15 days back was
 refused by the very limit under test.
+
+### V5 stage 3: the Evidence Library, in code (2026-11-12, `v5d`)
+
+**`EVIDENCE` is a checked constant.** The research was done on 2026-11-11 (`Claude outputs/evidence_draft.json`, 60
+entries; `evidence_sources.md` says how each source was opened and read). This stage puts it in the file as
+`EVIDENCE_RAW`, one row a line, beside `LIFT_FACTS`: no fetch, no tool, no backend, about 52 KB. `evBuild()` keeps a row
+only if `evEntryOk()` passes it and its id has not been seen: an id like `E12`; tags from the fixed nineteen
+(`EVD_TAGS`); a `finding` of 40 to 450 characters; a `strength` of strong, moderate or limited; a `means` that opens
+with "For a lifter like him this suggests" (`EVD_MEANS_LEAD`); a source with a title, an https link on one of three
+known hosts (`EVD_HOSTS`) and a whole-number year from 1950 to 2026; a checked date; `read` of full or abstract; and no
+angle bracket anywhere. A row that fails is left out, never repaired. All 60 drafted rows pass: strong 4, moderate 25,
+limited 31; 28 were read as abstract only, and the card says "abstract only" on those.
+
+**`hold:true`: free, but off until he turns it on.** The entries are training and nutrition guidance, and the plan says
+he spot-checks ten before it ships. A paid switch already defaults off, but this part is free, and a free switch
+defaulted on. So an `OV` row may now carry `hold:true`, and `ovDefault()` is `!paid && !hold`. Everything else follows
+from that one line: `ovSet()` stays sparse (on is stored, off is the default and stores nothing), no paid date is
+recorded, and the week-apart rule does not apply. Turning a held part on asks first (`ovToggle()`), turning it off never
+asks, and the row in Settings reads "free · waiting on you" until it is on. `OV.evidence` is the first such row. Under
+the switches a card (`evCheckHTML()`) says what the library is and offers "Show the ten to check first"
+(`EVD_CHECK_FIRST`: E45, E47, E48 for the trip; E22, E23 for the bulk rate; E27 protein; E34 sleep; E04 volume; E12
+effort; E19 deloads), each with its finding, its labelled inference and an "Open the source" link. Nothing shows any
+entry until he opens that list or turns the switch on.
+
+**Off means off.** With `evidence` off `evOn()` is false and: `evCiteClean()` keeps nothing, so a request or Desk post
+that arrived with a cite is stored without one; `evCiteHTML()` draws nothing, so every card is exactly as it was;
+`agEvidenceBlock()` and `awayEvidence()` are empty.
+
+**Evidence in the nightly prompts is a second, paid switch** (`evidencePrompts`, off), because it adds input tokens to
+four paid calls every night. It needs the library on as well (`evPromptsOn()`). The suite takes all four nightly
+prompts and all four chat prompts with both off, the library alone on, and the prompts switch alone on, and checks they
+are byte-identical; with both on each nightly prompt gains exactly one `PRINCIPLES (cited ...)` block, placed before
+DELTA's tail (`pdContextLine()` stays last, which the cost guard relies on), and chat is untouched. Estimated cost: the
+block is at most 1,500 characters plus about 480 of framing, roughly 500 tokens, times four agents a night, about 60,000
+input tokens a month: 12 cents at one request per agent, and up to about 40 cents when the agents use their tool
+rounds, since each round sends the system prompt again. No real call has been made with it on.
+
+**`evidenceFor(tags, max, day)` picks by role and situation.** `evTagsFor(id)` puts what is going on first (a hold
+block near: `break`; a main lift amber or red on the watch, for DELTA and ZULU: `plateau`, `variation`; a deload in
+force: `deload`) and then the agent's own shelves (`EVD_ROLE`). `evidenceFor()` takes one entry per tag in turn, so the
+first tags are served first and no tag fills the cap alone; inside a tag the strongest evidence leads, and the starting
+point moves on by one each day so a prompt sees the whole shelf over time instead of the same three lines every night.
+It is pure, with the day an argument, and stops at `EVD_MAX_CHARS` (1,500, the same figure as `EV_MAX_CHARS`). The
+constants are `EVD_*` because `EV_*` already belongs to the events.
+
+**A cite is a list of ids and nothing else.** Requests and Desk posts may carry `cite:['E12']`, and so may a trip-plan
+reply. `evCiteClean()` keeps exact ids that exist in the library, each once, at most `EVD_CITE_MAX` (3). A string
+instead of an array, `e12`, ` E13`, `constructor`: discarded, not tidied. The field is absent when nothing survives, so
+a request without a cite is the record it always was. The card draws everything from the constant (`evCiteHTML()`): a
+chip per id ("E19 · limited ↗") that opens the source in a new tab with `rel="noopener noreferrer"`, and "What it says",
+which opens the finding and then "What it means for you (the app's inference, not the paper's claim)". The open state is
+module-scoped (`evOpen`). With the library on, a request or post with no cite reads "Source: coach's judgement"; it is
+not rejected. A stored id that has since left the library is treated as no cite. A cite never helps a fix through
+`agValidateFix()`: the suite queues a bad fix with a good cite and it is still refused.
+
+**The trip plan** gets the `break` shelf (`awayEvidence()`) whenever the library is on, whatever the prompts switch
+says, since that call is already his own paid tap. The stage 2 ban is unchanged: the plan may cite a line, but
+`awayClean()` still drops any sentence that restates what a break costs.
+
+**One thing the browser found.** The first `evCiteToggle()` repainted Today, the Hub and the Desk. Painting the Desk
+while it is hidden marks its posts as read, so it now repaints only what is showing (`rerenderActive(true)`). The chip
+and the "What it says" button were 27 and 21 px tall; they are now 37 and 33.
+
+**Tests.** 72 assertions and 55 mutants, each red. Checked in a real browser at 393 and 320: the request card with
+three chips, closed and open, and the V5 switches card with the ten open, with no overflow; the tap on "What it says"
+opened the three findings.
+
+Not built: evidence in chat prompts, a browsable view of all 60 entries, and the technique cards (stage 10). The
+agents' prompts do not mention `cite` at all unless both switches are on.

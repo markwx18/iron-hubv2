@@ -17551,6 +17551,159 @@ setTimeout(async () => {
     try { ev('renderHome(); renderNotif();'); } catch (e) {}
   }
 
+  // ===== V5 stage 3: the Evidence Library (2026-11-12) =====
+  console.log('\n=== EVIDENCE: A CHECKED CONSTANT, HELD OFF UNTIL HE TURNS IT ON, PROMPTS BEHIND A SECOND PAID SWITCH, CITES ARE IDS ONLY (2026-11-12) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    ev("window.__eS = JSON.stringify(S); window.__eLS = localStorage.getItem(LS_KEY); window.__eToday = todayKey; window.__eConfirm = window.confirm; window.__ePW = plateauWatch; window.__ePL = predLifts;" +
+       "window.__eOpen = evOpen; window.__eChk = evCheckOpen;");
+    ev(`window.__ebase = function(ov){
+        S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+        S.scheduleMode = 'dow'; S.schedule = {0:'D1',1:'D1',2:'D1',3:'D1',4:'D1',5:'D1',6:'D1'}; S.settings.apiKey = 'sk-test';
+        var t = todayKey(), i = 0;
+        for(var d = mesoAddDays(t, -20); d < t; d = mesoAddDays(d, 1)) S.logs.push({id:'el'+(i++), date:d, day:'D1', scheduled:'D1', entries:[]});
+        S.overhaul = ov || {}; _stdSince = {}; evOpen = {}; evCheckOpen = false; agState().proposals = [];
+      };
+      todayKey = function(){ return '2026-12-14'; };
+      plateauWatch = function(){ return window.__epw || []; }; predLifts = function(){ return window.__emain || []; };`);
+    const AG = ['zulu', 'charlie', 'delta', 'echo'];
+    const prompts = () => AG.map(id => ev("agBaseContext('" + id + "')")).concat(AG.map(id => ev("chatContext('" + id + "')")));
+    const ON = "{evidence:true}", BOTH = "{evidence:true, evidencePrompts:true}";
+
+    // ---- the constant: every entry is checked as the file loads ----
+    ok('all 60 drafted entries pass the schema, with unique ids', ev('EVIDENCE_RAW.length') === 60 && ev('EVIDENCE.length') === 60 && ev('Object.keys(EVD_BY_ID).length') === 60 && ev('EVIDENCE.every(evEntryOk)') === true);
+    ok('every inference opens the same way, and every link is https on a host the app knows', ev("EVIDENCE.every(function(e){ return e.means.indexOf(EVD_MEANS_LEAD) === 0 && /^https:\\/\\//.test(e.source.url) && EVD_HOSTS.indexOf(e.source.url.split('/')[2]) >= 0; })") === true);
+    ok('every tag has an entry, and the ten to check first exist and are ten', ev("EVD_TAGS.every(function(t){ return EVIDENCE.some(function(e){ return e.tags.indexOf(t) >= 0; }); })") === true &&
+      ev("EVD_CHECK_FIRST.length === 10 && EVD_CHECK_FIRST.every(evHas) && EVD_CHECK_FIRST.filter(function(x, i, a){ return a.indexOf(x) === i; }).length === 10") === true);
+    const entry = mut => ev("(function(){ var e = JSON.parse(JSON.stringify(EVIDENCE[0])); " + mut + "; return evEntryOk(e); })()");
+    ok('schema: an untouched copy passes', entry('') === true);
+    [["e.id = 'X1'", 'a bad id'], ["e.tags = []", 'no tags'], ["e.tags = ['overload', 'magic']", 'an unknown tag'], ["e.finding = 'Too short.'", 'a stub finding'],
+     ["e.finding = new Array(60).join('long text ')", 'a finding over the cap'], ["e.strength = 'proven'", 'a strength outside the three'],
+     ["e.means = 'This proves it works for him.'", 'an inference not labelled as one'], ["e.source.url = 'http://pubmed.ncbi.nlm.nih.gov/1/'", 'a link that is not https'],
+     ["e.source.url = 'https://example.com/pubmed.ncbi.nlm.nih.gov/1'", 'a link to an unknown host'], ["e.source.year = 2031", 'a year in the future'], ["e.source.year = '2009'", 'a year that is not a number'],
+     ["e.read = 'skimmed'", 'an unknown read level'], ["e.checked = 'yesterday'", 'a checked date that is not a date'], ["delete e.source", 'no source'],
+     ["e.finding = e.finding.slice(0, 200) + ' <img src=x>'", 'markup in the text'], ["e = null", 'nothing at all']
+    ].forEach(function (c) { ok('schema: ' + c[1] + ' is dropped', entry(c[0]) === false); });
+    ok('schema: a failing or repeated row is left out of the library, never repaired', ev("evBuild([EVIDENCE[0], EVIDENCE[0], Object.assign({}, EVIDENCE[1], {strength:'proven'}), EVIDENCE[2], null]).map(function(e){ return e.id; }).join()") === 'E01,E03' && ev('evBuild(null).length') === 0);
+
+    // ---- the switch: free, but held off ----
+    ev('__ebase()');
+    ok('evidence is a free switch that is OFF until he turns it on; its prompts are a paid switch, off', ev('OV.evidence.paid') === false && ev('OV.evidence.hold') === true && ev("ovOn('evidence')") === false &&
+      ev('OV.evidencePrompts.paid') === true && ev("ovOn('evidencePrompts')") === false && ev('evOn()') === false && ev('evPromptsOn()') === false);
+    ok('hold is the exception: an ordinary free switch is still on by default', ev("ovOn('holds')") === true && ev("ovOn('standards')") === true && ev("ovDefault('evidence')") === false && ev("ovDefault('holds')") === true);
+    ev("OV.tHold = {label:'Held <i>test</i>', paid:false, hold:true, note:'Look first.'};");
+    ['{}', 'undefined', 'null', '[]'].forEach(function (v) { ev('S.overhaul = ' + v + ';'); ok('hold: S.overhaul = ' + v + ' leaves a held part off', ev("ovOn('tHold')") === false); });
+    ev("S.overhaul = {}; ovSet('tHold', true);");
+    ok('hold: turning it on stores it (on is not its default), with no paid date', ev("ovOn('tHold')") === true && J('S.overhaul').tHold === true && !('at' in J('S.overhaul')) && ev("ovPaidWait('tHold')") === 0);
+    ev("ovSet('tHold', false);");
+    ok('hold: turning it off again leaves state sparse', ev("ovOn('tHold')") === false && JSON.stringify(J('S.overhaul')) === '{}');
+    ev("window.__asked = []; window.confirm = function(m){ window.__asked.push(m); return false; }; window.__el = {checked:true, getAttribute:function(){ return 'tHold'; }}; ovToggle(window.__el);");
+    ok('hold: turning it on in Settings asks first, and a no leaves it off', ev('window.__asked.length') === 1 && /Look first/.test(ev('window.__asked[0]')) && ev("ovOn('tHold')") === false && ev('window.__el.checked') === false);
+    ev("window.confirm = function(m){ window.__asked.push(m); return true; }; window.__el.checked = true; ovToggle(window.__el);");
+    ok('hold: a yes turns it on, and turning it off never asks', ev("ovOn('tHold')") === true && (() => { ev("window.__asked = []; window.__el.checked = false; ovToggle(window.__el);"); return ev('window.__asked.length') === 0 && ev("ovOn('tHold')") === false; })());
+    ev("delete OV.tHold; delete window.__el; delete window.__asked; window.confirm = window.__eConfirm; S.overhaul = {};");
+    ok('Settings: the held switch reads "waiting on you" while off, and not once on', /Evidence Library<\/b> <span class="pill"[^>]*>free<\/span> <span class="pill"[^>]*>waiting on you/.test(ev('ovCardHTML()')) &&
+      (() => { ev("S.overhaul = {evidence:true};"); const on = !/waiting on you<\/span>/.test(ev('ovCardHTML()')); ev("S.overhaul = {};"); return on; })());
+    ok('Settings: the card under the switches says to check ten first, and shows none until he asks', /check ten before you turn it on/.test(ev('evCheckHTML()')) && !/Open the source/.test(ev('evCheckHTML()')) && /id="evCheck"/.test(ev('ovCardHTML()')));
+    ev('evCheckOpen = true;');
+    ok('Settings: the ten open with their findings, each linking out, the inference labelled as the app\'s', (() => { const h = ev('evCheckHTML()');
+      return (h.match(/Open the source/g) || []).length === 10 && (h.match(/href="https:\/\/(pubmed|pmc)\.ncbi\.nlm\.nih\.gov\//g) || []).length === 10 && (h.match(/target="_blank" rel="noopener noreferrer"/g) || []).length === 10 &&
+        (h.match(/What it means for you \(the app’s inference, not the paper’s claim\):/g) || []).length === 10 && /E45 · limited evidence · abstract only/.test(h); })());
+    ev('evCheckOpen = false;');
+
+    // ---- off means off his screen and out of every prompt ----
+    ev('__ebase()');
+    const deload = "{title:'Deload', reasoning:'r', fix:{type:'deload', payload:{}}, cite:['E19', 'nope']}";
+    ok('off: a cite is not kept, nothing is drawn, no block is built', J("evCiteClean(['E12'])").length === 0 && ev("evCiteHTML(['E12'], 'k')") === '' && ev("evCiteHTML(null, 'k')") === '' && ev("agEvidenceBlock('delta')") === '' && ev('awayEvidence()') === '');
+    ev("agIngest(agState(), 'delta', {proposals:[" + deload + "]});");
+    ok('off: a request that came with a cite is stored without one, and its card is as it always was', J('agState().proposals').length === 1 && !('cite' in J('agState().proposals')[0]) && !/ev-cite/.test(ev('agPropHTML(agState().proposals[0])')));
+    ok('off: a Desk post that came with a cite is stored without one', (() => { const it = J("agValidateDesk([{text:'A note about weekly sets.', cite:['E04']}], 'delta', [])").items; return it.length === 1 && !('cite' in it[0]); })());
+    const P0 = prompts();   // after the request above is queued: the queue is part of every prompt
+    ev("S.overhaul = " + ON + ";");
+    const P1 = prompts();
+    ok('the library on, its prompts off: every nightly and chat prompt is byte-identical', P1.every((p, i) => p === P0[i]) && P0[0].length > 50);
+    ev("S.overhaul = {evidencePrompts:true};");
+    ok('the prompts switch alone does nothing: it needs the library on', prompts().every((p, i) => p === P0[i]) && ev('evPromptsOn()') === false);
+    ev("S.overhaul = " + BOTH + ";");
+    const P2 = prompts();
+    ok('both on: each of the four nightly prompts gains one PRINCIPLES block, inside the cap', AG.every((id, i) => (P2[i].match(/\nPRINCIPLES \(cited/g) || []).length === 1 && P2[i].length - P0[i].length <= ev('EVD_MAX_CHARS') + 520 && P2[i].length > P0[i].length + 300));
+    ok('both on: chat prompts are untouched (nightly only)', AG.every((id, i) => P2[4 + i] === P0[4 + i]));
+    ok('both on: the block says what each line is and how to cite', /Each line is what one source reports, then the app’s own inference, which the source did not claim/.test(P2[2]) && /"limited" means limited/.test(P2[2]) && /may add "cite":\["E\d+"\]/.test(P2[2]) && /coach’s judgement/.test(P2[2]));
+    ok('both on: the block sits before DELTA\'s tail, never after it', (() => { const a = ev("agBaseContext('delta')"), tail = ev("agTodaySessionNote()+olAgentContext()+pdContextLine(pdTargets())"); return a.slice(a.length - tail.length) === tail && a.indexOf('\nPRINCIPLES (cited') < a.length - tail.length; })());
+
+    // ---- evidenceFor: by tag, capped, the same answer for the same day ----
+    const EF = (tags, max, day) => J('evidenceFor(' + JSON.stringify(tags) + ', ' + max + ", '" + day + "')");
+    ok('pick: only entries with the tag, and all ten of them when there is room, none twice', (() => { const a = EF(['break'], 100000, '2026-12-14'); return a.length === 10 && a.every(e => e.tags.indexOf('break') >= 0) && new Set(a.map(e => e.id)).size === 10; })());
+    ok('pick: an entry on two shelves (E04 is volume and frequency) is picked once', (() => { const x = EF(['volume', 'frequency'], 100000, '2026-12-14'); return x.filter(e => e.id === 'E04').length === 1 && new Set(x.map(e => e.id)).size === x.length && x.length === 7; })());
+    ok('pick: capped in characters', (() => { const a = EF(['break'], 1500, '2026-12-14'); const n = ev("evidenceFor(['break'], 1500, '2026-12-14').map(evLine).join('').length"); return a.length >= 2 && a.length < 10 && n <= 1500 && EF(['break'], 120, '2026-12-14').length === 0; })());
+    ok('pick: the same day gives the same entries, the next day moves on by one', JSON.stringify(EF(['break'], 1500, '2026-12-14')) === JSON.stringify(EF(['break'], 1500, '2026-12-14')) &&
+      EF(['break'], 1500, '2026-12-15')[0].id === EF(['break'], 100000, '2026-12-14')[1].id);
+    ok('pick: on day zero of the rotation the strongest evidence leads', EF(['break'], 100000, '2026-01-01')[0].strength === 'strong' && EF(['break'], 100000, '2026-01-01')[0].id === 'E48');
+    ok('pick: earlier tags first, one entry per tag in turn', (() => { const a = EF(['protein', 'sleep'], 100000, '2026-12-14'); return a[0].tags.indexOf('protein') >= 0 && a[1].tags.indexOf('sleep') >= 0 && a[2].tags.indexOf('protein') >= 0; })());
+    ok('pick: an unknown tag, or none, is nothing', EF(['magic'], 1500, '2026-12-14').length === 0 && EF([], 1500, '2026-12-14').length === 0 && ev("evidenceFor(null, 1500, '2026-12-14').length") === 0 && ev("evidenceBlock(['magic'], 1500, '2026-12-14')") === '');
+    ok('pick: every line labels the inference as the app\'s', ev("evidenceFor(['bulk'], 100000, '2026-12-14').every(function(e){ return evLine(e).indexOf(' The app\\u2019s inference, not the source\\u2019s claim: For a lifter like him this suggests') > 0 && evLine(e).indexOf('['+e.id+'] ('+e.strength+' evidence) ') === 0; })") === true);
+    // by role and situation
+    ev("window.__epw = []; window.__emain = [];");
+    ok('role: each agent has its own shelves, and an unknown id has none', J("evTagsFor('echo')").join() === 'bulk,protein,timing,sleep' && J("evTagsFor('charlie')").join() === 'sleep' && J("evTagsFor('delta')")[0] === 'overload' && J("evTagsFor('nobody')").length === 0 && J("evTagsFor('constructor')").length === 0);
+    ev("window.__epw = [{lift:'Bench', lvl:'red'}, {lift:'Curl', lvl:'red'}]; window.__emain = ['Bench'];");
+    ok('situation: a main lift off track puts plateau and variation first for DELTA and ZULU, not ECHO', J("evTagsFor('delta')").slice(0, 2).join() === 'plateau,variation' && J("evTagsFor('zulu')")[0] === 'plateau' && J("evTagsFor('echo')")[0] === 'bulk' &&
+      /\[E\d+\]/.test(ev("agEvidenceBlock('delta')")) && ev("evidenceFor(evTagsFor('delta'), EVD_MAX_CHARS)[0].tags.indexOf('plateau')") >= 0);
+    ev("window.__epw = [{lift:'Curl', lvl:'red'}]; window.__emain = ['Bench'];");
+    ok('situation: a lift that is not a main lift does not', J("evTagsFor('delta')")[0] === 'overload');
+    ev("window.__epw = []; holdAdd({kind:'trip', from:'2026-12-28', to:'2027-01-01', gym:'hotel'});");
+    ok('situation: a hold coming up puts the break shelf first for all four', AG.every(id => J("evTagsFor('" + id + "')")[0] === 'break'));
+
+    // ---- the trip plan: the break entries with the library on, whatever the prompts switch says ----
+    const tripId = ev('holdBlocks()[0].id');
+    ev("S.overhaul = " + ON + ";");
+    const sysOn = ev("awaySystem(holdById('" + tripId + "'))");
+    ok('trip plan: with the library on it carries cited entries, all from the break shelf, and the ban still stands', (() => { const ids = (sysOn.match(/\n- \[E\d+\]/g) || []).map(x => x.slice(4, -1));
+      return ids.length >= 2 && ids.every(id => ev("EVD_BY_ID['" + id + "'].tags.indexOf('break')") >= 0) && /The ban above still holds/.test(sysOn) && /DO NOT state as fact what a break costs/.test(sysOn); })());
+    ok('trip plan: its reply may carry a cite, ids only', J("awayValidateReply({lead:'Train as normal.', cite:['E45', 'E45', 'E999', 7]}, holdById('" + tripId + "'))").cite.join() === 'E45');
+    ev("S.awayPlans['" + tripId + "'] = {hold:'" + tripId + "', input:{}, at:'x', reply:awayValidateReply({lead:'Train as normal.', cite:['E45']}, holdById('" + tripId + "'))};");
+    ok('trip plan: the card shows the source chip', /class="ev-chip" href="https:\/\/pubmed\.ncbi\.nlm\.nih\.gov\/[0-9]+\/"/.test(ev('holdCardHTML()')) && /E45 · limited/.test(ev('holdCardHTML()')));
+    ev("S.overhaul = {};");
+    ok('trip plan: with the library off the prompt has no principles, a cite is not kept, and a stored one is not drawn', !/PRINCIPLES/.test(ev("awaySystem(holdById('" + tripId + "'))")) &&
+      !('cite' in J("awayValidateReply({lead:'Train as normal.', cite:['E45']}, holdById('" + tripId + "'))")) && !/ev-chip/.test(ev('holdCardHTML()')));
+
+    // ---- cites: ids that exist, exactly, at most three ----
+    ev("__ebase(" + ON + ")");
+    ok('cite: exact ids that exist, each once, at most three', J("evCiteClean(['E12', 'E12', 'E99', 'e12', ' E13', 42, null, 'E13', 'E14', 'E15'])").join() === 'E12,E13,E14');
+    ok('cite: an id is matched exactly: no case folding, no trimming', J("evCiteClean(['e12', ' E13', 'E14 ', 'E012'])").length === 0);
+    ok('cite: anything that is not an array of ids is discarded, not tidied', J("evCiteClean('E12')").length === 0 && J("evCiteClean({0:'E12', length:1})").length === 0 && J("evCiteClean(['constructor', '__proto__', 'toString'])").length === 0 && J('evCiteClean()').length === 0);
+    ev("agIngest(agState(), 'delta', {proposals:[" + deload + "]});");
+    const p1 = J('agState().proposals')[0];
+    ok('request: a cite is stored as the ids that exist', J('agState().proposals').length === 1 && JSON.stringify(p1.cite) === '["E19"]' && p1.fix.type === 'deload');
+    const card = ev('agPropHTML(agState().proposals[0])');
+    ok('request: the card shows a source chip that links out, and the finding stays folded', /<a class="ev-chip" href="https:\/\/[^"]+" target="_blank" rel="noopener noreferrer" title="[^"]+">E19 · limited ↗<\/a>/.test(card) && />What it says</.test(card) && !/ev-body/.test(card) &&
+      card.indexOf(ev("esc(EVD_BY_ID.E19.source.url)")) > 0);
+    ev('rerenderActive(true)');   // a first repaint sets up the renderers' own lazy keys; the toggle is measured after it
+    const snap = ev('JSON.stringify(S)');
+    ev("evCiteToggle({dataset:{k:'prop:" + p1.id + "'}});");
+    const cardOpen = ev('agPropHTML(agState().proposals[0])');
+    ok('request: "What it says" opens the finding, and the inference is labelled as the app\'s, not the paper\'s', /ev-body/.test(cardOpen) && cardOpen.indexOf(ev('esc(EVD_BY_ID.E19.finding)')) > 0 &&
+      /<b>What it means for you \(the app’s inference, not the paper’s claim\):<\/b> For a lifter like him this suggests/.test(cardOpen) && />Hide</.test(cardOpen));
+    ok('request: opening it is a view, not a change (S is byte-identical, the state is module-scoped)', ev('JSON.stringify(S)') === snap && ev("evOpen['prop:" + p1.id + "']") === true);
+    ev("agState().proposals = []; agIngest(agState(), 'delta', {proposals:[{title:'Deload', reasoning:'r', fix:{type:'deload', payload:{}}}]});");
+    ok('request: with no cite the record has no cite field, and the card says coach\'s judgement', !('cite' in J('agState().proposals')[0]) && /Source: coach’s judgement/.test(ev('agPropHTML(agState().proposals[0])')) && !/ev-chip/.test(ev('agPropHTML(agState().proposals[0])')));
+    ev("agState().proposals = []; agIngest(agState(), 'delta', {proposals:[{title:'Deload', reasoning:'r', fix:{type:'deload', payload:{}}, cite:['E999', 'made-up']}]});");
+    ok('request: a cite of ids that do not exist is no cite, and the request itself is unaffected', J('agState().proposals').length === 1 && !('cite' in J('agState().proposals')[0]));
+    ok('card: a stored id that has since left the library reads as coach\'s judgement, never a dead chip', /coach’s judgement/.test(ev("evCiteHTML(['E999'], 'k')")) && !/ev-chip/.test(ev("evCiteHTML(['E999'], 'k')")));
+    const dk = J("agValidateDesk([{text:'A note about weekly sets.', cite:['E04', 'bad', 'E08']}, {text:'A second note.'}], 'delta', [])").items;
+    ok('Desk: a post keeps the ids that exist, and one without a cite has no field', dk.length === 2 && dk[0].cite.join() === 'E04,E08' && !('cite' in dk[1]));
+    ok('Desk: the post shows its chips, and a post without says coach\'s judgement', (() => { ev("window.__di = agValidateDesk([{text:'A note about weekly sets.', cite:['E04']}, {text:'A second note.'}], 'delta', []).items;");
+      const a = ev('deskItemHTML(window.__di[0])'), b = ev('deskItemHTML(window.__di[1])'); ev('delete window.__di;'); return /E04 · strong ↗/.test(a) && /coach’s judgement/.test(b) && !/ev-chip/.test(b); })());
+    ok('the usage of a cite never widens the validator: a fix that fails is still refused with a cite on it', (() => { ev("agState().proposals = []; agIngest(agState(), 'delta', {proposals:[{title:'Calories', reasoning:'r', fix:{type:'cal', payload:{target:9000}}, cite:['E22']}]});"); return J('agState().proposals').length === 0; })());
+  } catch (e) {
+    ok('evidence section', false, e.stack);
+  } finally {
+    ev("todayKey = window.__eToday; window.confirm = window.__eConfirm; plateauWatch = window.__ePW; predLifts = window.__ePL; evOpen = window.__eOpen; evCheckOpen = window.__eChk; delete OV.tHold;" +
+       "_stdSince = {}; S = JSON.parse(window.__eS);" +
+       "if(window.__eLS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__eLS);" +
+       "['__eS','__eLS','__eToday','__eConfirm','__ePW','__ePL','__eOpen','__eChk','__ebase','__epw','__emain','__el','__asked','__di'].forEach(function(k){ delete window[k]; });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
