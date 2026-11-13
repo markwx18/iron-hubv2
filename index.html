@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-13-v5g">
+<meta name="ironhub-build" content="2026-11-13-v5h">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2189,6 +2189,8 @@
   .plan-v i{font-style:normal; flex:none;}
   .plan-v span{min-width:0; overflow-wrap:anywhere;}
   .plan-last{margin-top:12px; padding-top:10px; border-top:1px solid var(--line);}
+  .plan-sg{margin-top:8px;}
+  .ord-card{border-left-color:#dfae36;}
   .desk-n{padding:12px 0; border-top:1px solid var(--panel2); min-width:0;}
   .desk-n:first-child{border-top:0; padding-top:2px;}
   .desk-n-h{display:flex; align-items:center; gap:8px; min-width:0;}
@@ -6338,6 +6340,8 @@ function aiBody(messages, system, maxTokens, opts){
   // and deliberately never copied onto the body.
   const o = opts || {};
   const body = {model:AI_MODEL, max_tokens:maxTokens||1000, messages};
+  // The Monthly Review names its model through one constant (V5 stage 7). Nothing else can change the model.
+  if(o.model && o.model === MONTHLY_MODEL) body.model = MONTHLY_MODEL;
   if(system) body.system = system;
   // 'summarized' is NOT here to be read -- every consumer keeps only text blocks. It is here
   // because it is the only thing that puts bytes on the wire while the model thinks. Sonnet 5
@@ -6385,7 +6389,7 @@ function aiUsageNote(route, u, cut){
    Automatic work (the nightly cycle, the brief, the letter) pauses at the cap and says so. Anything
    he started himself (a chat, Run cycle now, Rewrite, the Sunday plan) asks first. */
 const SPEND_DEVICE_KEY = 'ironhub:device', SPEND_CAP_DEFAULT = 20, SPEND_KEEP_DAYS = 70, SPEND_REC_MAX = 200;
-const SPEND_AUTO = ['night', 'brief', 'letter', 'lift'];
+const SPEND_AUTO = ['night', 'brief', 'letter', 'lift', 'monthly'];
 const SPEND_WARN_FRAC = 0.8;   // the 80% warning: the notification, the spend card's bar and the Hub ring
 const SPEND_OK_MS = 10 * 60000;   // a "send anyway" covers the rest of that conversation or cycle
 function spendDeviceId(){
@@ -6507,7 +6511,7 @@ function aiUsageSummary(days){
   return {days:n, calls:calls, total:total, by:by, first:first, cut:cut};
 }
 const AI_ROUTE_LABEL = {night:'Nightly cycle', brief:'Morning brief', letter:'Weekly letter', chat:'Chats',
-  live:'Mid-workout DELTA', audit:'Weekly audit', meals:'Meal ideas', import:'Screenshot import', weekplan:'Week plan', awayplan:'Trip plan', forecast:'Forecasts', other:'Other'};
+  live:'Mid-workout DELTA', audit:'Weekly audit', meals:'Meal ideas', import:'Screenshot import', weekplan:'Week plan', awayplan:'Trip plan', monthly:'Monthly review', forecast:'Forecasts', other:'Other'};
 function aiUsageCardHTML(){
   const u = aiUsageSummary(30);
   let body;
@@ -8172,6 +8176,8 @@ function applyPulled(d, exportedAt){
         if(loc && loc.at && (!a.dossiers[k] || loc.at > (a.dossiers[k].at || ''))) a.dossiers[k] = loc;
       });
     }
+    // The Monthly Review's standing orders (V5 stage 7): one object a month, the newer write wins.
+    if(localAgents.orders && localAgents.orders.at && (!a.orders || localAgents.orders.at > (a.orders.at || ''))) a.orders = localAgents.orders;
     // The agents' questions: by id, the newer answer (or undo) wins, so an answer given on one device
     // is not lost to the other's older snapshot. The rotation: the newer turn wins.
     if(Array.isArray(localAgents.questions)){
@@ -26538,6 +26544,8 @@ function agBaseContext(id){
   try{ sqd += selContextLine(id); }catch(e){}
   // Its watches that fired (V5 stage 6): behind the paid switch, and only on the nights after one fires.
   try{ sqd += watchFiredLine(id); }catch(e){}
+  // Standing orders from the Monthly Review (V5 stage 7): behind its paid switch, while they are in force.
+  try{ sqd += ordContextLine(id); }catch(e){}
   return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+std+sqd+intel+evl+lref+desk+evd+
     ((id==='delta' || id==='zulu') ? agFeelLine()+agPracticeLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+fcTrackLine(id)+qaContextLine(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext()+dosContextLine(dosTargets())+pdContextLine(pdTargets()) : '');
@@ -27299,8 +27307,6 @@ function planPriHTML(p, row, i){
     (p.text ? '<p class="small plan-x">'+esc(p.text)+'</p>' : '')+
     (row.by === 'zulu' ? evCiteHTML(p.cite, 'plan:'+row.id+':'+i) : '')+'</div>';
 }
-function planVerdictHTML(p, row){ return ''; }   // stage 7 fills this: the verdict is worked out when read
-function planCardExtraHTML(where, week, row){ return ''; }   // stage 7: last week's score, and setting a plan by his tap
 /* The card: on Today under the Standards (only when a plan stands), and first on the Desk (which also says when none does). */
 function planCardHTML(where){
   if(!planOn()) return '';
@@ -27314,6 +27320,457 @@ function planCardHTML(where){
     return '<div class="card plan-card" id="'+id+'">'+head+(where === 'desk' ? '<p class="small">No plan for this week.</p>' : '')+extra+'</div>';
   }
   return '<div class="card plan-card" id="'+id+'">'+head+row.pri.map(function(p, i){ return planPriHTML(p, row, i); }).join('')+extra+'</div>';
+}
+/* ============================================================
+   ACCOUNTABILITY (V5 stage 7, 2026-11-13). Plan, do, score, adapt.
+   - THE VERDICT on a Plan of Record priority is worked out when read (planVerdict()), from his data, and never stored:
+     met, partly, missed, open (its day has not passed), held (a hold covers its pillar that week) or not judged
+     (too little data: never a miss and never a pass). Bodyweight is judged the Standards' way, bulkRate(2, sunday).
+   - A plan is written two ways. FREE: the app suggests up to three priorities from the Standards (planSuggest()) and
+     his tap stores them (planSetMine(), a save()). PAID, off (`weeklyReview`): ZULU writes next week's plan inside
+     the weekly letter call it already makes. One reply, two keys, each checked on its own: a bad plan costs the plan
+     and keeps the letter. planValidate() is the gate: a check outside PLAN_CHECKS is dropped, never coerced.
+   - ZULU sees its own record (planMemoryLine()) only in that call, so with the switch off the letter prompt is
+     byte-identical.
+   - A missed priority is shown beside its Standard and told to ZULU. It does NOT move a Standard's level: a level is
+     carried by its own entry and exit conditions (stage 1), and a second way in would let a model-written plan raise
+     a red. PLAN_FEEDS_STANDARDS records that choice.
+   - THE MONTHLY REVIEW is a paid switch, off (`monthlyReview`): one call a month from the server's evening run
+     (runnerTick()), writing standing orders, at most ORD_MAX_LINES short lines per coach. They are emphasis: shown
+     to him, read by the coaches as data for ORD_DAYS, and they change nothing. The model is MONTHLY_MODEL, which is
+     AI_MODEL: a larger model is his decision (the cost guardrail), not this file's.
+   ============================================================ */
+OV.weeklyReview = {label:'Weekly Review: ZULU writes the Plan of Record', paid:true, note:'Inside the weekly letter call that already runs on Sunday night, ZULU is shown how the app scored its last plans and writes next week’s: an estimated 2 to 6 cents a month. Needs Plan of Record on.'};
+OV.monthlyReview = {label:'Monthly Review: standing orders', paid:true, note:'One call a month from the server’s evening run: ZULU reads the month and writes at most 5 short lines for each coach on what to emphasise. An estimated 5 to 10 cents a run on the current model. Nothing in your plan changes.'};
+const PLAN_PARTLY = 0.5;            // a count at half or more of what was asked, or half the gain, reads "partly"
+const PLAN_CAL_DAYS = 5;            // the app's own suggestion for Intake: days at or over target
+const PLAN_LAST_DAYS = 3;           // days into a new week that Today and the bell still show last week's result
+const PLAN_MEMORY_WEEKS = 4;        // weeks of its own record ZULU is shown
+const PLAN_MEMORY_MAX = 900;        // characters that record may add to the letter call
+const PLAN_FEEDS_STANDARDS = false; // a missed priority never moves a Standard's level (see above)
+const PLAN_V = {
+  met:   {ic:'✓', w:'Met', col:'var(--good)'},
+  partly:{ic:'◐', w:'Partly', col:'var(--warn)'},
+  missed:{ic:'✖', w:'Missed', col:'var(--bad)'},
+  open:  {ic:'…', w:'Open', col:'var(--muted)'},
+  held:  {ic:'‖', w:'Held', col:'var(--muted)'},
+  nodata:{ic:'–', w:'Not judged', col:'var(--dim)'}
+};
+function wrOn(){ return planOn() && ovOn('weeklyReview'); }
+function planDays(from, to){ const out = []; for(let d = from; d <= to && out.length < 14; d = mesoAddDays(d, 1)) out.push(d); return out; }
+/* THE verdict on one priority, as of a day: {v, got, need, note}. Pure. Worked out from his data every time it is
+   read; nothing here is stored. A priority is judged over [the plan's Monday, its byDate]; before that day has passed
+   it is open unless it is already met. A measure that throws reads "not judged". */
+function planVerdict(p, row, asOf){
+  const t = asOf || todayKey(), from = row.week, to = p.byDate, over = t > to, c = p.check;
+  const out = {v:'open', got:null, need:null, note:''};
+  try{
+    if(planDays(from, to).some(function(d){ return !!stdHeldBy(p.standard, d); })){ out.v = 'held'; out.note = 'Part of this week is in a hold, so it is not judged.'; return out; }
+    const upto = t < to ? t : to;
+    const inWin = function(d){ return d >= from && d <= upto; };
+    const count = function(got, need){
+      out.got = got; out.need = need;
+      out.v = got >= need ? 'met' : !over ? 'open' : got >= Math.ceil(need * PLAN_PARTLY) ? 'partly' : 'missed';
+    };
+    if(c.type === 'sessions'){
+      const days = {};
+      (S.logs || []).forEach(function(l){ if(l && inWin(l.date)) days[l.date] = 1; });
+      count(Object.keys(days).length, c.n);
+    } else if(c.type === 'weighIns'){
+      const days = {};
+      (S.weights || []).forEach(function(x){ if(x && inWin(x.date) && +x.lbs > 0) days[x.date] = 1; });
+      count(Object.keys(days).length, c.n);
+    } else if(c.type === 'checkins'){
+      const days = {};
+      (S.readiness || []).forEach(function(r){ if(r && inWin(r.date) && rdComplete(r)) days[r.date] = 1; });
+      count(Object.keys(days).length, c.n);
+    } else if(c.type === 'calDays' || c.type === 'proDays'){
+      // Today's log is not finished until the day is, so an open week reads up to yesterday.
+      const last = over ? to : mesoAddDays(t, -1), days = {};
+      (S.nutrition || []).forEach(function(n){
+        if(!n || !(n.date >= from) || n.date > last) return;
+        const ok = c.type === 'calDays' ? (+n.cals > 0 && ['on', 'over'].indexOf(nutTierCal(n.cals, calTargetOn(n.date))) >= 0) : (+n.protein > 0 && nutTierPro(n.protein) === 'on');
+        if(ok) days[n.date] = 1;
+      });
+      count(Object.keys(days).length, c.n);
+    } else if(c.type === 'planned'){
+      const by = {};
+      (S.logs || []).forEach(function(l){ if(l && l.date) (by[l.date] = by[l.date] || []).push(l); });
+      let need = 0, got = 0, miss = 0;
+      planDays(from, to).forEach(function(d){
+        if(d > t || svSchedOn(by, d) === 'REST' || !svJudgeable(d)) return;
+        if(by[d]){ need++; got++; return; }
+        if(d === t || dayExcuse(d)) return;     // today is not over; a day with a reason is not a miss
+        need++; miss++;
+      });
+      out.got = got; out.need = need;
+      out.v = !over ? 'open' : miss === 0 ? (need ? 'met' : 'nodata') : miss === 1 ? 'partly' : 'missed';
+      out.note = miss ? stdPl(miss, 'scheduled day')+' missed'+(over ? '' : ' so far')+'.' : (over && !need) ? 'No scheduled day in the window.' : '';
+    } else if(c.type === 'bwUp'){
+      const sun = mesoAddDays(from, 6);
+      const wn = function(k){ const days = {}; (S.weights || []).forEach(function(x){ if(x && x.date >= k && x.date <= mesoAddDays(k, 6) && +x.lbs > 0) days[x.date] = 1; }); return Object.keys(days).length; };
+      if(t <= sun){ out.note = 'Judged once the week is over.'; }
+      else if(wn(from) < STD_BW_MIN_WEIGHS || wn(mesoAddDays(from, -7)) < STD_BW_MIN_WEIGHS){ out.v = 'nodata'; out.note = 'It takes '+STD_BW_MIN_WEIGHS+' weigh-ins in the week and in the week before.'; }
+      else {
+        const r = bulkRate(2, sun);     // the Standards' own expression of a week: no new rate
+        if(!r || !isFinite(r.rate)){ out.v = 'nodata'; out.note = 'The week’s rate could not be read.'; }
+        else {
+          out.got = Math.round(r.rate * 100) / 100; out.need = c.lb;
+          out.v = r.rate >= c.lb ? 'met' : r.rate >= c.lb * PLAN_PARTLY ? 'partly' : 'missed';
+          out.note = stdRate(r.rate)+' lb on the week.';
+        }
+      }
+    } else if(c.type === 'topSet'){
+      const x = swapTrialOn();
+      let trained = false, called = false, atW = false, hit = false;
+      (S.logs || []).forEach(function(l){
+        if(!l || !inWin(l.date) || l.deload) return;
+        (l.entries || []).forEach(function(e){
+          if(!e || e.exercise !== c.lift) return;
+          trained = true;
+          (e.sets || []).forEach(function(s){
+            if(!s || !s.p || !(+s.p.w > 0)) return;
+            called = true;
+            if(+s.w >= +s.p.w){ atW = true; if(+s.r >= (+s.p.lo || 1)) hit = true; }
+          });
+        });
+      });
+      if(hit) out.v = 'met';
+      else if(x && x.lift === c.lift){ out.v = 'nodata'; out.note = 'On a swap trial this week.'; }
+      else if(!over){ out.note = trained ? (called ? 'Not at the called weight in its rep range yet.' : '') : 'Not trained yet this week.'; }
+      else if(!trained && !planLiftScheduled(c.lift, from, to)){ out.v = 'nodata'; out.note = 'Its day did not come up in the window.'; }
+      else if(!trained){ out.v = 'missed'; out.note = 'Not trained in the window.'; }
+      else if(!called){ out.v = 'nodata'; out.note = 'Its sets carried no call from the app.'; }
+      else if(atW){ out.v = 'partly'; out.note = 'At the called weight, under its rep range.'; }
+      else { out.v = 'missed'; out.note = 'Under the weight the app called.'; }
+    } else { out.v = 'nodata'; out.note = 'The app has no measure for this check.'; }
+  }catch(e){ out.v = 'nodata'; out.got = null; out.need = null; out.note = 'It could not be worked out.'; }
+  return out;
+}
+/* Whether a lift's day comes up between two dates, on the schedule and the split as they stand now. His 8-day rotation
+   leaves one day out of every calendar week, and a lift that was never due cannot be a miss. A day before the cycle's
+   anchor has no schedule the app can know (svJudgeable()): the replay read JM Press "missed, not trained" on three
+   September weeks from a rotation wrapped backwards. If it cannot be answered, it is not called scheduled. */
+function planLiftScheduled(lift, from, to){
+  try{
+    const sp = activeSplitObj() || {};
+    return planDays(from, to).some(function(d){
+      if(!svJudgeable(d)) return false;
+      const k = scheduledDayFor(d), day = k && sp[k];
+      return !!(day && (day.exercises || []).some(function(x){ return exName(x) === lift; }));
+    });
+  }catch(e){ return false; }
+}
+function planVerdictText(p, v){
+  const W = PLAN_V[v.v] || PLAN_V.nodata;
+  const cnt = (v.got !== null && v.need !== null && p.check.type !== 'bwUp') ? v.got+' of '+v.need+(v.v === 'open' ? ' so far' : '') : '';
+  return W.w+(cnt ? ' · '+cnt : '')+(v.note ? ' · '+v.note : '');
+}
+function planVerdictHTML(p, row){
+  let v;
+  try{ v = planVerdict(p, row); }catch(e){ v = {v:'nodata', got:null, need:null, note:'It could not be worked out.'}; }
+  const W = PLAN_V[v.v] || PLAN_V.nodata;
+  return '<span class="plan-v" data-v="'+v.v+'" style="color:'+W.col+'"><i aria-hidden="true">'+W.ic+'</i><span>'+esc(planVerdictText(p, v))+'</span></span>';
+}
+/* A week's plan with every priority scored, or null when the week has no plan. */
+function planScore(week, asOf){
+  const row = planFor(week);
+  if(!row) return null;
+  const n = {met:0, partly:0, missed:0, open:0, held:0, nodata:0};
+  const items = row.pri.map(function(p){ const v = planVerdict(p, row, asOf); n[v.v] = (n[v.v] || 0) + 1; return {p:p, v:v}; });
+  return {row:row, items:items, n:n, judged:n.met + n.partly + n.missed};
+}
+function planScoreLine(s){
+  if(!s.judged) return 'nothing could be judged';
+  return s.n.met+' of '+s.judged+' met'+(s.n.partly ? ', '+s.n.partly+' partly' : '')+(s.n.missed ? ', '+s.n.missed+' missed' : '');
+}
+/* What the app would put in this week's plan, from the Standards: the flagged pillars first, worst first, then
+   Showing up, Bulk pace and Intake. Each is a check from the fixed set, due Sunday. A pillar held today, Recovery,
+   and Lifts with no lift flagged get no suggestion. Computed, never stored. */
+function planSuggest(){
+  const t = todayKey(), wk = weekKeyOf(t), sun = mesoAddDays(wk, 6), by = {};
+  try{ if(stdOn()) stdState().forEach(function(r){ by[r.pillar] = r; }); }catch(e){}
+  const mk = {
+    bulk:function(r){ return (r && r.kind === 'fast') ? {type:'weighIns', n:STD_BW_MIN_WEIGHS} : {type:'bwUp', lb:BULK_LO}; },
+    show:function(){ return {type:'planned'}; },
+    intake:function(){ return {type:'calDays', n:PLAN_CAL_DAYS}; },
+    // only ever asked for a flagged pillar (the list below), and only for a lift whose day comes up this week
+    lifts:function(r){ return (r && r.lifts && r.lifts[0] && r.lifts[0].lift && planLiftScheduled(r.lifts[0].lift, wk, sun)) ? {type:'topSet', lift:r.lifts[0].lift} : null; }
+  };
+  const flagged = STD_PILLARS.filter(function(p){ return by[p] && STD_RANK[by[p].lvl] > 0; }).sort(function(a, b){ return STD_RANK[by[b].lvl] - STD_RANK[by[a].lvl]; });
+  const out = [], seen = {};
+  flagged.concat(['show', 'bulk', 'intake']).forEach(function(p){
+    if(seen[p] || out.length >= PLAN_MAX_PRI || !mk[p]) return;
+    seen[p] = 1;
+    if(stdHeldBy(p, t)) return;
+    const c = mk[p](by[p]);
+    const pr = c ? planPriOk({standard:p, check:c, byDate:sun}, wk) : null;
+    if(pr) out.push(pr);
+  });
+  return out;
+}
+function planPush(row){
+  if(!Array.isArray(S.planRecord)) S.planRecord = [];
+  S.planRecord.push(stampRec(row));
+  if(S.planRecord.length > PLAN_KEEP) S.planRecord = S.planRecord.slice(-PLAN_KEEP);
+}
+function planId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2, 6); }
+/* His tap: the app's suggestion becomes this week's plan. Checked as a row, then one immutable row and a save(). */
+function planSetMine(){
+  if(!planOn()) return {ok:false, error:'The Plan of Record is switched off in Settings.'};
+  const t = todayKey(), wk = weekKeyOf(t), pri = planSuggest();
+  if(!pri.length) return {ok:false, error:'There is nothing to suggest this week.'};
+  const row = {id:planId('pm'), week:wk, by:'me', day:t, at:Date.now(), pri:pri};
+  if(!planRowOk(row)) return {ok:false, error:'That plan did not pass the check.'};
+  planPush(row);
+  save();
+  return {ok:true, id:row.id};
+}
+/* Withdrawing the plan that stands this week is a row too; the one before it, if any, stands again. */
+function planWithdraw(id){
+  const row = planNow();
+  if(!row || row.id !== id) return false;
+  planPush({id:planId('pc'), cancel:id, week:row.week, day:todayKey(), at:Date.now()});
+  save();
+  return true;
+}
+function planSetTap(){ const r = planSetMine(); if(!r.ok) alert(r.error); try{ renderDesk(); }catch(e){} try{ renderNotif(); }catch(e){} }
+function planWithdrawTap(el){
+  const id = el && el.dataset && el.dataset.id;
+  if(!confirm('Withdraw this week’s Plan of Record? Nothing in your program changes either way.')) return;
+  planWithdraw(id);
+  try{ renderDesk(); }catch(e){} try{ renderNotif(); }catch(e){}
+}
+/* Under the priorities: last week's result (always on the Desk; on Today for the first PLAN_LAST_DAYS of a week), and
+   on the Desk the app's suggestion when no plan stands, or Withdraw when one does. */
+function planCardExtraHTML(where, wk, row){
+  const t = todayKey();
+  let h = '';
+  if(where === 'desk'){
+    if(!row){
+      const sg = planSuggest();
+      if(sg.length) h += '<div class="plan-sg" id="planSuggest"><p class="small">The app’s suggestion, from your Standards. Each one is something it can measure, due Sunday:</p>'+
+        sg.map(function(p){ return '<div class="plan-p"><div class="plan-p-h"><span class="plan-std">'+esc(STD_LABEL[p.standard])+'</span><span class="plan-by">by '+esc(homeShortDate(p.byDate))+'</span></div>'+
+          '<b class="plan-chk">'+esc(planCheckSay(p.check))+'</b></div>'; }).join('')+
+        '<button class="btn sm" style="margin-top:12px" onclick="planSetTap()">Set this as the week’s plan</button></div>';
+    } else h += '<div><button class="btn ghost sm" style="margin-top:12px" data-id="'+esc(row.id)+'" onclick="planWithdrawTap(this)">Withdraw</button></div>';
+  }
+  const lw = mesoAddDays(wk, -7);
+  if(where === 'desk' || daysBetween(wk, t) < PLAN_LAST_DAYS){
+    const s = planScore(lw);
+    if(s) h += '<div class="plan-last" id="'+(where === 'desk' ? 'planLastDesk' : 'planLast')+'"><span class="plan-std">Last week · '+esc(planScoreLine(s))+'</span>'+
+      s.items.map(function(it){ const W = PLAN_V[it.v.v] || PLAN_V.nodata;
+        return '<span class="plan-v" data-v="'+it.v.v+'" style="color:'+W.col+'"><i aria-hidden="true">'+W.ic+'</i><span>'+esc(planCheckSay(it.p.check))+' · '+esc(planVerdictText(it.p, it.v))+'</span></span>'; }).join('')+'</div>';
+  }
+  return h;
+}
+/* The bell, for the first days of a week: how last week's plan came out. One id per week, so a dismissal sticks. */
+function planNotifItems(){
+  if(!planOn()) return [];
+  const t = todayKey(), wk = weekKeyOf(t);
+  if(daysBetween(wk, t) >= PLAN_LAST_DAYS) return [];
+  const s = planScore(mesoAddDays(wk, -7));
+  if(!s || !s.judged) return [];
+  return [{id:'plan:'+s.row.week, tone:s.n.missed ? 'var(--bad)' : s.n.partly ? 'var(--warn)' : 'var(--good)', title:'Last week’s plan: '+planScoreLine(s),
+    body:s.items.map(function(it){ return planCheckSay(it.p.check)+': '+(PLAN_V[it.v.v] || PLAN_V.nodata).w.toLowerCase(); }).join('. ')+'.', when:null, go:"showReviewTab('desk')"}];
+}
+/* THE gate for a plan a model wrote. At most PLAN_MAX_PRI; each priority through planPriOk() with its lift resolved to
+   a real one, its text clipped and its cite reduced to ids that exist; a check outside the fixed set, one filed under
+   the wrong pillar, a number outside its range or a day outside the week drops THAT priority and keeps the rest. The
+   same check twice is kept once. Nothing is coerced. */
+function planValidate(raw, week){
+  const res = {pri:[], dropped:0};
+  if(!planWeekOk(week)) return res;
+  const arr = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && Array.isArray(raw.priorities)) ? raw.priorities : [];
+  res.dropped = Math.max(0, arr.length - PLAN_MAX_PRI);
+  const seen = {};
+  arr.slice(0, PLAN_MAX_PRI).forEach(function(x){
+    if(!x || typeof x !== 'object' || !x.check || typeof x.check !== 'object'){ res.dropped++; return; }
+    const c = Object.assign({}, x.check);
+    if(holdOwn(PLAN_CHECKS, c.type) && PLAN_CHECKS[c.type].lift){
+      const nm = agResolveExName(c.lift);
+      if(!nm){ res.dropped++; return; }
+      c.lift = nm;
+    }
+    const cand = {standard:x.standard, check:c, byDate:(x.byDate === undefined || x.byDate === null || x.byDate === '') ? mesoAddDays(week, 6) : x.byDate};
+    const text = rtClip(x.text, PLAN_TEXT_MAX);
+    if(text) cand.text = text;
+    const p = planPriOk(cand, week);
+    if(!p){ res.dropped++; return; }
+    const k = p.check.type+'|'+(p.check.lift || '');
+    if(seen[k]){ res.dropped++; return; }
+    seen[k] = 1;
+    const ct = evCiteClean(x.cite);
+    if(ct.length) p.cite = ct;
+    res.pri.push(p);
+  });
+  return res;
+}
+/* -- the Weekly Review: next week's plan inside the letter call (paid, off) -- */
+// The week ZULU plans on a letter night: the Monday after the Sunday the letter covers.
+function wrPlanWeek(key){ return mesoAddDays(letterWeekKey(key), 1); }
+/* ZULU's own record, as the app scored it: the last PLAN_MEMORY_WEEKS weeks that had a plan. On a Sunday night the
+   week in progress is read as finished (its last day is today). '' when there is no record. */
+function planMemoryLine(key){
+  const t = key || todayKey(), dow = new Date(t+'T00:00:00').getDay();
+  const asOf = dow === 0 ? mesoAddDays(t, 1) : t, wk0 = weekKeyOf(t), lines = [];
+  for(let i = 0; i < PLAN_MEMORY_WEEKS + 1 && lines.length < PLAN_MEMORY_WEEKS; i++){
+    const wk = mesoAddDays(wk0, -7 * i);
+    if(i === 0 && dow !== 0) continue;     // a week still running says nothing yet
+    let s = null;
+    try{ s = planScore(wk, asOf); }catch(e){ s = null; }
+    if(!s) continue;
+    lines.push('- Week of '+fmtDate(wk)+' ('+(s.row.by === 'zulu' ? 'yours' : 'set by him from the app’s suggestion')+'): '+
+      s.items.map(function(it){ return STD_LABEL[it.p.standard]+', '+planCheckSay(it.p.check)+': '+planVerdictText(it.p, it.v); }).join(' | '));
+  }
+  if(!lines.length) return '';
+  return ('\nTHE PLAN OF RECORD SO FAR, AS THE APP SCORED IT (measured from his data: facts, not opinions. A miss is information for the next plan, not something to scold):\n'+
+    lines.join('\n')).slice(0, PLAN_MEMORY_MAX)+'\n';
+}
+function planMenuText(){
+  const by = {};
+  Object.keys(PLAN_CHECKS).forEach(function(k){
+    const D = PLAN_CHECKS[k];
+    (by[D.std] = by[D.std] || []).push('{"type":"'+k+'"'+(D.n ? ',"n":'+D.n[0]+'..'+D.n[1] : '')+(D.lb ? ',"lb":'+D.lb[0]+'..'+D.lb[1] : '')+(D.lift ? ',"lift":"<exact lift name>"' : '')+'}');
+  });
+  return STD_PILLARS.filter(function(p){ return by[p]; }).map(function(p){ return p+': '+by[p].join(' or '); }).join('; ');
+}
+/* What the letter call is also asked for. '' with the switch off, so that prompt is byte-identical. */
+function wrPromptPart(week){
+  if(!wrOn()) return '';
+  return '\n'+'THIS CALL IS ALSO THE WEEKLY REVIEW. Respond with ONLY valid JSON, no markdown fences: {"letter":"<the letter described above>","plan":[...]}.'+
+    '\n'+'plan = the Plan of Record for the week of '+fmtDate(week)+' ('+week+' to '+mesoAddDays(week, 6)+'): at most '+PLAN_MAX_PRI+' priorities, and fewer is better. '+
+    'Each is {"standard":"'+STD_PILLARS.join('|')+'","check":{...},"byDate":"YYYY-MM-DD","text":"<='+PLAN_TEXT_MAX+' chars, one line to him on why this, this week"'+(evOn() ? ',"cite":["<ids from PRINCIPLES, optional>"]' : '')+'}. '+
+    'check MUST be one of these, filed under the standard it is listed with: '+planMenuText()+'. '+
+    'bwUp is bodyweight up at least that many lb on the week; calDays and proDays are days at target; topSet is a set of that lift at the weight the app calls, in its rep range; '+
+    'planned is every scheduled day trained. byDate is a day inside that week. The app measures every priority from his data and shows you the result here next Sunday: '+
+    'you never score one yourself, and a check that is not on the list is dropped. The plan changes nothing in his program; anything to apply is still a request he approves. '+
+    'If nothing deserves a priority, send "plan":[].'+planMemoryLine()+'\n';
+}
+let _wrLast = null;   // what the last letter call sent as a plan: {week, plan}. Never a reference into S.
+/* After the letter is kept: the plan it carried, checked, into the S that exists NOW (a pull during the call replaced
+   S). A plan that fails costs the plan and keeps the letter, and says so in the feed. */
+function wrIngest(){
+  const w = _wrLast;
+  _wrLast = null;
+  if(!w || !planOn()) return 0;
+  const wkTxt = homeShortDate(w.week);
+  if(w.plan === undefined || w.plan === null){ agLog('zulu', 'The weekly review came back without a Plan of Record, so there is none from me for the week of '+wkTxt+'.'); return 0; }
+  let v;
+  try{ v = planValidate(w.plan, w.week); }catch(e){ v = {pri:[], dropped:0}; }
+  if(!v.pri.length){
+    agLog('zulu', (Array.isArray(w.plan) && !w.plan.length) ? 'No priorities from me for the week of '+wkTxt+': nothing earned one.' : 'My Plan of Record for the week of '+wkTxt+' did not pass the check, so it is not shown.');
+    return 0;
+  }
+  planPush({id:planId('pz'), week:w.week, by:'zulu', day:todayKey(), at:Date.now(), pri:v.pri});
+  agLog('zulu', 'Plan of Record for the week of '+wkTxt+': '+v.pri.map(function(p){ return planCheckSay(p.check); }).join('; ')+'.'+
+    (v.dropped ? ' ('+v.dropped+' more did not pass the check)' : ''));
+  return v.pri.length;
+}
+/* -- the Monthly Review: standing orders (paid, off; server only) -- */
+const MONTHLY_MODEL = AI_MODEL;     // deliberately the same model. A larger one is Mark's decision: it changes the cost.
+const ORD_DAYS = 35;                // standing orders are read for five weeks, then they are gone
+const ORD_MAX_LINES = 5, ORD_LINE_MAX = 140, ORD_CTX_MAX = 800, ORD_MAXTOK = 8000;
+let _ordRunning = false, _ordPauseLogged = '';
+function ordOn(){ return ovOn('monthlyReview'); }
+/* The orders in force on a day, or null: written, not expired, and holding at least one line. */
+function ordNow(t){
+  const o = agState().orders;
+  t = t || todayKey();
+  if(!o || !o.by || typeof o.by !== 'object' || !holdDayOk(o.day) || o.day > t || daysBetween(o.day, t) > ORD_DAYS) return null;
+  return Object.keys(o.by).some(function(k){ return holdOwn(AGENTS, k) && Array.isArray(o.by[k]) && o.by[k].length; }) ? o : null;
+}
+/* Due once a calendar month. Any reply that came back closes the month, good or not (the trip plan's rule), so a
+   reply that fails the check is not paid for again at the next slot. */
+function ordDue(t){
+  if(!ordOn()) return false;
+  const o = agState().orders;
+  return !(o && o.month === (t || todayKey()).slice(0, 7));
+}
+/* The gate. Per coach, an array of strings: each clipped to ORD_LINE_MAX, at most ORD_MAX_LINES, anything that is not
+   a non-empty string dropped. A key that is not one of the four coaches is ignored. */
+function ordValidate(raw){
+  const by = {};
+  let n = 0;
+  const src = (raw && typeof raw === 'object') ? ((raw.orders && typeof raw.orders === 'object') ? raw.orders : raw) : null;
+  if(!src) return {by:by, n:0};
+  Object.keys(AGENTS).forEach(function(id){
+    const arr = holdOwn(src, id) ? src[id] : holdOwn(src, AGENTS[id].name) ? src[AGENTS[id].name] : null;
+    if(!Array.isArray(arr)) return;
+    const lines = [];
+    arr.forEach(function(x){ const s = rtClip(x, ORD_LINE_MAX); if(s && lines.length < ORD_MAX_LINES) lines.push(s); });
+    if(lines.length){ by[id] = lines; n += lines.length; }
+  });
+  return {by:by, n:n};
+}
+function monthlySystem(){
+  let evd = '';
+  try{ if(evOn()) evd = evidenceBlock(evTagsFor('zulu'), EVD_MAX_CHARS); }catch(e){ evd = ''; }
+  return agSharedBrief()+
+    '\n'+'You are ZULU, writing the Monthly Review. Once a month you step back from the nightly detail, read the month as a whole, and leave STANDING ORDERS for the four coaches '+
+    '(yourself included): what each should emphasise and what each should watch in the month ahead.'+
+    '\n'+AG_VOICE.zulu+
+    '\n'+'Orders are emphasis, not changes. They change nothing in his program, and a coach still has to raise a request he approves for anything to be applied. '+
+    'Do not state an effect size or a timeline the app has not computed below, and do not tell a coach to make a specific change.'+
+    '\n'+'Respond with ONLY valid JSON, no markdown fences: {"orders":{"zulu":["..."],"charlie":["..."],"delta":["..."],"echo":["..."]}}. '+
+    'At most '+ORD_MAX_LINES+' lines per coach, each at most '+ORD_LINE_MAX+' characters, plain sentences. Leave a coach out rather than pad its list.'+
+    planMemoryLine()+evd+
+    '\n'+'\n'+agBaseContext('zulu');
+}
+/* One call, from the server's evening run only, when the month has none. No tools: its cost is one prompt and one
+   reply. The month is taken before the await and the result is written into the S that exists after it. A decline
+   leaves a line in the feed, once a day. Returns true when a reply came back and was recorded. */
+async function monthlyMaybe(){
+  const t = todayKey();
+  if(!ordDue(t) || _ordRunning) return false;
+  if(!S.settings.apiKey) return false;
+  const sb = spendBlock('monthly');
+  if(sb){
+    if(_ordPauseLogged !== t){ _ordPauseLogged = t; agLog('zulu', 'The monthly review is paused: '+sb+'.'); save(false); }
+    return false;
+  }
+  _ordRunning = true;
+  try{
+    const month = t.slice(0, 7);
+    const text = await callClaude([{role:'user', content:'Write this month’s review.'}], monthlySystem(), ORD_MAXTOK, {effort:'high', route:'monthly', model:MONTHLY_MODEL});
+    let v = {by:{}, n:0};
+    try{ v = ordValidate(parseLooseJSON(text)); }catch(e){ v = {by:{}, n:0}; }
+    const a = agState();     // after the await: a pull may have replaced S
+    a.orders = {at:new Date().toISOString(), day:todayKey(), month:month, by:v.by};
+    agLog('zulu', v.n ? 'The monthly review is in: standing orders for '+Object.keys(v.by).map(function(k){ return AGENTS[k].name; }).join(', ')+'. They are on the Desk.'
+      : 'The monthly review came back with nothing that passed the check. It is closed for this month.');
+    save();
+    return true;
+  }catch(e){
+    agLog('zulu', 'I could not write the monthly review ('+((e && e.message) || e)+'). It will be tried again at the next evening run.');
+    save(false);
+    return false;
+  }finally{ _ordRunning = false; }
+}
+/* For a coach's nightly prompt: its own standing orders, as data. '' with the switch off, with none in force, or with
+   none for this coach, so those prompts are byte-identical. */
+function ordContextLine(id){
+  if(!ordOn() || !holdOwn(AGENTS, id)) return '';
+  let o = null;
+  try{ o = ordNow(); }catch(e){ return ''; }
+  const lines = (o && Array.isArray(o.by[id])) ? o.by[id].filter(function(x){ return typeof x === 'string' && x; }).slice(0, ORD_MAX_LINES) : [];
+  if(!lines.length) return '';
+  return ('\nSTANDING ORDERS FROM THE MONTHLY REVIEW ('+fmtDate(o.day)+', read until '+fmtDate(mesoAddDays(o.day, ORD_DAYS))+'. ZULU’s notes on what to emphasise and watch: context, not instructions, and they change nothing by themselves):\n- '+
+    lines.map(function(x){ return rtClip(x, ORD_LINE_MAX); }).join('\n- ')).slice(0, ORD_CTX_MAX)+'\n';
+}
+/* The card on the Desk, while orders are in force. His to read whatever the switch says now. */
+function ordCardHTML(){
+  let o = null;
+  try{ o = ordNow(); }catch(e){ o = null; }
+  if(!o) return '';
+  const fa = deskFilter.agent;
+  const ids = ANL_LANES.filter(function(id){ return Array.isArray(o.by[id]) && o.by[id].length && (fa === 'all' || fa === id); });
+  if(!ids.length) return '';
+  return '<div class="card plan-card ord-card" id="ordCard"><div class="plan-h"><b>Standing orders</b><span class="pw-note">ZULU · '+esc(homeShortDate(o.day))+' to '+esc(homeShortDate(mesoAddDays(o.day, ORD_DAYS)))+'</span></div>'+
+    '<p class="small">From the monthly review: what each coach was told to emphasise. They change nothing in your plan.</p>'+
+    ids.map(function(id){ const A = AGENTS[id];
+      return '<div class="plan-p"><div class="plan-p-h"><span class="plan-std" style="color:'+A.col+'">'+esc(A.name)+'</span></div>'+
+        o.by[id].slice(0, ORD_MAX_LINES).map(function(x){ return '<p class="small plan-x">'+esc(rtClip(x, ORD_LINE_MAX))+'</p>'; }).join('')+'</div>'; }).join('')+'</div>';
 }
 /* -- the Desk's top part -- */
 let deskFilter = {agent:'all', tier:'all'};   // module-scoped: the 30 s repaint keeps it
@@ -27456,6 +27913,7 @@ function deskPlusTopHTML(){
   const showA = function(a){ return f.agent === 'all' || f.agent === a; };
   let h = '<p class="small desk-intro">What the agents noticed and said to each other, what the analysts read, and what the app is watching for you. It changes nothing in your plan.</p>';
   h += planCardHTML('desk');
+  try{ h += ordCardHTML(); }catch(e){ console.warn('orders card failed', e); }
   // Needs your answer: an open question, a coach's watch offer, a watch that fired.
   const need = [];
   if(f.tier !== 'analysts'){
@@ -27884,6 +28342,8 @@ async function agRunAll(manual){
         try{
           const letter = await agWriteLetter(zdigest);
           if(letter){ agSetLetter(letter); agLog('zulu','Your weekly letter is ready.'); }
+          // Next week's Plan of Record, if the letter call carried one (V5 stage 7): into the S that exists now.
+          try{ wrIngest(); }catch(e){}
         }catch(e){
           agLog('zulu','I couldn\u2019t write this week\u2019s letter ('+e.message+'). Everything else above still stands.');
         }
@@ -28036,6 +28496,9 @@ function agLetterDue(key){
   return !(a.letter && a.letter.week === letterWeekKey(k));
 }
 async function agWriteLetter(digest){
+  // The Weekly Review (V5 stage 7, a paid switch, off): the plan's week is taken before the await.
+  const wr = wrOn(), wrWeek = wr ? wrPlanWeek() : '';
+  _wrLast = null;
   const sys = agSharedBrief()+
     '\n'+'You are ZULU, writing Mark\u2019s weekly coach letter. This is the one thing he reads that '+
     'is prose rather than numbers: a few paragraphs pulling the week together -- how training '+
@@ -28049,12 +28512,22 @@ async function agWriteLetter(digest){
     agToolNote()+
     '\n'+'An agent marked DID NOT REPORT below did not run tonight. Do not speak for it and do '+
     'not present its silence as a good week.'+
+    (wr ? wrPromptPart(wrWeek) : '')+
     '\n'+'WHAT THE SPECIALISTS FOUND TONIGHT:'+'\n'+(digest||[]).join('\n')+
     '\n'+'\n'+agBaseContext('zulu');
   const res = await callClaudeWithData(
     [{role:'user', content:'Write this week\u2019s letter.'}], sys, AG_MAXTOK, {effort:'high', route:'letter'});
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
-  return (res.text||'').trim();
+  const text = (res.text||'').trim();
+  if(!wr) return text;
+  // One reply, two keys, each kept or dropped on its own. The letter is the letter; the plan is checked later (wrIngest()).
+  let out = null;
+  try{ out = parseLooseJSON(text); }catch(e){ out = null; }   // it throws on prose
+  if(out && typeof out === 'object' && typeof out.letter === 'string' && out.letter.trim()){ _wrLast = {week:wrWeek, plan:out.plan}; return out.letter.trim(); }
+  // Not the shape asked for. Prose is still a letter (and there is no plan); a broken JSON reply is not shown to him as one.
+  if(/^\s*[\[{`]/.test(text)) throw new Error('the weekly review did not come back in the shape asked for');
+  _wrLast = {week:wrWeek, plan:null};
+  return text;
 }
 function agSetLetter(text){
   const a = agState();
@@ -29319,6 +29792,8 @@ function notifItems(){
   try{ stdNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   // V5 stage 6: a watch that fired, and a coach's watch offer. Worked out here, never stored.
   try{ watchNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
+  // V5 stage 7: how last week's Plan of Record came out, for the first days of a week. Worked out here.
+  try{ planNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   // Forecasts that settled, and a big picture waiting on his rating (2026-11-03).
   try{ fcNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   // A pantry update from the family drop box, until he applies or ignores it.
@@ -31249,6 +31724,8 @@ async function runnerTick(mode){
     await agMaybeAutoRun();
     if(agState().lastRun === todayKey() && lastRun !== todayKey()){ did = 'night'; why = 'ran tonight’s cycle'; }
     else why = agState().lastRun === todayKey() ? 'tonight’s cycle had already run' : 'the 9 PM gate stayed closed';
+    // The Monthly Review (V5 stage 7, a paid switch, off): once a month, after the night's cycle, on the server only.
+    try{ if(await monthlyMaybe()){ if(!did) did = 'monthly'; why += '; wrote the monthly review'; } }catch(e){}
   } else {
     const before = (agBrief() || {}).at || '';
     // confirmed: the pull above is the check agConfirmBriefThenWrite() would make.

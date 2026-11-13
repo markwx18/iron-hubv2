@@ -2940,3 +2940,79 @@ no watches, no plan, and his ten Desk posts. Checked in a real browser at 393 px
 every part filled and on his real state with the keys stripped: nothing past the edge.
 
 Not built: the Wire, tension markers, a chat tool for watches, and a watch on anything outside the seven series.
+
+### V5 stage 7: accountability (2026-11-13, `v5h`)
+
+**A verdict is worked out when read.** `planVerdict(p, row, asOf)` answers for one priority: met, partly, missed, open,
+held or not judged, with what was counted. Nothing is written back: a stored verdict would lose to an older snapshot,
+the same reason the prediction record and the Standards are computed. A priority is judged over the plan's Monday to
+its own `byDate`. Before that day has passed it is open unless it is already met; a count at half or more of what was
+asked (`PLAN_PARTLY`) reads partly once the day has passed.
+
+**What each check reads, and what it refuses to call a miss.**
+- Sessions, weigh-ins and check-ins count days, not rows, so two logs on one day are one session. A sleep-only stub is
+  not a check-in (`rdComplete()`).
+- Intake days are judged against the target in force that day (`calTargetOn()`), through `nutTierCal()` and
+  `nutTierPro()` and nothing else. Today's log is not counted while the week is open: at 9 AM it is not finished.
+- "Every scheduled day trained" asks `dayExcuse()` and `svJudgeable()`, so a day with a reason, a made-up day, a held
+  day and a day before the cycle's anchor are not misses. Today is not a miss until it is over.
+- Bodyweight on the week is `bulkRate(2, sunday)`, the expression the Bulk pace Standard uses, so the plan and the
+  Standard cannot disagree about a week. It is judged only once the week is over and only with three weigh-ins in the
+  week and in the week before; otherwise it is not judged.
+- A set at the called weight reads the call each logged set carries (`s.p`, since October). A deload session does not
+  count. Sets with no call, a lift on a swap trial, and a lift whose day never came up in the window
+  (`planLiftScheduled()`) are not judged. That last one came from the replay: JM Press read "missed, not trained" on
+  three September weeks, from a rotation wrapped backwards past the Oct 15 anchor, a schedule he never had. The same
+  rule covers his 8-day rotation, where one day falls out of every calendar week.
+- A hold on the priority's pillar anywhere in the window reads held. A measure that throws reads not judged.
+
+**The replay.** Over his real state, on each of the ten Mondays to Nov 2: what `planSuggest()` would have suggested
+that day, then how the week came out. Thirty priorities: 12 met, 5 partly, 7 missed, 6 not judged. Calories at target
+on 5 days was never met (partly 5, missed 5), which is the Intake Standard's own story. Bodyweight up 0.5 lb was met 7
+weeks of 9 (missed the weeks of Sep 14, +0.00, and Oct 26, −0.30). The top-set check was met all 4 weeks it was
+suggested. The six not judged are "every scheduled day" on the weeks before the Oct 15 anchor. Before the schedule rule
+above went in, the same replay read 8 met, 9 missed and 8 not judged. The suggestion's Standards were read as of each
+Monday from the state as it is now, so it is a close picture, not an exact one.
+
+**Two ways to set a plan.** The pipeline said the plan is "written in Stage 7" by ZULU, behind a paid switch. With that
+switch off there would never be a plan and the free scoring would score nothing. So the app also suggests one
+(`planSuggest()`): the flagged Standards first, worst first, then Showing up, Bulk pace and Intake, at most three, each
+a check from the fixed set due Sunday. A pillar held today gets none; Recovery gets none (more check-ins do not fix
+recovery); gaining fast is answered with weigh-ins, never "gain more"; a lift that is not on the schedule this week is
+not suggested. His tap stores it (`planSetMine()`, a `save()`); Withdraw is a cancel row.
+
+**A missed priority does not move a Standard.** The spec said misses "feed the Showing up and Lifts Standards". A level
+is carried by its own entry and exit conditions; a second way in would let a plan a model wrote raise a red. So a miss
+is shown beside its pillar on the card and told to ZULU, and `PLAN_FEEDS_STANDARDS` is false.
+
+**The Weekly Review rides the letter call.** The letter was already weekly: Sunday night, with a Monday catch-up, keyed
+on the Sunday it covers. With `weeklyReview` on, `agWriteLetter()` appends `wrPromptPart()`: reply as
+`{"letter", "plan"}`, the fixed menu of checks, the week the plan is for (the Monday after that Sunday), and ZULU's own
+record as the app scored it (`planMemoryLine()`, the last four weeks with a plan, at most 900 characters; on a Sunday
+night the week ending that day is read as finished). On his state that adds 1,333 characters to a 34,890-character
+prompt. The reply's two keys stand alone: the letter is kept whatever the plan is, and `planValidate()` drops any
+priority that fails and keeps the rest. Prose with no JSON is still a letter. JSON with no letter, or a reply that
+starts like JSON and does not parse, is a failure, not a letter made of braces. `wrIngest()` runs after the letter is
+kept and writes into the `S` that exists then; the suite replaces `S` during the call to prove it. With the switch off
+the prompt is byte-identical and a reply is returned exactly as it came.
+
+**The Monthly Review.** `monthlyMaybe()`, called from `runnerTick()`'s evening branch after the night's cycle, so only
+the server starts it. One call, no tools (`callClaude()`), route `monthly`, which is an automatic route and pauses at
+the cap with one line in the feed a day. The prompt is ZULU's nightly context plus its plan record, and the evidence
+shelf when the library is on: 34,377 characters on his state, about 9,500 to 11,500 input tokens, and at most 8,000
+out. The reply is `{"orders": {coach: [lines]}}`; `ordValidate()` keeps strings only, clipped to 140 characters, five a
+coach, and ignores a key that is not one of the four. Any reply that came back closes the month, good or bad, so a
+reply that fails the check is not paid for again at the next slot; a call that never got through closes nothing.
+`S.agents.orders` is one object, merged newer-wins in `applyPulled()`. The coaches read their own lines as data for 35
+days, in the nightly prompt only and only with the switch on. The card on the Desk stays his to read after that.
+
+**The model.** The spec wanted a larger model for the monthly call. That is a cost decision CLAUDE.md reserves for him,
+so `MONTHLY_MODEL` is `AI_MODEL` and `aiBody()` honours a model only when it is that one constant. The report gives him
+the tokens a run reads and writes.
+
+**Measured.** The suite's stage 7 section, the mutants and the clock run are in the stage report. Checked in a real
+browser at 393 px and 320 px on a seeded state: the plan with verdicts, last week's result, Withdraw, the app's
+suggestion with its button (183 by 37 at 320), the standing orders card, and Today's card. Nothing past the edge.
+
+Not built: a plan he writes by hand (he sets the app's suggestion or ZULU's), a manual "run the monthly review now"
+button, and the Stage 9 video scene spec, which will be a third key on the same reply.

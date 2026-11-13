@@ -18804,7 +18804,7 @@ setTimeout(async () => {
     ev("showMainTab('home'); renderHome();");
     ok('Today: the plan sits right under the Standards, and drawing it leaves S byte-identical', ev("document.querySelectorAll('#home #planCard .plan-p').length") === 3 && ev('JSON.stringify(S)') === sP &&
       (ev("document.querySelector('#home .std-card')") === null || ev("document.querySelector('#home .std-card').compareDocumentPosition(document.querySelector('#home #planCard')) & 4") === 4));
-    setDay('2026-12-21');
+    setDay('2026-12-24');   // a Thursday: by then Today has let last week's result go (stage 7)
     ev("renderHome(); showMainTab('ops', 'desk'); renderDesk();");
     ok('a week with no plan: Today shows no card, and the Desk says there is none', ev("document.querySelector('#home #planCard')") === null && /No plan for this week/.test(ev(DESK + ".querySelector('#planCardDesk').textContent")));
     setDay('2026-12-16');
@@ -18818,6 +18818,377 @@ setTimeout(async () => {
        "if(window.__6LS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__6LS);" +
        "(function(){ var n = JSON.parse(window.__6Nav); try{ setMode(n.mode); showMainTab(n.main); }catch(e){} })();" +
        "['__6S','__6LS','__6Today','__6PW','__6PL','__6Std','__6Save','__6Strips','__6WL','__6Confirm','__6Alert','__6Nav','__6day','__6n','__6log','__6b','__6w','__6sv','__6std','__6keep','__6strips','__6E','__6snap','__6cf'].forEach(function(k){ try{ delete window[k]; }catch(e){} });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
+  // ===== V5 stage 7: accountability (2026-11-13) =====
+  console.log('\n=== ACCOUNTABILITY: A VERDICT WORKED OUT WHEN READ, A PLAN ONLY FROM THE FIXED CHECKS, THE WEEKLY REVIEW INSIDE THE LETTER CALL, THE MONTHLY REVIEW BEHIND ITS OWN SWITCH (2026-11-13) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    ev("window.__7S = JSON.stringify(S); window.__7LS = localStorage.getItem(LS_KEY); window.__7Today = todayKey; window.__7PW = plateauWatch; window.__7PL = predLifts; window.__7Std = stdState;" +
+       "window.__7Save = save; window.__7Confirm = window.confirm; window.__7Alert = window.alert; window.__7Data = callClaudeWithData; window.__7Call = callClaude; window.__7BR = bulkRate; window.__7STO = swapTrialOn;" +
+       "window.__7LD = agLetterDue; window.__7Sync = syncReady; window.__7Pull = autoPullOnLoad; window.__7Auto = agMaybeAutoRun; window.__7Spend = spendBlock; window.__7InC = window._inClaude; window._inClaude = false;" +
+       "window.__7Nav = JSON.stringify({mode:MODE, main:activeMainTab});");
+    /* The fixture. A NAMED Wednesday; the plan's week is Mon Dec 14 to Sun Dec 20. Every day is a training day. */
+    ev(`window.__7day = '2026-12-16';
+      todayKey = function(){ return window.__7day; };
+      plateauWatch = function(){ return []; }; predLifts = function(){ return ['Barbell Bench Press']; };
+      stdState = function(k){ return window.__7std ? JSON.parse(JSON.stringify(window.__7std)) : window.__7Std(k); };
+      window.__7n = 0;
+      window.__7log = function(date, sets, extra){
+        var l = Object.assign({id:'d7l'+(window.__7n++), date:date, day:'D1', scheduled:'D1', entries:[{exercise:'Barbell Bench Press', sets:sets || [{w:185, r:5}]}]}, extra || {});
+        S.logs.push(l); return l;
+      };
+      window.__7b = function(ov){
+        S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+        S.scheduleMode = 'dow'; S.schedule = {0:'D1',1:'D1',2:'D1',3:'D1',4:'D1',5:'D1',6:'D1'}; S.settings.apiKey = 'sk-test';
+        S.split = {D1:{name:'Upper', exercises:[{name:'Barbell Bench Press', inc:5}, 'Cable Row']}};
+        S.overhaul = Object.assign({selector:false}, ov || {}); S.logs = []; S.watches = []; S.planRecord = []; S.holds = []; S.dayReasons = []; S.weights = []; S.nutrition = []; S.readiness = [];
+        agState().proposals = []; agState().desk = []; agState().questions = []; agState().log = []; delete agState().orders; delete agState().letter;
+        window.__7day = '2026-12-16'; window.__7std = null; _stdSince = {}; _anlStrip = {key:null, days:[]}; deskFilter = {agent:'all', tier:'all'}; _wrLast = null; _ordPauseLogged = '';
+        // a month of history so the lift is one the app knows
+        ['2026-11-20', '2026-11-24', '2026-11-28', '2026-12-02', '2026-12-06', '2026-12-08', '2026-12-10', '2026-12-12'].forEach(function(d){ window.__7log(d); });
+      };
+      window.__7plan = function(pri, o){ var r = Object.assign({id:'p7'+(window.__7n++), week:'2026-12-14', by:'zulu', day:'2026-12-13', at:Date.now() + (window.__7n++), pri:pri}, o || {}); S.planRecord.push(r); return r; };
+      window.__7v = function(i, asOf){ var r = planFor('2026-12-14'); return planVerdict(r.pri[i || 0], r, asOf); };
+      window.__7sv = 0; save = function(t){ if(t !== false) window.__7sv++; return window.__7Save.apply(this, arguments); };`);
+    const setDay = k => ev('window.__7day = ' + JSON.stringify(k) + '; _stdSince = {};');
+    const plan = (pri, o) => ev('__7plan(' + JSON.stringify(pri) + (o ? ',' + JSON.stringify(o) : '') + ').id');
+    const V = (i, asOf) => J('__7v(' + (i || 0) + (asOf ? ',' + JSON.stringify(asOf) : '') + ')');
+    const SUN = '2026-12-20';
+    const DESK = "document.getElementById('desk')";
+
+    // ---- the switches ----
+    ev('__7b()');
+    ok('switches: the Weekly Review and the Monthly Review are paid and off', ev('OV.weeklyReview.paid') === true && ev("ovOn('weeklyReview')") === false && ev('wrOn()') === false && ev('OV.monthlyReview.paid') === true && ev("ovOn('monthlyReview')") === false && ev('ordOn()') === false);
+    ok('the Weekly Review also needs the Plan of Record on', (() => { ev("S.overhaul = {planRecord:false, weeklyReview:true};"); const r = ev('wrOn()') === false; ev("S.overhaul = {weeklyReview:true};"); const r2 = ev('wrOn()') === true; ev("S.overhaul = {selector:false};"); return r && r2; })());
+    ok('the Monthly Review\'s model is one named constant, and it is the model everything else uses', ev('MONTHLY_MODEL') === ev('AI_MODEL') && ev("aiBody([], 's', 4000, {model:MONTHLY_MODEL}).model") === ev('AI_MODEL') && ev("aiBody([], 's', 4000, {model:'claude-opus-9'}).model") === ev('AI_MODEL'));
+
+    // ---- the verdict: counts ----
+    plan([{standard:'show', check:{type:'sessions', n:4}, byDate:SUN}]);
+    ev("__7log('2026-12-14'); __7log('2026-12-15'); __7log('2026-12-15');");
+    ok('sessions: before its day a priority is open, with the count so far (two logs on one day are one session)', V().v === 'open' && V().got === 2 && V().need === 4 && /Open · 2 of 4 so far/.test(ev("planVerdictText(planNow().pri[0], __7v())")));
+    ok('sessions: once the day has passed, half or more of what was asked is "partly"', V(0, '2026-12-21').v === 'partly');
+    ev("S.logs = S.logs.filter(function(l){ return l.date !== '2026-12-15'; });");
+    ok('sessions: under half is missed', V(0, '2026-12-21').v === 'missed' && V(0, '2026-12-21').got === 1);
+    ev("__7log('2026-12-15'); __7log('2026-12-16'); __7log('2026-12-17');"); setDay('2026-12-17');
+    ok('sessions: met as soon as the count is reached, before its day', V().v === 'met' && V().got === 4);
+    ok('a session after the priority\'s own day does not count', (() => { ev('__7b()'); plan([{standard:'show', check:{type:'sessions', n:2}, byDate:'2026-12-16'}]); ev("__7log('2026-12-14'); __7log('2026-12-18');"); return V(0, '2026-12-21').got === 1 && V(0, '2026-12-21').v === 'partly'; })());
+    // every scheduled day
+    ev('__7b()');
+    plan([{standard:'show', check:{type:'planned'}, byDate:SUN}]);
+    ev("['2026-12-14', '2026-12-16', '2026-12-17', '2026-12-18', '2026-12-19', '2026-12-20'].forEach(function(d){ __7log(d); });");
+    setDay('2026-12-16');
+    ok('planned: a miss already in the week shows while it is still open', V().v === 'open' && /1 scheduled day missed so far/.test(V().note));
+    ok('planned: one missed day is partly', V(0, '2026-12-21').v === 'partly' && V(0, '2026-12-21').got === 6 && V(0, '2026-12-21').need === 7);
+    ev("S.dayReasons.push({id:'dr7', pillar:'show', date:'2026-12-15', why:'sick', at:1});");
+    ok('planned: a day with a reason is not a miss (the Standards\' own answer)', V(0, '2026-12-21').v === 'met' && V(0, '2026-12-21').need === 6);
+    ev("S.dayReasons = []; S.logs = S.logs.filter(function(l){ return l.date !== '2026-12-18'; });");
+    ok('planned: two missed days is missed', V(0, '2026-12-21').v === 'missed');
+    ok('planned: today is not a miss until it is over', (() => { setDay('2026-12-19'); ev("S.logs = S.logs.filter(function(l){ return l.date !== '2026-12-19'; });"); const v = V(); return v.v === 'open' && /2 scheduled days missed so far/.test(v.note); })());
+    // weigh-ins, check-ins, intake
+    ev('__7b()');
+    plan([{standard:'bulk', check:{type:'weighIns', n:3}, byDate:SUN}, {standard:'recovery', check:{type:'checkins', n:3}, byDate:SUN}, {standard:'intake', check:{type:'calDays', n:3}, byDate:SUN}]);
+    ev("S.weights = [{date:'2026-12-13', lbs:157}, {date:'2026-12-14', lbs:157.2}, {date:'2026-12-16', lbs:157.4}];");
+    ev("S.readiness = [{date:'2026-12-14', tier:'ok', sore:'none', energy:'ok'}, {date:'2026-12-15', tier:'ok', partial:true, sore:'none'}, {date:'2026-12-16', tier:'low', energy:'low'}];");
+    ev("S.nutrition = [{date:'2026-12-14', cals:3000, protein:150}, {date:'2026-12-15', cals:2900, protein:150}, {date:'2026-12-16', cals:3200, protein:120}];");
+    ok('weigh-ins: only the plan\'s own week counts', V(0).got === 2);
+    ok('check-ins: a sleep-only stub is not a check-in', V(1).got === 2);
+    ok('intake: a day under target does not count, and today\'s log is not finished so it is not counted yet', V(2).got === 1 && V(2).v === 'open' && V(2, '2026-12-17').got === 2);
+    ok('intake: judged against the target in force that day', (() => { ev("S.fuel = Object.assign({}, S.fuel, {calTarget:2800});"); const r = V(2, '2026-12-17').got === 3; ev("S.fuel.calTarget = 3000;"); return r; })());
+    ok('protein days: at target counts, 30 g under does not', (() => { ev("S.planRecord = []; __7plan([{standard:'intake', check:{type:'proDays', n:3}, byDate:'2026-12-20'}]);"); return V(0, '2026-12-17').got === 2; })());
+    // bodyweight on the week: the Standards' own expression
+    ev('__7b()');
+    plan([{standard:'bulk', check:{type:'bwUp', lb:0.5}, byDate:SUN}]);
+    const WTS = up => "S.weights = [{date:'2026-12-01', lbs:156.8}, {date:'2026-12-03', lbs:156.9}, {date:'2026-12-06', lbs:157.0}, {date:'2026-12-08', lbs:157.0}, {date:'2026-12-10', lbs:157.3}, {date:'2026-12-13', lbs:157.1}, {date:'2026-12-15', lbs:" + (157.0 + up) + "}, {date:'2026-12-17', lbs:" + (157.3 + up) + "}, {date:'2026-12-20', lbs:" + (157.1 + up) + "}];";
+    ev(WTS(0.7)); setDay('2026-12-20');
+    ok('bodyweight: not judged until the week is over', V().v === 'open' && /once the week is over/.test(V().note));
+    setDay('2026-12-21');
+    const rate = ev("bulkRate(2, '2026-12-20').rate");
+    ok('bodyweight: judged by bulkRate(2, sunday), the same number the Standards use', V().v === 'met' && Math.abs(V().got - Math.round(rate * 100) / 100) < 1e-9 && rate >= 0.5, String(rate));
+    ev(WTS(0.3));
+    ok('bodyweight: half the gain or more is partly', V().v === 'partly');
+    ev(WTS(-0.2));
+    ok('bodyweight: a loss is missed', V().v === 'missed' && /−0\.20 lb on the week/.test(V().note));
+    ev("S.weights = S.weights.filter(function(x){ return x.date !== '2026-12-17'; });");
+    ok('bodyweight: too few weigh-ins is "not judged", never a miss and never a pass', V().v === 'nodata' && /3 weigh-ins/.test(V().note));
+    ev(WTS(0.7) + " bulkRate = function(){ throw new Error('boom'); };");
+    ok('a measure that throws reads "not judged"', V().v === 'nodata' && /could not be worked out/.test(V().note));
+    ev("bulkRate = window.__7BR;");
+    // a set at the weight the app called
+    ev('__7b()');
+    plan([{standard:'lifts', check:{type:'topSet', lift:'Barbell Bench Press'}, byDate:SUN}]);
+    const P = {w:185, lo:5, hi:8};
+    ok('top set: not trained yet is open, then missed once the day has passed', V().v === 'open' && /Not trained yet/.test(V().note) && V(0, '2026-12-21').v === 'missed');
+    ev("__7log('2026-12-15', [{w:185, r:4, p:" + JSON.stringify(P) + "}, {w:180, r:6, p:" + JSON.stringify(P) + "}]);");
+    ok('top set: at the called weight but under its rep range is partly', V().v === 'open' && V(0, '2026-12-21').v === 'partly');
+    ev("__7log('2026-12-16', [{w:180, r:8, p:" + JSON.stringify(P) + "}]); S.logs = S.logs.filter(function(l){ return l.date !== '2026-12-15'; });");
+    ok('top set: under the called weight is missed, whatever the reps', V(0, '2026-12-21').v === 'missed' && /Under the weight/.test(V(0, '2026-12-21').note));
+    ev("S.logs = S.logs.filter(function(l){ return l.date !== '2026-12-16'; }); __7log('2026-12-16', [{w:185, r:6}]);");
+    ok('top set: sets that carried no call cannot be judged', V(0, '2026-12-21').v === 'nodata' && /no call/.test(V(0, '2026-12-21').note));
+    ev("__7log('2026-12-17', [{w:185, r:5, p:" + JSON.stringify(P) + "}], {deload:true});");
+    ok('top set: a deload session does not count', V(0, '2026-12-21').v === 'nodata');
+    ev("__7log('2026-12-18', [{w:185, r:5, p:" + JSON.stringify(P) + "}]);");
+    ok('top set: a set at the called weight in its range is met', V(0, '2026-12-21').v === 'met' && (setDay('2026-12-18'), V().v === 'met'));
+    ev("S.logs = S.logs.filter(function(l){ return l.date < '2026-12-14'; }); swapTrialOn = function(){ return {lift:'Barbell Bench Press', to:'Cable Row'}; };");
+    ok('top set: a lift on a swap trial that week is not judged', V(0, '2026-12-21').v === 'nodata' && /swap trial/.test(V(0, '2026-12-21').note));
+    ev("swapTrialOn = window.__7STO;");
+    ev("S.schedule = {0:'REST',1:'REST',2:'REST',3:'REST',4:'REST',5:'REST',6:'REST'};");
+    ok('top set: a lift whose day never came up in the window is not judged (an 8-day rotation skips a day each week)', V(0, '2026-12-21').v === 'nodata' && /did not come up/.test(V(0, '2026-12-21').note));
+    ev("S.schedule = {0:'D1',1:'D1',2:'D1',3:'D1',4:'D1',5:'D1',6:'D1'}; S.split.D1.exercises = ['Cable Row'];");
+    ok('top set: ...and neither is one that is no longer in the split in force', V(0, '2026-12-21').v === 'nodata');
+    ev("S.split.D1.exercises = [{name:'Barbell Bench Press', inc:5}, 'Cable Row'];");
+    ok('top set: scheduled and not trained is still a miss', V(0, '2026-12-21').v === 'missed');
+    ev("window.__7SJ = svJudgeable; svJudgeable = function(){ return false; };");
+    ok('top set: a week before the cycle\'s anchor has no schedule the app can know, so it is not judged', V(0, '2026-12-21').v === 'nodata');
+    ev("svJudgeable = window.__7SJ;");
+    // a hold
+    ev('__7b()');
+    plan([{standard:'show', check:{type:'sessions', n:5}, byDate:SUN}, {standard:'intake', check:{type:'calDays', n:5}, byDate:SUN}]);
+    ev("S.holds = [{id:'h7', from:'2026-12-18', to:'2026-12-19', kind:'trip', gym:'none', note:'', at:1}];");
+    ok('a hold on the pillar that week: the priority is held, not judged; a pillar the hold does not cover is still judged', V(0, '2026-12-21').v === 'held' && V(1, '2026-12-21').v === 'missed');
+    ev("S.overhaul.holds = false;");
+    ok('...and with Holds switched off it is judged as usual', V(0, '2026-12-21').v === 'missed');
+
+    // ---- the score, the card, the bell ----
+    ev('__7b()');
+    plan([{standard:'show', check:{type:'sessions', n:2}, byDate:SUN, text:'Two at least.'}, {standard:'intake', check:{type:'calDays', n:5}, byDate:SUN}, {standard:'bulk', check:{type:'weighIns', n:3}, byDate:SUN}]);
+    ev("__7log('2026-12-14'); __7log('2026-12-15'); S.weights = [{date:'2026-12-14', lbs:157}, {date:'2026-12-15', lbs:157.2}];");
+    const sc = J("planScore('2026-12-14', '2026-12-21')");
+    ok('score: every priority has a verdict, and the line counts only what was judged', sc.items.map(i => i.v.v).join() === 'met,missed,partly' && sc.judged === 3 && ev("planScoreLine(planScore('2026-12-14', '2026-12-21'))") === '1 of 3 met, 1 partly, 1 missed');
+    ok('score: a priority that could not be judged is left out of the count, not counted as a miss or a pass', (() => {
+      ev("window.__7keepP = S.planRecord.slice(); S.planRecord = []; __7plan([{standard:'show', check:{type:'sessions', n:2}, byDate:'2026-12-20'}, {standard:'bulk', check:{type:'bwUp', lb:0.5}, byDate:'2026-12-20'}]);");
+      const s = J("planScore('2026-12-14', '2026-12-21')"), line = ev("planScoreLine(planScore('2026-12-14', '2026-12-21'))");
+      ev("S.planRecord = window.__7keepP; delete window.__7keepP;");
+      return s.items[1].v.v === 'nodata' && s.judged === 1 && line === '1 of 1 met'; })());
+    ev("showMainTab('home'); showMainTab('ops', 'desk');");
+    const s0 = ev('JSON.stringify(S)');
+    ev("planScore('2026-12-14'); planNotifItems(); planSuggest(); renderDesk(); showMainTab('home'); renderHome(); showMainTab('ops', 'desk');");
+    ok('a verdict is never stored: scoring, the bell, the Desk and Today leave S byte-identical', ev('JSON.stringify(S)') === s0 && ev("S.planRecord.every(function(r){ return r.verdict === undefined && r.pri.every(function(p){ return p.v === undefined && p.verdict === undefined; }); })") === true);
+    ok('card: each priority shows its verdict as an icon and words, worked out now', ev(DESK + ".querySelectorAll('#planCardDesk .plan-p .plan-v').length") === 3 && ev(DESK + ".querySelector('#planCardDesk .plan-p .plan-v').getAttribute('data-v')") === 'met' &&
+      /Met · 2 of 2/.test(ev(DESK + ".querySelector('#planCardDesk .plan-p .plan-v').textContent")) && ev(DESK + ".querySelector('#planCardDesk .plan-p .plan-v i').textContent") === ev('PLAN_V.met.ic'));
+    setDay('2026-12-21');
+    ev("renderDesk(); showMainTab('home'); renderHome();");
+    ok('Monday: Today shows how last week came out, though no plan stands this week', /Last week · 1 of 3 met, 1 partly, 1 missed/.test(ev("(document.querySelector('#home #planLast') || {textContent:''}).textContent")) && ev("document.querySelectorAll('#home #planLast .plan-v').length") === 3);
+    ok('bell: last week\'s result is an item for the first days of the week, one id per week', J('planNotifItems()').length === 1 && J('planNotifItems()')[0].id === 'plan:2026-12-14' && /1 of 3 met/.test(J('planNotifItems()')[0].title) && J('notifItems()').some(i => i.id === 'plan:2026-12-14'));
+    setDay('2026-12-24');
+    ev("renderHome(); showMainTab('ops', 'desk'); renderDesk();");
+    ok('Thursday: Today and the bell have let it go; the Desk still shows it', ev("document.querySelector('#home #planCard')") === null && J('planNotifItems()').length === 0 && /Last week · 1 of 3 met/.test(ev(DESK + ".querySelector('#planLastDesk').textContent")));
+
+    // ---- the app's suggestion, and his tap ----
+    const QUIET = [
+      {pillar:'bulk', label:'Bulk pace', lvl:'ok', rate:0.7, why:'ok', consequence:'', clearsWhen:''},
+      {pillar:'show', label:'Showing up', lvl:'ok', why:'ok', consequence:'', clearsWhen:'', misses:[], excused:[]},
+      {pillar:'lifts', label:'Lifts', lvl:'ok', why:'ok', consequence:'', clearsWhen:'', lifts:[]},
+      {pillar:'intake', label:'Intake', lvl:'ok', why:'ok', consequence:'', clearsWhen:'', logged:6, under:1},
+      {pillar:'recovery', label:'Recovery', lvl:'ok', why:'ok', consequence:'', clearsWhen:'', days:6, under:0}];
+    const stdWith = patch => QUIET.map(r => patch[r.pillar] ? Object.assign({}, r, patch[r.pillar]) : r);
+    const sug = () => J('planSuggest()').map(p => p.standard + ':' + p.check.type + (p.check.lift ? ':' + p.check.lift : '') + (p.check.n ? ':' + p.check.n : '') + (p.check.lb ? ':' + p.check.lb : ''));
+    ev('__7b()');
+    w.__7std = QUIET;
+    ok('suggest: with nothing flagged, Showing up, Bulk pace and Intake, each a check from the fixed set due Sunday', sug().join() === 'show:planned,bulk:bwUp:0.5,intake:calDays:5' && J('planSuggest()').every(p => p.byDate === SUN));
+    w.__7std = stdWith({intake:{lvl:'amber'}, lifts:{lvl:'red', lifts:[{lift:'Barbell Bench Press', lvl:'red', word:'falling'}]}, recovery:{lvl:'red'}});
+    ok('suggest: flagged pillars lead, worst first; Recovery gets none; never more than three', sug().join() === 'lifts:topSet:Barbell Bench Press,intake:calDays:5,show:planned');
+    w.__7std = stdWith({lifts:{lvl:'amber', lifts:[{lift:'Barbell Bench Press', lvl:'amber', word:'slowing'}]}, intake:{lvl:'red'}});
+    ok('suggest: the worst level leads, whatever order the pillars are listed in', sug().join() === 'intake:calDays:5,lifts:topSet:Barbell Bench Press,show:planned');
+    w.__7std = stdWith({lifts:{lvl:'red', lifts:[]}});
+    ok('suggest: Lifts flagged with no lift named gets no suggestion', sug().join() === 'show:planned,bulk:bwUp:0.5,intake:calDays:5');
+    w.__7std = stdWith({intake:{lvl:'amber'}, lifts:{lvl:'red', lifts:[{lift:'Barbell Bench Press', lvl:'red', word:'falling'}]}, recovery:{lvl:'red'}});
+    ev("S.split.D1.exercises = ['Cable Row'];");
+    ok('suggest: a flagged lift that is not on the schedule this week is not suggested', sug().join() === 'intake:calDays:5,show:planned,bulk:bwUp:0.5');
+    ev("S.split.D1.exercises = [{name:'Barbell Bench Press', inc:5}, 'Cable Row'];");
+    w.__7std = stdWith({bulk:{lvl:'amber', kind:'fast', rate:1.9}});
+    ok('suggest: gaining fast is never answered with "gain more"', sug()[0] === 'bulk:weighIns:3');
+    w.__7std = QUIET;
+    ev("S.holds = [{id:'h8', from:'2026-12-15', to:'2026-12-17', kind:'trip', gym:'none', note:'', at:1}];");
+    ok('suggest: a pillar held today is left out', sug().join() === 'intake:calDays:5');
+    ev("S.holds = [];");
+    ev("showMainTab('ops', 'desk');");
+    const s1 = ev('JSON.stringify(S)');
+    ev('renderDesk();');
+    ok('Desk: with no plan the suggestion is shown with one button, and showing it stores nothing', ev(DESK + ".querySelectorAll('#planSuggest .plan-p').length") === 3 && ev(DESK + ".querySelectorAll('#planSuggest .btn').length") === 1 && ev('JSON.stringify(S)') === s1 && ev('planNow()') === null);
+    ev('window.__7sv = 0;');
+    ev(DESK + ".querySelector('#planSuggest .btn').click();");
+    const mine = J('planNow()');
+    ok('his tap sets the plan: one row, his, for this week, with a save()', !!mine && mine.by === 'me' && mine.week === '2026-12-14' && mine.pri.length === 3 && ev('window.__7sv') === 1 && ev('S.planRecord.length') === 1 && ev('planRowOk(S.planRecord[0])') === true);
+    ok('Desk: the plan now leads with its verdicts and a Withdraw button, and the suggestion is gone', ev(DESK + ".querySelector('#planSuggest')") === null && ev(DESK + ".querySelectorAll('#planCardDesk .plan-p .plan-v').length") === 3 && /set by you/.test(ev(DESK + ".querySelector('#planCardDesk').textContent")) &&
+      ev(DESK + ".querySelectorAll('#planCardDesk button[data-id=\"" + mine.id + "\"]').length") === 1);
+    ev("window.__7cf = 0; window.confirm = function(){ window.__7cf++; return false; }; window.__7sv = 0;");
+    ev(DESK + ".querySelector('#planCardDesk button[data-id]').click();");
+    ok('Withdraw asks first, and saying no changes nothing', ev('window.__7cf') === 1 && ev('S.planRecord.length') === 1 && ev('window.__7sv') === 0);
+    ev("window.confirm = function(){ return true; };");
+    ev(DESK + ".querySelector('#planCardDesk button[data-id]').click();");
+    ok('Withdraw: a row and a save(); his plan no longer stands and its own row is untouched', ev('S.planRecord.length') === 2 && ev('S.planRecord[1].cancel') === mine.id && ev('window.__7sv') === 1 && ev('planNow()') === null && ev('S.planRecord[0].pri.length') === 3);
+    ev("S.overhaul.planRecord = false;");
+    ok('Plan of Record off: his tap sets nothing', J('planSetMine()').ok === false && ev('S.planRecord.length') === 2);
+    ev("delete S.overhaul.planRecord;");
+
+    // ---- the gate for a plan a model wrote ----
+    ev('__7b()');
+    const WK = '2026-12-21', WSUN = '2026-12-27';
+    const pv = raw => J('planValidate(' + JSON.stringify(raw) + ",'" + WK + "')");
+    const GOOD = [{standard:'show', check:{type:'sessions', n:5}, byDate:'2026-12-27', text:'Five this week.'}, {standard:'bulk', check:{type:'bwUp', lb:0.5}}, {standard:'lifts', check:{type:'topSet', lift:'barbell bench press'}, byDate:'2026-12-24'}];
+    const g = pv(GOOD);
+    ok('validate: three good priorities are kept, the lift resolved to the real name and a missing day set to the week\'s Sunday', g.pri.length === 3 && g.dropped === 0 && g.pri[2].check.lift === 'Barbell Bench Press' && g.pri[1].byDate === WSUN && g.pri[0].text === 'Five this week.');
+    ok('validate: what it returns passes the row check', ev('planRowOk(' + JSON.stringify({id:'x', week:WK, by:'zulu', pri:g.pri}) + ')') === true);
+    const one = (patch, why) => { const raw = JSON.parse(JSON.stringify(GOOD)); patch(raw); const r = pv(raw); ok('validate: ' + why + ' drops that priority and keeps the rest', r.pri.length === 2 && r.dropped === 1 && r.pri.every(p => p.standard !== 'show'), JSON.stringify(r)); };
+    one(r => { r[0].check = {type:'steps', n:8000}; }, 'a check outside the fixed set');
+    one(r => { r[0].standard = 'intake'; }, 'a check filed under another pillar');
+    one(r => { r[0].check.n = 12; }, 'a count outside its range (never clamped)');
+    one(r => { r[0].check.n = '5'; }, 'a count sent as a string (never coerced)');
+    one(r => { r[0].byDate = '2026-12-28'; }, 'a day outside the plan\'s week');
+    one(r => { r[0].check = null; }, 'no check at all');
+    ok('validate: a lift the app does not know drops that priority', pv([GOOD[0], {standard:'lifts', check:{type:'topSet', lift:'Zz Not A Lift'}}]).pri.length === 1);
+    ok('validate: a gain above the band\'s top is refused', pv([{standard:'bulk', check:{type:'bwUp', lb:1.5}}]).pri.length === 0);
+    ok('validate: at most three, and the same check twice is kept once', pv(GOOD.concat([{standard:'intake', check:{type:'calDays', n:5}}])).pri.length === 3 && pv(GOOD.concat([{standard:'intake', check:{type:'calDays', n:5}}])).dropped === 1 &&
+      pv([GOOD[0], {standard:'show', check:{type:'sessions', n:4}}]).pri.length === 1);
+    ok('validate: the coach\'s line is clipped, and a cite is kept only as ids that exist (the library is off here: none)', pv([Object.assign({}, GOOD[0], {text:new Array(60).join('word '), cite:['E12', 'nope']})]).pri[0].text.length <= ev('PLAN_TEXT_MAX') && pv([Object.assign({}, GOOD[0], {cite:['E12']})]).pri[0].cite === undefined);
+    ok('validate: {"priorities":[...]} is read too; anything else is no plan', pv({priorities:GOOD}).pri.length === 3 && pv('three things').pri.length === 0 && pv(null).pri.length === 0 && J('planValidate(' + JSON.stringify(GOOD) + ",'2026-12-22')").pri.length === 0);
+
+    // ---- the Weekly Review rides the letter call: byte-identical with the switch off ----
+    ev(`window.__7sys = []; window.__7reply = 'A plain letter about the week.';
+      callClaudeWithData = async function(msgs, sys, mt, opts){ window.__7sys.push({sys:sys, route:opts && opts.route}); if(window.__7mid) window.__7mid(); return {text:window.__7reply, toolsUsed:0}; };`);
+    const letterSys = async () => { ev('window.__7sys = [];'); await ev("agWriteLetter(['DELTA: fine'])"); return ev('window.__7sys[0].sys'); };
+    ev('__7b({planRecord:false, deskPlus:false})'); setDay(SUN);
+    const base = await letterSys();
+    ev('__7b()'); setDay(SUN);
+    plan([{standard:'show', check:{type:'sessions', n:4}, byDate:SUN}]);
+    ev("agState().orders = {at:'2026-12-01T22:00:00.000Z', day:'2026-12-01', month:'2026-12', by:{zulu:['Keep the bulk honest.']}};");
+    const off = await letterSys();
+    ok('paid switch off: the letter prompt is byte-identical, with a plan stored and standing orders present', off === base && !/WEEKLY REVIEW/.test(off) && !/PLAN OF RECORD/i.test(off) && !/STANDING ORDERS/.test(off));
+    ok('paid switch off: the part the letter call would be given is empty, whoever asks for it', ev("wrPromptPart('2026-12-21')") === '');
+    ev("window.__7reply = JSON.stringify({letter:'L in JSON.', plan:[{standard:'show', check:{type:'sessions', n:5}}]});");
+    const offOut = await ev("agWriteLetter(['DELTA: fine'])");
+    ok('paid switch off: the reply is the letter as it came, and nothing is read from it as a plan', offOut === ev('window.__7reply') && ev('_wrLast') === null && (ev('wrIngest()'), ev('S.planRecord.length')) === 1);
+    ev("S.overhaul.weeklyReview = true; delete agState().orders;");
+    const on = await letterSys();
+    ok('paid switch on: the same call is also asked for next week\'s plan, with the fixed menu and the week it is for', on !== base && /THIS CALL IS ALSO THE WEEKLY REVIEW/.test(on) && /week of [A-Za-z]+,? ?[A-Za-z]* ?\d+.*\(2026-12-21 to 2026-12-27\)/.test(on) &&
+      ev("Object.keys(PLAN_CHECKS).every(function(k){ return window.__7sys[0].sys.indexOf('\"type\":\"'+k+'\"') >= 0; })") === true && ev('window.__7sys[0].route') === 'letter', on.slice(on.indexOf('THIS CALL'), on.indexOf('THIS CALL') + 200));
+    ok('...and it is one call, not two', ev('window.__7sys.length') === 1);
+    ok('ZULU is shown its own record as the app scored it, the week ending tonight read as finished', /THE PLAN OF RECORD SO FAR, AS THE APP SCORED IT/.test(on) && /Week of [^\n]*\(yours\): Showing up, 4 sessions logged: Missed · 0 of 4/.test(on), (on.match(/THE PLAN OF RECORD SO FAR[^\n]*\n[^\n]*/) || [''])[0]);
+    ok('that record is capped, and absent when there is no plan to show', ev("planMemoryLine().length") <= ev('PLAN_MEMORY_MAX') + 1 && (ev("S.planRecord = [];"), ev('planMemoryLine()')) === '');
+    ok('a Monday catch-up plans the same week as the Sunday it covers', ev("wrPlanWeek('2026-12-20')") === '2026-12-21' && ev("wrPlanWeek('2026-12-21')") === '2026-12-21');
+    // the reply: two keys, each on its own
+    ev("window.__7reply = JSON.stringify({letter:'  The week, in prose.  ', plan:[{standard:'show', check:{type:'sessions', n:5}, text:'Five.'}, {standard:'show', check:{type:'steps', n:9000}}, {standard:'bulk', check:{type:'bwUp', lb:0.5}, byDate:'2026-12-27'}]});");
+    const lt = await ev("agWriteLetter(['DELTA: fine'])");
+    ok('reply: the letter is the "letter" key, and the plan waits to be checked', lt === 'The week, in prose.' && J('_wrLast').week === '2026-12-21' && ev('S.planRecord.length') === 0);
+    const nIn = ev('wrIngest()');
+    const zr = J('S.planRecord[0]');
+    ok('ingest: the priorities that pass become ZULU\'s row for next week; the one outside the set is dropped and said so in the feed', nIn === 2 && zr.by === 'zulu' && zr.week === '2026-12-21' && zr.pri.length === 2 && ev('planRowOk(S.planRecord[0])') === true &&
+      /Plan of Record for the week of Dec 21: 5 sessions logged; Bodyweight up at least 0\.5 lb on the week\. \(1 more did not pass the check\)/.test(ev('agState().log[0].text')) && ev('_wrLast') === null);
+    ok('next week\'s plan does not stand until its week starts', ev('planNow()') === null && (setDay('2026-12-21'), ev('planNow().id')) === zr.id);
+    setDay(SUN);
+    ev("S.planRecord = []; window.__7reply = JSON.stringify({letter:'Letter kept.', plan:[{standard:'show', check:{type:'steps'}}]});");
+    const lt2 = await ev("agWriteLetter(['DELTA: fine'])");
+    ok('a plan that fails the check costs the plan and keeps the letter', lt2 === 'Letter kept.' && ev('wrIngest()') === 0 && ev('S.planRecord.length') === 0 && /did not pass the check, so it is not shown/.test(ev('agState().log[0].text')));
+    ev("window.__7reply = 'Just a letter, no JSON at all.';");
+    const lt3 = await ev("agWriteLetter(['DELTA: fine'])");
+    ok('prose with no JSON is still his letter, with no plan, and the feed says so', lt3 === 'Just a letter, no JSON at all.' && ev('wrIngest()') === 0 && ev('S.planRecord.length') === 0 && /came back without a Plan of Record/.test(ev('agState().log[0].text')));
+    ev("window.__7reply = '{ \"plan\": [ this is not json, and there is no letter in it';");
+    let threw = '', got3 = null;
+    try { got3 = await ev("agWriteLetter(['DELTA: fine'])"); } catch (e) { threw = String(e && e.message); }
+    ok('a broken JSON reply is a failure, not a letter made of braces', /shape asked for/.test(threw) && ev('_wrLast') === null, JSON.stringify(got3) + ' ' + threw);
+    ev("window.__7reply = JSON.stringify({plan:[{standard:'show', check:{type:'sessions', n:5}}]});");
+    threw = '';
+    try { await ev("agWriteLetter(['DELTA: fine'])"); } catch (e) { threw = String(e && e.message); }
+    ok('...and so is JSON with a plan and no letter: nothing is kept from it', /shape asked for/.test(threw) && ev('_wrLast') === null && ev('S.planRecord.length') === 0);
+    // the stale-reference class: S is replaced while the call is out
+    ev("S.planRecord = []; window.__7reply = JSON.stringify({letter:'After a pull.', plan:[{standard:'show', check:{type:'sessions', n:4}}]}); window.__7mid = function(){ window.__7old = S; S = JSON.parse(JSON.stringify(S)); };");
+    await ev("agWriteLetter(['DELTA: fine'])");
+    ev('wrIngest(); window.__7mid = null;');
+    ok('a pull that replaces S during the call does not lose the plan: it is written into the S that exists after it', ev('S.planRecord.length') === 1 && ev('window.__7old.planRecord.length') === 0 && ev('S !== window.__7old') === true);
+    // the whole cycle on a letter night
+    ev("S.planRecord = []; agLetterDue = function(){ return true; }; delete agState().letter; agState().lastRun = '';");
+    stubAgents({charlie:{summary:'c', proposals:[]}, delta:{summary:'d', proposals:[]}, echo:{summary:'e', proposals:[]},
+      zulu:{summary:'z', proposals:[], letter:'The cycle wrote me.', plan:[{standard:'intake', check:{type:'calDays', n:5}}]}});
+    await ev('agRunAll(false)');
+    ok('the nightly cycle on a letter night: the letter is kept and its plan is ingested straight after', ev('(agLetter() || {}).text') === 'The cycle wrote me.' && ev('S.planRecord.length') === 1 && ev('S.planRecord[0].by') === 'zulu' && ev('S.planRecord[0].pri[0].check.type') === 'calDays');
+    ev("S.overhaul.weeklyReview = false; S.planRecord = []; delete agState().letter;");
+    await ev('agRunAll(false)');
+    ok('...and with the switch off the same reply is only a letter', ev('S.planRecord.length') === 0 && !!ev('agLetter()'));
+    unstubAgents();
+    ev("agLetterDue = window.__7LD; callClaudeWithData = async function(msgs, sys, mt, opts){ window.__7sys.push({sys:sys, route:opts && opts.route}); return {text:window.__7reply, toolsUsed:0}; };");
+
+    // ---- the Monthly Review: standing orders ----
+    ev('__7b()');
+    const OR = {orders:{zulu:['Keep the bulk honest.', '  Two   spaces. '], DELTA:['Bench first.'], echo:['a', 'b', 'c', 'd', 'e', 'f'], charlie:[42, '', null], foxtrot:['not a coach'], delta2:'x'}};
+    const ov = J('ordValidate(' + JSON.stringify(OR) + ')');
+    ok('orders: per coach, strings only, clipped, at most five; a key that is not a coach is ignored', JSON.stringify(ov.by.zulu) === JSON.stringify(['Keep the bulk honest.', 'Two spaces.']) && ov.by.delta[0] === 'Bench first.' && ov.by.echo.length === 5 && ov.by.charlie === undefined && ov.by.foxtrot === undefined && ov.n === 8);
+    ok('orders: a long line is clipped, and junk is no orders', J('ordValidate(' + JSON.stringify({zulu:[new Array(80).join('word ')]}) + ')').by.zulu[0].length <= ev('ORD_LINE_MAX') && J("ordValidate('nope')").n === 0 && J('ordValidate(null)').n === 0);
+    ev(`window.__7calls = []; window.__7mreply = JSON.stringify({orders:{zulu:['Keep the bulk honest.'], delta:['Bench first, then volume.'], echo:['Watch weekday lunches.']}});
+      callClaude = async function(msgs, sys, mt, opts){ window.__7calls.push({sys:sys, mt:mt, opts:opts}); if(window.__7mid) window.__7mid(); if(window.__7mthrow) throw new Error('Failed to fetch'); return window.__7mreply; };`);
+    ok('switch off: nothing is due and no call is made', ev('ordDue()') === false && (await ev('monthlyMaybe()')) === false && ev('window.__7calls.length') === 0 && ev('agState().orders') === undefined);
+    ev("S.overhaul.monthlyReview = true; window.__7sv = 0;");
+    const ran = await ev('monthlyMaybe()');
+    const od = J('agState().orders');
+    ok('switch on: one call, no tools, on route "monthly" with the named model, at least 4000 tokens', ran === true && ev('window.__7calls.length') === 1 && ev('window.__7calls[0].opts.route') === 'monthly' && ev('window.__7calls[0].opts.model') === ev('MONTHLY_MODEL') && ev('window.__7calls[0].mt') >= 4000 &&
+      /You are ZULU, writing the Monthly Review/.test(ev('window.__7calls[0].sys')) && !/You are (CHARLIE|DELTA|ECHO)/.test(ev('window.__7calls[0].sys')));
+    ok('the orders are stored for the month with a save(), and the feed says so', od.month === '2026-12' && od.day === '2026-12-16' && od.by.delta[0] === 'Bench first, then volume.' && ev('window.__7sv') >= 1 && /monthly review is in/.test(ev('agState().log[0].text')));
+    ok('once a month: a second evening does not call again', ev('ordDue()') === false && (await ev('monthlyMaybe()')) === false && ev('window.__7calls.length') === 1);
+    setDay('2027-01-02');
+    ok('a new month is due again', ev('ordDue()') === true);
+    setDay('2026-12-16');
+    ok('monthly is an automatic route: it pauses at the cap', ev("spendIsAuto('monthly')") === true && ev("AI_ROUTE_LABEL.monthly") === 'Monthly review');
+    ev("delete agState().orders; agState().log = []; spendBlock = function(){ return 'the monthly API cap is reached'; };");
+    ok('at the cap it declines, makes no call, and leaves a line in the feed once', (await ev('monthlyMaybe()')) === false && ev('window.__7calls.length') === 1 && /monthly review is paused/.test(ev('agState().log[0].text')) && (await ev('monthlyMaybe()'), ev('agState().log.length')) === 1);
+    ev("spendBlock = window.__7Spend; window.__7mthrow = true; agState().log = [];");
+    ok('a call that never got through closes nothing: it is tried again', (await ev('monthlyMaybe()')) === false && ev('agState().orders') === undefined && ev('ordDue()') === true && /could not write the monthly review/.test(ev('agState().log[0].text')) && ev('_ordRunning') === false);
+    ev("window.__7mthrow = false; window.__7mreply = 'not json';");
+    ok('a reply that fails the check closes the month (it was paid for) and shows nothing', (await ev('monthlyMaybe()')) === true && ev('ordDue()') === false && ev('ordNow()') === null && /nothing that passed the check/.test(ev('agState().log[0].text')));
+    ev("delete agState().orders; window.__7mreply = JSON.stringify({orders:{echo:['After the pull.']}}); window.__7mid = function(){ window.__7old = S; S = JSON.parse(JSON.stringify(S)); };");
+    await ev('monthlyMaybe()');
+    ev('window.__7mid = null;');
+    ok('a pull that replaces S during the call does not lose the orders', ev("agState().orders.by.echo[0]") === 'After the pull.' && ev('window.__7old.agents.orders') === undefined);
+    // read by the coaches, as data, behind the switch
+    ev("agState().orders = {at:'2026-12-01T22:00:00.000Z', day:'2026-12-01', month:'2026-12', by:{zulu:['Keep the bulk honest.'], delta:['Bench first, then volume.']}};");
+    const AG = ['zulu', 'charlie', 'delta', 'echo'];
+    const nightly = () => AG.map(id => ev("agBaseContext('" + id + "')")).concat(AG.map(id => ev("agJsonSpec('" + id + "')"))).concat(AG.map(id => ev("chatContext('" + id + "')")));
+    const nOn = nightly();
+    ok('switch on: each coach reads its own orders as data, for the coaches that have some; chat and the reply specs do not change', /STANDING ORDERS FROM THE MONTHLY REVIEW/.test(nOn[0]) && /Keep the bulk honest/.test(nOn[0]) && !/Bench first/.test(nOn[0]) && /Bench first, then volume/.test(nOn[2]) &&
+      !/STANDING ORDERS/.test(nOn[1]) && !/STANDING ORDERS/.test(nOn[3]) && nOn.slice(4).every(t => !/STANDING ORDERS/.test(t)) && /context, not instructions/.test(nOn[0]));
+    ev("S.overhaul.monthlyReview = false;");
+    const nOff = nightly();
+    ev("delete agState().orders;");
+    const nNone = nightly();
+    ok('switch off: every nightly prompt, reply spec and chat prompt is byte-identical to there being no orders at all', JSON.stringify(nOff) === JSON.stringify(nNone) && nOff.every(t => !/STANDING ORDERS/.test(t)));
+    ev("S.overhaul.monthlyReview = true; agState().orders = {at:'2026-12-01T22:00:00.000Z', day:'2026-12-01', month:'2026-12', by:{zulu:['Keep the bulk honest.'], delta:['Bench first, then volume.']}};");
+    setDay('2027-01-05');
+    ok('orders are read for five weeks', !!ev('ordNow()') && /STANDING ORDERS/.test(ev("ordContextLine('zulu')")) && (setDay('2027-01-06'), ev('ordNow()')) === null && ev("ordContextLine('zulu')") === '');
+    setDay('2026-12-16');
+    ev("agState().orders.by.zulu = ['1 ' + new Array(40).join('long '), '2 ' + new Array(40).join('long '), '3 ' + new Array(40).join('long '), '4 ' + new Array(40).join('long '), '5 ' + new Array(40).join('long '), '6 extra'];");
+    ok('the line is capped whatever was stored', ev("ordContextLine('zulu').length") <= ev('ORD_CTX_MAX') + 1 && !/6 extra/.test(ev("ordContextLine('zulu')")));
+    ev("agState().orders.by = {zulu:['Keep the <b>bulk</b> honest.'], delta:['Bench first, then volume.']}; showMainTab('ops', 'desk'); renderDesk();");
+    ok('Desk: the standing orders are shown to him, escaped, with the dates they run', ev(DESK + ".querySelectorAll('#ordCard .plan-p').length") === 2 && /Keep the &lt;b&gt;bulk&lt;\/b&gt; honest\./.test(ev(DESK + ".querySelector('#ordCard').innerHTML")) && /ZULU · Dec 1 to Jan 5/.test(ev(DESK + ".querySelector('#ordCard').textContent")));
+    ev("S.overhaul.monthlyReview = false; renderDesk();");
+    ok('...and they stay his to read after the switch goes off', ev(DESK + ".querySelector('#ordCard')") !== null);
+    // sync
+    ev("S.overhaul.monthlyReview = true; window.__7snap = JSON.parse(JSON.stringify(S)); window.__7snap.agents.orders = {at:'2026-11-01T22:00:00.000Z', day:'2026-11-01', month:'2026-11', by:{zulu:['Old.']}}; window.__7snap.meta = {changedAt:Date.now() - 60000};");
+    ev("applyPulled(window.__7snap, Date.now());");
+    ok('merge: a pull carrying older orders does not replace newer ones written here', ev('agState().orders.month') === '2026-12');
+    // A fresh copy: the first pull made S.agents the snapshot's own object, so editing that snapshot would edit S too.
+    ev("window.__7snap = JSON.parse(JSON.stringify(S)); window.__7snap.agents.orders = {at:'2026-12-20T22:00:00.000Z', day:'2026-12-20', month:'2026-12', by:{zulu:['Newer.']}}; window.__7snap.meta = {changedAt:Date.now()};");
+    ok('...the fixture: this device still holds the older of the two', ev('agState().orders.at') === '2026-12-01T22:00:00.000Z');
+    ev("applyPulled(window.__7snap, Date.now() + 1000);");
+    ok('merge: newer orders from the other device win', ev('agState().orders.by.zulu[0]') === 'Newer.');
+    // the server's evening run is what starts it
+    ev("delete agState().orders; S.overhaul = {selector:false, monthlyReview:true}; S.settings.apiKey = 'sk-test'; window.__7mreply = JSON.stringify({orders:{zulu:['From the runner.']}}); window.__7calls = [];" +
+       "syncReady = function(){ return true; }; autoPullOnLoad = async function(){ return true; }; agMaybeAutoRun = async function(){};");
+    const tick = await withHourAt(21, () => ev("runnerTick('auto')"));
+    ok('runner: the evening run writes the monthly review after the night\'s cycle', ev('window.__7calls.length') === 1 && ev('agState().orders.by.zulu[0]') === 'From the runner.' && tick.did === 'monthly' && /wrote the monthly review/.test(tick.why));
+    ev("delete agState().orders; window.__7calls = [];");
+    const tickAm = await withHourAt(7, () => { ev("window.__7MB = agMaybeMorningBrief; agMaybeMorningBrief = async function(){};"); return ev("runnerTick('auto')"); });
+    ev("agMaybeMorningBrief = window.__7MB;");
+    ok('runner: a morning run does not', ev('window.__7calls.length') === 0 && ev('agState().orders') === undefined);
+  } catch (e) {
+    ok('accountability section', false, e.stack);
+  } finally {
+    try { unstubAgents(); } catch (e) {}
+    ev("todayKey = window.__7Today; plateauWatch = window.__7PW; predLifts = window.__7PL; stdState = window.__7Std; save = window.__7Save; window.confirm = window.__7Confirm; window.alert = window.__7Alert;" +
+       "callClaudeWithData = window.__7Data; callClaude = window.__7Call; bulkRate = window.__7BR; swapTrialOn = window.__7STO; agLetterDue = window.__7LD; syncReady = window.__7Sync; autoPullOnLoad = window.__7Pull; agMaybeAutoRun = window.__7Auto; spendBlock = window.__7Spend;" +
+       "if(window.__7MB) agMaybeMorningBrief = window.__7MB; if(window.__7SJ) svJudgeable = window.__7SJ; window._inClaude = window.__7InC; _stdSince = {}; _anlStrip = {key:null, days:[]}; deskFilter = {agent:'all', tier:'all'}; _wrLast = null; _ordPauseLogged = ''; _ordRunning = false; S = JSON.parse(window.__7S);" +
+       "if(window.__7LS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__7LS);" +
+       "(function(){ var n = JSON.parse(window.__7Nav); try{ setMode(n.mode); showMainTab(n.main); }catch(e){} })();" +
+       "['__7S','__7LS','__7Today','__7PW','__7PL','__7Std','__7Save','__7Confirm','__7Alert','__7Data','__7Call','__7BR','__7STO','__7LD','__7Sync','__7Pull','__7Auto','__7Spend','__7InC','__7Nav','__7day','__7n','__7log','__7b','__7plan','__7v','__7sv','__7std','__7sys','__7reply','__7mid','__7old','__7calls','__7mreply','__7mthrow','__7snap','__7cf','__7MB','__7SJ'].forEach(function(k){ try{ delete window[k]; }catch(e){} });");
     try { ev('renderHome(); renderNotif();'); } catch (e) {}
   }
 

@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 4832 assertions, about 1 m 45 s. Must be
+**Test suite:** `node test_agents.js`. Currently 4943 assertions, about 2 minutes. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -168,6 +168,7 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | Selector and swap trials | `selState()` (one row per lift), `selScore()`, `selCandidates()`, `swapTrialOn()`, `swtView()`, `baseSplitObj()`, `swtCheck()`, `swtStartMine()`, `swtTrials()`, `swtDecide()`, `agSwapNeeds()`, `selContextLine()` |
 | Analysts and squads | `ANALYSTS`, `anlPass()` (the one read), `anlLeadStatus()`, `anlNums()`, `anlStrips()`, `anlSquadLine()`, `dosTargets()`, `hubSquadsHTML()` |
 | Desk, watches, Plan of Record | `hubDeskHTML()`, `deskPlusTopHTML()`, `deskAnalystCards()`, `WATCH_SERIES`, `watchSpecOk()`, `watchList()`, `watchEval()`, `watchAdd()`, `watchOffers()`, `watchFiredLine()`, `PLAN_CHECKS`, `planRowOk()`, `planFor()`, `planCardHTML()` |
+| Accountability | `planVerdict()`, `planScore()`, `planSuggest()`, `planSetMine()`, `planValidate()`, `wrOn()`, `wrPromptPart()`, `wrIngest()`, `planMemoryLine()`, `monthlyMaybe()`, `ordValidate()`, `ordNow()`, `ordContextLine()`, `MONTHLY_MODEL` |
 | Agents, extras | roundtable `agRoundtable()`, Desk `agValidateDesk()`, questions `qaDue()`, diagnosis `pdTargets()`, letter `agWriteLetter()`, brief `agRunBrief()` |
 | API | `aiSend()` (the one transport), `aiBody()`, `callClaudeWithData()`, `spendPreflight()`, `aiUsageNote()` |
 | Server and schedulers | `agForegroundCheck()`, `runnerTick()`, `agMaybeAutoRun()`, `agMaybeMorningBrief()` |
@@ -205,7 +206,7 @@ sharp pain, **volume last** on a stalled grinding lift); a refusal names its rea
 - **Model-supplied exercise names must be resolved, never trusted** (`agResolveExName()`), and
   **a coaching note is not part of a name** (`exSplitNote()`).
 - **Read-only agent output still needs a validator** (`olValidateReport()`, `agValidateDesk()`,
-  `agValidateDiagnosis()`, `fcValidate()`): a bad night costs commentary, never content.
+  `agValidateDiagnosis()`, `fcValidate()`, `planValidate()`, `ordValidate()`): a bad night costs commentary, never content.
 - **There is no write tool and there must never be one.** Data tools only read. A chat call only
   stages a card (at most `CHAT_CARDS_MAX`), and his tap checks it again.
 - **A chart or a check from a model is a spec, never numbers.** The app draws and measures from
@@ -574,6 +575,33 @@ motion", and a fast-gain amber.
   failure is said on screen and the board is still drawn. Filters and the watch form's draft are module-scoped.
 - Interventions are not a call (his choice): the brief already leads with a new red.
 
+**Stage 7, Accountability** (plan scoring is under `ovOn('planRecord')`, free; `ovOn('weeklyReview')` and `ovOn('monthlyReview')`, paid, off)
+- **A verdict on a priority is worked out when read and never stored** (`planVerdict()`, `planScore()`): met, partly,
+  missed, open, held, or not judged. Too little data, a lift that was not on the schedule that week, sets that carried
+  no call, or a measure that throws reads "not judged": never a miss and never a pass.
+- **Bodyweight on the week is `bulkRate(2, sunday)`**, the Standards' own expression, judged only once the week is over
+  and only with `STD_BW_MIN_WEIGHS` weigh-ins in both weeks. Today's intake log does not count until the day is over. A
+  day with a reason is not a missed scheduled day (`dayExcuse()`). A hold on the pillar that week reads held.
+- **`planValidate()` is the gate for a plan a model wrote**: each priority through `planPriOk()` with its lift
+  resolved; a check outside `PLAN_CHECKS`, filed under the wrong pillar, out of range or dated outside the week drops
+  that priority and keeps the rest. Nothing is coerced.
+- **A plan is set two ways**: his tap on the app's own suggestion (`planSuggest()` → `planSetMine()`, a `save()`), or
+  ZULU inside the weekly letter call behind the paid switch. Withdrawing one is a cancel row. A plan changes nothing in
+  his program, and a missed priority never moves a Standard's level (`PLAN_FEEDS_STANDARDS`).
+- **The Weekly Review rides the letter call** (`wrOn()`, `wrPromptPart()`): one call, one reply with `letter` and
+  `plan`, each kept or dropped on its own. The plan's week is taken before the await (`wrPlanWeek()`) and `wrIngest()`
+  writes into the `S` that exists after it. Off, the letter prompt is byte-identical and a reply is only ever a letter.
+  ZULU's own record (`planMemoryLine()`, capped) is in that call and nowhere else.
+- **The Monthly Review is server-only, once a month, behind its own paid switch** (`monthlyMaybe()`, from
+  `runnerTick()`'s evening branch; route `monthly`, an automatic route, no tools). Any reply that came back closes the
+  month; a call that never got through does not. A decline at the cap leaves a line in the feed, once a day.
+- **`MONTHLY_MODEL` is `AI_MODEL`.** Changing it is his decision (the cost guardrail). `aiBody()` honours a model only
+  when it is that constant.
+- **Standing orders are data** (`ordValidate()`, `S.agents.orders`, newer wins in `applyPulled()`): at most
+  `ORD_MAX_LINES` lines per coach, in force for `ORD_DAYS`, in a coach's nightly prompt only with the switch on
+  (`ordContextLine()`, capped), never in chat. They change nothing. With the switch off, or with none in force, every
+  prompt is byte-identical.
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
@@ -583,4 +611,5 @@ motion", and a fast-gain amber.
 | 4 Analysts: eight computed analysts, squads, the Hub in four lanes | built 2026-11-12 (`v5e`) |
 | 5 Selector: a computed fit score for every lift, swap trials as a third split in force, grounds for a permanent swap | built 2026-11-12 (`v5f`) |
 | 6 Desk: analyst cards derived at render, watches measured when read, the Plan of Record stored and shown | built 2026-11-13 (`v5g`) |
-| 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |
+| 7 Accountability: a plan scored by the app, the Weekly Review inside the letter call, the Monthly Review behind its own switch | built 2026-11-13 (`v5h`) |
+| 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |

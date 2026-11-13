@@ -275,3 +275,20 @@ The Desk (Hub, second tab) used to be only what the four coaches wrote. Now it i
 - *Watch proposals and wider charts from the coaches*: lets a coach propose a watch on a Desk post (you still tap Accept), chart two more things (fatigue index and total hard sets a week), and hear about it the night one of its watches fires. About 3 to 10 cents a month.
 
 If you want the old Desk back, turn off "Desk: analyst cards and watches" in the same place.
+
+## The plan gets scored (Nov 13)
+
+Until now the agents proposed things and the app scored each proposal alone. Nothing scored the week as a whole. Now it does.
+
+- **A Plan of Record for the week.** At most three priorities. Each one is tied to a Standard and to something the app can actually measure: sessions logged, every scheduled day trained, weigh-ins, bodyweight up on the week, days at your calorie target, days at your protein target, a set at the weight the app called, morning check-ins.
+- **You can set one today, free.** On the Desk, the Plan of Record card shows the app's own suggestion, built from your Standards (the flagged ones first). Tap **Set this as the week's plan**. For you this week it suggests: bodyweight up at least 0.5 lb, a squat set at the called weight, and calories at target on 5 days. Tap **Withdraw** to take it back.
+- **The app scores it, not an AI.** Each priority reads Met, Partly, Missed, Open (its day has not come yet), Held (you are away) or Not judged (not enough data, which is never counted as a miss). The score is worked out from your logs every time you look.
+- **On Today** the plan sits under the Standards. For the first three days of a new week it also shows how last week came out, and the bell does too.
+- **A missed priority does not turn a Standard red.** The Standards keep their own rules.
+- I replayed the app's suggestions over your last ten weeks. Calories at target on 5 days was never fully met (partly 5 weeks, missed 5). Bodyweight up 0.5 lb was met 7 weeks of 9. The top-set check was met all 4 weeks it came up.
+
+**Two new paid switches, both off** (Settings, V5 switches):
+- *Weekly Review: ZULU writes the Plan of Record.* On Sunday night ZULU already writes your letter. With this on, the same call also shows ZULU how its last plans scored and has it write next week's plan. One call, not two. About 2 to 6 cents a month. A plan from ZULU can only use the same measurable checks; anything else is dropped.
+- *Monthly Review: standing orders.* Once a month, from the server's evening run, ZULU reads the whole month and writes up to five short lines for each coach on what to emphasise. They show on the Desk for five weeks and change nothing in your plan. On the current model one run reads about 10,000 to 11,500 tokens and costs about 5 to 10 cents. It is built to use the same model as everything else; a bigger model for this is your call, and it is one line to change.
+
+If you want none of it, turn off "Plan of Record" in the same place.
