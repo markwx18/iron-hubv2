@@ -307,3 +307,17 @@ Things kept arriving on Today (Standards, a plan, questions, trial results, stoc
 - On your data today: Progress, Fuel and Quality each fold a few cards; Today, the Desk, Forecasts, Plan, Log and the Hub's other views fit as they are.
 
 If you want the old layout back, turn off "Organization: one Inbox, lighter screens" in Settings, under V5 switches.
+
+## The weekly letter as a video (Nov 13)
+
+ZULU's Sunday letter can now be watched as well as read: about half a minute, six scenes, read aloud by your phone's own voice, with captions always on. It plays inside the app. There is no video file and no server, and nothing is recorded.
+
+- **Six scenes, in order:** the week (a ring: planned days trained), strength (your main lifts, as the plateau watch read them at the end of the week), bodyweight (the last eight weeks as a line, with the week's rate), the Standards (all five, each with its word and icon), next week (the Plan of Record and any time away), and ZULU signing off.
+- **Every picture and every number comes from your data**, worked out when you press Play. Nothing about the video is stored except the letter's text.
+- **Free, and on now.** Without anything extra, each scene speaks the app's own line ("5 of 5 planned days trained", "3 of 5 main lifts on track this week. Barbell Back Squat is slowing."). No model call.
+- **Where to find it:** a "Video letter" row in your Inbox from Sunday night to Wednesday, and the Hub's **Library**, which now keeps your past letters too (the last eight listed, each with Play). Tap **Play** to start the voice. Pause, step back or forward a scene, and turn the voice off for captions only.
+- **On your phone:** the voice only starts after you tap Play, which is how iPhones work. If you hear nothing, check the ring/silent switch and the volume, then tap Play again. The voice is whichever one your phone has; if it has the robotic "Fred" voice, the app uses it.
+
+**One new paid switch, off:** *Video letter in ZULU's words* (Settings, V5 switches). With it on, the same Sunday letter call also has ZULU write the six spoken lines. One call, not two: about 1 to 3 cents a month. ZULU cannot put a number in a line. Where a number belongs it writes a placeholder and the app fills it in from your data. A line with any number of ZULU's own, or one that is too long, is swapped for the app's own line.
+
+If you want none of it, turn off "Video letter" in the same place.

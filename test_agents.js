@@ -19436,6 +19436,253 @@ setTimeout(async () => {
     try { ev('renderHome(); renderNotif();'); } catch (e) {}
   }
 
+  console.log('\n=== THE VIDEO LETTER: SIX SCENES DRAWN FROM HIS DATA, NUMBERS ONLY THROUGH TOKENS, SPEECH ONLY FROM A TAP (2026-11-13) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    ev("window.__9S = JSON.stringify(S); window.__9LS = localStorage.getItem(LS_KEY); window.__9Today = todayKey; window.__9Std = stdState; window.__9PL = predLifts; window.__9Data = callClaudeWithData;" +
+       "window.__9LD = agLetterDue; window.__9InC = window._inClaude; window._inClaude = false; window.__9Nav = JSON.stringify({mode:MODE, main:activeMainTab});" +
+       "window.__9SS = Object.getOwnPropertyDescriptor(window, 'speechSynthesis'); window.__9SU = window.SpeechSynthesisUtterance;");
+    /* The fixture. The letter week is Mon Dec 14 to Sun Dec 20; "today" is a NAMED day. Every day is a training day. */
+    ev(`window.__9day = '2026-12-21';
+      todayKey = function(){ return window.__9day; };
+      predLifts = function(){ return ['Barbell Bench Press', 'Barbell Back Squat']; };
+      window.__9PW = plateauWatch;
+      plateauWatch = function(){
+        window.__9pwT = todayKey(); window.__9pwMax = S.logs.reduce(function(m, l){ return l.date > m ? l.date : m; }, '');
+        return [{lift:'Barbell Bench Press', state:'ok', lvl:'green'}, {lift:'Barbell Back Squat', state:window.__9pwThin ? 'thin' : 'slowing', lvl:window.__9pwThin ? 'calm' : 'amber'}, {lift:'Cable Row', state:'falling', lvl:'red'}];
+      };
+      window.__9std =[{pillar:'bulk', label:'Bulk pace', lvl:'red'}, {pillar:'show', label:'Showing up', lvl:'ok'}, {pillar:'lifts', label:'Lifts', lvl:'amber'},
+                       {pillar:'intake', label:'Intake', lvl:'amber'}, {pillar:'recovery', label:'Recovery', lvl:'nodata'}];
+      stdState = function(k){ window.__9stdK = k; return JSON.parse(JSON.stringify(window.__9std)); };
+      window.__9n = 0;
+      window.__9log = function(date, ex, w, r){ S.logs.push({id:'v9l'+(window.__9n++), date:date, day:'D1', scheduled:'D1', entries:[{exercise:ex, sets:[{w:w, r:r}, {w:w - 10, r:r + 2}]}]}); };
+      window.__9b = function(ov){
+        S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+        S.scheduleMode = 'dow'; S.schedule = {0:'D1',1:'D1',2:'D1',3:'D1',4:'D1',5:'D1',6:'D1'}; S.settings.apiKey = 'sk-test';
+        S.split = {D1:{name:'Upper', exercises:[{name:'Barbell Bench Press', inc:5}, {name:'Barbell Back Squat', inc:5}]}};
+        S.overhaul = Object.assign({selector:false}, ov || {}); S.logs = []; S.letters = []; S.planRecord = []; S.holds = []; S.dayReasons = []; S.weights = []; S.nutrition = []; S.readiness = [];
+        agState().proposals = []; agState().desk = []; agState().log = []; delete agState().letter; delete S.notifCleared;
+        window.__9day = '2026-12-21'; _vlLast = null; _wrLast = null; vlClose();
+        // before the week: bench 185x5 on Dec 10, squat 225x5 on Dec 11. In the week: bench up (195x5), squat down (215x5),
+        // trained on 4 of the 7 days (Dec 14, 15, 17, 19).
+        __9log('2026-12-10', 'Barbell Bench Press', 185, 5); __9log('2026-12-11', 'Barbell Back Squat', 225, 5);
+        __9log('2026-12-14', 'Barbell Bench Press', 190, 5); __9log('2026-12-15', 'Barbell Back Squat', 215, 5);
+        __9log('2026-12-17', 'Barbell Bench Press', 195, 5); __9log('2026-12-19', 'Barbell Bench Press', 185, 6);
+        // weigh-ins, not a straight line: five weeks of them, 4 in the week before, 5 in the week
+        [['2026-11-16',169.4],['2026-11-18',170.1],['2026-11-20',169.8],['2026-11-23',170.3],['2026-11-25',169.9],['2026-11-27',170.8],
+         ['2026-11-30',170.2],['2026-12-02',171.0],['2026-12-04',170.7],['2026-12-07',171.2],['2026-12-09',170.6],['2026-12-11',171.9],['2026-12-13',171.4],
+         ['2026-12-14',171.8],['2026-12-15',172.6],['2026-12-17',171.9],['2026-12-18',172.8],['2026-12-20',172.3]].forEach(function(p){ S.weights.push({date:p[0], lbs:p[1]}); });
+      };
+      window.__9tts = function(){
+        window.__9spk = []; window.__9cancel = 0;
+        Object.defineProperty(window, 'speechSynthesis', {configurable:true, writable:true, value:{speaking:false, pending:false,
+          speak:function(u){ window.__9spk.push(u); }, cancel:function(){ window.__9cancel++; },
+          getVoices:function(){ return [{name:'Samantha', lang:'en-US', localService:true}, {name:'Fred', lang:'en-US', localService:true}, {name:'Thomas', lang:'fr-FR', localService:true}]; }}});
+        window.SpeechSynthesisUtterance = function(t){ this.text = t; };
+      };
+      window.__9notts = function(){ try{ delete window.speechSynthesis; }catch(e){} window.speechSynthesis = undefined; window.SpeechSynthesisUtterance = undefined; };`);
+    const SUN = '2026-12-20';
+    // ---- the switches ----
+    ev('__9b()');
+    ok('switches: the video letter is a free part, on; ZULU\'s lines are a paid part, off', ev('OV.videoLetter.paid') === false && !ev('OV.videoLetter.hold') && ev('vlOn()') === true &&
+      ev('OV.videoScript.paid') === true && ev("ovOn('videoScript')") === false && ev('vlScriptOn()') === false);
+    ok('switches: ZULU\'s lines also need the video letter on', (ev("S.overhaul = {videoLetter:false, videoScript:true};"), ev('vlScriptOn()')) === false && (ev("S.overhaul = {videoScript:true};"), ev('vlScriptOn()')) === true);
+    ev("S.overhaul = {selector:false};");
+    ok('history: S.letters is a SYNC_HISTORY collection on its own key prefix, capped', ev("SYNC_HISTORY.letters.key({id:'2026-12-20'})") === 'j|2026-12-20' && ev('SYNC_HISTORY.letters.cap()') === ev('VL_KEEP') && Array.isArray(J('DEFAULT_STATE.letters')));
+    ok('history: no two collections share a key prefix', (() => { const p = J("Object.keys(SYNC_HISTORY).map(function(k){ return SYNC_HISTORY[k].key({id:'x', date:'x', exercise:'x', e1rm:1}).split('|')[0]; })"); return new Set(p).size === p.length; })());
+
+    // ---- a line from the model ----
+    const LO = s => ev('vlLineOk(' + JSON.stringify(s) + ')');
+    ok('a line: tokens and plain words pass, extra spaces are cleaned', LO('  {done} of {planned} days,  and   one big push. ') === '{done} of {planned} days, and one big push.');
+    ok('a line: a digit anywhere is refused', LO('You trained 4 days.') === '' && LO('Up {bw_delta} over 2 weeks.') === '' && LO('Bench went to 1RM territory.') === '');
+    ok('a line: a number word or a percent is refused', LO('Three solid sessions.') === '' && LO('Half the plan landed.') === '' && LO('Up a few percent.') === '' && LO('Your fifth good week.') === '');
+    ok('a line: an unknown token or a stray brace is refused', LO('{weight} on the bar.') === '' && LO('{done} days {') === '' && LO('A <b>bold</b> week.') === '');
+    ok('a line: over the word cap is refused, not cut', LO(new Array(ev('VL_SAY_WORDS') + 2).join('word ')) === '' && LO(new Array(ev('VL_SAY_WORDS') + 1).join('word ')) !== '' && LO(42) === '' && LO(null) === '');
+    const SC = a => J('vlSayClean(' + JSON.stringify(a) + ')');
+    ok('the scenes: only lines that pass, only known scenes, the first entry for a scene is the one judged', JSON.stringify(SC([{scene:'week', say:'You showed up {done} times.'}, {scene:'week', say:'Overwrite me.'},
+      {scene:'strength', say:'Bench moved 5 pounds.'}, {scene:'strength', say:'A clean line.'}, {scene:'outro', say:'Bye.'}, {scene:'signoff', say:'ZULU out.'}])) === JSON.stringify({week:'You showed up {done} times.', signoff:'ZULU out.'}) &&
+      JSON.stringify(SC('scenes')) === '{}' && JSON.stringify(SC(null)) === '{}');
+
+    // ---- the numbers, worked out from his data ----
+    const N = J("vlNums('2026-12-20')");
+    ok('numbers: planned days trained this week, and the sessions logged', N.done === 4 && N.planned === 7 && N.sessions === 4 && N.tok.done === '4' && N.tok.planned === '7');
+    ok('numbers: the main lifts trained this week, in the plateau watch\'s own words (a lift not trained that week is not listed)', N.lifts_trained === 2 && N.lifts_ok === 1 && N.lifts.find(r => r.lift === 'Barbell Bench Press').ok === true &&
+      N.lifts.find(r => r.lift === 'Barbell Back Squat').word === 'slowing' && !N.lifts.some(r => r.lift === 'Cable Row') && N.tok.lifts_ok === '1' && N.tok.lifts_read === '2');
+    ev("window.__9pwThin = true;");
+    ok('numbers: a lift the watch could not read is listed but not counted, and never named as off track', J("vlNums('2026-12-20')").lifts_read === 1 && J("vlNums('2026-12-20')").lifts_trained === 2 && ev("VL_TPL.strength(vlNums('2026-12-20'))") === 'The one main lift the watch could read is on track.');
+    ev("window.__9pwThin = false; window.__9keep = JSON.stringify(S.logs); S.logs = S.logs.filter(function(l){ return l.date !== '2026-12-15'; });");
+    ok('numbers: a main lift the watch reads but he did not train that week is not in the video', J("vlNums('2026-12-20')").lifts_trained === 1 && J("vlNums('2026-12-20')").lifts[0].lift === 'Barbell Bench Press');
+    ev("S.logs = JSON.parse(window.__9keep);");
+    ev("window.__9day = '2027-01-10'; __9log('2026-12-23', 'Barbell Bench Press', 200, 5);");
+    const Nlate = J("vlNums('2026-12-20')");
+    ok('numbers: a letter played weeks later reads the watch as it stood that Sunday: its logs, and its clock, then the clock is put back', ev('window.__9pwT') === '2026-12-21' && ev('window.__9pwMax') === '2026-12-19' && ev('todayKey()') === '2027-01-10' && Nlate.lifts_trained === 2);
+    ev("window.__9day = '2026-12-21'; S.logs = S.logs.filter(function(l){ return l.date !== '2026-12-23'; });");
+    ok('numbers: the week\'s bodyweight rate is the Standards\' own expression, on screen and said aloud', N.bw === ev("bulkRate(2, '2026-12-20').rate") && /^[+−]\d+\.\d lb$/.test(N.tok.bw_delta) && /^(plus|minus) \d+\.\d pounds$/.test(N.spk.bw_delta) &&
+      N.bwAvg === ev("fcBwAvg('2026-12-14', '2026-12-20')") && N.tok.bw_avg === N.bwAvg.toFixed(1) + ' lb', JSON.stringify([N.tok.bw_delta, N.spk.bw_delta, N.tok.bw_avg]));
+    ok('numbers: the Standards are read as of that Sunday', N.red === 1 && N.amber === 2 && N.nodata === true && ev('window.__9stdK') === SUN);
+    ok('the app\'s own line: no plan for next week reads as none, never as a count', ev("VL_TPL.next(vlNums('2026-12-20'))") === 'No plan for next week yet.' && ev("VL_TPL.strength(vlNums('2026-12-20'))") === '{lifts_ok} of {lifts_read} main lifts on track this week. Barbell Back Squat is slowing.');
+    ev("S.holds.push({id:'h9s', from:'2026-12-16', to:'2026-12-18', kind:'sick', gym:'none', note:'', at:1});");
+    ok('numbers: a week with a hold in it is a held week, and the app\'s line says nothing counts against him', J("vlNums('2026-12-20')").held === true && J("vlNums('2026-12-20')").tok.planned === undefined && ev("VL_TPL.week(vlNums('2026-12-20'))") === 'A week on hold. Nothing in it counts against you.');
+    ev("S.holds = [];");
+    ev("S.weights = S.weights.filter(function(x){ return x.date !== '2026-12-07' && x.date !== '2026-12-09'; });");   // 2 left in the week before
+    ok('numbers: too few weigh-ins in the week before and there is no rate (the average still reads)', ev("bulkRate(2, '2026-12-20') !== null") === true && J("vlNums('2026-12-20')").tok.bw_delta === undefined && J("vlNums('2026-12-20')").tok.bw_avg !== undefined);
+    ev('__9b()');
+    ev("S.planRecord.push({id:'p9', week:'2026-12-21', by:'zulu', day:'2026-12-20', at:1, pri:[{standard:'show', check:{type:'sessions', n:4}, byDate:'2026-12-27'}, {standard:'bulk', check:{type:'bwUp', lb:0.5}, byDate:'2026-12-27'}]});" +
+       "S.holds.push({id:'h9', from:'2026-12-24', to:'2026-12-29', kind:'trip', gym:'none', note:'', at:1});");
+    const N2 = J("vlNums('2026-12-20')");
+    ok('numbers: next week\'s priorities from its Plan of Record, and the days of next week inside a hold', N2.tok.priorities === '2' && N2.pri.length === 2 && N2.tok.away_days === '4' && N2.away.b.id === 'h9');
+    ev("window.__9day = '2026-12-20';");
+    ok('numbers: on the Sunday itself the day is not over, so it is not a missed day yet', J("vlNums('2026-12-20')").planned === 6 && ev('window.__9stdK') === SUN);
+    ev("window.__9day = '2026-12-21';");
+
+    // ---- the script: ZULU's lines where they pass, the app's where they do not ----
+    ev("S.letters = [{id:'2026-12-20', week:'2026-12-20', at:'2026-12-21T03:00:00.000Z', text:'The letter.', say:{week:'You hit {done} of {planned}. Not enough.', strength:'Bench climbed {bw_avg} today.', bulk:'Scale says 172.', standards:'{red} red flag to fix.'}}];");
+    const sc = J("vlScript('2026-12-20')");
+    const scn = k => sc.scenes.find(s => s.scene === k);
+    ok('script: six scenes in order, each with its own picture', JSON.stringify(sc.scenes.map(s => s.scene)) === JSON.stringify(J('VL_SCENES')) && JSON.stringify(sc.scenes.map(s => s.visual)) === JSON.stringify(['ring', 'lifts', 'spark', 'strip', 'list', 'mark']));
+    ok('script: a line from ZULU is filled with the app\'s numbers', scn('week').src === 'zulu' && scn('week').cap === 'You hit 4 of 7. Not enough.' && scn('standards').cap === '1 red flag to fix.');
+    ok('script: a stored line with a digit is refused when read, and the app\'s own line takes its place', scn('bulk').src === 'app' && /^Bodyweight [+−]\d+\.\d lb on the week, averaging \d+\.\d lb\. That is /.test(scn('bulk').cap) && !/172\.$/.test(scn('bulk').cap), scn('bulk').cap);
+    ok('script: the voice says the units out loud, the caption shows them', /pounds/.test(scn('bulk').spk) && !/ lb/.test(scn('bulk').spk) && / lb/.test(scn('bulk').cap));
+    ok('script: a scene with no line from ZULU gets the app\'s line, from the week\'s numbers', scn('next').src === 'app' && scn('next').cap === '2 priorities for next week. 4 days away, and those days are held.' && scn('signoff').cap === 'That is the week. ZULU out.' && scn('strength').src === 'zulu');
+    ev("S.weights = [];");
+    const sc2 = J("vlScript('2026-12-20')");
+    ok('script: a ZULU line whose token the week cannot fill is replaced (no weigh-ins, no average)', sc2.scenes.find(s => s.scene === 'strength').src === 'app' && sc2.scenes.find(s => s.scene === 'strength').cap === '1 of 2 main lifts on track this week. Barbell Back Squat is slowing.' &&
+      sc2.scenes.find(s => s.scene === 'bulk').cap === 'Too few weigh-ins this week to read your bodyweight.');
+    ok('script: the speech rate lands the whole thing inside its bounds', sc.rate >= ev('VL_RATE[0]') && sc.rate <= ev('VL_RATE[1]') && sc.words > 20);
+    ev("S.letters[0].say = {week:'" + new Array(22).join('long ') + "', strength:'" + new Array(22).join('word ') + "', bulk:'" + new Array(22).join('more ') + "', standards:'" + new Array(22).join('talk ') + "', next:'" + new Array(22).join('here ') + "', signoff:'" + new Array(22).join('bye ') + "'};");
+    const scLong = J("vlScript('2026-12-20')");
+    ok('script: a long script speaks faster, a short one slower, never past the bounds', scLong.rate > 1 && scLong.rate <= ev('VL_RATE[1]') && (ev("S.letters = [];"), J("vlScript('2026-12-20')").rate) < 1 && J("vlScript('2026-12-20')").rate >= ev('VL_RATE[0]'), String(scLong.rate));
+    ok('a row: a week that is not a Sunday, an id that is not its week, or no text is ignored', ev("vlRowOk({id:'2026-12-19', week:'2026-12-19', text:'x'})") === false && ev("vlRowOk({id:'a', week:'2026-12-20', text:'x'})") === false &&
+      ev("vlRowOk({id:'2026-12-20', week:'2026-12-20', text:' '})") === false && ev("vlRowOk({id:'2026-12-20', week:'2026-12-20', text:'x', say:[]})") === false && ev("vlRowOk({id:'2026-12-20', week:'2026-12-20', text:'x'})") === true);
+
+    // ---- the letter call: byte-identical with the paid switch off ----
+    ev(`window.__9sys = []; window.__9reply = 'A plain letter about the week.';
+      callClaudeWithData = async function(msgs, sys, mt, opts){ window.__9sys.push({sys:sys, route:opts && opts.route}); if(window.__9mid) window.__9mid(); return {text:window.__9reply, toolsUsed:0}; };`);
+    const letterSys = async () => { ev('window.__9sys = [];'); await ev("agWriteLetter(['DELTA: fine'])"); return ev('window.__9sys[0].sys'); };
+    ev("__9b({videoLetter:false})");
+    const base = await letterSys();
+    ev("__9b()");
+    const off = await letterSys();
+    ok('paid switch off: the letter prompt is byte-identical with the video letter on or off', off === base && !/VIDEO LETTER/.test(off) && !/\{bw_delta\}/.test(off));
+    ok('paid switch off: the part the call would be given is empty', ev("vlPromptPart(false, '2026-12-20')") === '' && ev("vlPromptPart(true, '2026-12-20')") === '');
+    ev("window.__9reply = JSON.stringify({letter:'L in JSON.', scenes:[{scene:'week', say:'Good.'}]});");
+    ok('paid switch off: the reply is the letter as it came, and nothing is read from it as lines', await ev("agWriteLetter(['DELTA: fine'])") === ev('window.__9reply') && ev('_vlLast') === null);
+    ev("__9b({weeklyReview:true})");
+    const wrOnly = await letterSys();
+    ev("__9b({weeklyReview:true, videoLetter:false})");
+    ok('paid switch off: with the Weekly Review on, its prompt is the same with the video letter on or off', wrOnly === await letterSys() && !/VIDEO LETTER/.test(wrOnly));
+    ev("__9b({videoScript:true})");
+    const on = await letterSys();
+    ok('paid switch on: the same call is asked for the six lines as JSON, with the tokens and this week\'s values, and it is one call', on !== base && /THE VIDEO LETTER/.test(on) && /Respond with ONLY valid JSON, no markdown fences: \{"letter"/.test(on) &&
+      J('VL_SCENES').every(s => on.indexOf(s + ' (') >= 0) && J('VL_TOKENS').every(k => on.indexOf('{' + k + '}') >= 0) && /done=4, planned=7/.test(on) && /NO NUMBERS/.test(on) &&
+      ev('window.__9sys.length') === 1 && ev('window.__9sys[0].route') === 'letter', (on.match(/This week: [^\n]*/) || [''])[0]);
+    ev("__9b({videoScript:true, weeklyReview:true})");
+    const both = await letterSys();
+    ok('both paid switches on: one JSON reply with a third key, and the plan\'s count is not guessed', /THIS CALL IS ALSO THE WEEKLY REVIEW/.test(both) && /Add a third key to the same JSON reply: "scenes"/.test(both) && /priorities=the number of priorities in your plan above/.test(both) && (both.match(/Respond with ONLY valid JSON/g) || []).length === 1);
+    // the reply
+    ev("__9b({videoScript:true})");
+    ev("window.__9reply = JSON.stringify({letter:'  The week, spoken.  ', plan:[{standard:'show', check:{type:'sessions', n:5}}], scenes:[{scene:'week', say:'{done} of {planned}. Close.'}, {scene:'bulk', say:'Up 2 pounds.'}, {scene:'signoff', say:'Back next week.'}]});");
+    const lt = await ev("agWriteLetter(['DELTA: fine'])");
+    ok('reply: the letter is the "letter" key, the lines are checked, and no plan is read with the Weekly Review off', lt === 'The week, spoken.' && JSON.stringify(J('_vlLast.say')) === JSON.stringify({week:'{done} of {planned}. Close.', signoff:'Back next week.'}) && J('_vlLast').week === SUN && ev('_wrLast') === null);
+    ev("window.__9reply = 'Just a letter, no JSON at all.';");
+    ok('reply: prose is still his letter, with no lines', await ev("agWriteLetter(['DELTA: fine'])") === 'Just a letter, no JSON at all.' && JSON.stringify(J('_vlLast.say')) === '{}');
+    ev("window.__9reply = '{ \"scenes\": [ broken';");
+    let threw = '';
+    try { await ev("agWriteLetter(['DELTA: fine'])"); } catch (e) { threw = String(e && e.message); }
+    ok('reply: broken JSON is a failed letter, not a letter made of braces', /shape asked for/.test(threw) && ev('_vlLast') === null);
+
+    // ---- the row ----
+    ev("__9b(); _vlLast = {week:'2026-12-20', say:{week:'{done} of {planned}.'}};");
+    ok('row: the kept letter becomes one row for its week, with the lines that passed', ev("vlIngest('The letter text.', '2026-12-20')") === true && J('S.letters[0]').id === SUN && J('S.letters[0]').text === 'The letter text.' && J('S.letters[0]').say.week === '{done} of {planned}.' && !!J('S.letters[0]').t && ev('_vlLast') === null);
+    ok('row: the feed says how many scenes use the app\'s own line', /app’s own line for 5 scenes/.test(ev('agState().log[0].text')));
+    ok('row: a second letter for the same week never rewrites the first', ev("vlIngest('Another.', '2026-12-20')") === false && ev('S.letters.length') === 1 && J('S.letters[0]').text === 'The letter text.');
+    ok('row: lines from another week are never attached', (ev("_vlLast = {week:'2026-12-13', say:{week:'x.'}};"), ev("vlIngest('Older.', '2026-12-27')")) === true && J("S.letters.filter(function(r){ return r.week === '2026-12-27'; })[0]").say === undefined);
+    ev("S.overhaul.videoLetter = false;");
+    ok('row: with the video letter off nothing is written', ev("vlIngest('Off.', '2027-01-03')") === false && ev('S.letters.length') === 2);
+    ev("S.overhaul.videoLetter = true; S.letters = []; window.__9mid = function(){ window.__9old = S; S = JSON.parse(JSON.stringify(S)); }; S.overhaul.videoScript = true;" +
+       "window.__9reply = JSON.stringify({letter:'After a pull.', scenes:[{scene:'week', say:'Steady.'}]});");
+    const lp = await ev("agWriteLetter(['DELTA: fine'])");
+    ev("vlIngest('" + 'After a pull.' + "', '2026-12-20'); window.__9mid = null;");
+    ok('a pull that replaces S during the call does not lose the row: it is written into the S that exists after it', lp === 'After a pull.' && ev('S.letters.length') === 1 && ev('window.__9old.letters.length') === 0 && J('S.letters[0]').say.week === 'Steady.');
+    // the whole cycle on a letter night
+    ev("__9b(); agLetterDue = function(){ return true; }; agState().lastRun = '';");
+    stubAgents({charlie:{summary:'c', proposals:[]}, delta:{summary:'d', proposals:[]}, echo:{summary:'e', proposals:[]}, zulu:'The cycle wrote me.'});
+    await ev('agRunAll(false)');
+    ok('the nightly cycle on a letter night: the letter is kept and its row written straight after (free, no lines)', ev('(agLetter() || {}).text') === 'The cycle wrote me.' && ev('S.letters.length') === 1 && J('S.letters[0]').week === ev('agLetter().week') && J('S.letters[0]').say === undefined);
+    ev("S.overhaul.videoLetter = false; S.letters = []; delete agState().letter;");
+    await ev('agRunAll(false)');
+    ok('...and with the video letter off there is no row', ev('S.letters.length') === 0 && !!ev('agLetter()'));
+    unstubAgents();
+    ev("agLetterDue = window.__9LD; callClaudeWithData = window.__9Data;");
+
+    // ---- the player ----
+    ev("__9b(); S.letters = [{id:'2026-12-20', week:'2026-12-20', at:'2026-12-21T03:00:00.000Z', text:'The letter.', say:{week:'{done} of {planned}. Close.'}, t:1}]; __9tts();");
+    // A bare fixture has no cycleSchedule or meso yet, and the schedule readers fill those in the first time they are
+    // asked (his state has both). Ask once, so the snapshot holds them and the check is about the player.
+    ev("vlScript('2026-12-20');");
+    const sBefore = ev('JSON.stringify(S)');
+    ok('player: it opens as a layer on the page, outside every section, and says nothing before his tap', ev("vlOpen('2026-12-20')") === true && ev("document.getElementById('vlPlayer').parentNode === document.body") === true && ev("!!document.getElementById('vlPlayer').closest('section')") === false && ev('window.__9spk.length') === 0);
+    ok('player: the caption is on from the start, the first scene drawn', ev("document.getElementById('vlCap').textContent") === '4 of 7. Close.' && ev("document.querySelector('#vlPlayer .vl-stage').getAttribute('data-scene')") === 'week' && ev("!!document.querySelector('#vlPlayer .vl-ring')") === true);
+    ev('vlPlayTap()');
+    ok('player: the tap speaks the first line inside the tap itself, at the script\'s rate, in a machine voice when the device has one', ev('window.__9spk.length') === 1 && ev('window.__9spk[0].text') === '4 of 7. Close.' && ev('window.__9spk[0].rate') === ev('vlP.sc.rate') && ev('window.__9spk[0].voice.name') === 'Fred' && ev('window.__9spk[0].pitch') === ev('VL_PITCH'));
+    ok('player: a timer stands behind the line, so a voice that never ends cannot stall it', ev('vlP.back !== null') === true);
+    const g0 = ev('vlP.gen');
+    ev('window.__9spk[0].onend()');
+    ok('player: the end of a line does not cut the scene short: it waits out the scene\'s minimum', ev('vlP.i') === 0 && ev('vlP.timer !== null') === true);
+    ev('vlNext(' + g0 + ')');
+    ok('player: then the next scene, its picture and its line', ev('vlP.i') === 1 && ev('window.__9spk.length') === 2 && ev("document.querySelector('#vlPlayer .vl-stage').getAttribute('data-scene')") === 'strength' && ev("document.querySelectorAll('#vlPlayer .vl-li').length") === 2 && /slowing/.test(ev("document.getElementById('vlPlayer').textContent")));
+    ev('vlNext(' + g0 + ')');
+    ok('player: a stale timer from an earlier scene does nothing', ev('vlP.i') === 1 && ev('window.__9spk.length') === 2);
+    ev('vlPlayTap()');
+    ok('player: pause stops the voice and the timers', ev('vlP.playing') === false && ev('vlP.timer') === null && ev('vlP.back') === null && /Play/.test(ev("document.getElementById('vlPlay').textContent")));
+    ev('vlStep(1); vlStep(1); vlStep(1); vlStep(1); vlStep(1);');
+    ok('player: stepping stops at the last scene, ZULU\'s mark', ev('vlP.i') === 5 && ev("!!document.querySelector('#vlPlayer .vl-mark')") === true);
+    ev('vlPlayTap(); vlNext(vlP.gen);');
+    ok('player: after the last scene it offers to play again', ev('vlP.ended') === true && ev('vlP.playing') === false && /Play again/.test(ev("document.getElementById('vlPlay').textContent")));
+    ev('vlVoiceTap();');
+    ev('vlP.ended = false; vlP.i = 0; window.__9spk = []; vlPlayTap();');
+    ok('player: with the voice off it plays on captions and a timer alone', ev('window.__9spk.length') === 0 && ev('vlP.timer !== null') === true && /captions only/.test(ev("document.getElementById('vlVoice').textContent")));
+    ev('vlClose();');
+    ok('player: closing removes the layer, and nothing in S changed', ev("document.getElementById('vlPlayer')") === null && ev('vlP') === null && ev('JSON.stringify(S)') === sBefore);
+    ev('__9notts(); vlOpen(\'2026-12-20\');');
+    ok('player: a browser with no voice says so, and still plays on captions', /no voice/.test(ev("document.getElementById('vlPlayer').textContent")) && (ev('vlPlayTap()'), ev('vlP.timer !== null')) === true);
+    ev('vlClose(); __9tts();');
+    ok('player: off, it does not open', (ev("S.overhaul.videoLetter = false;"), ev("vlOpen('2026-12-20')")) === false && ev("document.getElementById('vlPlayer')") === null);
+    ev("S.overhaul.videoLetter = true;");
+    ok('player: every scene draws', J("VL_SCENES.map(function(k, i){ var sc = vlScript('2026-12-20'); return vlSceneHTML(sc.scenes[i], sc.n, 353).length > 40; })").every(Boolean));
+    ok('player: every number on the strip is a colour with a word and an icon', /Off standard/.test(ev("vlSceneHTML({visual:'strip'}, vlNums('2026-12-20'), 353)")) && /✖/.test(ev("vlSceneHTML({visual:'strip'}, vlNums('2026-12-20'), 353)")));
+
+    // ---- the Inbox and the Library ----
+    ev("__9b(); S.letters = [{id:'2026-12-13', week:'2026-12-13', at:'x', text:'Older letter.', t:1}, {id:'2026-12-20', week:'2026-12-20', at:'x', text:'The letter.', t:2}];");
+    const row = J("inboxItems().filter(function(i){ return /^vl:/.test(i.id); })")[0] || null;   // absent must fail by name, not crash the section
+    ok('inbox: a Play row for the newest letter, routine, typed Video, and he can clear it', row && row.id === 'vl:2026-12-20' && row.type === 'Video' && row.ask === false && row.pri === ev('INBOX_PRI.routine') && /vlOpen\('2026-12-20'\)/.test(row.go));
+    ev("window.__9day = '2026-12-24';");
+    ok('inbox: it is there to the Wednesday after, and gone on the Thursday', ev("inboxItems().some(function(i){ return /^vl:/.test(i.id); })") === false && (ev("window.__9day = '2026-12-23';"), ev("inboxItems().some(function(i){ return /^vl:/.test(i.id); })")) === true);
+    ev("window.__9day = '2026-12-21';");
+    ev("showMainTab('home'); renderHome(); renderNotif();");   // showMainTab() writes nav memory and a first draw fills a bare fixture's defaults: snapshot after both
+    const s0 = ev('JSON.stringify(S)');
+    ev("notifOpen = true; renderHome(); renderNotif();");
+    ok('Today only reads: drawing it and the bell with a letter row leaves S byte-identical', ev('JSON.stringify(S)') === s0 && /Video letter: the week to Dec 20/.test(ev("document.getElementById('notifPanel').textContent")));
+    ev("notifOpen = false; renderNotif(); renderHubLib();");
+    ok('library: the newest letter with its Play button, and the earlier ones in a fold', ev("document.querySelector('#vlLibCard [data-week]').getAttribute('data-week')") === SUN && /Past letters/.test(ev("document.getElementById('hub_lib').textContent")) &&
+      ev("document.querySelectorAll('#hub_lib [data-week=\"2026-12-13\"]').length") === 1 && /Older letter\./.test(ev("document.getElementById('hub_lib').textContent")));
+    ev("delete agState().letter; agState().letter = {text:'From before this build.', at:'2026-11-16T03:00:00.000Z', week:'2026-11-15'}; renderHubLib();");
+    ok('library: a letter from before this build (no row) is listed and can be played', ev("document.querySelectorAll('#hub_lib [data-week=\"2026-11-15\"]').length") === 1 && /From before this build/.test(ev("document.getElementById('hub_lib').textContent")));
+    ev("agState().letter = {text:'A second letter that week.', at:'2026-12-21T05:00:00.000Z', week:'2026-12-20'}; S.letters[1].say = {week:'Kept.'};");
+    ok('library: for its own week the newest letter is the text he reads, beside its row, and the row still lends its lines', J('vlLetters()[0]').text === 'A second letter that week.' && J('vlLetters()[0]').say.week === 'Kept.' && J("S.letters[1]").text === 'The letter.');
+    ev("agState().letter = {text:'From before this build.', at:'2026-11-16T03:00:00.000Z', week:'2026-11-15'}; S.overhaul.videoLetter = false; renderHubLib();");
+    ok('library: off, it is the one letter card it was, with no Play button', ev("document.querySelectorAll('#hub_lib [data-week]').length") === 0 && !/Past letters/.test(ev("document.getElementById('hub_lib').textContent")) && /From before this build/.test(ev("document.getElementById('hub_lib').textContent")) && J("inboxItems().filter(function(i){ return /^vl:/.test(i.id); })").length === 0);
+  } catch (e) {
+    ok('video letter section', false, e.stack);
+  } finally {
+    ev("try{ vlClose(); }catch(e){} todayKey = window.__9Today; stdState = window.__9Std; predLifts = window.__9PL; plateauWatch = window.__9PW; callClaudeWithData = window.__9Data; agLetterDue = window.__9LD; window._inClaude = window.__9InC;" +
+       "if(window.__9SS) Object.defineProperty(window, 'speechSynthesis', window.__9SS); else { try{ delete window.speechSynthesis; }catch(e){} } window.SpeechSynthesisUtterance = window.__9SU;" +
+       "_vlLast = null; _wrLast = null; S = JSON.parse(window.__9S); if(window.__9LS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__9LS);" +
+       "(function(){ var n = JSON.parse(window.__9Nav); try{ setMode(n.mode); showMainTab(n.main); }catch(e){} })();" +
+       "Object.keys(window).filter(function(k){ return /^__9/.test(k); }).forEach(function(k){ try{ delete window[k]; }catch(e){} });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

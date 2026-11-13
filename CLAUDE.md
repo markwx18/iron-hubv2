@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 5000 assertions, about 2 minutes. Must be
+**Test suite:** `node test_agents.js`. Currently 5072 assertions, about 2 minutes. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -173,6 +173,7 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | API | `aiSend()` (the one transport), `aiBody()`, `callClaudeWithData()`, `spendPreflight()`, `aiUsageNote()` |
 | Server and schedulers | `agForegroundCheck()`, `runnerTick()`, `agMaybeAutoRun()`, `agMaybeMorningBrief()` |
 | Screens | `renderHome()`, `renderOps()` (the Hub), `renderDesk()`, `renderSettings()`, `NAV_MODEL`, `NAV_LEGACY`, `showMainTab()` |
+| Video letter | `VL_SCENES`, `vlNums()`, `vlLineOk()`, `vlSayClean()`, `vlScript()`, `vlPromptPart()`, `vlIngest()`, `vlLetters()`, `vlOpen()` / `vlPlayTap()` / `vlSpeak()`, `vlInboxItem()`, `vlLibHTML()` |
 | Organization | `orgOn()`, `inboxItems()` / `inboxRaw()`, `inboxRowHTML()`, `inboxDo()`, `homeZonesHTML()`, `renderHubNow()` / `renderHubOut()` / `renderHubLib()`, `orgHubRepaint()`, `cbApply()`, `cbWatch()`, `uiDepth()` |
 | Folds and prefs | `subSection()`, `rawFold()`, `uiPref()`, `notifItems()` |
 | Charts | the chart kit: `ckText()`, `ckPath()`, `ckMarks()`, `ckW()`; `anFanChartSVG()`, `lineChart()` |
@@ -426,7 +427,7 @@ motion", and a fast-gain amber.
 
 **Rules every stage follows**
 - New history is a `SYNC_HISTORY` collection with immutable rows and its own key prefix. Taken:
-  `w n r l p x b m q f v k $ g y h s a o`.
+  `w n r l p x b m q f v k $ g y h s a o j`.
 - Anything an analyst shows is worked out when read, never stored and never posted to the Desk.
 - A stage ends with: acorn, the suite at 0 failed, a mutant per new rule, `scripts/clock_run.js`,
   the build marker, the copy to `index.html`, this file and `UPDATE_LOG.md`, a commit and a
@@ -632,6 +633,31 @@ motion", and a fast-gain amber.
 - A test of the layout with the switch off calls `orgOff()` / `orgBack()` (a stub on `orgOn()`, which survives `S`
   being replaced).
 
+**Stage 9, Video letter** (`ovOn('videoLetter')`, free; ZULU's lines are `ovOn('videoScript')`, paid, off)
+- **The video is six fixed scenes, each a picture the app draws from his data** (`VL_SCENES`, `VL_VISUAL`; the model
+  never picks a picture). What a scene shows or says is worked out when it is played, as of that week (`vlNums()`),
+  never stored. With no lines from ZULU every scene speaks the app's own line (`VL_TPL`), so the free switch needs no call.
+- **Numbers never come from the model.** A line may carry a number only as a token in `VL_TOKENS`, filled by the app
+  (`vlFill()`). `vlLineOk()` refuses a digit, a percent, a number word (`VL_NUM_RE`; "one" is allowed), an unknown
+  token, a stray brace, or more than `VL_SAY_WORDS` words, and a refused line is replaced by the app's line, never
+  repaired. A token the week cannot fill also falls back. A stored line is checked again when read (`vlScript()`).
+- **The strength scene is the plateau watch as of that Sunday** (`vlLiftRows()`: `pwAsOf()` plus the watch's clock on
+  that day, put back in `finally`). Never a measure of its own. A lift the watch could not read is listed, not counted.
+- **ZULU's lines ride the letter call** (`vlPromptPart()`): one call, a `scenes` key beside `letter` (and `plan` with
+  the Weekly Review on). With `videoScript` off the letter prompt is byte-identical, whatever the Weekly Review says.
+  The lines are checked before the await's result is used (`vlSayClean()`), handed over in `_vlLast` (never a reference
+  into `S`), and written after it.
+- **`S.letters` (key `j|`) holds one immutable row per letter week**: `{id:<Sunday>, week, at, text, say?}`, text only,
+  never media, capped at `VL_KEEP`. `vlIngest()` runs after `wrIngest()` in `agRunAll()`, into the `S` after the await;
+  a week that has a row keeps it. A row that fails `vlRowOk()` is ignored. A letter older than the build (only in
+  `S.agents.letter`) is still listed and playable (`vlLetters()`).
+- **The player is a layer on `<body>`, outside every section** (`#vlPlayer`), so no repaint and no card budget touch
+  it. Its state is module-scoped (`vlP`). **Speech starts only from his tap**: the first line is spoken inside the tap
+  (iOS). Each scene moves on when its line ends and it has been up `VL_SCENE_MIN_MS`, with a backstop timer, and a stale
+  callback (an older `gen`) does nothing. No voice means captions and a timer. Captions are always on.
+- Where it lives: a Play row in the Inbox (`vl:`, routine) from the letter's Sunday to `VL_INBOX_DAYS` after, the
+  Library's letters with past ones in a fold, and a Play button on the old Agents view's letter. Today gets no card.
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
@@ -643,4 +669,5 @@ motion", and a fast-gain amber.
 | 6 Desk: analyst cards derived at render, watches measured when read, the Plan of Record stored and shown | built 2026-11-13 (`v5g`) |
 | 7 Accountability: a plan scored by the app, the Weekly Review inside the letter call, the Monthly Review behind its own switch | built 2026-11-13 (`v5h`) |
 | 8 Organization: one Inbox worked out when read, a card budget per section, Today in five zones, the Hub in five views, a per-device depth | built 2026-11-13 (`v5i`) |
-| 9 Video letter · 10 Reskin · 11 Discord | not started |
+| 9 Video letter: six scenes drawn from his data, numbers only through tokens, played in the app with the phone's voice | built 2026-11-13 (`v5j`) |
+| 10 Reskin · 11 Discord | not started |

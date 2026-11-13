@@ -3115,3 +3115,63 @@ this could not happen. The fix gives the divider `grid-column:1 / -1`. jsdom has
 moved from x 586 (659 wide) back to x 238 (330 wide), with the flags beside it at the same top. Shipped as its own commit
 while row F had Stage 9 half-built in the same checkout, built from the stage 8 commit and committed without touching
 its work.
+
+### V5 stage 9: the weekly video letter (2026-11-13, `v5j`)
+
+**What it is.** ZULU's weekly letter as a half-minute piece played inside the app. Six fixed scenes (`VL_SCENES`): the
+week, strength, bodyweight, the Standards, next week, a sign-off. Each has a picture the app draws (`VL_VISUAL`: a ring,
+the plateau watch's rows, a line, the Standards strip, a list, ZULU's mark) and one spoken line, read by the browser's
+`speechSynthesis` with the caption always on. The spec's v1 (in the app, no server, no MP4). The free switch
+`videoLetter` is the player, the Library's past letters and the Inbox row, with the app's own lines; the paid switch
+`videoScript` asks the existing letter call for ZULU's six lines.
+
+**Why the model's lines may not carry numbers.** A spoken "you trained five days" from a model is exactly the kind of
+number the agent layer forbids (a chart or a check from a model is a spec, never numbers). So a line may hold a number
+only as a token (`{done}`, `{bw_delta}` and the rest of `VL_TOKENS`) that `vlFill()` fills when the video plays. The
+validator refuses digits, a percent sign, and number words from "zero" and "two" up, fractions and ordinals past
+"second". "One" is allowed because refusing it would throw out ordinary prose ("one more push"); it is the known gap.
+A refused line is replaced by the app's own line for that scene, never edited into shape. The values are given to ZULU
+in the prompt so it knows what it is describing, and a token with no value is marked "do not use it".
+
+**The replay changed the strength scene.** The first build compared each main lift's best estimated 1RM in the week
+with its last session in 28 days. On his history (Sep 13 to Nov 8, nine Sundays, read-only from the gist) Barbell Back
+Squat read +55.3 lb on Sep 20 and -55.3 on Oct 4, and Lat Pulldown -26.5 then +32: a change of rep scheme, not a change
+of strength. That was a second, rougher measure beside the plateau watch, which is meant to be the one result for a
+lift. The scene now reads the watch's main rows as of the Sunday (`vlLiftRows()`: `pwAsOf()` for the logs, and the
+watch's own clock set to that day and put back in `finally`, because `plateauRisk()` reads `todayKey()` and a letter
+from weeks ago would otherwise read every lift as "no recent data"). A second replay found "Barbell Bench Press is no
+recent data": the watch's neutral states (no recent data, not enough data, reset in progress) are now listed but not
+counted (`VL_PW_UNREAD`), and only a flagged lift is named ("is slowing", "is holding", "is falling", "has pain
+flagged").
+
+**What his last nine weeks would have said** (the app's own lines): Sep 13 "5 sessions logged" (before the cycle anchor,
+so no planned count), "1 of 2 main lifts on track. Plate Loaded Overhead Press is holding."; Oct 18 "Every planned day
+trained: 2 of 2", bodyweight -1.4 lb, "That is a loss"; Nov 8 "Every planned day trained: 5 of 5", "3 of 5 main lifts on
+track this week. Barbell Back Squat is slowing.", "+1.0 lb on the week, averaging 161.7 lb. That is inside the lean-bulk
+pocket.", "One Standard is off, and one is slipping." Each script took 17 to 45 ms in jsdom. The app's lines come to
+51 to 62 words, so the rate sits at its floor (0.85) and each scene's five-second minimum carries it past half a minute.
+
+**The player.** A layer on `<body>`, never inside a section, because the active tab is regenerated every 30 s and the
+stage 8 card budget moves nodes after a draw. iOS speaks only from a user gesture, so the first line is spoken inside
+the Play tap and the rest follow from `onend`. A voice that never fires `onend` must not stall the video, so a
+backstop timer stands behind every line, and every callback carries a generation number so a timer from an earlier
+scene cannot advance a later one. `cancel()` is called only when something is queued: on iOS a `cancel()` right before
+`speak()` can swallow the new line. Hidden (the app backgrounded) pauses it.
+
+**Storage.** `S.letters`, key `j|` (the spec's `l|` was taken by the logs), one immutable row per letter week with the
+letter's text and the lines that passed, capped at 12. The row is written after `wrIngest()`, so the next-week scene can
+read a plan the same reply carried. With the free switch on, the server's Sunday run writes it; a letter written before
+this build lives only in `S.agents.letter` and is still listed and playable.
+
+**Cost of the paid switch.** On his state the prompt part is 1,289 characters (about 360 tokens) and the reply adds
+the six lines as JSON (about 150 to 250 tokens): roughly 0.3 cents a letter, 1 to 2 cents a month.
+
+**The moved clock found one.** On Sunday Dec 27 a stage 8 test drew the Library and read a letter that was not the newest:
+`S.agents.letter` and an older row shared the week, and the row won. `S.agents.letter` is always the newest letter, so for its own
+week it is now the text he reads, and the row only lends its lines. Mutant 36 is that rule.
+
+**Tests.** 72 new assertions (5072 in all), 36 mutants, each red at its named assertion (one first went red by crashing the
+section, and is now guarded). The Worker side of Discord is stage 11.
+
+**Not verified.** Speech on his iPhone: jsdom has no `speechSynthesis` (the suite stubs it), and the browser check had
+no voice to hear. The first Sunday letter after this build is the first real row.
