@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 4582 assertions, about 1 m 45 s. Must be
+**Test suite:** `node test_agents.js`. Currently 4715 assertions, about 1 m 45 s. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -165,6 +165,7 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | Agents, nightly | `agRunAll()`, `agBaseContext()`, `intelSummary()`, `svSheet()`, `agIngest()`, `agLog()` |
 | Agents, the queue | `agValidateFix()` = `agValidateFixShape()` then `agConflict()`, `agApprove()`, `agApplyFix()` |
 | Agents, chat | `chatContext()`, `coachToolDefs()`, `coachValidateAction()`, `coachApplyProposal()` |
+| Selector and swap trials | `selState()` (one row per lift), `selScore()`, `selCandidates()`, `swapTrialOn()`, `swtView()`, `baseSplitObj()`, `swtCheck()`, `swtStartMine()`, `swtTrials()`, `swtDecide()`, `agSwapNeeds()`, `selContextLine()` |
 | Analysts and squads | `ANALYSTS`, `anlPass()` (the one read), `anlLeadStatus()`, `anlNums()`, `anlStrips()`, `anlSquadLine()`, `dosTargets()`, `hubSquadsHTML()` |
 | Agents, extras | roundtable `agRoundtable()`, Desk `agValidateDesk()`, questions `qaDue()`, diagnosis `pdTargets()`, letter `agWriteLetter()`, brief `agRunBrief()` |
 | API | `aiSend()` (the one transport), `aiBody()`, `callClaudeWithData()`, `spendPreflight()`, `aiUsageNote()` |
@@ -186,8 +187,9 @@ add `cache_control` there: nothing could read the cache.
 **Agents never mutate state silently.** Every change a model suggests needs Mark to tap something.
 The tap-to-apply paths are: the nightly queue (`agApprove()` re-runs `agValidateFix()`, then
 `agApplyFix()`), every agent's chat cards (`coachValidateAction()` → `coachExecuteAction()`, each
-agent only in its own lane), Investigation's Apply fix, the fatigue banner's Start deload, and meso
-split approval. Do not add another side path. If one is unavoidable, it gets the same checks.
+agent only in its own lane), Investigation's Apply fix, the fatigue banner's Start deload, meso
+split approval, and the Selector's two (starting a swap trial from its card, and Keep on a finished one). Do not add
+another side path. If one is unavoidable, it gets the same checks.
 
 **`agValidateFix()` is a security boundary.** It whitelists fix types, clamps ranges and rejects
 anything malformed. Never loosen it to make a model's output "work": invalid output is discarded,
@@ -251,7 +253,8 @@ connection at 60 s), and retries only a `fetch()` that rejects before any respon
 Each has an entry in HISTORY.md under the same bold phrase.
 
 **Schedule, splits, deloads**
-- **The split in force is not always `S.split`.** Resolve through `activeSplitObj()`; per-lift
+- **The split in force is not always `S.split`.** Resolve through `activeSplitObj()` (a strength block's split, or a
+  swap trial's view); a writer asks `baseSplitObj()`; per-lift
   flags through `exSlotsFor()` (the split in force, else the permanent split).
 - **Generating a split is not scheduling it.** Blocks reach the calendar only through
   `mesoRotationDayFor()`. There are no date overrides (removed in V4).
@@ -420,7 +423,7 @@ motion", and a fast-gain amber.
 
 **Rules every stage follows**
 - New history is a `SYNC_HISTORY` collection with immutable rows and its own key prefix. Taken:
-  `w n r l p x b m q f v k $ g y h`.
+  `w n r l p x b m q f v k $ g y h s`.
 - Anything an analyst shows is worked out when read, never stored and never posted to the Desk.
 - A stage ends with: acorn, the suite at 0 failed, a mutant per new rule, `scripts/clock_run.js`,
   the build marker, the copy to `index.html`, this file and `UPDATE_LOG.md`, a commit and a
@@ -485,8 +488,8 @@ motion", and a fast-gain amber.
 - **The readings are worked out when read, and ONE result**: `anlPass()` / `anlState()`. Never stored, never posted to
   the Desk.
 - **A pillar analyst takes its level from `stdState()` and nowhere else** (`anlFromPillar()`), so a tile cannot
-  disagree with the Standards card. FOXTROT has no pillar (amber at most, and only with `FOX_FLAGS`); INDIA has no level until the
-  Selector fills `anlIndia()` (stage 5); KILO only reports.
+  disagree with the Standards card. FOXTROT has no pillar (amber at most, and only with `FOX_FLAGS`); INDIA reads the
+  Selector (`anlIndia()`, stage 5; off, it lists and judges nothing); KILO only reports.
 - **A broken analyst reads `nodata`**, and so does a level that does not exist. No data is never clear:
   `anlLeadStatus()` says clear only when an analyst could actually read.
 - **A lead's status is the worst in its squad** (ZULU: across every squad, `ANL_ZULU_ROLLUP`).
@@ -509,6 +512,42 @@ motion", and a fast-gain amber.
   every section that is not the active tab.
 - Not built yet: the List and Week views, the Wire, tension markers, lit lines, the Plan of Record bar.
 
+**Stage 5, Selector** (`ovOn('selector')`, free; DELTA's swap key is `ovOn('swapKey')`, paid, off)
+- **The fit score is worked out when read, on the device, free, and ONE result**: `selState()`, a row per lift in the
+  split in force. Fit is 100 less a penalty row for each thing the app can see (`SEL_W`: a stall on the watch, noise,
+  hard sets, pain, sets left out, a same-day duplicate), and every penalty is a row on screen. Never stored, never
+  model-written. A score that throws reads "too few sessions": never a mark, never a clean bill.
+- **The Hub reads the Selector once a repaint** (`_selPass` never outlives `renderOps()`), and **a past day is never
+  read from the pass** (`selCompute()`, through `pwAsOf()`).
+- **The cut-offs came from a replay** (`SEL_KEEP`, `SEL_TRIAL`, `SEL_NOISE_*`). Replay before moving one. INDIA is
+  amber at most, only for a marked lift, and takes its level from `selState().lvl` and nowhere else.
+- **Bench and squat are never swapped by an agent and never put on trial** (`selProtected()`): watch only, in the score,
+  in `swtCheck()` and in `agSwapNeeds()`.
+- **A marked lift can be held at watch**, and the row says why: a reset in progress, something already being tried
+  (`stdMotion()`), its muscle group flat too, a bodyweight lift, a strength block, no candidate. **A lift flagged sore
+  or worse is never a clean keep**; a sharp flag reads swap allowed, and is offered no trial.
+- **A swap trial is a third split in force.** While `swapTrialOn()`, `activeSplitObj()` returns a view (`swtView()`):
+  the stand-in takes the slot on every day that holds the lift and keeps only the slot's set count. **`S.split` is never
+  edited by a trial**; ending one is the view no longer being built. A strength block's own split is never overlaid.
+- **A writer, and "is a block running?", ask `baseSplitObj()`**, never `activeSplitObj()`: the view is a copy, and a
+  write into a copy is lost.
+- **A trial is the experiment template `swapTrial`**, so every experiment rule holds. `sel:true` keeps it out of the
+  chat tool's enum and the ordinary menu line. The first session is the starting point (counted, never scored); the
+  rest are progress against the old lift's line (`swtScore()`), never pounds against pounds.
+- **A trial starts only by his tap**: the Selector card (`swtStartMine()`), or approving DELTA's request. `swtCheck()`
+  is the one check for both; from an agent it also needs the paid switch, a lift INDIA marks, and one of the app's own
+  candidates (`selCandidates()`). Never offer a button `swtCheck()` would refuse: the row says why instead.
+- **`S.swapTrials` (key `s|`) holds a finished trial and his answer as immutable rows**; the result is worked out
+  from the logs when read (`swtTrials()`), and a row that fails `swtRowOk()` is ignored. The card asks keep or go
+  back for `SWT_DECIDE_DAYS`; the old lift is back on its day meanwhile. Keep goes through `agValidateFixShape()`.
+- **A permanent swap from an agent needs grounds** (`agConflict()` → `agSwapNeeds()`): a finished trial that favoured
+  that lift and that he did not turn down, a pain flag (sore or worse), or the lift left out of 3 of its last 4
+  sessions. Off with the Selector switch. Chat's own swap card and his edits to the split are untouched.
+- **DELTA's block and template line are a paid switch** (`selContextLine()`, `selMenuLine()`): DELTA only, only when a
+  trial could start tonight and INDIA marks a lift that has candidates, capped at `SEL_PROMPT_MAX`. Otherwise every
+  prompt is byte-identical.
+- **A trial result leans toward the new lift, and says so** (`SWT_LEAN`). Never "proven".
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
@@ -516,4 +555,5 @@ motion", and a fast-gain amber.
 | 2 Holds: one block type for trips, sickness and exams, and the trip plan | built 2026-11-12 (`v5c`) |
 | 3 Evidence: the cited library, source chips, held off until he checks ten | built 2026-11-12 (`v5d`) |
 | 4 Analysts: eight computed analysts, squads, the Hub in four lanes | built 2026-11-12 (`v5e`) |
-| 5 Selector · 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |
+| 5 Selector: a computed fit score for every lift, swap trials as a third split in force, grounds for a permanent swap | built 2026-11-12 (`v5f`) |
+| 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |

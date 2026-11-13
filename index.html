@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-12-v5e">
+<meta name="ironhub-build" content="2026-11-12-v5f">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1979,6 +1979,21 @@
   .sq-chev{flex:none; color:var(--dim); font-size:12px; transition:none;}
   .sq-tiles{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); grid-auto-flow:dense; gap:8px; padding:0 10px 12px;}
   @media (max-width:359px){ .sq-tiles{grid-template-columns:minmax(0,1fr);} }
+  /* the Selector (V5 stage 5): a row per lift, the rows behind its number when open */
+  .sel-row{border-top:1px solid var(--line2)}
+  .sel-card > .sel-row:first-of-type{margin-top:10px}
+  .sel-h{display:grid; grid-template-columns:minmax(0,1fr) auto 30px; gap:8px; align-items:center; width:100%; min-height:44px; padding:8px 0; background:none; border:none; color:var(--text); text-align:left; font:inherit; cursor:pointer}
+  .sel-n{min-width:0; overflow-wrap:anywhere; font-weight:600; font-size:14px}
+  .sel-v{display:inline-flex; gap:5px; align-items:center; font-size:12px; white-space:nowrap}
+  .sel-v i{font-style:normal}
+  .sel-fit{font-family:var(--mono); font-variant-numeric:tabular-nums; text-align:right; color:var(--muted); font-size:13px}
+  .sel-b{padding:0 0 12px}
+  .sel-ev{display:grid; grid-template-columns:84px minmax(0,1fr) 28px; gap:8px; padding:5px 0; font-size:12.5px; line-height:1.35; color:var(--muted)}
+  .sel-ev > span:first-child{color:var(--dim)}
+  .sel-ev > span{min-width:0; overflow-wrap:anywhere}
+  .sel-ev b{font-family:var(--mono); font-weight:500; text-align:right; color:var(--warn)}
+  .swt-btns{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px}
+  .swt-btns .btn{flex:1 1 140px; min-width:0; min-height:44px; white-space:normal}
   .sq-tile{display:flex; flex-direction:column; gap:5px; align-items:stretch; min-width:0; padding:10px; border:none; border-radius:var(--r-ctl);
     background:var(--panel2); color:var(--text); text-align:left; cursor:pointer;}
   .sq-tile.open{box-shadow:inset 0 0 0 1.5px var(--line2);}
@@ -2473,6 +2488,7 @@ const DEFAULT_STATE = {
                                // corrections to the plateau watch. Immutable rows, newest wins. See pwMark().
   dayReasons: [],              // {id, pillar, date, why, at, t} — his reason for a missed day or beside a Standard. Immutable
                                // rows, newest wins, an empty `why` is his undo. See stdReasonSet().
+  swapTrials: [],              // finished swap trials and his keep / go back, as immutable rows: see swtRecord(), swtDecide()
   holds: [],                   // {id, from, to, kind:'trip'|'sick'|'exams', gym:'none'|'hotel'|'home', note, at, t} — a block of days
                                // he is away, sick or in exams, or {id, cancel:<block id>, from, at, t}, his removal of one.
                                // Immutable rows. Read-only context: nothing here moves a scheduled day. See holdBlocks().
@@ -2804,6 +2820,7 @@ const SYNC_HISTORY = {
   liftNotes: {key: r=>'k|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>LN_KEEP},
   dayReasons: {key: r=>'y|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>DR_KEEP},
   holds: {key: r=>'h|'+r.id, ord: r=>String(r.from||'')+'|'+String(r.id||''), cap:()=>HOLD_KEEP},
+  swapTrials: {key: r=>'s|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>SWT_KEEP},
   spend:    {key: r=>'$|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.dev||''), cap:()=>SPEND_REC_MAX},
   targetHist: {key: r=>'g|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>TARGET_HIST_MAX}
 };
@@ -16020,7 +16037,7 @@ function chatActionsFor(agent){ return (!agent || agent === 'zulu') ? CHAT_ALL :
 function coachToolDefs(agent){
   const dayList = Object.keys(S.split).join(', ');
   // set_sets also reaches a strength block's own days while one runs; the permanent-split tools do not.
-  const blk = activeSplitObj();
+  const blk = baseSplitObj();   // not activeSplitObj(): a swap trial's view is not a strength block
   const setDays = dayList + (blk !== S.split ? '; while the strength block runs also '+Object.keys(blk).join(', ') : '');
   const ex = function(d){ return {type:'string', description:d || 'Exercise name'}; };
   const all = [
@@ -16078,7 +16095,7 @@ function coachToolDefs(agent){
     {name:'set_lift_mode', description:'Turn strength mode (3-6 reps), Form Focus or MAXED (machine has no heavier setting) on or off for a lift. Give only the ones to change.',
       input_schema:{type:'object', properties:{exercise:ex(), strength:{type:'boolean'}, form_focus:{type:'boolean'}, maxed:{type:'boolean'}}, required:['exercise']}},
     {name:'start_experiment', description:'Start one of the app\'s fixed experiments. The app measures it.',
-      input_schema:{type:'object', properties:{template:{type:'string', enum:Object.keys(EXP_TEMPLATES)}, lift:ex('Lift, for templates about one lift'),
+      input_schema:{type:'object', properties:{template:{type:'string', enum:Object.keys(EXP_TEMPLATES).filter(function(t){ return !EXP_TEMPLATES[t].sel; })}, lift:ex('Lift, for templates about one lift'),
         range:{type:'string', enum:['high','low'], description:'repRange only: high (12-15) or low (6-8)'}, sessions:{type:'number', description:'3 or 4'}, hypothesis:{type:'string'}}, required:['template','hypothesis']}},
     {name:'set_food_stock', description:'Mark foods as in the house or run out (Fuel Planner names).',
       input_schema:{type:'object', properties:{foods:{type:'array', items:{type:'string'}}, in_stock:{type:'boolean'}}, required:['foods','in_stock']}},
@@ -16241,7 +16258,7 @@ function coachValidateAction(name, inp, agent){
       const n = Math.round(+c.sets || 0);
       if(!(n >= 2 && n <= 5)) return {ok:false, error:'Sets go from 2 to 5.'};
       // The days it is on in the split in force (a strength block's S1-S3 while one runs), else the permanent split.
-      const src = activeSplitObj();
+      const src = baseSplitObj();   // set_sets writes a real slot, so it reads the split a trial has not overlaid
       const onDays = function(o){ return Object.keys(o||{}).filter(function(dk){ return ((o[dk]||{}).exercises||[]).some(function(x){ return exName(x) === nm; }); }); };
       let days = onDays(src); if(!days.length && src !== S.split) days = onDays(S.split);
       if(!days.length) return {ok:false, error:nm+' is not on any day of your split.'};
@@ -16545,7 +16562,7 @@ function coachExecuteAction(name, inp, agent){
   if(name==='set_sets'){
     const ch = Array.isArray(inp.changes) ? inp.changes : [inp];
     ch.forEach(function(c){
-      const src = c.block ? activeSplitObj() : S.split;
+      const src = c.block ? baseSplitObj() : S.split;   // a write: never into a swap trial's view, which is a copy
       const list = (src[c.day] || {}).exercises || [];
       const i = list.findIndex(function(x){ return exName(x) === c.exercise; });
       if(i < 0) throw new Error(c.exercise+' is no longer on '+c.day);
@@ -17216,10 +17233,50 @@ function mesoApprovedSplitFor(w){
   return (rec && rec.status==='approved' && rec.split) ? rec.split : null;
 }
 function mesoActiveSplit(){ return mesoApprovedSplitFor(mesoCurrentWeek()); }
-function activeSplitObj(){
+/* The split before any swap trial: a strength block's own split while one runs, else the permanent one. What a WRITER
+   edits and what "is a block running?" (an identity test against S.split) must ask, because activeSplitObj() can
+   hand back a derived copy while a trial runs, and a write into a copy is silently lost. */
+function baseSplitObj(){
   const ms = (typeof mesoActiveSplit==='function') ? mesoActiveSplit() : null;
   if(ms) return ms;
   return S.split;
+}
+/* The split in force. A swap trial (V5 stage 5) is the third one: while it runs, the lift on trial stands in for the
+   lift it replaces on every day that holds it, in a VIEW built here on each read. S.split is never edited by a trial,
+   so ending one is just the view no longer being built. With no trial this returns the very object it always did.
+   A strength block's own split is never overlaid: it was generated on purpose, and its lifts carry their own modes. */
+function activeSplitObj(){
+  const base = baseSplitObj();
+  if(base !== S.split) return base;
+  let x = null;
+  try{ x = swapTrialOn(); }catch(e){ x = null; }
+  return x ? swtView(base, x) : base;
+}
+function swapTrialOn(){
+  if(!ovOn('selector')) return null;
+  const x = (S && S.experiments && S.experiments.active) || null;
+  if(!x || x.template !== 'swapTrial' || typeof x.lift !== 'string' || typeof x.to !== 'string' || !x.lift || !x.to || x.lift === x.to) return null;
+  return x;
+}
+/* A day that already holds the new lift is left alone (one lift twice on a day is what agSwapClashDay() refuses), and
+   an untouched day is the SAME object as in the base, so only a day the trial changes is ever a copy. The stand-in
+   slot keeps the slot's own set count and nothing else: MAXED, strength mode, Form Focus and a custom increment
+   belong to the lift that left, which still answers for them through exSlotsFor()'s fall-back to S.split. */
+function swtView(base, x){
+  const view = {};
+  let hit = false;
+  Object.keys(base || {}).forEach(function(dk){
+    const d = base[dk], list = (d && d.exercises) || [];
+    const i = list.findIndex(function(y){ return exName(y) === x.lift; });
+    if(i < 0 || list.some(function(y){ return exName(y) === x.to; })){ view[dk] = d; return; }
+    const old = list[i], slot = {name:x.to, trial:x.id, standsFor:x.lift};
+    if(old && typeof old === 'object' && old.sets) slot.sets = old.sets;
+    const ex = list.slice();
+    ex[i] = slot;
+    view[dk] = Object.assign({}, d, {exercises:ex});
+    hit = true;
+  });
+  return hit ? view : base;
 }
 /* blockId of the meso strength block actually in force today, or null. */
 function mesoActiveStrBlockId(){
@@ -22338,7 +22395,13 @@ const EXP_TEMPLATES = {
   preCarbs: {owner:'echo', scope:'session', adherence:'tap', label:'Carbs before training',
     desc:'60-80 g of carbohydrate in the 90 minutes before training', question:'Did you get 60\u201380 g of carbs in the 90 minutes before?',
     change:function(){ return 'Eat 60\u201380 g of carbohydrate in the 90 minutes before training.'; },
-    measure:function(){ return 'top-set e1RM across the session, each lift against its own trend from before the test'; }}
+    measure:function(){ return 'top-set e1RM across the session, each lift against its own trend from before the test'; }},
+  /* A swap trial (V5 stage 5). sel:true keeps it OUT of the chat tool's enum and the ordinary menu line, so neither
+     prompt moves; it is offered only by selMenuLine(), behind the paid switch, when INDIA marks a lift. */
+  swapTrial: {owner:'delta', scope:'lift', adherence:'auto', sel:true, label:'Swap trial',
+    desc:'train a replacement in place of one lift for 4-6 sessions (lift = a lift the SELECTOR block marks; "to" = one of its listed candidates)',
+    change:function(x){ return 'Train '+x.to+' in place of '+x.lift+'.'; },
+    measure:function(x){ return x.to+' top-set e1RM from its first trial session on, against the line '+x.lift+' was on before the trial'; }}
 };
 function expState(){
   if(!S.experiments || typeof S.experiments !== 'object') S.experiments = {};
@@ -22462,6 +22525,7 @@ function expScore(x, l, cache){
     return (v > 0 && p > 0) ? v / p : null;
   };
   const T = expT(x);
+  if(T && T.sel) return swtScore(x, l, cache);
   if(T && T.scope === 'lift') return one(x.lift);
   const v = expLoadedLifts(l).map(one).filter(function(z){ return z !== null; });
   return v.length ? v.reduce(function(a, b){ return a + b; }, 0) / v.length : null;
@@ -22469,6 +22533,11 @@ function expScore(x, l, cache){
 function expApplies(x, l){
   const T = expT(x);
   if(!T || !l) return false;
+  if(T.sel){
+    // Before the trial the old lift; after it, the stand-in (or the old lift, which then reads "not followed").
+    const has = function(nm){ return (l.entries||[]).some(function(e){ return e.exercise === nm && e.sets && e.sets.length; }); };
+    return +l.id > +x.startedAtMs ? (has(x.to) || has(x.lift)) : has(x.lift);
+  }
   if(T.scope === 'lift') return (l.entries||[]).some(function(e){ return e.exercise === x.lift && e.sets && e.sets.length; });
   return (l.entries||[]).some(function(e){ return e.sets && e.sets.length; });
 }
@@ -22476,11 +22545,14 @@ function expExcluded(x, l){
   if(!l) return true;
   const m = sessionMods(l);
   if(m.session) return true;
-  return x.lift ? sessionModLift(m, x.lift) : false;
+  // A swap trial judges the stand-in once it has started, and the lift it replaced before that.
+  const nm = (x.template === 'swapTrial' && +l.id > +x.startedAtMs) ? x.to : x.lift;
+  return nm ? sessionModLift(m, nm) : false;
 }
 /* Did he follow the change in this session? true / false / null (the app cannot tell, or he has not
    said). Measured wherever the data allows; asked only for the two that live outside the app. */
 function expAdherence(x, l){
+  if(x.template === 'swapTrial') return (l.entries||[]).some(function(e){ return e.exercise === x.to && e.sets && e.sets.length; });
   if(x.template === 'restMain'){
     const e = (l.entries||[]).find(function(z){ return z.exercise === x.lift; });
     const ts = e ? e.sets.map(function(st){ return +st.ts; }).filter(function(v){ return v > 0; }).sort(function(a, b){ return a - b; }) : [];
@@ -22511,17 +22583,22 @@ function expBaselineFor(x, beforeMs){
 function expSessions(x, cache){
   const T = expT(x);
   cache = cache || {};
-  return (S.logs||[]).filter(function(l){ return l && +l.id > +x.startedAtMs && expApplies(x, l); })
+  // endedAtMs: a finished swap trial re-read from its row (swtX()) stops at its end; a running test has none.
+  return (S.logs||[]).filter(function(l){ return l && +l.id > +x.startedAtMs && (!x.endedAtMs || +l.id <= +x.endedAtMs) && expApplies(x, l); })
     .sort(function(a, b){ return a.date.localeCompare(b.date) || (+a.id - +b.id); }).map(function(l){
-      let state, score = null;
+      let state, score = null, anchor = false;
       if(expExcluded(x, l)) state = 'excluded';
       else {
         const a = expAdherence(x, l);
         if(a === false) state = 'skipped';
         else if(a === null) state = (T && T.adherence === 'tap') ? 'unanswered' : 'unknown';
-        else { score = expScore(x, l, cache); state = score === null ? 'unknown' : 'clean'; }
+        else {
+          score = expScore(x, l, cache); state = score === null ? 'unknown' : 'clean';
+          // A swap trial's first session is the starting point every later one is measured from: counted, never scored.
+          if(score === null && T && T.sel){ const a = swtAnchor(x, cache); if(a && a.id === l.id){ state = 'clean'; anchor = true; } }
+        }
       }
-      return {id:l.id, date:l.date, day:l.day, state:state, score:score};
+      return {id:l.id, date:l.date, day:l.day, state:state, score:score, anchor:anchor};
     });
 }
 function expMean(a){ return a.reduce(function(m, n){ return m + n; }, 0) / a.length; }
@@ -22533,7 +22610,8 @@ function expEvaluate(x){
   const cache = {};
   const base = (x.baselineIds||[]).map(function(id){ return (S.logs||[]).find(function(l){ return l && l.id === id; }); })
     .filter(Boolean).map(function(l){ return expScore(x, l, cache); }).filter(function(v){ return v !== null; });
-  const exp = expSessions(x, cache).filter(function(z){ return z.state === 'clean'; }).slice(0, x.requiredSessions).map(function(z){ return z.score; });
+  const exp = expSessions(x, cache).filter(function(z){ return z.state === 'clean'; }).slice(0, x.requiredSessions).map(function(z){ return z.score; })
+    .filter(function(v){ return v !== null; });   // a swap trial's starting session is clean and has no score
   if(!base.length || !exp.length) return null;
   const bm = expMean(base), em = expMean(exp), diff = em - bm;
   const df = base.length + exp.length - 2;
@@ -22557,6 +22635,16 @@ function expValidate(p, who){
   if(who && who !== 'zulu' && T.owner !== who) return {why:'\u201c'+t+'\u201d is not '+((AGENTS[who]||{}).name||who)+'\u2019s experiment to run'};
   const hyp = typeof p.hypothesis === 'string' ? p.hypothesis.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
   if(hyp.length < 10) return {why:'needs a hypothesis in a sentence'};
+  if(T.sel){
+    // Only a model's proposal reaches expValidate(); his own start from the Selector card is swtStartMine().
+    const c = swtCheck(p.lift, p.to, true);
+    if(c.why) return c;
+    const bl = expBlockReason(t);
+    if(bl) return {why:bl};
+    if(expBaselineFor({template:t, lift:c.from, to:c.to}, Date.now()).length < EXP_BASE_MIN)
+      return {why:'fewer than '+EXP_BASE_MIN+' clean recent sessions of '+c.from+' to measure against'};
+    return {fix:{type:'experiment', payload:{template:t, lift:c.from, to:c.to, range:null, sessions:swtSessions(p.sessions), hypothesis:hyp}}};
+  }
   const n = Math.max(3, Math.min(4, Math.round(+p.sessions || 4)));
   let lift = null, range = null;
   if(T.scope === 'lift'){
@@ -22585,6 +22673,7 @@ function expStart(p){
   const now = Date.now();
   const x = {id:'x'+now.toString(36), template:p.template, lift:p.lift||null, range:p.range||null, hypothesis:p.hypothesis,
              requiredSessions:p.sessions, startedAt:todayKey(), startedAtMs:now, status:'running'};
+  if(p.template === 'swapTrial'){ x.to = p.to; if(p.by === 'you') x.by = 'you'; }
   x.baselineIds = expBaselineFor(x, now);
   if(x.baselineIds.length < EXP_BASE_MIN) return false;
   xs.active = x;
@@ -22608,6 +22697,7 @@ function expTick(){
   else if(todayKey() > mesoAddDays(x.startedAt, EXP_MAX_DAYS)) end = 'inconclusive';
   if(!end) return null;
   const rec = Object.assign({}, x, {status:end, endedAt:todayKey(), result:expEvaluate(x)});
+  try{ swtRecord(rec); }catch(e){}
   xs.history.unshift(rec);
   xs.history = xs.history.slice(0, EXP_HIST_MAX);
   xs.active = null; xs.lastEnded = todayKey();
@@ -22619,7 +22709,9 @@ function expTick(){
 function expStop(){
   const xs = expState(), x = xs.active;
   if(!x || !confirm('Stop this experiment? What it has measured so far is kept.')) return;
-  xs.history.unshift(Object.assign({}, x, {status:'stopped', endedAt:todayKey(), result:expEvaluate(x)}));
+  const rec = Object.assign({}, x, {status:'stopped', endedAt:todayKey(), result:expEvaluate(x)});
+  try{ swtRecord(rec); }catch(e){}
+  xs.history.unshift(rec);
   xs.history = xs.history.slice(0, EXP_HIST_MAX);
   xs.active = null; xs.lastEnded = todayKey();
   save(); try{ renderOps(); }catch(e){} try{ renderHome(); }catch(e){}
@@ -22636,7 +22728,9 @@ function expAnswer(logId, followed){
 /* ---- where the running test shows ---- */
 function expLiveNote(nm){
   const x = expActive();
-  if(!x || x.lift !== nm) return '';
+  if(!x) return '';
+  if(x.template === 'swapTrial') return (x.to === nm && swapTrialOn()) ? 'Swap trial: standing in for '+x.lift+'.' : '';
+  if(x.lift !== nm) return '';
   if(x.template === 'restMain') return 'Experiment: rest at least 3 minutes between sets.';
   if(x.template === 'repRange'){ const r = EXP_REP_ALTS[x.range] || EXP_REP_ALTS.high; return 'Experiment: '+r.lo+'\u2013'+r.hi+' reps for this test.'; }
   return '';
@@ -22700,10 +22794,12 @@ function expCardHTML(){
       expProgHTML(clean, x.requiredSessions, eff)+
       '<p class="small" style="margin-top:6px;color:var(--muted)">vs your own trend \u00b7 '+clean+' of '+x.requiredSessions+' sessions \u00b7 '+call+'</p>'+
       '<p class="small" style="margin-top:6px;color:var(--muted)">Measuring: '+esc(T.measure(x))+', against '+(x.baselineIds||[]).length+' earlier sessions.</p>'+
-      '<p class="small" style="margin-top:6px;color:var(--muted)">'+esc(AGENTS[T.owner].name)+'\u2019s hypothesis: '+esc(x.hypothesis||'')+'</p>'+
+      (x.by === 'you' ? '<p class="small" style="margin-top:6px;color:var(--muted)">Started by you, from the Selector.</p>'
+        : '<p class="small" style="margin-top:6px;color:var(--muted)">'+esc(AGENTS[T.owner].name)+'\u2019s hypothesis: '+esc(x.hypothesis||'')+'</p>')+
+      (T.sel ? '<p class="small" style="margin-top:6px;color:var(--muted)">'+esc(SWT_LEAN)+'</p>' : '')+
       '<p class="small" style="margin-top:10px"><b>'+clean+' of '+x.requiredSessions+'</b> clean sessions \u00b7 started '+esc(fmtDate(x.startedAt))+'</p>';
     ses.slice(-8).forEach(function(z){
-      h += '<div class="db-row" data-exp-log="'+z.id+'" style="flex-wrap:wrap;align-items:center"><span class="db-k">'+esc(fmtDate(z.date))+'</span><span class="small" style="flex:1;min-width:130px">'+esc(z.day||'')+' \u00b7 '+EXP_STATE_TXT[z.state]+'</span>'+
+      h += '<div class="db-row" data-exp-log="'+z.id+'" style="flex-wrap:wrap;align-items:center"><span class="db-k">'+esc(fmtDate(z.date))+'</span><span class="small" style="flex:1;min-width:130px">'+esc(z.day||'')+' \u00b7 '+(z.anchor ? 'the starting point' : EXP_STATE_TXT[z.state])+'</span>'+
         (z.state === 'unanswered' || (T.adherence === 'tap' && (z.state === 'clean' || z.state === 'skipped'))
           ? '<span class="rd3-pills" style="flex:none;margin-left:auto"><button class="rd3-pill'+(z.state === 'clean' ? ' on' : '')+'" data-v="y" style="min-width:0;padding:6px 10px" onclick="expAnswer('+z.id+', true)">Yes</button><button class="rd3-pill'+(z.state === 'skipped' ? ' on' : '')+'" data-v="n" style="min-width:0;padding:6px 10px" onclick="expAnswer('+z.id+', false)">No</button></span>' : '')+
         '</div>';
@@ -22728,7 +22824,7 @@ function expCardHTML(){
 function expMenuLine(id){
   if(expBlockReason('')) return '';
   const xs = expState(), today = todayKey();
-  const ts = Object.keys(EXP_TEMPLATES).filter(function(t){ return EXP_TEMPLATES[t].owner === id && !(xs.declined[t] && mesoAddDays(xs.declined[t], EXP_DECLINE_DAYS) > today); });
+  const ts = Object.keys(EXP_TEMPLATES).filter(function(t){ return EXP_TEMPLATES[t].owner === id && !EXP_TEMPLATES[t].sel && !(xs.declined[t] && mesoAddDays(xs.declined[t], EXP_DECLINE_DAYS) > today); });
   if(!ts.length) return '';
   return '\n'+'  {"type":"experiment","payload":{"template":"'+ts.join('|')+'","lift":"<exact name; only for a lift template>","range":"high|low (repRange only)",'+
     '"sessions":3..4,"hypothesis":"<=200 chars: what you expect and why, with his numbers"}}  -- ONE small test he runs for 3-4 sessions; '+
@@ -24001,7 +24097,9 @@ function agVolumeLastBlock(nm){
 }
 function agExpOn(name){
   const x = expActive();
-  return !!(x && x.lift && name && invNormName(x.lift) === invNormName(name));
+  if(!x || !name) return false;
+  // The stand-in of a swap trial is under test as much as the lift it replaced.
+  return !!((x.lift && invNormName(x.lift) === invNormName(name)) || (x.template === 'swapTrial' && x.to && invNormName(x.to) === invNormName(name)));
 }
 function agConflict(fx){
   if(!fx) return '';
@@ -24032,7 +24130,11 @@ function agConflict(fx){
     if(rsv && +p.w > rsv.to) return p.name+' is in a reset at '+rsv.to+' lb since '+fmtDate(rsv.date)+', so nothing heavier until it rebuilds';
     return '';
   }
-  if(fx.type === 'swapEx') return agExpOn(p.from) ? 'an experiment is running on '+p.from+'; swapping it out would end the test early' : '';
+  if(fx.type === 'swapEx'){
+    if(agExpOn(p.from)) return 'an experiment is running on '+p.from+'; swapping it out would end the test early';
+    // V5 stage 5, a tightening: a permanent swap from an agent needs grounds the app can see. Off with the switch.
+    return selOn() ? agSwapNeeds(p.from, p.to) : '';
+  }
   return '';
 }
 function agValidateFix(fx, who){
@@ -24296,7 +24398,7 @@ function agFixSummary(fx){
   if(fx.type==='schedule') return 'reschedule the training week';
   if(fx.type==='cycleSchedule') return 'rotating cycle \u2192 '+p.pattern.join(' \u2192 ');
   if(fx.type==='fuelFood') return 'add '+p.name+' ('+p.serving+', ~'+p.cal+' cal, '+p.p+'g P) to your Fuel Planner list';
-  if(fx.type==='experiment'){ const T = EXP_TEMPLATES[p.template] || {}; return 'start an experiment: '+(T.label||p.template)+(p.lift ? ' on '+p.lift : '')+' for '+p.sessions+' sessions'; }
+  if(fx.type==='experiment'){ const T = EXP_TEMPLATES[p.template] || {}; return 'start an experiment: '+(T.label||p.template)+(p.lift ? ' on '+p.lift : '')+(p.template === 'swapTrial' && p.to ? ' ('+p.to+' in its place)' : '')+' for '+p.sessions+' sessions'; }
   return fx.type;
 }
 /* What a fix CHANGES, as a string. Two pending proposals sharing a target are two buttons
@@ -24819,7 +24921,7 @@ function agContext(){
   // Each lift with its working sets and the rep range LIVE uses (2026-10-16). Names alone left DELTA to propose a
   // setCount without knowing the count it was changing, and to argue a range the lift is not on.
   const splitTxt = Object.keys(S.split).map(k=>
-    k+' ('+S.split[k].name+'): '+(S.split[k].exercises||[]).map(agSplitLiftText).join(', ')).join('\n');
+    k+' ('+S.split[k].name+'): '+(S.split[k].exercises||[]).map(function(x, i){ return swtSplitText(k, i) || agSplitLiftText(x); }).join(', ')).join('\n');
   const activeBid = mesoActiveStrBlockId();
   let blockTxt = '';
   if(activeBid){
@@ -25016,7 +25118,7 @@ function agTodayContext(id){
       'itself; nothing needs changing to get that, and the split\u2019s own set counts come back after it.';
   });
   line(function(){
-    const src = activeSplitObj(), perm = Object.keys(S.split).join(', ');
+    const src = baseSplitObj(), perm = Object.keys(S.split).join(', ');
     return src === S.split ? 'Split in force: the permanent split ('+perm+').'
       : 'Split in force: the strength block\u2019s own days ('+Object.keys(src).join(', ')+'); '+perm+' is the permanent split, back after the block.';
   });
@@ -26319,7 +26421,7 @@ function agJsonSpec(id){
     'empty array. Do not add a proposal just to have said something -- say it in summary instead. A '+
     'proposal with fix:null is a contradiction: if there is nothing to apply, it is not a proposal.'+'\n'+
     'Each proposal = {"title":"short imperative","reasoning":"why, citing his actual numbers","fix":<one of>}'+'\n'+
-    agFixMenu(id)+(id==='delta' || id==='echo' ? expMenuLine(id) : '')+'\n'+
+    agFixMenu(id)+(id==='delta' || id==='echo' ? expMenuLine(id) : '')+selMenuLine(id)+'\n'+
     'Anything not on that list, including null, is discarded -- do not submit it.'+'\n'+
     'Cap: at most 2 proposals. Fewer is better; most nights the right answer is zero.'+'\n'+
     'IMPORTANT: do not describe a change in your summary as though it were already made. Nothing you '+
@@ -26383,6 +26485,8 @@ function agBaseContext(id){
   // Its squad's flagged readings (V5 stage 4): only with the paid switch on, and only when one is flagged.
   let sqd = '';
   try{ sqd = anlSquadLine(id); }catch(e){ sqd = ''; }
+  // The Selector's marked lifts and their candidates (V5 stage 5): DELTA only, behind the paid switch, when one is due.
+  try{ sqd += selContextLine(id); }catch(e){}
   return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+std+sqd+intel+evl+lref+desk+evd+
     ((id==='delta' || id==='zulu') ? agFeelLine()+agPracticeLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+fcTrackLine(id)+qaContextLine(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext()+dosContextLine(dosTargets())+pdContextLine(pdTargets()) : '');
@@ -28487,6 +28591,7 @@ function renderHome(){
            ' open. <button class="btn ghost sm" onclick="showReviewTab(\'invest\')">Open Investigate</button></p></div>';
     }
   }
+  try{ h += swtDecideCardHTML(); }catch(e){ console.warn('swap trial card failed', e); }
   try{ h += expChipHTML(); }catch(e){ console.warn('experiment chip failed', e); }
   // DELTA's debrief of the last session (it arrives with the nightly cycle).
   try{
@@ -28926,13 +29031,593 @@ function anlFoxtrot(endKey){
       : 'A muscle '+Math.round(FOX_DROP * 100)+'% under or '+Math.round(FOX_JUMP * 100)+'% over its usual sets.',
     nums:nums};
 }
-/* INDIA. The fit score is the Selector's (stage 5). Until it exists this reports the hard-set share and judges nothing. */
-function anlIndia(){
+/* ============================================================
+   THE SELECTOR AND SWAP TRIALS (V5 stage 5)
+   INDIA's lift scoring, and a way to try a replacement for a few sessions without editing the split.
+   - The fit score is worked out when read, on the device, free, and ONE result: selState(), a row per lift in the
+     split in force. Fit is 100 less a penalty for each thing the app can see against the lift: a stall on the plateau
+     watch, noise around its own line, hard sets, pain flags, sets left out, a same-day duplicate. Every penalty is a
+     row he can read. Never stored, never model-written, never posted to the Desk.
+   - The verdict is keep, watch, try a swap, or swap allowed. The cut-offs (SEL_*) came from a replay over his real
+     sessions; HISTORY.md has the numbers. Bench and squat are never marked past watch.
+   - A swap trial is the experiment template `swapTrial`, so every experiment rule holds: one at a time, the cool-down,
+     no start inside a deload, 28 days at most, excluded sessions. While it runs the stand-in takes the slot through
+     activeSplitObj()'s view; S.split is never edited, so ending a trial is the view no longer being built.
+   - It starts only by his tap: the Selector card (swtStartMine()), or approving DELTA's request. DELTA is offered the
+     template only behind the paid switch `swapKey`, only for a lift INDIA marks, only among the app's own candidates,
+     and all three are checked in code (swtCheck()).
+   - When one ends the old lift is back on its day and a card asks: keep the new lift, or go back. S.swapTrials holds
+     the finished trial and his answer as immutable rows; the result is worked out from the logs when read.
+   - agConflict() tightens: a permanent swap from an agent needs a finished trial that favoured the new lift, a pain
+     flag, or the lift left out at the gym (agSwapNeeds()). His own edits to the split are untouched.
+   ============================================================ */
+OV.selector = {label:'Selector and swap trials', paid:false, note:'INDIA scores how well each lift in your split is working, and a lift can be tried against a replacement for a few sessions without changing your split. Worked out on the device. No model call.'};
+OV.swapKey = {label:'Swap trials from DELTA', paid:true, note:'When INDIA marks a lift, DELTA may propose a trial inside its existing nightly call, picking only among the app’s own candidates: an estimated 2 to 10 cents a month. Needs the Selector on.'};
+const SEL_N = 8, SEL_MIN = 6;                      // clean sessions the noise is read over, and the fewest that are read
+const SEL_W = {stall:30, noise:20, grind:15, pain:25, skips:10, dup:10, resp:10};   // the most each row can take off 100
+const SEL_NOISE_LO = 5, SEL_NOISE_HI = 10;         // spread around its own line, % of its level: none under LO, all at HI
+const SEL_GRIND_LO = 30, SEL_GRIND_HI = 60, SEL_GRIND_MIN_TAGS = 6;
+const SEL_SKIP_N = 6, SEL_OUT_N = 4, SEL_OUT_MIN = 3;
+const SEL_PAIN_DAYS = 28, SEL_RESP_UP = 0.5;
+// Fit at or over KEEP keeps; under TRIAL is marked for a trial. From the replay over his 88 days to 2026-11-12 (2,269
+// lift-days scored, median fit 92, 5% under 67): under 45 marked nothing at all; under 50 marked one lift, Leg Press
+// for 16 days from Sep 24, the stretch that ended in a reset; under 55 also marked the Plate Loaded Overhead Press for
+// 8 days in September, which recovered by itself; under 60 a third lift, and a mark on 42 days of 88.
+const SEL_KEEP = 70, SEL_TRIAL = 50;
+const SEL_CAND_MAX = 5, SEL_CAND_MIN = 57;         // candidates offered, and the lowest swapScore() offered (tier B)
+const SEL_PROMPT_MAX = 700, SEL_PROMPT_LIFTS = 2;
+const SWT_MIN = 4, SWT_MAX = 6;                    // sessions in a trial; the first is the starting point, so 4 scores 3
+const SWT_DECIDE_DAYS = 14, SWT_GROUND_DAYS = 60, SWT_KEEP = 40;
+const SWT_ENDS = ['done', 'stopped', 'inconclusive'];
+const SWT_LEAN = 'A new lift climbs fast while you find its working weight, so a trial leans toward the new lift. It shows the new lift is moving; it cannot show it builds more muscle.';
+const SEL_WORD = {keep:'Keep', watch:'Watch', trial:'Try a swap', swap:'Swap allowed', thin:'Too few sessions', ontrial:'On trial'};
+const SEL_ICON = {keep:'✓', watch:'●', trial:'▲', swap:'▲', thin:'–', ontrial:'◆'};
+const SEL_COL = {keep:'var(--good)', watch:'var(--muted)', trial:'var(--warn)', swap:'var(--warn)', thin:'var(--dim)', ontrial:'var(--violet)'};
+function selOn(){ return ovOn('selector'); }
+function selKeyOn(){ return selOn() && ovOn('swapKey'); }
+/* Bench and squat. Never swapped by an agent and never put on trial: they can only be marked watch. */
+function selProtected(nm){
+  return Object.prototype.hasOwnProperty.call(PR_LIFTS, nm) || /^barbell (bench press|back squat)$/i.test(String(nm || '').trim());
+}
+/* Spread of the clean e1RM around the lift's own line, as a share of its level, over its last SEL_N clean sessions.
+   A session right after a deload is left out, as the watch leaves it out of every reference. */
+function selNoise(nm){
+  let cl = [];
+  try{ cl = pwSeries(nm).clean.filter(function(c){ return !c.post; }).slice(-SEL_N); }catch(e){ cl = []; }
+  if(cl.length < SEL_MIN) return null;
+  const pts = cl.map(function(c){ return {date:c.date, v:c.v}; }), reg = linreg(pts);
+  if(!reg) return null;
+  let ss = 0, sum = 0;
+  pts.forEach(function(p){
+    const d = (new Date(p.date).getTime() - reg.x0) / 86400000, r = p.v - (reg.intercept + reg.slope * d);
+    ss += r * r; sum += p.v;
+  });
+  const mean = sum / pts.length;
+  return mean > 0 ? {pct:Math.sqrt(ss / (pts.length - 2)) / mean * 100, n:pts.length} : null;
+}
+function selDaysOf(nm){
+  const out = [];
+  [S.split, activeSplitObj()].forEach(function(o){
+    Object.keys(o || {}).forEach(function(dk){
+      if(out.indexOf(dk) < 0 && ((o[dk] || {}).exercises || []).some(function(x){ return exName(x) === nm; })) out.push(dk);
+    });
+  });
+  return out;
+}
+/* A session that fell inside a swap trial of this lift: the lift was off its day on purpose, so it was not left out. */
+function swtDuring(nm, l){
+  const inWin = function(a, b){ return +l.id > +a && (!b || +l.id <= +b); };
+  const x = (S.experiments && S.experiments.active) || null;
+  if(x && x.template === 'swapTrial' && x.lift === nm && inWin(x.startedAtMs, 0)) return true;
+  return swtRows().some(function(r){ return swtRowOk(r) && r.from === nm && inWin(r.startedAtMs, r.endedAtMs); });
+}
+/* The lift's last n sessions on its own day(s): left out, swapped out at the gym, or done with fewer sets than
+   planned. A deload, a HOME day, a coach plan, a lift the day's call dropped and a short-on-time day are not his
+   leaving it out. Counted only from the lift's first logged session, so days before it joined the split are not misses. */
+function selSkips(nm, n){
+  const out = {n:0, absent:0, swapped:0, short:0, out:0};
+  const days = selDaysOf(nm);
+  const first = (historyFor(nm, {includeDeload:true, includeHome:true}).slice(-1)[0] || {}).date || '';
+  if(!days.length || !first) return out;
+  (S.logs || []).filter(function(l){ return l && days.indexOf(l.day) >= 0 && l.date >= first && !l.deload && !l.home && !l.coachPlan; })
+    .sort(function(a, b){ return b.date.localeCompare(a.date) || (+b.id - +a.id); }).slice(0, n).forEach(function(l){
+      const m = sessionMods(l);
+      if(m.callDrop === nm || swtDuring(nm, l)) return;
+      out.n++;
+      const e = (l.entries || []).find(function(z){ return z.exercise === nm && (z.sets || []).length; });
+      if(!e){
+        if(Object.keys(m.swapFrom).some(function(k){ return m.swapFrom[k] === nm; })) out.swapped++; else out.absent++;
+        return;
+      }
+      const pn = (l.plan && l.plan[nm] && +l.plan[nm].n) || 0;
+      const shortDay = (l.quick || []).some(function(q){ return q && q.k === 'short'; });
+      if(pn > 0 && e.sets.length < pn && !shortDay) out.short++;
+    });
+  out.out = out.absent + out.swapped;
+  return out;
+}
+/* Another lift on the SAME day that trains the same muscle at the same angle (LIFT_FACTS' line, the primary muscles and
+   the pattern all agree). The same muscle on two different days is ordinary programming and is not counted. */
+function selDup(nm){
+  const sig = function(n){ return liftFactFor(n)+'|'+(musclesFor(n).p || []).slice().sort().join('+')+'|'+(swapPattern(n) || ''); };
+  if(!liftFactFor(nm) || !(musclesFor(nm).p || []).length) return null;
+  const mine = sig(nm), src = activeSplitObj();
+  for(const dk in src){
+    const names = ((src[dk] || {}).exercises || []).map(exName);
+    if(names.indexOf(nm) < 0) continue;
+    const other = names.find(function(o){ return o !== nm && sig(o) === mine; });
+    if(other) return {day:dk, other:other};
+  }
+  return null;
+}
+function selStallFrac(r){
+  if(r.state === 'falling') return r.lvl === 'red' ? 1 : 0.75;
+  if(r.state === 'holding'){
+    if(r.sig[0] && r.sig[0].k === 'capped') return 0;          // at the top of its range: the next step is weight
+    return r.lvl === 'amber' ? Math.min(0.85, 0.55 + 0.05 * Math.max(0, (r.flatRun || 0) - PW_STALL_RED)) : 0.2;
+  }
+  if(r.state === 'slowing') return r.lvl === 'amber' ? 0.4 : 0.15;
+  return 0;
+}
+function selProgrammed(){
+  const out = [];
+  [S.split, activeSplitObj()].forEach(function(o){
+    Object.keys(o || {}).forEach(function(dk){ ((o[dk] || {}).exercises || []).forEach(function(x){ const n = exName(x); if(n && out.indexOf(n) < 0) out.push(n); }); });
+  });
+  const x = (S.experiments && S.experiments.active) || null;
+  if(x && x.template === 'swapTrial'){ [x.lift, x.to].forEach(function(n){ if(n && out.indexOf(n) < 0) out.push(n); }); }
+  return out;
+}
+/* The replacements a trial may use: swapCandidates()'s own ranking (muscles, pattern, equipment class, what he has
+   logged), nothing already programmed, nothing under tier B, no bodyweight lift (a trial could not measure it), no
+   name carrying a coaching note, and never bench or squat. The app has no list of what his gym owns, so a candidate he
+   has logged before ranks higher (swapScore() already does that) and one he has never logged says so on its row. */
+function selCandidates(nm){
+  let rows = [];
+  try{ rows = swapCandidates(nm, {exclude:selProgrammed(), limit:12}); }catch(e){ rows = []; }
+  return rows.filter(function(r){
+    if(r.score < SEL_CAND_MIN || selProtected(r.name)) return false;
+    try{ if(exSplitNote(r.name).name !== r.name || exAcceptName(r.name) !== r.name || pwBwLift(r.name)) return false; }catch(e){ return false; }
+    return true;
+  }).slice(0, SEL_CAND_MAX);
+}
+/* One lift's row: {lift, verdict, word, fit, rows:[{k, label, txt, pts}], caps:[], cands:[], prot}. by = the plateau
+   watch's rows by lift; names = every lift in the split in force; x = the trial running, if any. */
+function selScore(nm, by, names, x){
+  const s = {lift:nm, verdict:'thin', word:SEL_WORD.thin, fit:null, rows:[], caps:[], cands:[], prot:selProtected(nm)};
+  if(x && x.to === nm){
+    s.verdict = 'ontrial'; s.word = SEL_WORD.ontrial;
+    s.rows.push({k:'trial', label:'Trial', txt:'standing in for '+x.lift+' until the trial ends', pts:0});
+    return s;
+  }
+  const r = by[nm];
+  if(!r || r.state === 'thin' || r.state === 'stale'){
+    s.rows.push({k:'data', label:'Data', txt:r ? (((r.sig || [])[0] || {}).txt || r.word) : 'no logged sessions yet', pts:0});
+    return s;
+  }
+  const add = function(k, label, txt, frac){
+    const pts = Math.round(Math.max(0, Math.min(1, frac || 0)) * SEL_W[k]);
+    s.rows.push({k:k, label:label, txt:txt, pts:pts});
+    return pts;
+  };
+  let pen = 0;
+  const sig0 = (r.sig || [])[0];
+  const stall = add('stall', 'Plateau watch', r.word+((sig0 && sig0.txt) ? ': '+sig0.txt : ''), selStallFrac(r));
+  pen += stall;
+  const nz = selNoise(nm);
+  pen += add('noise', 'Noise', nz ? stdN1(nz.pct)+'% spread around its own line over '+nz.n+' clean sessions' : 'too few clean sessions to read',
+    nz ? (nz.pct - SEL_NOISE_LO) / (SEL_NOISE_HI - SEL_NOISE_LO) : 0);
+  const hs = liftHardShare(nm, 6), gOk = hs.tagged >= SEL_GRIND_MIN_TAGS;
+  pen += add('grind', 'Hard sets', gOk ? hs.pct+'% of '+hs.tagged+' tagged sets were grinders or fails' : (hs.tagged ? 'only '+hs.tagged+' tagged sets so far' : 'no effort tags yet'),
+    gOk ? (hs.pct - SEL_GRIND_LO) / (SEL_GRIND_HI - SEL_GRIND_LO) : 0);
+  const pn = painFor(nm, SEL_PAIN_DAYS), lv = pn.reduce(function(m, p){ return Math.max(m, +p.level || 0); }, 0);
+  const sharp = painFor(nm, PW_PAIN_DAYS).some(function(p){ return +p.level >= 3; });
+  const lab = (PAIN_LEVELS.find(function(z){ return z.v === lv; }) || {}).label || 'flagged';
+  pen += add('pain', 'Pain flags', pn.length ? stdPl(pn.length, 'flag')+' in '+SEL_PAIN_DAYS+' days, the worst “'+lab+'”' : 'none in '+SEL_PAIN_DAYS+' days',
+    lv >= 3 ? 1 : lv === 2 ? (pn.filter(function(p){ return +p.level >= 2; }).length >= 2 ? 0.7 : 0.4) : lv === 1 ? Math.min(0.3, 0.15 * pn.length) : 0);
+  const sk = selSkips(nm, SEL_SKIP_N);
+  const skTxt = [sk.swapped ? 'swapped out in '+sk.swapped : '', sk.absent ? 'left out of '+sk.absent : '', sk.short ? 'sets short in '+sk.short : ''].filter(Boolean).join(', ');
+  pen += add('skips', 'Left out', sk.n < 3 ? 'too few sessions on its day to read' : skTxt ? skTxt+', of its last '+sk.n+' sessions' : 'done in full in its last '+sk.n+' sessions',
+    sk.n >= 3 ? (sk.out + 0.5 * sk.short) / sk.n * 2 : 0);
+  const dp = selDup(nm);
+  pen += add('dup', 'Duplicate', dp ? 'the same muscle and angle as '+dp.other+', on the same day ('+dp.day+')' : 'no same-day duplicate', dp ? 1 : 0);
+  const mine = musclesFor(nm).p || [];
+  const oth = names.filter(function(o){
+    const q = by[o];
+    return o !== nm && q && q.pctPerWeek !== null && ['thin', 'stale', 'pain', 'reset'].indexOf(q.state) < 0 &&
+      (musclesFor(o).p || []).some(function(g){ return mine.indexOf(g) >= 0; });
+  });
+  let flat = false;
+  if(oth.length >= 2){
+    const mean = oth.reduce(function(a, o){ return a + by[o].pctPerWeek; }, 0) / oth.length;
+    const base = stdPl(oth.length, 'other lift')+' for the same muscles are moving '+stdRate(mean)+'% a week';
+    if(stall > 0 && mean >= SEL_RESP_UP) pen += add('resp', 'Same muscles', base+', so this lift is the likelier limiter', 1);
+    else { flat = stall > 0 && mean <= 0; add('resp', 'Same muscles', base+(flat ? ': flat too, which points at recovery or food before the lift' : ''), 0); }
+  } else add('resp', 'Same muscles', 'too few other lifts for the same muscles to compare', 0);
+  s.fit = Math.max(0, 100 - pen);
+  let v = s.fit >= SEL_KEEP ? 'keep' : s.fit >= SEL_TRIAL ? 'watch' : 'trial';
+  // A lift flagged sore or worse is never a clean keep. While a flag is fresh the watch stops judging the lift's progress
+  // (state "pain"), so its stall row reads nothing: on his JM Press two sore flags RAISED the fit from 74 to 79.
+  if(v === 'keep' && lv >= 2) v = 'watch';
+  if(sharp) v = 'swap';
+  if(v === 'trial' || v === 'swap'){
+    s.cands = selCandidates(nm);
+    const cap = function(txt){ s.caps.push(txt); s.rows.push({k:'cap', label:'Held at watch', txt:txt, pts:0}); v = 'watch'; };
+    if(s.prot) cap('Bench and squat are never swapped and never put on trial.');
+    else if(v === 'trial'){
+      let mo = null;
+      try{ mo = stdMotion(nm, todayKey()); }catch(e){ mo = null; }
+      if(r.state === 'reset') cap('A reset is in progress on it, so it is measured from the reset first.');
+      else if(mo) cap('Something is already being tried: '+mo.what+'.');
+      else if(flat) cap('The other lifts for its muscles are flat too, so the lift is not the first suspect.');
+      else if(pwBwLift(nm)) cap('A bodyweight lift cannot be measured by a trial.');
+      else if(baseSplitObj() !== S.split) cap('A strength block is running its own split.');
+      else if(!s.cands.length) cap('No close replacement in your history or the library.');
+    }
+  }
+  s.verdict = v; s.word = SEL_WORD[v];
+  return s;
+}
+/* THE read: {on, lifts:[row], lvl, scored}. Marked lifts first, lowest fit first. A lift that throws reads "too few
+   sessions": a broken score is never a mark and never a clean bill. */
+let _selPass = null;   // the read, handed down ONE synchronous repaint of the Hub so the tile and the card share it
+function selState(){ return _selPass || selCompute(); }
+function selCompute(){
+  const out = {on:selOn(), lifts:[], lvl:'nodata', scored:0};
+  if(!out.on) return out;
+  let rows = [];
+  try{ rows = plateauWatch(); }catch(e){ rows = []; }
+  const by = {};
+  rows.forEach(function(r){ if(r && r.lift) by[r.lift] = r; });
+  const src = activeSplitObj(), names = [];
+  Object.keys(src || {}).forEach(function(dk){ ((src[dk] || {}).exercises || []).forEach(function(q){ const n = exName(q); if(n && names.indexOf(n) < 0) names.push(n); }); });
+  let x = null;
+  try{ x = swapTrialOn(); }catch(e){ x = null; }
+  names.forEach(function(nm){
+    let s = null;
+    try{ s = selScore(nm, by, names, x); }catch(e){ s = null; }
+    if(!s) s = {lift:nm, verdict:'thin', word:'Could not be read', fit:null, rows:[], caps:[], cands:[], prot:false};
+    out.lifts.push(s);
+  });
+  const rank = {swap:0, trial:1, watch:2, ontrial:3, keep:4, thin:5};
+  out.lifts.sort(function(a, b){ return rank[a.verdict] - rank[b.verdict] || (a.fit === null ? 101 : a.fit) - (b.fit === null ? 101 : b.fit) || a.lift.localeCompare(b.lift); });
+  out.scored = out.lifts.filter(function(s){ return s.fit !== null; }).length;
+  out.lvl = selMarked(out).length ? 'amber' : out.scored ? 'ok' : 'nodata';
+  return out;
+}
+function selMarked(st){ return ((st && st.lifts) || []).filter(function(s){ return s.verdict === 'trial' || s.verdict === 'swap'; }); }
+function selScoreFor(nm){ return selState().lifts.filter(function(s){ return s.lift === nm; })[0] || null; }
+/* INDIA's level as it read on a past day: the logs up to that day, the clock left at today (stdLifts()' rule). */
+function selLevelOn(d){
+  return d < todayKey() ? pwAsOf(mesoAddDays(d, 1), function(){ return selCompute().lvl; }) : selState().lvl;   // a past day is never the repaint's pass
+}
+
+/* ---- swap trials ---- */
+function swtSessions(n){ return Math.max(SWT_MIN, Math.min(SWT_MAX, Math.round(+n || SWT_MIN))); }
+/* May this trial start? {from, to} resolved, or {why}. byAgent: a model's proposal, which also needs the paid switch,
+   a lift INDIA marks, and nothing but the app's candidates. His own tap needs none of those three, and every other
+   check holds for both. */
+function swtCheck(fromRaw, toRaw, byAgent){
+  if(!selOn()) return {why:'the Selector is switched off'};
+  if(byAgent && !ovOn('swapKey')) return {why:'swap trials from the agents are switched off'};
+  if(baseSplitObj() !== S.split) return {why:'a strength block is running its own split, and a trial does not change it'};
+  const from = fromRaw ? agSwapFrom(fromRaw) : null;
+  if(!from) return {why:'“'+String(fromRaw || '').slice(0, 40)+'” is not in your split'};
+  if(selProtected(from)) return {why:from+' is never put on trial: bench and squat can only be marked watch'};
+  if(pwBwLift(from)) return {why:from+' is a bodyweight lift, which a trial cannot measure'};
+  const want = invNormName(exSplitNote(String(toRaw || '')).name);
+  const cands = selCandidates(from).map(function(c){ return c.name; });
+  const to = cands.find(function(n){ return n === toRaw; }) || cands.find(function(n){ return invNormName(n) === want; }) || null;
+  if(!to) return {why:'“'+String(toRaw || '').slice(0, 40)+'” is not one of the app’s candidates for '+from+(cands.length ? ' ('+cands.join(', ')+')' : ' (it has none)')};
+  if(agSwapClashDay(from, to)) return {why:to+' is already on the same day as '+from};
+  if(byAgent){
+    const sc = selScoreFor(from);
+    if(!sc || (sc.verdict !== 'trial' && sc.verdict !== 'swap')) return {why:'INDIA does not mark '+from+' for a trial'};
+  }
+  return {from:from, to:to};
+}
+/* His own start, from the Selector card. The same checks, the same experiment rules, and a save(). */
+function swtStartMine(fromRaw, toRaw){
+  const c = swtCheck(fromRaw, toRaw, false);
+  if(c.why) return {ok:false, error:c.why};
+  const bl = expBlockReason('');
+  if(bl) return {ok:false, error:'A trial cannot start now: '+bl+'.'};
+  const p = {template:'swapTrial', lift:c.from, to:c.to, sessions:SWT_MIN, by:'you', hypothesis:'Started from the Selector: '+c.to+' in place of '+c.from+'.'};
+  if(expBaselineFor(p, Date.now()).length < EXP_BASE_MIN) return {ok:false, error:'Fewer than '+EXP_BASE_MIN+' clean recent sessions of '+c.from+' to measure against.'};
+  if(!expStart(p)) return {ok:false, error:'The trial could not start.'};
+  save();
+  return {ok:true};
+}
+/* The stand-in's first clean session after the start: where every later one is measured from. */
+function swtAnchor(x, cache){
+  cache = cache || {};
+  if(Object.prototype.hasOwnProperty.call(cache, ' anchor')) return cache[' anchor'];
+  const l = (S.logs || []).filter(function(z){ return z && +z.id > +x.startedAtMs && (!x.endedAtMs || +z.id <= +x.endedAtMs) && !expExcluded(x, z) && expBestE1(z, x.to) > 0; })
+    .sort(function(a, b){ return a.date.localeCompare(b.date) || (+a.id - +b.id); })[0];
+  return (cache[' anchor'] = l ? {id:l.id, date:l.date, v:expBestE1(l, x.to)} : null);
+}
+/* A session's score in a swap trial. Before the start: the old lift over its own line, as every experiment scores a
+   baseline. After it: how far the stand-in has moved from its starting point, over how far the old lift's line would
+   have moved in the same days. Two different lifts cannot be compared in pounds; their progress can. */
+function swtScore(x, l, cache){
+  cache = cache || {};
+  if(!(x.lift in cache)) cache[x.lift] = expTrend(x, x.lift);
+  const fn = cache[x.lift];
+  if(!fn) return null;
+  if(+l.id < +x.startedAtMs){ const v0 = expBestE1(l, x.lift), p = fn(l.date); return (v0 > 0 && p > 0) ? v0 / p : null; }
+  const a = swtAnchor(x, cache);
+  if(!a || a.id === l.id) return null;
+  const v = expBestE1(l, x.to), p0 = fn(a.date), p1 = fn(l.date);
+  return (v > 0 && a.v > 0 && p0 > 0 && p1 > 0) ? (v / a.v) / (p1 / p0) : null;
+}
+/* The agents' SPLIT text for one slot while a trial stands in on it, or '' (the caller then prints the slot as ever). */
+function swtSplitText(dk, i){
+  const x = swapTrialOn();
+  if(!x) return '';
+  const v = activeSplitObj();
+  if(v === S.split) return '';
+  const slot = ((v[dk] || {}).exercises || [])[i];
+  if(!slot || typeof slot !== 'object' || slot.trial !== x.id) return '';
+  return agSplitLiftText(slot)+' (swap trial: standing in for '+x.lift+', which is still the permanent lift)';
+}
+/* ---- the record: immutable rows, the verdict worked out when read ---- */
+function swtRows(){ return Array.isArray(S.swapTrials) ? S.swapTrials : []; }
+function swtRowOk(r){
+  return !!r && typeof r.id === 'string' && r.id.indexOf('st') === 0 && typeof r.from === 'string' && !!r.from && typeof r.to === 'string' && !!r.to &&
+    r.from !== r.to && +r.startedAtMs > 0 && +r.endedAtMs >= +r.startedAtMs && holdDayOk(r.endedAt) && SWT_ENDS.indexOf(r.status) >= 0 &&
+    Array.isArray(r.baselineIds) && +r.sessions >= SWT_MIN && +r.sessions <= SWT_MAX;
+}
+/* Called where an experiment ends (expTick(), expStop()), inside the same save(). One row a trial, written once. */
+function swtRecord(rec){
+  if(!rec || rec.template !== 'swapTrial' || !rec.id) return false;
+  if(!Array.isArray(S.swapTrials)) S.swapTrials = [];
+  const id = 'st'+rec.id;
+  if(S.swapTrials.some(function(r){ return r && r.id === id; })) return false;
+  S.swapTrials.push(stampRec({id:id, from:rec.lift, to:rec.to, startedAt:rec.startedAt, startedAtMs:rec.startedAtMs, endedAt:rec.endedAt, endedAtMs:Date.now(),
+    status:rec.status, sessions:rec.requiredSessions, baselineIds:(rec.baselineIds || []).slice(), by:rec.by === 'you' ? 'you' : 'delta', date:rec.endedAt}));
+  if(S.swapTrials.length > SWT_KEEP) S.swapTrials = S.swapTrials.slice(-SWT_KEEP);
+  return true;
+}
+function swtX(r){
+  return {id:r.id, template:'swapTrial', lift:r.from, to:r.to, startedAtMs:r.startedAtMs, endedAtMs:r.endedAtMs, requiredSessions:r.sessions, baselineIds:r.baselineIds};
+}
+/* Finished trials, newest first: {row, res, favoured, decided}. The first answer he gave stands. */
+function swtTrials(){
+  const rows = swtRows(), dec = {};
+  rows.forEach(function(r){
+    if(!r || typeof r.ref !== 'string' || typeof r.keep !== 'boolean') return;
+    if(!dec[r.ref] || (+r.at || 0) < (+dec[r.ref].at || 0)) dec[r.ref] = r;
+  });
+  return rows.filter(swtRowOk).map(function(r){
+    let res = null;
+    try{ res = expEvaluate(swtX(r)); }catch(e){ res = null; }
+    return {row:r, res:res, favoured:r.status === 'done' && !!res && res.direction === 'better', decided:dec[r.id] ? (dec[r.id].keep ? 'keep' : 'back') : ''};
+  }).sort(function(a, b){ return +b.row.endedAtMs - +a.row.endedAtMs; });
+}
+/* The finished trial waiting on his answer, if any. After SWT_DECIDE_DAYS it stops asking: the old lift is back on its
+   day already, which is what going back means. */
+function swtPending(){
+  if(!selOn()) return null;
+  const cut = mesoAddDays(todayKey(), -SWT_DECIDE_DAYS);
+  return swtTrials().filter(function(z){ return z.row.status === 'done' && !z.decided && z.row.endedAt > cut; })[0] || null;
+}
+/* His answer. Keep makes the swap permanent on every day the trial stood in on, through the queue's own shape check
+   (names resolved, never one lift twice on a day). Go back changes nothing: the old lift is already back. Either way
+   one immutable row and a save(). */
+function swtDecide(id, keep){
+  const z = swtTrials().filter(function(q){ return q.row.id === id; })[0];
+  if(!z) return {ok:false, error:'That trial is no longer on record.'};
+  if(z.decided) return {ok:false, error:'You already answered this one.'};
+  if(keep){
+    const fx = agValidateFixShape({type:'swapEx', payload:{from:z.row.from, to:z.row.to}}, 'delta');
+    if(!fx) return {ok:false, error:'It cannot be kept: '+agRejectReason({type:'swapEx', payload:{from:z.row.from, to:z.row.to}}, 'delta')+'.'};
+    if(agExpOn(fx.payload.from) || agExpOn(fx.payload.to)) return {ok:false, error:'An experiment is running on one of the two lifts. End it first.'};
+    let n = 0;
+    Object.keys(S.split).forEach(function(dk){
+      const arr = S.split[dk].exercises || [];
+      const i = arr.findIndex(function(q){ return exName(q) === fx.payload.from; });
+      if(i < 0 || arr.some(function(q){ return exName(q) === fx.payload.to; })) return;
+      const old = arr[i], slot = {name:fx.payload.to, inc:slotInc(fx.payload.to)};
+      if(old && typeof old === 'object' && old.sets) slot.sets = old.sets;
+      arr[i] = slot; n++;
+    });
+    if(!n) return {ok:false, error:z.row.from+' is no longer in your split.'};
+  }
+  if(!Array.isArray(S.swapTrials)) S.swapTrials = [];
+  S.swapTrials.push(stampRec({id:'sd'+Date.now().toString(36)+Math.random().toString(36).slice(2, 6), ref:id, keep:!!keep, at:Date.now(), date:todayKey()}));
+  try{ agLog('delta', 'Swap trial answered: '+(keep ? 'kept '+z.row.to+' in place of '+z.row.from : 'went back to '+z.row.from+' from '+z.row.to)+'.'); }catch(e){}
+  save();
+  return {ok:true};
+}
+/* Grounds the app can see for a PERMANENT swap proposed by an agent: 'trial', 'pain', 'gear', or ''. */
+function agSwapGround(from, to){
+  const t = todayKey();
+  try{
+    const cut = mesoAddDays(t, -SWT_GROUND_DAYS);
+    if(swtTrials().some(function(z){ return z.row.from === from && z.row.to === to && z.favoured && z.decided !== 'back' && z.row.endedAt > cut; })) return 'trial';
+  }catch(e){}
+  try{ if(painFor(from, SEL_PAIN_DAYS).some(function(p){ return +p.level >= 2; })) return 'pain'; }catch(e){}
+  try{ const o = selSkips(from, SEL_OUT_N); if(o.n >= SEL_OUT_N && o.out >= SEL_OUT_MIN) return 'gear'; }catch(e){}
+  return '';
+}
+function agSwapNeeds(from, to){
+  if(selProtected(from)) return from+' is never swapped by an agent: bench and squat can only be marked watch';
+  if(agSwapGround(from, to)) return '';
+  return 'a permanent swap needs a finished trial that favoured '+to+', a pain flag on '+from+', or '+from+' left out or swapped out in '+
+    SEL_OUT_MIN+' of its last '+SEL_OUT_N+' sessions; a swap trial comes first';
+}
+/* ---- DELTA's swap key: a paid switch, off. Empty unless the switch is on, a trial could start, and INDIA marks a lift
+   that has candidates, so on every other night the prompt is byte-identical. ---- */
+function selDue(){
+  if(!selKeyOn()) return [];
+  try{ if(expBlockReason('swapTrial')) return []; }catch(e){ return []; }
+  let st;
+  try{ st = selState(); }catch(e){ return []; }
+  return selMarked(st).filter(function(s){ return s.verdict === 'trial' && s.cands.length; }).slice(0, SEL_PROMPT_LIFTS);
+}
+function selContextLine(id){
+  if(id !== 'delta') return '';
+  const due = selDue();
+  if(!due.length) return '';
+  const head = '\nSELECTOR (INDIA: worked out by the app from his sessions. Numbers, not advice. Fit is 100 less a penalty for each row):\n';
+  let left = SEL_PROMPT_MAX;
+  const lines = [];
+  due.forEach(function(s){
+    let ln = s.lift+': fit '+s.fit+' of 100, marked for a swap trial. '+s.rows.filter(function(r){ return r.pts > 0; }).map(function(r){ return r.label+' (-'+r.pts+'): '+r.txt; }).join('; ')+
+      '. Candidates the app ranks (a trial may use ONLY these): '+s.cands.map(function(c){ return c.name+' ['+c.tier+(c.logged ? ', logged '+c.logged+'x' : ', never logged')+']'; }).join(', ')+'.';
+    if(ln.length > left) ln = ln.slice(0, Math.max(0, left - 1)).replace(/\s+\S*$/, '')+'…';
+    if(left < 80) return;
+    left -= ln.length;
+    lines.push(ln);
+  });
+  return lines.length ? head+'- '+lines.join('\n- ')+'\n' : '';
+}
+function selMenuLine(id){
+  if(id !== 'delta' || !selDue().length) return '';
+  return '\n'+'  {"type":"experiment","payload":{"template":"swapTrial","lift":"<a lift the SELECTOR block marks>","to":"<one of ITS listed candidates, exact name>",'+
+    '"sessions":'+SWT_MIN+'..'+SWT_MAX+',"hypothesis":"<=200 chars: why this candidate, with his numbers"}}  -- a swap TRIAL: the candidate takes that lift’s slot '+
+    'for those sessions, the permanent split is untouched, and the app compares the two and asks him to keep it or go back. At most one, only for a lift the '+
+    'SELECTOR block marks. A permanent swapEx is refused unless a finished trial favoured the new lift, the old lift has a pain flag, or he keeps leaving it out.';
+}
+
+/* ---- on screen ---- */
+let selOpenLift = '', selPickFor = '';   // module-scoped: the Hub is regenerated every 30 s
+function selRepaint(){ try{ renderOps(); }catch(e){} try{ renderHome(); }catch(e){} }
+function selRowTap(el){
+  const nm = el && el.getAttribute && el.getAttribute('data-lift');
+  if(!nm) return;
+  selOpenLift = selOpenLift === nm ? '' : nm;
+  selPickFor = '';
+  try{ renderOps(); }catch(e){}
+}
+function selPickTap(el){
+  const nm = el && el.getAttribute && el.getAttribute('data-lift');
+  selPickFor = selPickFor === nm ? '' : (nm || '');
+  try{ renderOps(); }catch(e){}
+}
+function swtPickTap(el){
+  const from = el && el.getAttribute && el.getAttribute('data-from'), to = el && el.getAttribute && el.getAttribute('data-to');
+  if(!from || !to) return;
+  if(!confirm('Try '+to+' in place of '+from+' for '+SWT_MIN+' sessions?\n\nYour split is not changed. '+to+' stands in on that day until the trial ends, then '+from+
+    ' is back and you choose which to keep.')) return;
+  const r = swtStartMine(from, to);
+  if(!r.ok){ alert(r.error); return; }
+  selPickFor = ''; selOpenLift = '';
+  selRepaint();
+}
+function swtDecideTap(el, keep){
+  const id = el && el.getAttribute && el.getAttribute('data-id');
+  const z = swtTrials().filter(function(q){ return q.row.id === id; })[0];
+  if(!z) return;
+  if(keep && !confirm('Keep '+z.row.to+'?\n\nIt replaces '+z.row.from+' in your split from now on. You can change the split back in Settings.')) return;
+  const r = swtDecide(id, !!keep);
+  if(!r.ok){ alert(r.error); return; }
+  selRepaint();
+}
+function swtResultLine(z){
+  const r = z.res;
+  if(z.row.status !== 'done' || !r) return 'It ended before there were enough clean sessions to compare.';
+  const sz = r.nExp+' session'+(r.nExp === 1 ? '' : 's')+' after the starting one, against '+r.nBase+' of '+z.row.from+' before';
+  if(r.direction === 'unclear') return 'No clear difference: '+z.row.to+' moved '+(r.deltaPct >= 0 ? '+' : '')+r.deltaPct+'% against the line '+z.row.from+' was on ('+sz+', low confidence).';
+  return z.row.to+' moved '+(r.deltaPct >= 0 ? '+' : '')+r.deltaPct+'% against the line '+z.row.from+' was on ('+sz+', '+r.confidence+' confidence). A small sample, not proof.';
+}
+/* The card that asks, on Today and in the Hub. Reading it writes nothing. */
+function swtDecideCardHTML(){
+  const z = swtPending();
+  if(!z) return '';
+  const id = esc(z.row.id);
+  return '<div class="card swt-card"><div class="k" style="color:var(--violet)">Swap trial finished</div>'+
+    '<p style="margin-top:6px"><b>'+esc(z.row.to)+'</b> stood in for <b>'+esc(z.row.from)+'</b> from '+esc(homeShortDate(z.row.startedAt))+' to '+esc(homeShortDate(z.row.endedAt))+'.</p>'+
+    '<p class="small" style="margin-top:6px">'+esc(swtResultLine(z))+'</p>'+
+    '<p class="small" style="margin-top:6px;color:var(--muted)">'+esc(SWT_LEAN)+'</p>'+
+    '<div class="swt-btns"><button class="btn sm" data-id="'+id+'" onclick="swtDecideTap(this, true)">Keep '+esc(z.row.to)+'</button>'+
+      '<button class="btn ghost sm" data-id="'+id+'" onclick="swtDecideTap(this, false)">Go back to '+esc(z.row.from)+'</button></div>'+
+    '<p class="small" style="margin-top:8px;color:var(--dim)">'+esc(z.row.from)+' is back on its day until you choose. This asks until '+esc(homeShortDate(mesoAddDays(z.row.endedAt, SWT_DECIDE_DAYS)))+'.</p></div>';
+}
+function selRowHTML(s){
+  const open = selOpenLift === s.lift, nm = esc(s.lift);
+  let h = '<div class="sel-row'+(open ? ' open' : '')+'"><button class="sel-h" data-lift="'+nm+'" onclick="selRowTap(this)" aria-expanded="'+open+'">'+
+    '<span class="sel-n">'+nm+'</span>'+
+    '<span class="sel-v" style="color:'+SEL_COL[s.verdict]+'"><i>'+SEL_ICON[s.verdict]+'</i>'+esc(s.word)+'</span>'+
+    '<span class="sel-fit" aria-label="fit '+(s.fit === null ? 'not scored' : s.fit+' of 100')+'">'+(s.fit === null ? '–' : s.fit)+'</span></button>';
+  if(!open) return h+'</div>';
+  h += '<div class="sel-b">'+s.rows.map(function(r){
+    return '<div class="sel-ev"><span>'+esc(r.label)+'</span><span>'+esc(r.txt)+'</span><b>'+(r.pts ? '−'+r.pts : '')+'</b></div>';
+  }).join('');
+  const can = !s.prot && s.fit !== null && s.verdict !== 'keep' && s.verdict !== 'ontrial';
+  if(s.prot && !s.caps.length) h += '<p class="small" style="margin-top:8px;color:var(--dim)">Bench and squat are never swapped and never put on trial: they can only be marked watch.</p>';
+  if(can){
+    // Never offer a button swtCheck() would then refuse: say why instead.
+    let no = '';
+    try{ no = expBlockReason(''); }catch(e){ no = ''; }
+    if(no) no = 'A trial cannot start now: '+no+'.';
+    else if(pwBwLift(s.lift)) no = 'A bodyweight lift cannot be measured by a trial.';
+    else if(baseSplitObj() !== S.split) no = 'A trial cannot start while a strength block runs its own split.';
+    const cands = no ? [] : (s.cands.length ? s.cands : selCandidates(s.lift));
+    if(!no && !cands.length) no = 'No close replacement in your history or the library, so there is nothing to try.';
+    if(no) h += '<p class="small" style="margin-top:8px;color:var(--dim)">'+esc(no)+'</p>';
+    else {
+      const pick = selPickFor === s.lift;
+      h += '<button class="btn ghost sm" style="margin-top:10px" data-lift="'+nm+'" onclick="selPickTap(this)" aria-expanded="'+pick+'">'+(pick ? 'Close' : 'Try a replacement')+'</button>';
+      if(pick){
+        h += '<p class="small" style="margin-top:8px">Pick one to stand in for '+SWT_MIN+' sessions. Your split is not changed.</p><div class="swap-list">'+cands.map(function(c){
+          const t = SWAP_TIERS.find(function(q){ return q.key === c.tier; }) || SWAP_TIERS[SWAP_TIERS.length - 1];
+          return '<button class="swap-row" data-from="'+nm+'" data-to="'+esc(c.name)+'" onclick="swtPickTap(this)" title="'+esc(t.blurb)+'">'+
+            '<span class="swap-tier" style="color:'+t.col+';border-color:'+t.col+'">'+c.tier+'</span>'+
+            '<span class="swap-body"><span class="swap-nm">'+esc(c.name)+'</span><span class="swap-meta">'+esc(t.blurb)+(c.logged ? ' · '+c.logged+' logged' : ' · never logged: check your gym has it')+'</span></span>'+
+            '<span class="swap-score mono">'+c.score+'</span></button>';
+        }).join('')+'</div>';
+      }
+    }
+  }
+  return h+'</div></div>';
+}
+/* The Hub's card: marked lifts and watch items first, the rest in a remembered fold. */
+function selCardHTML(){
+  let st;
+  try{ st = selState(); }catch(e){ return ''; }
+  if(!st.lifts.length) return '';   // the Selector off reads no lifts, so there is no card
+  const top = st.lifts.filter(function(s){ return s.verdict === 'swap' || s.verdict === 'trial' || s.verdict === 'watch' || s.verdict === 'ontrial'; });
+  const rest = st.lifts.filter(function(s){ return top.indexOf(s) < 0; });
+  const marked = selMarked(st).length;
+  let h = '<div class="card sel-card"><div class="k">Selector · INDIA</div>'+
+    '<p class="small" style="margin-top:6px">How well each lift in your split is working, from your own sessions: 100, less what counts against it. Tap a lift for the rows behind its number.</p>'+
+    '<p class="small" style="margin-top:6px;color:var(--muted)">'+(marked ? stdPl(marked, 'lift')+' marked.' : 'No lift is marked.')+' '+st.scored+' scored. Worked out on this device, free.</p>';
+  h += top.map(selRowHTML).join('');
+  if(rest.length){
+    const openRest = rest.some(function(s){ return s.lift === selOpenLift; });
+    h += subSection('Lifts that fit, or with too few sessions ('+rest.length+')', rest.map(selRowHTML).join(''), openRest, {pref:'coach.selRest', cls:'grp'});
+  }
+  return h+'</div>';
+}
+/* INDIA, read from the Selector. as-of for the strip; today for the tile. */
+function anlIndia(endKey){
+  if(!selOn()) return anlIndiaOff();
+  const t = todayKey();
+  const st = (endKey && endKey < t) ? pwAsOf(mesoAddDays(endKey, 1), selCompute) : selState();
+  if(!st.scored) return {lvl:'nodata', word:'Too few sessions', line:'No lift in the split has enough clean sessions to score yet.',
+    change:'It reads once a lift has '+PW_MIN_CLEAN+' clean sessions over 3 weeks.', nums:[]};
+  const marked = selMarked(st), watch = st.lifts.filter(function(s){ return s.verdict === 'watch'; }), keep = st.lifts.filter(function(s){ return s.verdict === 'keep'; });
+  const say = function(s){ return s.lift+': '+(s.verdict === 'swap' ? 'swap allowed' : 'try a swap'); };
+  const why = function(s){ return s.rows.filter(function(r){ return r.pts > 0; }).sort(function(a, b){ return b.pts - a.pts; }).slice(0, 2).map(function(r){ return r.txt; }).join('; '); };
+  const x = swapTrialOn();
+  const nums = marked.concat(watch).slice(0, 8).map(function(s){ return [s.lift, 'fit '+s.fit+' · '+s.word.toLowerCase()+(why(s) ? ' · '+why(s) : '')]; });
+  nums.push(['Keep', keep.length ? stdPl(keep.length, 'lift') : 'none']);
+  if(x) nums.push(['On trial', x.to+' in place of '+x.lift]);
+  return {lvl:st.lvl,   // selState()'s own: the strip (selLevelOn()) reads the same field, so the two cannot disagree
+    word:marked.length ? say(marked[0])+(marked.length > 1 ? ', +'+(marked.length - 1)+' more' : '') : watch.length ? stdPl(watch.length, 'lift')+' to watch' : 'Every lift fits',
+    line:'Fit is 100 less what counts against a lift: a stall on the plateau watch, noise, hard sets, pain, sets left out and a same-day duplicate. Of '+
+      st.scored+' scored: '+keep.length+' keep, '+watch.length+' watch, '+marked.length+' marked.',
+    change:marked.length ? 'The marked lift moving again on the plateau watch, or a swap trial on it.' : 'A lift’s fit falling under '+SEL_TRIAL+', or a lift flagged sharp.',
+    nums:nums};
+}
+/* INDIA with the Selector switched off: the hard-set share of each main lift, and no judgement. */
+function anlIndiaOff(){
   let mains = [];
   try{ mains = predLifts(); }catch(e){ mains = []; }
   const nums = mains.map(function(n){ const h = liftHardShare(n); return [n, h.pct === null ? 'no effort tags yet' : h.pct+'% of '+h.tagged+' tagged sets were grinders or fails']; });
-  return {lvl:'nodata', word:'Not scoring yet', line:'Fit scores arrive with the Selector. Until then this lists how hard each main lift’s recent sets were, and judges nothing.',
-    change:'Nothing yet: it has no level until the Selector is built.', nums:nums};
+  return {lvl:'nodata', word:'Selector off', line:'The Selector is switched off in Settings. Until then this lists how hard each main lift’s recent sets were, and judges nothing.',
+    change:'Turning the Selector on.', nums:nums};
 }
 /* KILO. What the library would hand each coach today. It reports; it never flags. */
 function anlKilo(endKey){
@@ -28954,7 +29639,7 @@ const ANL_READ = {
   golf:function(t, rows){ return anlFromPillar('recovery', rows); },
   alpha:function(t, rows){ return anlFromPillar('lifts', rows); },
   foxtrot:function(t){ return anlFoxtrot(t); },
-  india:function(){ return anlIndia(); },
+  india:function(t){ return anlIndia(t); },
   bravo:function(t, rows){ return anlFromPillar('bulk', rows); },
   juliet:function(t, rows){ return anlFromPillar('intake', rows); }
 };
@@ -29096,13 +29781,15 @@ function anlSparkSVG(vals, col){
 let _anlStrip = {key:null, days:[]}, _anlStripMs = 0, _anlStripBuilds = 0;
 function anlStripKey(){
   return [todayKey(), (S.meta && S.meta.changedAt) || 0, (S.logs || []).length, (S.weights || []).length, (S.nutrition || []).length, whoopHistRows().length,
-    (S.dayReasons || []).length, (S.holds || []).length, JSON.stringify(S.overhaul || null), ((S.agents && S.agents.proposals) || []).length].join('|');
+    (S.dayReasons || []).length, (S.holds || []).length, JSON.stringify(S.overhaul || null), ((S.agents && S.agents.proposals) || []).length,
+    (S.pain || []).length, (S.swapTrials || []).length, ((S.experiments && S.experiments.active) || {}).id || ''].join('|');
 }
 function anlLevelsOn(d){
   const lv = {}, by = {};
   try{ stdState(d).forEach(function(r){ by[r.pillar] = r.lvl; }); }catch(e){}
   ANL_ORDER.forEach(function(id){ const p = ANALYSTS[id].pillar; if(p) lv[id] = by[p] || 'nodata'; });
   try{ lv.foxtrot = anlFoxtrot(d).lvl; }catch(e){ lv.foxtrot = 'nodata'; }
+  try{ lv.india = selOn() ? selLevelOn(d) : 'nodata'; }catch(e){ lv.india = 'nodata'; }
   return lv;
 }
 function anlStrips(){
@@ -29217,7 +29904,7 @@ function sqTileTap(el){
   sqRepaint();
 }
 function sqCells(id, r, strips){
-  if(!strips || !(ANALYSTS[id].pillar || (id === 'foxtrot' && FOX_FLAGS))) return null;
+  if(!strips || !(ANALYSTS[id].pillar || (id === 'foxtrot' && FOX_FLAGS) || (id === 'india' && selOn()))) return null;
   return strips.map(function(x){ return x.lv[id] || 'nodata'; }).concat([r.lvl]);
 }
 function sqTileHTML(id, r, strips){
@@ -29448,7 +30135,13 @@ function hubSpendHTML(){
                     'At the cap, automatic runs pause and say so; chat asks first.')+'</p>'+
       '<button class="btn ghost sm" onclick="hubCapFocus()">Set cap</button></div></section>';
 }
+/* The Hub reads the Selector ONCE a repaint: INDIA's tile and the Selector card show the same rows. _selPass never
+   outlives this call, so nothing can read a stale score afterwards (the Standards' _stdPass rule). */
 function renderOps(){
+  try{ _selPass = selOn() ? selCompute() : null; }catch(e){ _selPass = null; }
+  try{ return renderOpsDraw(); }finally{ _selPass = null; }
+}
+function renderOpsDraw(){
   const el = document.getElementById('ops'); if(!el) return;
   // Capture chat scroll BEFORE the repaint. Previously this function unconditionally slammed
   // scrollTop to the bottom on every render \u2014 fine when you'd just sent a message, but the
@@ -29536,6 +30229,7 @@ function renderOps(){
           '<button class="btn ghost sm" data-prop="'+esc(p.id)+'" onclick="agShowAnyway(this.dataset.prop)">Show anyway</button></div>'; }).join('')+'</div>';
   }catch(e){}
 
+  try{ const _sd = swtDecideCardHTML(), _sh = selCardHTML(); if(_sd || _sh) h += '<h2>Lift fit</h2>'+_sd+_sh; }catch(e){ console.warn('selector card failed', e); }
   try{ const _xh = expCardHTML(); if(_xh) h += '<h2>Experiments</h2>'+_xh; }catch(e){ console.warn('experiments card failed', e); }
   try{
     const _wp = wpForDate(todayKey());

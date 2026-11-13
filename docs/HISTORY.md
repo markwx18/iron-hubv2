@@ -2769,3 +2769,121 @@ slowing", HOTEL "No misses", GOLF "Too few WHOOP readings", so ECHO and ZULU rea
 
 Not built: the List and Week views, the Wire, tension markers, a lit line from an analyst to its lead, the Plan of
 Record in a ZULU bar (stages 6 to 8), and analyst cards on the Desk (stage 6).
+
+### V5 stage 5: the Selector and swap trials (2026-11-12, `v5f`)
+
+**The fit score is worked out when read, on the device, free, and ONE result.** `selState()` returns a row per lift in
+the split in force: `{lift, verdict, word, fit, rows, caps, cands}`. Fit is 100 less a penalty for each thing the app
+can see against the lift, and each penalty is a row with its text and its points (`SEL_W`): a stall on the plateau
+watch (30, read from `plateauWatch()`'s own row, so the Selector and the watch cannot disagree about what a stall is),
+noise (20, the spread of the clean e1RM around the lift's own line over its last 8 clean sessions, `selNoise()`), hard
+sets (15, `liftHardShare()`), pain flags (25), sets left out (10, `selSkips()`), a same-day duplicate (10, `selDup()`),
+and 10 more when the lift has stalled while the other lifts for its muscles are moving. Nothing is stored and nothing
+is posted to the Desk. INDIA (`anlIndia()`) reads it: amber when a lift is marked, never red, "too few sessions" when
+nothing could be scored. With the switch off INDIA is exactly stage 4's reading (`anlIndiaOff()`).
+
+**The cut-offs came from a replay over his real sessions.** Day by day over the 88 days to 2026-11-12 (the state cut to
+each day, the clock moved to it; 2,269 lift-days scored, including nine lifts he has since dropped):
+- Noise first. At the first guess (no penalty under 2.5%, all of it at 6%) seven of his 23 scored lifts took the whole
+  noise penalty: Hip Thrust Machine 12.1%, Incline Prone Reverse Fly 8.5%, Leg Press 8.0%, Incline Dumbbell Curl 7.9%,
+  Calve Raises 7.6%, Chest Fly Machine 7.5%, Machine Leg Extension 7.3%. Those are mostly high-rep and Form Focus lifts,
+  where the e1RM estimate itself swings with a rep or two. His median is 3.7%. The line moved to 5% and 10%
+  (`SEL_NOISE_LO`, `SEL_NOISE_HI`), so only a lift well outside his usual pays, and none pays in full for being a
+  high-rep lift.
+- Then the verdicts. Median fit 92, a quarter under 82, 5% under 67: `SEL_KEEP` 70 puts about the bottom 5% of
+  lift-days at watch. For a trial: under 45 marked nothing at all in 88 days; under 50 marked one lift, Leg Press for
+  16 days from Sep 24, the stretch that ended in a reset; under 55 also marked the Plate Loaded Overhead Press for 8 days
+  in September, which recovered by itself; under 60 added the Rear Delt Machine (the one of the three he later dropped)
+  and put a mark on 42 days of 88. `SEL_TRIAL` is 50: it fires on the one episode where something did have to be tried,
+  and is quiet on 80 days of 88. FOXTROT's lesson again: a flag that is lit half the time is noise.
+- On his state today: 27 lifts scored, 26 keep, 1 watch (Hanging Leg Raise, 64: reps not climbing, left out of 3 of its
+  last 6 sessions), none marked. Cable Row, Machine Lateral Raises and Single Arm Tricep Pushdown have too few clean
+  sessions to score.
+
+**Old build against new, with no trial running: nothing changed.** Every one of his 110 sessions was replayed with the
+clock at that day and only the logs before it: 587 prescriptions (532 with a target weight) through
+`buildOneLiveExercise()` on `git show HEAD` and on the working tree, plus the day's lift list, slot sets and per-lift
+flags. Zero differences. With no trial `activeSplitObj()` returns the very object it always returned.
+And with one running, on his state of 2026-11-12, in memory: a trial was started on each of the 24 lifts that can take
+one, in turn, with its first candidate. Each time only that lift's slot changed, every other lift on every day was
+prescribed exactly as before, `S.split` was byte-identical, the agents' SPLIT text named the trial, and ending it put
+every list and prescription back.
+
+**A swap trial is a third split in force.** The first two are the permanent split and a strength block's own. The spec
+put the overlay "where `buildOneLiveExerciseBase()` is already wrapped", but a trial has to change WHO is on the day,
+not what one lift is prescribed, and everything that asks who is on the day already asks `activeSplitObj()`: LIVE
+(`liveSessionNames()`), Today's key lifts, the plan's shape, per-lift flags (`exSlotsFor()`), the watch's lift list,
+the experiment checks. So the overlay is there: while `swapTrialOn()`, `activeSplitObj()` returns `swtView()`, a view
+built on each read in which the stand-in holds the old lift's slot on every day that had it. An untouched day is the
+same object as in `S.split`; a day that already holds the stand-in is left alone. The stand-in's slot keeps the slot's
+set count and nothing else: MAXED, strength mode, Form Focus and a custom increment belong to the lift that left, which
+still answers for them through `exSlotsFor()`'s fall-back to the permanent split. **`S.split` is never edited by a
+trial**, so ending one is the view no longer being built, and turning the Selector off mid-trial puts the permanent
+split back at once.
+
+**The view is a copy, so a writer must not ask for it.** Three places compared `activeSplitObj()` with `S.split` to
+mean "a strength block is running", and one wrote a set count through it (`set_sets` on a block day). During a trial
+those would have told chat a strength block was running and written a set count into a copy that is thrown away. They
+ask `baseSplitObj()` now, which is what `activeSplitObj()` was before this stage.
+
+**The overlay's truth is the running experiment, not `S.swapTrials`.** The pipeline note called the trial "an overlay
+(`S.swapTrials`)". Two records of "is a trial running" could disagree after a pull, and every rule a trial must keep
+(one at a time, the cool-down, no start in a deload, 28 days at most, Stop) already lives on `S.experiments.active`.
+So the running trial is the experiment record and nothing else, and `S.swapTrials` is what must survive a pull: one
+immutable row when a trial ends (`swtRecord()`, in the same `save()`), and one for his answer. The verdict is not on
+the row. `swtTrials()` rebuilds it from the logs through `expEvaluate()`, bounded by the row's start and end.
+
+**Two different lifts cannot be compared in pounds; their progress can.** A trial's baseline is the old lift over its
+own line, as every experiment scores a baseline. A trial session is how far the stand-in has moved from its first
+clean trial session, over how far the old lift's line would have moved in the same days (`swtScore()`). That first
+session is the starting point: it counts toward the four, and it has no score. So a four-session trial scores three,
+which is the fewest `expEvaluate()` will call anything but "unclear"; that is why a trial runs 4 to 6 sessions
+(`SWT_MIN`, `SWT_MAX`) and not the spec's 3 to 6.
+
+**A trial leans toward the new lift, and the card says so.** A lift he has not trained lately climbs fast while he
+finds its working weight, so "the stand-in moved more than the old line" is the likely result of most trials. The
+running card, the finished card and the result all carry `SWT_LEAN`: it shows the new lift is moving; it cannot show
+it builds more muscle. Nothing says "proven".
+
+**When a trial ends the old lift is back, and a card asks.** Keep, or go back, on Today and in the Hub, for
+`SWT_DECIDE_DAYS` (14). Until he answers the permanent split is in force, which is what going back means, so a card he
+never answers costs nothing. Keep replaces the lift on every day the trial covered, through `agValidateFixShape()` (names
+resolved, never one lift twice on a day); it is his choice even when the result was unclear. His answer is a row, given
+once.
+
+**A trial starts only by his tap, and `swtCheck()` is the one check.** From the Selector card (`swtStartMine()`) on any
+lift that is not a clean keep, or by approving DELTA's request. Both need the Selector on, a lift in the permanent split,
+no strength block, not bench or squat, not a bodyweight lift, and a stand-in from `selCandidates()`:
+`swapCandidates()`'s own ranking, nothing already programmed, nothing under tier B, no name carrying a coaching note.
+From an agent it also needs the paid switch, and a lift INDIA marks today. The app has no list of what his gym owns, so
+a candidate he has never logged says "check your gym has it" on its row.
+
+**A permanent swap from an agent needs grounds.** `agConflict()` refuses a `swapEx` unless `agSwapNeeds()` finds a
+finished trial that favoured that lift and that he did not turn down (within `SWT_GROUND_DAYS`), a pain flag at sore or
+worse on the old lift, or the old lift left out or swapped out in 3 of its last 4 sessions on its day. That last one is
+the app's stand-in for "unavailable equipment", which it cannot see directly. A trial's own sessions are not "left
+out" (`swtDuring()`), or going back from a trial would itself become grounds. The rule is off with the Selector switch,
+so the validator is then exactly as it was. Four older tests that fed a bare `swapEx` to `agValidateFix()` to test
+name resolution and the same-day clash now call `agValidateFixShape()`, which is where those rules live.
+
+**Found in the browser on his real data: a sore flag raised a lift's fit.** While a pain flag is fresh the plateau
+watch stops judging the lift's progress (state "pain"), so its stall row reads nothing. Two sore flags on his JM Press
+(in a preview copy) took its fit from 74 to 79 and the row read "Keep". A lift flagged sore or worse is now never a
+clean keep. And the row offered "Try a replacement" on Hanging Leg Raise, a bodyweight lift `swtCheck()` would refuse:
+the row now says why instead of offering.
+
+**DELTA's swap key is a paid switch, off.** With it on, and only on a night a trial could start and INDIA marks a lift
+that has candidates, DELTA's context gains a SELECTOR block (the fit, the penalty rows, the candidates; at most
+`SEL_PROMPT_MAX` characters for at most two lifts) and its reply spec gains the `swapTrial` line. No other agent gets
+either, chat gets neither, and the chat tool's template enum never lists the trial. On his state tonight the block is
+empty, because nothing is marked.
+
+**Measured.** The suite is 4715 assertions (133 new), 0 failed; 97 mutants, each red; `scripts/clock_run.js` green.
+On his state in jsdom: `selState()` about 18 ms; a Hub repaint that reuses the strips 60 ms with the Selector off and 78
+on (it is read once a repaint, `_selPass`); rebuilding the 14-day strips 213 ms off and 409 on, once per change to his
+data. Checked in a real browser at 393 px and 320 px on his real state (a local copy with the sync and API keys
+stripped): the Selector card, an open row, the candidate list (49 px rows), a running trial and the finished-trial card
+(buttons 161 by 58 at 393, stacked 256 by 44 at 320), no element past the edge.
+
+Not built: nothing new for cites (a trial request carries the ordinary `cite`), no chat tool for trials, and the
+technique cards the spec mentions beside a swap are stage 10's.

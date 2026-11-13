@@ -239,7 +239,8 @@ setTimeout(async () => {
   ok('addEx real day ok', V({ type: 'addEx', payload: { name: 'Face Pull', day: realDay } }) !== null);
   ok('addEx fake day rejected', V({ type: 'addEx', payload: { name: 'Face Pull', day: 'D99' } }) === null);
   const realEx = ev("exName((S.split[Object.keys(S.split)[0]].exercises||[])[0])");
-  ok('swapEx ok', V({ type: 'swapEx', payload: { from: realEx, to: 'Face Pull' } }) !== null);
+  // The shape check: since V5 stage 5 a permanent swap from an agent also needs grounds (agSwapNeeds(), tested in its own section).
+  ok('swapEx ok', ev('agValidateFixShape(' + JSON.stringify({ type: 'swapEx', payload: { from: realEx, to: 'Face Pull' } }) + ')') !== null);
   ok('swapEx from a name not in the split rejected', V({ type: 'swapEx', payload: { from: 'A', to: 'B' } }) === null);
   ok('swapEx missing to rejected', V({ type: 'swapEx', payload: { from: 'A' } }) === null);
 
@@ -8803,7 +8804,8 @@ setTimeout(async () => {
     ok('addEx: a new plain exercise is allowed', (V2({type: 'addEx', payload: {name: 'Face Pull', day: dayWithout}}, 'delta') || {payload: {}}).payload.name === 'Face Pull');
     ok('addEx: junk is not', V2({type: 'addEx', payload: {name: '??', day: dayWithout}}, 'delta') === null);
     ok('addEx: nor is one already on that day', V2({type: 'addEx', payload: {name: 'Zz Step0b Press', day: 'D1'}}, 'delta') === null);
-    const sw = V2({type: 'swapEx', payload: {from: 'zz step0b press', to: 'Face Pull'}}, 'delta');
+    // Name resolution is the shape check's job (agValidateFixShape); whether a permanent swap has grounds is stage 5's.
+    const sw = ev('agValidateFixShape(' + JSON.stringify({type: 'swapEx', payload: {from: 'zz step0b press', to: 'Face Pull'}}) + ", 'delta')");
     ok('swapEx: "from" resolves to the split\u2019s own spelling, so the apply\u2019s exact match lands',
        sw && sw.payload.from === 'Zz Step0b Press', JSON.stringify(sw));
 
@@ -9445,8 +9447,10 @@ setTimeout(async () => {
     ok('swapEx: refused when "to" is already on the same day, and the reason names the day',
        V3(dup) === 'null' && /Rope Cable Curl is already on D2/.test(R3(dup)), R3(dup));
     ok('swapEx: a lowercase spelling of the same-day lift is refused too', V3({type: 'swapEx', payload: {from: 'Preacher Curl Machine', to: 'rope cable curl'}}) === 'null');
-    ok('swapEx: a lift on a DIFFERENT day still passes (one lift on two days is an ordinary split)', (JSON.parse(V3({type: 'swapEx', payload: {from: 'Preacher Curl Machine', to: 'Incline Dumbbell Curl'}})) || {payload: {}}).payload.to === 'Incline Dumbbell Curl');
-    ok('swapEx: a lift not in the split passes', (JSON.parse(V3({type: 'swapEx', payload: {from: 'Preacher Curl Machine', to: 'Spider Curl'}})) || {payload: {}}).payload.to === 'Spider Curl');
+    // The clash rule lives in the shape check; grounds for a permanent swap (V5 stage 5) are tested in their own section.
+    const VS3 = fx => ev('JSON.stringify(agValidateFixShape(' + JSON.stringify(fx) + ", 'delta') || null)");
+    ok('swapEx: a lift on a DIFFERENT day still passes (one lift on two days is an ordinary split)', (JSON.parse(VS3({type: 'swapEx', payload: {from: 'Preacher Curl Machine', to: 'Incline Dumbbell Curl'}})) || {payload: {}}).payload.to === 'Incline Dumbbell Curl');
+    ok('swapEx: a lift not in the split passes', (JSON.parse(VS3({type: 'swapEx', payload: {from: 'Preacher Curl Machine', to: 'Spider Curl'}})) || {payload: {}}).payload.to === 'Spider Curl');
     ok('swapEx: a malformed payload says what keys arrived',
        /got exercise, replacement/.test(R3({type: 'swapEx', payload: {exercise: 'A', replacement: 'B'}})) && /empty payload/.test(R3({type: 'swapEx', payload: {}})),
        R3({type: 'swapEx', payload: {exercise: 'A', replacement: 'B'}}));
@@ -17717,7 +17721,8 @@ setTimeout(async () => {
         S.scheduleMode = 'dow'; S.schedule = {0:'D1',1:'D1',2:'D1',3:'D1',4:'D1',5:'D1',6:'D1'}; S.settings.apiKey = 'sk-test';
         var t = todayKey(), i = 0;
         for(var d = mesoAddDays(t, -20); d < t; d = mesoAddDays(d, 1)) S.logs.push({id:'al'+(i++), date:d, day:'D1', scheduled:'D1', entries:[]});
-        S.overhaul = ov || {}; _stdSince = {}; sqLaneOpen = {}; sqTileOpen = ''; _anlStrip = {key:null, days:[]}; agState().proposals = [];
+        // The Selector (stage 5) is off here: this section is the analysts as stage 4 shipped them, and INDIA scoring has its own.
+        S.overhaul = Object.assign({selector:false}, ov || {}); _stdSince = {}; sqLaneOpen = {}; sqTileOpen = ''; _anlStrip = {key:null, days:[]}; agState().proposals = [];
         window.__std = null; window.__apw = []; window.__amain = []; window.__apdt = [];
       };
       window.__avol = function(spec){
@@ -17835,7 +17840,7 @@ setTimeout(async () => {
 
     // ---- INDIA and KILO never flag ----
     ev("__abase(); window.__amain = ['Zz A', 'Zz B'];");
-    ok('INDIA has no level until the Selector exists, and says so', (() => { const x = J('anlIndia()'); return x.lvl === 'nodata' && x.word === 'Not scoring yet' && x.nums.length === 2 && x.nums[0][0] === 'Zz A'; })());
+    ok('INDIA has no level while the Selector is off, and says so', (() => { const x = J('anlIndia()'); return x.lvl === 'nodata' && x.word === 'Selector off' && x.nums.length === 2 && x.nums[0][0] === 'Zz A'; })());
     ok('KILO with the library off reads as off, not as clear', (() => { const x = J('anlKilo(todayKey())'); return x.lvl === 'nodata' && x.word === 'Library off'; })());
     ev("S.overhaul = {evidence:true};");
     ok('KILO with the library on lists what each coach would be handed, by id', (() => { const x = J('anlKilo(todayKey())'); return x.lvl === 'ok' && /^\d+ entries picked$/.test(x.word) && x.nums.length === 4 && /^E\d+(, E\d+)*$/.test(x.nums[2][1]) && /not in the prompts/.test(x.line); })(), JSON.stringify(J('anlKilo(todayKey())')));
@@ -18015,6 +18020,404 @@ setTimeout(async () => {
        "_stdSince = {}; sqLaneOpen = {}; sqTileOpen = ''; _anlStrip = {key:null, days:[]}; S = JSON.parse(window.__aS);" +
        "if(window.__aLS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__aLS);" +
        "['__aS','__aLS','__aToday','__aPW','__aPL','__aStd','__aPdt','__aRead','__aChat','__abase','__avol','__aAgo','__aSM','__aCP','__std','__apw','__amain','__apdt','__aHS','__cc4','__d4sys','__snapD','__pdc','__pds'].forEach(function(k){ delete window[k]; });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
+  // ===== V5 stage 5: the Selector and swap trials (2026-11-12) =====
+  console.log('\n=== SELECTOR: A COMPUTED FIT SCORE, A SWAP TRIAL AS A THIRD SPLIT IN FORCE, THE SPLIT NEVER EDITED, A PERMANENT SWAP NEEDS GROUNDS (2026-11-12) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    ev("window.__sS = JSON.stringify(S); window.__sLS = localStorage.getItem(LS_KEY); window.__sToday = todayKey; window.__sPW = plateauWatch; window.__sPL = predLifts; window.__sMA = mesoActiveSplit; window.__sSave = save;");
+    /* The fixture. The day is NAMED (window.__sday), never today's: log ids are real milliseconds because a trial
+       is ordered by id, and their dates are counted back from the named day. Messy on purpose: the old lift's reps
+       wobble by fixed offsets, so its line has a spread and a clean straight line cannot pass for it. */
+    ev(`window.__sday = '2026-12-14';
+      todayKey = function(){ return window.__sday; };
+      plateauWatch = function(){ return (window.__spw || []).map(function(r){ return Object.assign({sig:[], flatRun:0, pctPerWeek:0, word:r.state}, r); }); };
+      predLifts = function(){ return ['Barbell Bench Press', 'Barbell Back Squat', 'Cable Row']; };
+      window.__sn = 0;
+      window.__slog = function(ago, day, entries, extra){
+        var l = Object.assign({id:Date.now() - ago * 86400000 + (window.__sn++), date:mesoAddDays(window.__sday, -ago), day:day, scheduled:day, entries:entries}, extra || {});
+        S.logs.push(l); return l;
+      };
+      window.__sets = function(w, reps, ef){ return reps.map(function(r){ var s = {w:w, r:r}; if(ef != null){ s.ef = ef; } return s; }); };
+      window.__sb = function(ov){
+        S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+        S.scheduleMode = 'dow'; S.schedule = {0:'D1',1:'D2',2:'D1',3:'D2',4:'D1',5:'D2',6:'D1'}; S.settings.apiKey = 'sk-test';
+        S.split = {
+          D1:{name:'Upper', exercises:[{name:'Barbell Bench Press', inc:5}, {name:'Cable Row', inc:2.5, sets:4, maxed:true}, 'Lat Pulldown', 'Rope Cable Curl']},
+          D2:{name:'Lower', exercises:[{name:'Barbell Back Squat', inc:5}, {name:'Cable Row', inc:2.5, sets:4, maxed:true}, {name:'Plate Loaded Lat Pulldown', inc:5}, 'Machine Leg Curl']}};
+        S.overhaul = ov || {}; S.logs = []; S.pain = []; S.swapTrials = []; S.experiments = {active:null, history:[], declined:{}, lastEnded:''};
+        agState().proposals = []; selOpenLift = ''; selPickFor = ''; _stdSince = {}; _anlStrip = {key:null, days:[]};
+        window.__sday = '2026-12-14';
+        // the stand-in: logged three times long ago, so it is a lift he knows
+        [62, 58, 54].forEach(function(a){ window.__slog(a, 'D9', [{exercise:'Row Machine', sets:window.__sets(120, [10, 10, 9])}]); });
+        // eight sessions of the old lift on a flat line, every set a grinder, the reps wobbling by fixed offsets
+        var reps = [[10,9,8],[9,9,8],[10,9,9],[9,8,8],[10,10,8],[9,9,9],[10,9,8],[9,9,8]];
+        [24, 21, 18, 15, 12, 9, 6, 3].forEach(function(a, i){
+          window.__slog(a, i % 2 ? 'D2' : 'D1', [{exercise:'Cable Row', sets:window.__sets(100, reps[i], 30)}, {exercise:'Barbell Bench Press', sets:window.__sets(155, [6, 5, 5], 30)},
+            {exercise:'Lat Pulldown', sets:window.__sets(120, [10, 10, 9], 70)}]);
+        });
+        window.__spw = window.__sMARK();
+      };
+      window.__sMARK = function(){ return [
+        {lift:'Cable Row', state:'falling', lvl:'red', word:'falling', sig:[{k:'falling', txt:'e1RM down 6% over the last 3 sessions'}], pctPerWeek:-1.1},
+        {lift:'Barbell Bench Press', state:'falling', lvl:'red', word:'falling', sig:[{k:'falling', txt:'e1RM down 5%'}], pctPerWeek:-0.9},
+        {lift:'Lat Pulldown', state:'ok', lvl:'green', word:'on track', pctPerWeek:1.2},
+        {lift:'Plate Loaded Lat Pulldown', state:'ok', lvl:'green', word:'on track', pctPerWeek:0.9},
+        {lift:'Rope Cable Curl', state:'thin', lvl:'calm', word:'not enough data', sig:[{k:'thin', txt:'3 clean sessions; it reads from 6 over 3 weeks'}], pctPerWeek:null},
+        {lift:'Barbell Back Squat', state:'ok', lvl:'green', word:'on track', pctPerWeek:0.6}]; };
+      window.__sQUIET = function(){ return window.__sMARK().map(function(r){ return (r.lift === 'Cable Row' || r.lift === 'Barbell Bench Press') ? {lift:r.lift, state:'ok', lvl:'green', word:'on track', pctPerWeek:0.8} : r; }); };
+      window.__srow = function(nm){ return selState().lifts.filter(function(s){ return s.lift === nm; })[0]; };
+      // four trial sessions of the stand-in, at these top weights, dated forward from the start
+      window.__strial = function(ws, extra){
+        // Real sessions are logged before the trial is read, so the start is put a minute back and the ids fall inside it.
+        var x0 = S.experiments.active; x0.startedAtMs = Date.now() - 60000;
+        ws.forEach(function(wt, i){
+          var l = {id:x0.startedAtMs + 1000 * (i + 1) + (window.__sn++), date:mesoAddDays('2026-12-14', 1 + 2 * i), day:i % 2 ? 'D2' : 'D1', scheduled:'D1',
+            entries:[{exercise:'Row Machine', sets:window.__sets(wt, [10, 9, 9], 60)}]};
+          S.logs.push(Object.assign(l, (extra || {})[i] || {}));
+        });
+        window.__sday = mesoAddDays('2026-12-14', 1 + 2 * (ws.length - 1));
+      };`);
+    const AG = ['zulu', 'charlie', 'delta', 'echo'];
+    const prompts = () => AG.map(id => ev("agBaseContext('" + id + "')")).concat(AG.map(id => ev("chatContext('" + id + "')"))).concat(AG.map(id => ev("agJsonSpec('" + id + "')")));
+    const tools = () => AG.map(id => JSON.stringify(ev("coachToolDefs('" + id + "')"))).join('\n');
+
+    // ---- the switches ----
+    ev('__sb()');
+    ok('switches: the Selector is free and on, DELTA\'s swap key is paid and off', ev("ovOn('selector')") === true && ev("OV.selector.paid") === false && ev("ovOn('swapKey')") === false && ev("OV.swapKey.paid") === true);
+    ev("S.overhaul = {selector:false};");
+    ok('off: no reading, no card, and INDIA says the Selector is off and judges nothing', ev('selState().lifts.length') === 0 && ev('selCardHTML()') === '' && ev("anlIndia().word") === 'Selector off' && ev("anlIndia().lvl") === 'nodata');
+    ev("S.overhaul = {};");
+
+    // ---- the fit score ----
+    const cr = J("__srow('Cable Row')");
+    const sum = r => r.rows.reduce((a, x) => a + x.pts, 0);
+    ok('fit is 100 less the penalty rows, and every penalty is a row he can read', cr.fit === 100 - sum(cr) && cr.fit === 45 && cr.rows.every(r => r.label && r.txt),
+      JSON.stringify(cr.rows.map(r => r.k + ':' + r.pts)));
+    ok('score: a falling lift on the watch, every set a grinder, its muscles moving on other lifts -> marked for a trial, with the app\'s candidates',
+      cr.verdict === 'trial' && cr.word === 'Try a swap' && cr.cands.length > 0 && cr.cands.length <= ev('SEL_CAND_MAX') && cr.cands[0].name === 'Row Machine',
+      cr.verdict + ' ' + JSON.stringify(cr.cands.map(c => c.name)));
+    ok('score: the stall, the hard sets and the muscle response each took their own points', cr.rows.find(r => r.k === 'stall').pts === 30 && cr.rows.find(r => r.k === 'grind').pts === 15 && cr.rows.find(r => r.k === 'resp').pts === 10);
+    ok('score: no candidate is already programmed, a bodyweight lift, or bench or squat', cr.cands.every(c => ev("selProgrammed().indexOf(" + JSON.stringify(c.name) + ")") < 0 && !ev("selProtected(" + JSON.stringify(c.name) + ")")));
+    ev("S.pain.push({id:'spb', date:mesoAddDays(todayKey(), -3), exercise:'Barbell Bench Press', level:2});");
+    ev("S.split.D1.exercises[0] = 'Incline Dumbbell Press';");
+    ok('candidates: bench is never offered as a stand-in, even when the ranker would offer it', ev("swapCandidates('Incline Dumbbell Press', {exclude:selProgrammed(), limit:12}).some(function(r){ return r.name === 'Barbell Bench Press' && r.score >= SEL_CAND_MIN; })") === true &&
+      ev("selCandidates('Incline Dumbbell Press').some(function(r){ return r.name === 'Barbell Bench Press'; })") === false);
+    ev("S.split.D1.exercises[0] = {name:'Barbell Bench Press', inc:5};");
+    const bp = J("__srow('Barbell Bench Press')");
+    ev('S.pain = [];');
+    ok('bench: the same falling row and the same grinders are held at watch, and the row says why', bp.verdict === 'watch' && bp.prot === true && bp.fit < ev('SEL_TRIAL') && bp.caps.length === 1 && /never swapped/.test(bp.caps[0]),
+      bp.fit + ' ' + bp.verdict);
+    ok('squat is protected too, and a lift that only shares the word is not', ev("selProtected('Barbell Back Squat')") === true && ev("selProtected('Smith Machine Bench Press')") === false && ev("selProtected('Cable Row')") === false);
+    const thin = J("__srow('Rope Cable Curl')");
+    ok('score: too little data is not scored: no number, no verdict either way', thin.fit === null && thin.verdict === 'thin' && /3 clean sessions/.test(thin.rows[0].txt));
+    ok('score: a lift the watch has no row for reads the same', J("__srow('Machine Leg Curl')").verdict === 'thin' && J("__srow('Machine Leg Curl')").fit === null);
+    ok('score: marked lifts come first, lowest fit first', J('selState().lifts')[0].lift === 'Cable Row');
+    // the noise: the old lift's fixed wobble is small; a wild series is not
+    const nz = J("selNoise('Cable Row')");
+    ok('noise: the spread around the lift\'s own line, read over its clean sessions', nz && nz.n === 8 && nz.pct > 0.5 && nz.pct < ev('SEL_NOISE_LO'), JSON.stringify(nz));
+    ev("S.logs.filter(function(l){ return l.entries.some(function(e){ return e.exercise === 'Cable Row'; }); }).forEach(function(l, i){ l.entries[0].sets = window.__sets(i % 2 ? 80 : 115, [10, 9, 8], 30); });");
+    const nz2 = J("selNoise('Cable Row')");
+    ok('noise: a lift that swings session to session takes the whole noise penalty', nz2.pct >= ev('SEL_NOISE_HI') && J("__srow('Cable Row')").rows.find(r => r.k === 'noise').pts === ev('SEL_W.noise'), JSON.stringify(nz2));
+    ev('__sb()');
+    ok('noise: fewer than ' + ev('SEL_MIN') + ' clean sessions is not read', ev("selNoise('Row Machine')") === null);
+    // pain
+    ev("S.pain.push({id:'sp1', date:mesoAddDays(todayKey(), -3), exercise:'Cable Row', level:3});");
+    ok('pain: a sharp flag in the last 14 days reads swap allowed', J("__srow('Cable Row')").verdict === 'swap' && J("__srow('Cable Row')").rows.find(r => r.k === 'pain').pts === ev('SEL_W.pain'));
+    ev("S.pain = [{id:'sp2', date:mesoAddDays(todayKey(), -3), exercise:'Barbell Bench Press', level:3}];");
+    ok('pain: even flagged sharp, bench is held at watch', J("__srow('Barbell Bench Press')").verdict === 'watch');
+    ev("S.pain = [{id:'sp3', date:mesoAddDays(todayKey(), -3), exercise:'Cable Row', level:2}]; window.__spw = window.__sQUIET(); window.__spw[0] = {lift:'Cable Row', state:'pain', lvl:'calm', word:'pain flagged', sig:[{k:'pain', txt:'flagged sore'}], pctPerWeek:-1.1};");
+    const so = J("__srow('Cable Row')");
+    ok('pain: a lift flagged sore is never a clean keep, though the watch has stopped judging its progress', so.fit >= ev('SEL_KEEP') && so.verdict === 'watch' && so.rows.find(r => r.k === 'stall').pts === 0 && so.rows.find(r => r.k === 'pain').pts === 10, so.fit + ' ' + so.verdict);
+    ev("S.pain = [{id:'sp4', date:mesoAddDays(todayKey(), -3), exercise:'Cable Row', level:1}];");
+    ok('pain: a niggle alone does not move the verdict', J("__srow('Cable Row')").verdict === 'keep');
+    ev("S.pain = []; window.__spw = window.__sMARK();");
+    // caps
+    ev("S.logs.filter(function(l){ return l.entries.some(function(e){ return e.exercise === 'Cable Row'; }); }).forEach(function(l, i){ l.entries[0].sets = window.__sets(i % 2 ? 80 : 115, [10, 9, 8], 30); });" +
+       "S.pain = [{id:'sr1', date:mesoAddDays(todayKey(), -20), exercise:'Cable Row', level:2}, {id:'sr2', date:mesoAddDays(todayKey(), -17), exercise:'Cable Row', level:2}];" +
+       "window.__spw[0].state = 'reset'; window.__spw[0].lvl = 'calm';");
+    const rs = J("__srow('Cable Row')");
+    ok('cap: a lift in a reset is held at watch however low its fit: it is measured from the reset first', rs.fit < ev('SEL_TRIAL') && rs.verdict === 'watch' && /reset is in progress/.test(rs.caps[0] || ''), rs.fit + ' ' + rs.verdict);
+    ev("__sb();");
+    ev("window.__spw = window.__sMARK(); agState().proposals = [{id:'sp', agent:'delta', status:'approved', closed:mesoAddDays(todayKey(), -5), fix:{type:'liftReset', payload:{name:'Cable Row', w:90, days:14}}}];");
+    const mo = J("__srow('Cable Row')");
+    ok('cap: something already being tried on the lift holds it at watch, and names it', mo.verdict === 'watch' && mo.fit === 45 && /already being tried/.test(mo.caps[0]), mo.verdict + ' ' + JSON.stringify(mo.caps));
+    ev("agState().proposals = []; window.__spw[2].pctPerWeek = -0.4; window.__spw[3].pctPerWeek = -0.2; S.pain = [{id:'sf1', date:mesoAddDays(todayKey(), -20), exercise:'Cable Row', level:2}];");
+    const fl = J("__srow('Cable Row')");
+    ok('cap: when the other lifts for its muscles are flat too, the lift is not the first suspect, however low its fit', fl.fit < ev('SEL_TRIAL') && fl.verdict === 'watch' && fl.rows.find(r => r.k === 'resp').pts === 0 &&
+      /flat too/.test(fl.rows.find(r => r.k === 'resp').txt) && /flat too/.test(fl.caps[0] || ''), fl.fit + ' ' + fl.verdict + ' ' + JSON.stringify(fl.caps));
+    ev("S.pain = [];");
+    ev("window.__spw = window.__sMARK(); window.__sSC = swapCandidates; swapCandidates = function(){ return []; };");
+    ok('cap: with no close replacement there is nothing to try, and it says so', J("__srow('Cable Row')").verdict === 'watch' && /No close replacement/.test(J("__srow('Cable Row')").caps[0]));
+    ev("swapCandidates = window.__sSC;");
+    // left out
+    ev("__slog(2, 'D1', [{exercise:'Barbell Bench Press', sets:__sets(155, [5, 5, 5])}]); __slog(1, 'D2', [{exercise:'Barbell Back Squat', sets:__sets(225, [5, 5, 5])}]);");
+    const sk = J("selSkips('Cable Row', 6)");
+    ok('left out: a session on its day without it counts', sk.n === 6 && sk.absent === 2 && sk.out === 2, JSON.stringify(sk));
+    ev("S.logs[S.logs.length - 1].callDrop = 'Cable Row'; S.logs[S.logs.length - 2].swapped = ['Row Machine']; S.logs[S.logs.length - 2].swapFrom = {'Row Machine':'Cable Row'};");
+    const sk2 = J("selSkips('Cable Row', 6)");
+    ok('left out: a lift the day\'s call dropped is not his leaving it out, and a gym swap is counted as one', sk2.absent === 0 && sk2.swapped === 1, JSON.stringify(sk2));
+    ev("S.logs.forEach(function(l){ if(l.day === 'D1' || l.day === 'D2'){ l.plan = {'Cable Row':{w:100, lo:8, hi:12, n:4}}; } }); S.logs.filter(function(l){ return l.entries.some(function(e){ return e.exercise === 'Cable Row'; }); })[7].quick = [{k:'short'}];");
+    const sk3 = J("selSkips('Cable Row', 6)");
+    ok('left out: fewer sets than planned counts as short, except on a short-on-time day', sk3.short === sk3.n - sk3.out - 1 && sk3.short >= 3, JSON.stringify(sk3));
+    // duplicate
+    ev('__sb()');
+    ok('duplicate: the same muscle and angle on two DIFFERENT days is ordinary programming', ev("selDup('Lat Pulldown')") === null);
+    ev("S.split.D1.exercises.push('Plate Loaded Lat Pulldown');");
+    ok('duplicate: on the same day it is one, and each names the other', J("selDup('Lat Pulldown')").other === 'Plate Loaded Lat Pulldown' && J("selDup('Lat Pulldown')").day === 'D1' && J("__srow('Lat Pulldown')").rows.find(r => r.k === 'dup').pts === ev('SEL_W.dup'));
+    ev('__sb()');
+    // never stored, and a broken score is not a verdict
+    ev('activeSplitObj(); agState();');   // mesoState() and agState() fill their own defaults on first read, as they always did
+    const before = ev('JSON.stringify(S)');
+    ev('window.__sbef = JSON.parse(JSON.stringify(S));');
+    ev("selState(); selCardHTML(); anlIndia(); swtDecideCardHTML(); selContextLine('delta'); selMenuLine('delta');");
+    ok('the score is worked out when read: reading it, the card and INDIA leaves S byte-identical', ev('JSON.stringify(S)') === before, ev("Object.keys(S).filter(function(k){ return JSON.stringify(S[k]) !== JSON.stringify(window.__sbef[k]); }).join()"));
+    ev("window.__sSN = selNoise; selNoise = function(){ throw new Error('boom'); };");
+    ok('a lift whose score throws reads too few sessions: never a mark, never a clean bill', J("__srow('Cable Row')").verdict === 'thin' && J("__srow('Cable Row')").fit === null && ev('selState().lvl') !== 'amber');
+    ev("selNoise = window.__sSN;");
+
+    // ---- INDIA ----
+    ok('the level is one field: a marked lift lights it, and it is never the top level', ev('selState().lvl') === 'amber' && ev('selLevelOn(todayKey())') === 'amber' && ev('anlIndia().lvl') === ev('selState().lvl'));
+    const ind = J('anlIndia()');
+    ok('INDIA: a marked lift lights it, with the lift and what to do, and DELTA shows it', ind.lvl === 'amber' && ind.word === 'Cable Row: try a swap' && J("anlLeadStatus('delta', {india:Object.assign({id:'india'}, anlIndia())})").word === 'INDIA: Cable Row: try a swap');
+    ok('INDIA: no status word names a level', !/\b(red|amber|green|ok|nodata|held)\b/i.test(ind.word) && !/\b(red|amber|green|nodata)\b/i.test(ind.line + ind.change));
+    ok('INDIA: the numbers behind it are the marked and watch lifts, then how many keep', ind.nums[0][0] === 'Cable Row' && /^fit 45 · try a swap · /.test(ind.nums[0][1]) && ind.nums.some(n => n[0] === 'Keep'));
+    ev("window.__spw = window.__sQUIET();");
+    const indq = J('anlIndia()');
+    ok('INDIA: nothing marked reads clear, and it is never red', indq.lvl === 'ok' && /fits|to watch/.test(indq.word), indq.word);
+    ev("window.__spw = [];");
+    ok('INDIA: no lift scored is no data, never a clean bill', J('anlIndia()').lvl === 'nodata' && J('anlIndia()').word === 'Too few sessions' && ev('selState().lvl') === 'nodata' && ev('selLevelOn(todayKey())') === 'nodata');
+    ev("window.__spw = window.__sMARK();");
+    ok('INDIA: it has a strip now, and the strip key moves with the trial and the pain flags', ev("sqCells('india', anlIndia(), [{d:'x', lv:{india:'ok'}}]).join()") === 'ok,amber' &&
+      (function(){ const k1 = ev('anlStripKey()'); ev("S.pain.push({id:'k', date:todayKey(), exercise:'Zz', level:1});"); const k2 = ev('anlStripKey()'); ev("S.pain = []; S.experiments.active = {id:'xk'};"); const k3 = ev('anlStripKey()'); ev('S.experiments.active = null;'); return k1 !== k2 && k3 !== k1; })());
+    ev("S.overhaul = {selector:false};");
+    ok('INDIA: with the Selector off it has no strip, as before', ev("sqCells('india', anlIndia(), [{d:'x', lv:{india:'ok'}}])") === null);
+    ev("S.overhaul = {};");
+
+    // ---- the overlay: a third split in force ----
+    ok('no trial: the split in force IS the permanent split, the very same object', ev('activeSplitObj() === S.split') === true && ev('baseSplitObj() === S.split') === true && ev('swapTrialOn()') === null);
+    const rxAll = () => ev("JSON.stringify(['Barbell Bench Press', 'Lat Pulldown', 'Rope Cable Curl', 'Barbell Back Squat', 'Machine Leg Curl'].map(function(n){ var e = buildOneLiveExercise(n, null, {}); return [n, e.targetW, e.lo, e.hi, e.planned, (e._decision || {}).code, isMaxed(n), incForExercise(n)]; }))");
+    const rx0 = rxAll(), split0 = ev('JSON.stringify(S.split)');
+    const st0 = J("swtStartMine('Cable Row', 'Row Machine')");
+    const X = J('expActive()');
+    ok('his own start: one tap, the same experiment record, four sessions, and it says who started it', st0.ok === true && X.template === 'swapTrial' && X.lift === 'Cable Row' && X.to === 'Row Machine' && X.requiredSessions === ev('SWT_MIN') && X.by === 'you' && X.baselineIds.length >= 3,
+      JSON.stringify(st0));
+    ok('a trial NEVER edits the permanent split', ev('JSON.stringify(S.split)') === split0);
+    ok('trial on: the stand-in takes the slot on every day that held the lift, in the same position', ev("dayExNames('D1').join()") === 'Barbell Bench Press,Row Machine,Lat Pulldown,Rope Cable Curl' && ev("dayExNames('D2').join()") === 'Barbell Back Squat,Row Machine,Plate Loaded Lat Pulldown,Machine Leg Curl');
+    ok('trial on: the view is a copy only where it changed', ev('activeSplitObj() !== S.split') === true && ev('baseSplitObj() === S.split') === true && ev("activeSplitObj().D1 !== S.split.D1") === true && ev("activeSplitObj().D1.name") === 'Upper');
+    ev("S.split.D3 = {name:'Arms', exercises:['Rope Cable Curl']};");
+    ok('trial on: a day the trial does not touch is the same object', ev('activeSplitObj().D3 === S.split.D3') === true);
+    ev("delete S.split.D3;");
+    ok('trial on: the stand-in keeps the slot\'s set count and nothing else of the old lift', ev("liveSlotSets('D1')['Row Machine']") === 4 && ev("isMaxed('Row Machine')") === false && ev("isStrMode('Row Machine')") === false && ev("incForExercise('Row Machine')") === ev("incFor('Row Machine')"));
+    ok('trial on: the old lift still answers for its own flags, from the permanent split', ev("isMaxed('Cable Row')") === true && ev("incForExercise('Cable Row')") === 2.5);
+    ok('trial on: LIVE, Today\'s key lifts and the plan\'s shape all hold the stand-in', ev("liveSessionNames('D1').names.join()") === ev("dayExNames('D1').join()") && ev("todayKeyLifts('D1', null, 4).map(function(x){ return x.name; }).join()") === ev("dayExNames('D1').join()") &&
+      ev("todayPlanShape('D1').sets") === 3 + 4 + 3 + 3);
+    ok('trial on: every OTHER lift is prescribed exactly as before', rxAll() === rx0);
+    ok('trial on: the agents\' SPLIT text shows who is on the day, and that the permanent lift is unchanged', /Row Machine 4x\d+-\d+ \(swap trial: standing in for Cable Row, which is still the permanent lift\)/.test(ev('agContext()')) && !/Cable Row 4x/.test(ev('agContext()')));
+    ok('trial on: the agents are told a test is running and what it is', /EXPERIMENT RUNNING: Swap trial on Cable Row — Train Row Machine in place of Cable Row\./.test(ev('expContextLine()')));
+    ok('trial on: LIVE says so on the stand-in, and on no other lift', ev("expLiveNote('Row Machine')") === 'Swap trial: standing in for Cable Row.' && ev("expLiveNote('Cable Row')") === '' && ev("expLiveNote('Lat Pulldown')") === '');
+    ok('trial on: a swap trial is not a strength block (chat\'s day list and "split in force" still say permanent)', !/strength block runs/.test(tools()) && /Split in force: the permanent split/.test(ev("chatContext('delta')")));
+    ok('trial on: the stand-in reads "on trial" and is not scored; both lifts count as programmed', J("__srow('Row Machine')").verdict === 'ontrial' && J("__srow('Row Machine')").fit === null && ev("selProgrammed().indexOf('Cable Row')") >= 0 && ev("selProgrammed().indexOf('Row Machine')") >= 0);
+    ok('trial on: the watch still covers both lifts', ev('pwLifts.toString().length') > 0 && ev("(function(){ var s = {}; [S.split, activeSplitObj()].forEach(function(o){ Object.keys(o).forEach(function(k){ o[k].exercises.forEach(function(x){ s[exName(x)] = 1; }); }); }); return !!s['Cable Row'] && !!s['Row Machine']; })()") === true);
+    ev("S.overhaul = {selector:false};");
+    ok('switch off mid-trial: the overlay is gone at once and the permanent split is in force', ev('activeSplitObj() === S.split') === true && ev("dayExNames('D1')[1]") === 'Cable Row');
+    ev("S.overhaul = {}; mesoActiveSplit = function(){ return window.__sblk; }; window.__sblk = {S1:{name:'Heavy', exercises:[{name:'Cable Row', repMode:'str'}]}};");
+    ok('a strength block\'s own split is never overlaid', ev('activeSplitObj() === window.__sblk') === true && ev("activeSplitObj().S1.exercises[0].name") === 'Cable Row');
+    ev("mesoActiveSplit = window.__sMA; S.split.D2.exercises.push('Row Machine');");
+    ok('a day that already holds the stand-in is left alone: never one lift twice on a day', ev("dayExNames('D2').filter(function(n){ return n === 'Row Machine'; }).length") === 1 && ev("dayExNames('D2')[1]") === 'Cable Row' && ev('activeSplitObj().D2 === S.split.D2') === true);
+    ev("S.split.D2.exercises.pop();");
+    ev("S.experiments.active.lift = 'Zz Gone From The Split';");
+    ok('a trial whose lift is no longer in the split changes nothing: the split in force is the permanent one itself', ev('activeSplitObj() === S.split') === true);
+    ev("S.experiments.active.lift = 'Cable Row'; S.experiments.active.to = ''; ");
+    ok('a malformed trial record builds no view', ev('activeSplitObj() === S.split') === true);
+    ev("S.experiments.active.to = 'Row Machine';");
+
+    // ---- every experiment rule still holds ----
+    ok('one at a time: a second trial cannot start while one runs', J("swtStartMine('Lat Pulldown', 'Row Machine')").ok === false);
+    ok('the queue treats the stand-in as under test: no set change, reset or swap on either lift', /experiment is running/.test(ev("agConflict({type:'liftReset', payload:{name:'Row Machine', w:100, days:14}})")) &&
+      /experiment is running/.test(ev("agConflict({type:'setCount', payload:{exercise:'Cable Row', day:'D1', sets:5}})")) && /experiment is running/.test(ev("agConflict({type:'swapEx', payload:{from:'Cable Row', to:'Barbell Row'}})")));
+
+    // ---- measuring it ----
+    ev("__strial([120, 125, 130, 135]);");
+    const ses = J('expSessions(expActive())');
+    ok('sessions: the first is the starting point, counted and never scored; the rest are scored against the old lift\'s line', ses.length === 4 && ses[0].anchor === true && ses[0].state === 'clean' && ses[0].score === null &&
+      ses.slice(1).every(z => z.state === 'clean' && z.anchor === false && z.score > 1.02 && z.score < 1.2), JSON.stringify(ses.map(z => [z.state, z.score && +z.score.toFixed(3), z.anchor])));
+    ok('sessions: the experiment card shows the starting point as one', (function(){ const h = ev('expCardHTML()'); return /the starting point/.test(h) && /Swap trial · Cable Row/.test(h) && /Started by you, from the Selector/.test(h) && /leans toward the new lift/.test(h); })());
+    const rec = J('expTick()');
+    const rows = J('S.swapTrials');
+    ok('end: after the required clean sessions it closes, and the old lift is back on its day with nothing to undo', rec && rec.status === 'done' && ev('expActive()') === null && ev('activeSplitObj() === S.split') === true && ev("dayExNames('D1')[1]") === 'Cable Row' && ev('JSON.stringify(S.split)') === split0);
+    ok('end: one immutable row records the trial, and it carries no verdict', rows.length === 1 && rows[0].id === 'st' + X.id && rows[0].from === 'Cable Row' && rows[0].to === 'Row Machine' && rows[0].status === 'done' && rows[0].sessions === 4 &&
+      rows[0].t > 0 && !('result' in rows[0]) && !('favoured' in rows[0]) && ev("swtRowOk(S.swapTrials[0])") === true);
+    ev("swtRecord(Object.assign({}, S.experiments.history[0]));");
+    ok('end: the row is written once', ev('S.swapTrials.length') === 1);
+    const T1 = J('swtTrials()[0]');
+    ok('result: worked out when read: the stand-in moved, the old line was flat, so it favoured the new lift', T1.favoured === true && T1.res.direction === 'better' && T1.res.nExp === 3 && T1.res.deltaPct > 3 && T1.decided === '', JSON.stringify(T1.res));
+    ok('result: it is read from the logs, so a corrected session changes it', (function(){ ev("S.logs.slice(-3).forEach(function(l){ l.entries[0].sets = window.__sets(120, [10, 9, 9], 60); });"); const f = J('swtTrials()[0]').favoured; ev("S.logs.slice(-3).forEach(function(l, i){ l.entries[0].sets = window.__sets(125 + 5 * i, [10, 9, 9], 60); });"); return f === false && J('swtTrials()[0]').favoured === true; })());
+    ok('result: a session logged after the trial ended is not part of it', (function(){ ev("S.logs.push({id:Date.now() + 9e6, date:todayKey(), day:'D1', entries:[{exercise:'Row Machine', sets:window.__sets(300, [10], 60)}]});"); const n = J('swtTrials()[0]').res.nExp; ev('S.logs.pop();'); return n === 3; })());
+    ok('the sync merge knows the collection, under its own key prefix', ev("SYNC_HISTORY.swapTrials.key({id:'stq'})") === 's|stq' && ev("Object.keys(SYNC_HISTORY).filter(function(k){ return SYNC_HISTORY[k].key({id:'q', date:'d', exercise:'e', e1rm:1}).charAt(0) === 's'; }).join()") === 'swapTrials' && ev("Array.isArray(DEFAULT_STATE.swapTrials)") === true);
+
+    // ---- keep or go back ----
+    const pend = J('swtPending()');
+    const card = ev('swtDecideCardHTML()');
+    ok('the card asks: keep the new lift or go back, with the result and what it cannot show', pend && pend.row.id === rows[0].id && /Keep Row Machine/.test(card) && /Go back to Cable Row/.test(card) && /moved \+[\d.]+% against the line Cable Row was on/.test(card) && /not proof/.test(card) && /leans toward the new lift/.test(card) &&
+      (card.match(/data-id="st/g) || []).length === 2);
+    ev("setMode('review'); showMainTab('home'); renderHome();");   // the first paint fills lazy defaults, as it always did
+    const hb = ev('JSON.stringify(S)');
+    ev('renderHome();');
+    ok('Today shows the card and only reads', ev("document.querySelectorAll('.swt-card').length") >= 1 && ev("document.querySelectorAll('.swt-card .btn[data-id]').length") >= 2 && ev('JSON.stringify(S)') === hb);
+    ok('a trial that left the lift off its day is not "left out"', J("selSkips('Cable Row', 4)").absent === 0 && ev("agSwapGround('Cable Row', 'Barbell Row')") === '');
+    ok('queue: a permanent swap to the lift the trial favoured now has grounds', ev("agSwapGround('Cable Row', 'Row Machine')") === 'trial' && ev("agValidateFix({type:'swapEx', payload:{from:'Cable Row', to:'Row Machine'}}, 'delta')") !== null);
+    const sKeep = ev('JSON.stringify(S)');
+    const bk = J("swtDecide('" + rows[0].id + "', false)");
+    ok('go back: nothing in the split changes, and his answer is a row', bk.ok === true && ev('JSON.stringify(S.split)') === split0 && ev('S.swapTrials.length') === 2 && J('S.swapTrials[1]').ref === rows[0].id && J('S.swapTrials[1]').keep === false && J('swtTrials()[0]').decided === 'back' && ev('swtPending()') === null && ev('swtDecideCardHTML()') === '');
+    ok('go back: a trial he turned down is no longer grounds for an agent', ev("agSwapGround('Cable Row', 'Row Machine')") === '' && ev("agValidateFix({type:'swapEx', payload:{from:'Cable Row', to:'Row Machine'}}, 'delta')") === null);
+    ok('his answer is given once', J("swtDecide('" + rows[0].id + "', true)").ok === false && ev('JSON.stringify(S.split)') === split0);
+    ev("S = JSON.parse(" + JSON.stringify(sKeep) + ");");
+    const kp = J("swtDecide('" + rows[0].id + "', true)");
+    ok('keep: the stand-in replaces the lift on every day the trial covered, keeping the slot\'s sets and not the old lift\'s flags', kp.ok === true && ev("S.split.D1.exercises[1].name") === 'Row Machine' && ev("S.split.D2.exercises[1].name") === 'Row Machine' && ev("S.split.D1.exercises[1].sets") === 4 &&
+      ev("S.split.D1.exercises[1].maxed") === undefined && ev("S.split.D1.exercises.length") === 4 && J('swtTrials()[0]').decided === 'keep' && ev('swtPending()') === null);
+    ev("S = JSON.parse(" + JSON.stringify(sKeep) + "); S.split.D1.exercises.push('Row Machine');");
+    ok('keep: never one lift twice on a day, even from the card', J("swtDecide('" + rows[0].id + "', true)").ok === false && ev('S.swapTrials.length') === 1);
+    ev("S = JSON.parse(" + JSON.stringify(sKeep) + "); window.__sday = mesoAddDays(S.swapTrials[0].endedAt, " + ev('SWT_DECIDE_DAYS') + ");");
+    ok('the card stops asking after ' + ev('SWT_DECIDE_DAYS') + ' days: the old lift is already back, which is what going back means', ev('swtPending()') === null && ev('swtDecideCardHTML()') === '');
+    ev("window.__sday = mesoAddDays(S.swapTrials[0].endedAt, " + (ev('SWT_DECIDE_DAYS') - 1) + ");");
+    ok('and asks until then', ev('swtPending()') !== null);
+    ev("S.overhaul = {selector:false};");
+    ok('with the Selector off there is no card', ev('swtDecideCardHTML()') === '');
+    ev("S.overhaul = {}; S.swapTrials.push({id:'stbad', from:'Cable Row', to:'Cable Row', startedAtMs:1, endedAtMs:2, endedAt:'2026-12-01', status:'done', sessions:4, baselineIds:[]}, {id:'stbad2', from:'A', to:'B', startedAtMs:5, endedAtMs:2, endedAt:'2026-12-01', status:'done', sessions:4, baselineIds:[]}, {id:'stbad3', from:'A', to:'B', startedAtMs:1, endedAtMs:2, endedAt:'2026-12-01', status:'won', sessions:4, baselineIds:[]});");
+    ok('a row that fails the check is ignored, never repaired', ev('swtTrials().length') === 1 && ev('S.swapTrials.length') === 4);
+
+    // ---- an unclear trial, a stopped one, sessions that do not count ----
+    ev("__sb(); swtStartMine('Cable Row', 'Row Machine'); __strial([120, 120, 120, 120]); expTick();");
+    const T2 = J('swtTrials()[0]');
+    ok('unclear: a stand-in that did not move does not favour itself, and is no grounds for an agent', T2.row.status === 'done' && T2.favoured === false && T2.res.direction === 'unclear' && ev("agSwapGround('Cable Row', 'Row Machine')") === '' && /No clear difference/.test(ev('swtDecideCardHTML()')));
+    ok('unclear: he can still keep it; the choice is his', J("swtDecide(swtTrials()[0].row.id, true)").ok === true && ev("S.split.D1.exercises[1].name") === 'Row Machine');
+    ev("__sb(); swtStartMine('Cable Row', 'Row Machine'); __strial([120, 125, 130, 135], {1:{deload:true}, 2:{entries:[{exercise:'Cable Row', sets:__sets(100, [9, 9, 8], 30)}]}, 3:{swapped:['Row Machine']}});");
+    const ses2 = J('expSessions(expActive())');
+    ok('excluded: a deload session is left out, and a day he did the old lift instead reads not followed', ses2[1].state === 'excluded' && ses2[2].state === 'skipped' && ses2[3].state === 'excluded' && ses2.filter(z => z.state === 'clean').length === 1 && ev('expTick()') === null && ev('swapTrialOn()') !== null);
+    ev("expStop();");
+    ok('stopped by him: the overlay ends, the row says stopped, and no card asks', ev('expActive()') === null && ev('activeSplitObj() === S.split') === true && J('S.swapTrials[0]').status === 'stopped' && ev('swtPending()') === null);
+    ev("[1, 2, 3].forEach(function(i){ S.logs.push({id:Date.now() + 5e6 + i, date:todayKey(), day:'D1', entries:[{exercise:'Row Machine', sets:__sets(120 + 10 * i, [10, 9, 9], 60)}]}); });");
+    ok('a stopped trial is read up to where it stopped: sessions logged afterwards are not part of it', J('swtTrials()[0]').res === null);
+    ok('the cool-down holds for a trial too', /cool-down/.test(J("swtStartMine('Cable Row', 'Row Machine')").error || ''));
+    ev("__sb(); swtStartMine('Cable Row', 'Row Machine'); window.__sday = mesoAddDays('2026-12-14', EXP_MAX_DAYS + 1);");
+    ok('28 days at most: it closes as inconclusive, with a row, and the split is back', J('expTick()').status === 'inconclusive' && J('S.swapTrials[0]').status === 'inconclusive' && ev('activeSplitObj() === S.split') === true && ev('swtPending()') === null);
+
+    // ---- who may start one ----
+    ev('__sb()');
+    const chk = (a, b, ag) => J("swtCheck(" + JSON.stringify(a) + ", " + JSON.stringify(b) + ", " + ag + ")");
+    ok('check: his own start needs the Selector on, a lift in the split, and one of the app\'s candidates', chk('Cable Row', 'Row Machine', false).to === 'Row Machine' && /not in your split/.test(chk('Zz Nothing', 'Row Machine', false).why) &&
+      /not one of the app’s candidates/.test(chk('Cable Row', 'Barbell Bench Press', false).why) && /not one of the app’s candidates/.test(chk('Cable Row', 'Lat Pulldown', false).why));
+    ok('check: bench and squat are never put on trial, by anyone', /never put on trial/.test(chk('Barbell Bench Press', 'Smith Machine Bench Press', false).why) && /never put on trial/.test(chk('Barbell Back Squat', 'Leg Press', false).why));
+    ok('check: a model\'s spelling is resolved to the candidate\'s own', chk('cable row', 'row machine', false).from === 'Cable Row' && chk('cable row', 'row machine', false).to === 'Row Machine');
+    ok('check: from an agent it is refused while the paid switch is off', /switched off/.test(chk('Cable Row', 'Row Machine', true).why));
+    ev("S.overhaul = {selector:false, swapKey:true};");
+    ok('check: and refused with the Selector off, whoever asks', /Selector is switched off/.test(chk('Cable Row', 'Row Machine', true).why) && /Selector is switched off/.test(chk('Cable Row', 'Row Machine', false).why));
+    ev("S.overhaul = {swapKey:true};");
+    ok('check: with the paid switch on, an agent may try a lift INDIA marks', chk('Cable Row', 'Row Machine', true).to === 'Row Machine');
+    ok('check: and only a lift INDIA marks', /INDIA does not mark/.test(chk('Lat Pulldown', 'Row Machine', true).why) && chk('Lat Pulldown', 'Row Machine', false).to === 'Row Machine');
+    ev("mesoActiveSplit = function(){ return {S1:{name:'Heavy', exercises:['Cable Row']}}; };");
+    ok('check: not while a strength block runs its own split', /strength block/.test(chk('Cable Row', 'Row Machine', false).why));
+    ev("mesoActiveSplit = window.__sMA;");
+    ev("S.logs.forEach(function(l){ l.entries.forEach(function(e){ if(e.exercise === 'Cable Row'){ e.sets = window.__sets(0.5, [12, 11, 10]); } }); });");
+    ok('check: a bodyweight lift cannot be measured by a trial', /bodyweight/.test(chk('Cable Row', 'Row Machine', false).why));
+    ev('__sb({swapKey:true})');
+    const FX = {type:'experiment', payload:{template:'swapTrial', lift:'cable row', to:'row machine', sessions:9, hypothesis:'Cable Row has fallen 6% with every set a grinder; a machine row may move.'}};
+    const vfx = J("agValidateFix(" + JSON.stringify(FX) + ", 'delta')");
+    ok('queue: DELTA\'s trial is an ordinary experiment request, names resolved and sessions clamped to ' + ev('SWT_MIN') + '-' + ev('SWT_MAX'), vfx && vfx.type === 'experiment' && vfx.payload.template === 'swapTrial' && vfx.payload.lift === 'Cable Row' && vfx.payload.to === 'Row Machine' && vfx.payload.sessions === ev('SWT_MAX') && vfx.payload.range === null,
+      JSON.stringify(vfx));
+    ok('queue: ECHO cannot raise it, and ZULU, the lead, can', ev("agValidateFix(" + JSON.stringify(FX) + ", 'echo')") === null && ev("agValidateFix(" + JSON.stringify(FX) + ", 'zulu')") !== null);
+    ok('queue: a candidate the app did not rank is refused, and the reason names the rule', ev("agValidateFix(" + JSON.stringify({type:'experiment', payload:Object.assign({}, FX.payload, {to:'Lat Pulldown'})}) + ", 'delta')") === null &&
+      /not one of the app’s candidates/.test(ev("agRejectReason(" + JSON.stringify({type:'experiment', payload:Object.assign({}, FX.payload, {to:'Lat Pulldown'})}) + ", 'delta')")));
+    ok('queue: the request card says what it would do', ev("agFixSummary(" + JSON.stringify(vfx) + ")") === 'start an experiment: Swap trial on Cable Row (Row Machine in its place) for 6 sessions');
+    ev("S.overhaul = {};");
+    ok('queue: with the paid switch off the same request is refused, and says so', ev("agValidateFix(" + JSON.stringify(FX) + ", 'delta')") === null && /switched off/.test(ev("agRejectReason(" + JSON.stringify(FX) + ", 'delta')")));
+    ev("S.overhaul = {swapKey:true}; agState().proposals = [{id:'sq1', agent:'delta', title:'Try a machine row', reasoning:'r', status:'pending', created:todayKey(), fix:" + JSON.stringify(vfx) + "}]; agApprove('sq1');");
+    ok('queue: his Approve is the tap that starts it, and the split is still untouched', ev("(expActive() || {}).template") === 'swapTrial' && ev("expActive().by") === undefined && ev("dayExNames('D1')[1]") === 'Row Machine' && ev('JSON.stringify(S.split)') === split0 && ev("agState().proposals[0].status") === 'approved');
+    ok('a trial DELTA started names DELTA\'s hypothesis on the card', /DELTA’s hypothesis: Cable Row has fallen/.test(ev('expCardHTML()')));
+
+    // ---- a permanent swap from an agent needs grounds ----
+    ev('__sb()');
+    const SW = "{type:'swapEx', payload:{from:'Cable Row', to:'Row Machine'}}";
+    ok('permanent: with no finished trial, no pain flag and the lift not left out, an agent\'s swap is refused, and told what comes first', ev("agValidateFix(" + SW + ", 'delta')") === null && /a swap trial comes first/.test(ev("agRejectReason(" + SW + ", 'delta')")) && ev("agValidateFixShape(" + SW + ", 'delta')") !== null);
+    ev("S.overhaul = {selector:false};");
+    ok('permanent: with the Selector off the queue is exactly as it was', ev("agValidateFix(" + SW + ", 'delta')") !== null);
+    ev("S.overhaul = {}; S.pain.push({id:'sp9', date:mesoAddDays(todayKey(), -6), exercise:'Cable Row', level:2});");
+    ok('permanent: a pain flag on the lift is grounds', ev("agSwapGround('Cable Row', 'Row Machine')") === 'pain' && ev("agValidateFix(" + SW + ", 'delta')") !== null);
+    ev("S.pain = [{id:'sp10', date:mesoAddDays(todayKey(), -6), exercise:'Cable Row', level:1}];");
+    ok('permanent: a niggle is not', ev("agSwapGround('Cable Row', 'Row Machine')") === '');
+    ev("S.pain = [{id:'sp11', date:mesoAddDays(todayKey(), -5), exercise:'Barbell Bench Press', level:3}];");
+    ok('permanent: bench is never swapped by an agent, whatever the grounds', ev("agValidateFix({type:'swapEx', payload:{from:'Barbell Bench Press', to:'Smith Machine Bench Press'}}, 'delta')") === null && /never swapped by an agent/.test(ev("agRejectReason({type:'swapEx', payload:{from:'Barbell Bench Press', to:'Smith Machine Bench Press'}}, 'delta')")));
+    ev("S.pain = []; [2.5, 2, 1.5].forEach(function(a, i){ __slog(a, i % 2 ? 'D2' : 'D1', [{exercise:'Lat Pulldown', sets:__sets(120, [10, 9, 9])}]); });");
+    ok('permanent: left out of ' + ev('SEL_OUT_MIN') + ' of its last ' + ev('SEL_OUT_N') + ' sessions is grounds (the gym does not have it, or he will not do it)', ev("agSwapGround('Cable Row', 'Row Machine')") === 'gear' && ev("agValidateFix(" + SW + ", 'delta')") !== null);
+    ev("S.logs.pop();");
+    ok('permanent: two of four is not', ev("agSwapGround('Cable Row', 'Row Machine')") === '' && ev("agValidateFix(" + SW + ", 'delta')") === null);
+
+    // ---- the prompts: byte-identical unless the paid switch is on AND a lift is due ----
+    ev("__sb({selector:false});");
+    const P_off = prompts(), T_off = tools();
+    ev("S.overhaul = {};");
+    const P_on = prompts();
+    ok('Selector on, swap key off: every nightly prompt, chat prompt and reply spec is byte-identical, a marked lift or not', P_on.every((p, i) => p === P_off[i]) && tools() === T_off);
+    ok('the chat tool never lists the trial, and the ordinary experiment menu does not either', !/swapTrial/.test(tools()) && !/swapTrial/.test(ev("expMenuLine('delta')")) && /restMain/.test(ev("expMenuLine('delta')")));
+    ev("S.overhaul = {swapKey:true}; window.__spw = window.__sQUIET();");
+    const P_q1 = prompts();
+    ev("S.overhaul = {};");
+    const P_q0 = prompts();
+    ok('swap key on, nothing marked: byte-identical too', P_q1.every((p, i) => p === P_q0[i]) && ev("selContextLine('delta')") === '' && ev("selMenuLine('delta')") === '');
+    ev("S.overhaul = {swapKey:true}; window.__spw = window.__sMARK();");
+    const P_k = prompts();
+    const ctx = ev("selContextLine('delta')"), menu = ev("selMenuLine('delta')");
+    ok('swap key on and a lift marked: DELTA alone gets the block and the template', P_k[2] !== P_on[2] && P_k[2].indexOf(ctx) >= 0 && P_k[10].indexOf(menu) >= 0 && P_k[10] !== P_on[10] &&
+      [0, 1, 3, 4, 5, 6, 7, 8, 9, 11].every(i => P_k[i] === P_on[i]) && tools() === T_off, [0,1,2,3,4,5,6,7,8,9,10,11].filter(i => P_k[i] !== P_on[i]).join());
+    ok('the block is the app\'s numbers and candidates, capped', /^\nSELECTOR \(INDIA: worked out by the app/.test(ctx) && /- Cable Row: fit 45 of 100, marked for a swap trial\./.test(ctx) && /Plateau watch \(-30\): falling/.test(ctx) && /Candidates the app ranks \(a trial may use ONLY these\): Row Machine \[/.test(ctx) &&
+      ctx.length <= ev('SEL_PROMPT_MAX') + 160, String(ctx.length));
+    ok('the template line names the trial and the rule on permanent swaps', /"template":"swapTrial"/.test(menu) && /"sessions":4\.\.6/.test(menu) && /permanent swapEx is refused/.test(menu));
+    ok('other agents get neither', ev("selContextLine('zulu')") === '' && ev("selMenuLine('echo')") === '' && ev("selContextLine('charlie')") === '');
+    ev("S.experiments.lastEnded = todayKey();");
+    ok('a trial that could not start tonight is not offered (the cool-down)', ev("selContextLine('delta')") === '' && ev("selMenuLine('delta')") === '');
+    ev("S.experiments.lastEnded = ''; S.pain.push({id:'sp12', date:todayKey(), exercise:'Cable Row', level:3});");
+    ok('a lift flagged sharp is offered no trial: the pain rules lead', ev("selContextLine('delta')") === '');
+    ev("S.pain = [];");
+
+    // ---- on screen ----
+    ev("__sb(); setMode('review'); showMainTab('ops'); renderOps();");
+    const OPS5 = "document.getElementById('ops')";
+    ok('Hub: the Selector card lists the marked and watch lifts, each with a word, an icon and its number', ev(OPS5 + ".querySelectorAll('.sel-card').length") === 1 && ev(OPS5 + ".querySelector('.sel-h[data-lift=\"Cable Row\"] .sel-v').textContent") === '▲Try a swap' &&
+      ev(OPS5 + ".querySelector('.sel-h[data-lift=\"Cable Row\"] .sel-fit').textContent") === '45' && ev(OPS5 + ".querySelector('.sel-h[data-lift=\"Barbell Bench Press\"] .sel-v').textContent") === '●Watch');
+    ev("renderOps(); window.__scn = 0; window.__sCM = selCompute; selCompute = function(){ window.__scn++; return window.__sCM.apply(this, arguments); }; renderOps(); selCompute = window.__sCM;");
+    ok('Hub: the Selector is read once a repaint, for the tile and the card, and the pass does not outlive the repaint', ev('window.__scn') === 1 && ev('_selPass') === null && ev(OPS5 + ".querySelectorAll('.sq-tile[data-a=india]').length") === 1 &&
+      ev(OPS5 + ".querySelector('.sq-tile[data-a=india] .sq-st').textContent") === '▲Cable Row: try a swap', String(ev('window.__scn')));
+    ok('Hub: INDIA\'s 14-day strip is read as of each day, never from the repaint\'s pass', (function(){ ev("_selPass = {on:true, lifts:[], lvl:'ok', scored:9}; window.__sAsOf = selLevelOn(mesoAddDays(todayKey(), -2)); _selPass = null;"); return ev('window.__sAsOf') === 'amber'; })());
+    ev(OPS5 + ".querySelector('.sel-h[data-lift=\"Cable Row\"]').click();");
+    ok('Hub: a tap opens the rows behind the number, and the open row survives a repaint', ev(OPS5 + ".querySelectorAll('.sel-row.open .sel-ev').length") >= 7 && (ev('renderOps()'), ev(OPS5 + ".querySelectorAll('.sel-row.open .sel-ev').length") >= 7) && ev('selOpenLift') === 'Cable Row');
+    ev(OPS5 + ".querySelector('.sel-row.open .btn[data-lift=\"Cable Row\"]').click();");
+    ok('Hub: Try a replacement lists the app\'s candidates, the names in data attributes', ev(OPS5 + ".querySelectorAll('.sel-row.open .swap-row').length") === cr.cands.length && ev(OPS5 + ".querySelector('.sel-row.open .swap-row').getAttribute('data-to')") === 'Row Machine' && ev(OPS5 + ".querySelector('.sel-row.open .swap-row').getAttribute('data-from')") === 'Cable Row');
+    ev("window.__scf = []; window.confirm = function(m){ window.__scf.push(m); return false; };");
+    ev(OPS5 + ".querySelector('.sel-row.open .swap-row').click();");
+    ok('Hub: picking one asks first, and saying no starts nothing', ev('window.__scf.length') === 1 && /Your split is not changed/.test(ev('window.__scf[0]')) && ev('expActive()') === null);
+    ev("window.confirm = function(m){ window.__scf.push(m); return true; }; window.__ssv = 0; save = function(t){ if(t !== false) window.__ssv++; return window.__sSave.apply(this, arguments); };");
+    ev(OPS5 + ".querySelector('.sel-row.open .swap-row').click();");
+    ok('Hub: saying yes starts the trial with a save(), and the card shows the stand-in on trial', ev("(expActive() || {}).to") === 'Row Machine' && ev('window.__ssv') >= 1 && ev(OPS5 + ".querySelector('.sel-h[data-lift=\"Row Machine\"] .sel-v').textContent") === '◆On trial' && ev(OPS5 + ".querySelector('.exp-card')") !== null);
+    ev("save = window.__sSave; window.confirm = function(){ return true; };");
+    ev("selOpenLift = 'Barbell Bench Press'; expStop(); S.experiments.lastEnded = ''; renderOps();");
+    ok('Hub: bench shows its rows and why it is held, and no way to put it on trial', ev(OPS5 + ".querySelectorAll('.sel-row.open .sel-ev').length") >= 7 && /never swapped/.test(ev(OPS5 + ".querySelector('.sel-row.open').textContent")) && ev(OPS5 + ".querySelector('.sel-row.open .btn')") === null);
+    ev("selOpenLift = 'Cable Row'; deloadActive = (function(f){ window.__sDA = f; return function(){ return true; }; })(deloadActive); renderOps();");
+    ok('Hub: when a trial cannot start, the row says why instead of offering it', /A trial cannot start now: a deload is on/.test(ev(OPS5 + ".querySelector('.sel-row.open').textContent")) && ev(OPS5 + ".querySelector('.sel-row.open .btn')") === null);
+    ev("deloadActive = window.__sDA; S.logs.forEach(function(l){ l.entries.forEach(function(e){ if(e.exercise === 'Cable Row'){ e.sets = window.__sets(0.5, [12, 11, 10], 30); } }); }); renderOps();");
+    ok('Hub: a bodyweight lift is told it cannot be measured, not offered a button that would be refused', /A bodyweight lift cannot be measured by a trial/.test(ev(OPS5 + ".querySelector('.sel-row.open').textContent")) && ev(OPS5 + ".querySelector('.sel-row.open .btn')") === null);
+    ev("S.overhaul = {selector:false}; renderOps();");
+    ok('Hub: with the Selector off the card is gone', ev(OPS5 + ".querySelectorAll('.sel-card').length") === 0);
+  } catch (e) {
+    ok('selector section', false, e.stack);
+  } finally {
+    ev("todayKey = window.__sToday; plateauWatch = window.__sPW; predLifts = window.__sPL; mesoActiveSplit = window.__sMA; save = window.__sSave; window.confirm = function(){ return true; };" +
+       "if(window.__sSC) swapCandidates = window.__sSC; if(window.__sSN) selNoise = window.__sSN; if(window.__sDA) deloadActive = window.__sDA; if(window.__sCM) selCompute = window.__sCM; _selPass = null;" +
+       "selOpenLift = ''; selPickFor = ''; _stdSince = {}; _anlStrip = {key:null, days:[]}; S = JSON.parse(window.__sS);" +
+       "if(window.__sLS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__sLS);" +
+       "['__sS','__sLS','__sToday','__sPW','__sPL','__sMA','__sSave','__sday','__sn','__slog','__sets','__sb','__sMARK','__sQUIET','__srow','__strial','__spw','__sSC','__sSN','__sDA','__sblk','__scf','__ssv','__scn','__sCM','__sAsOf','__sbef'].forEach(function(k){ delete window[k]; });");
     try { ev('renderHome(); renderNotif();'); } catch (e) {}
   }
 

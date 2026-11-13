@@ -239,3 +239,22 @@ The Hub's Agents view is new. The circle of four is now four lanes, one for each
 - *Lift dossiers from DELTA*: a short note from DELTA on each main lift, about once a week per lift, shown in DELTA's lane. About 10 to 30 cents a month.
 
 If you prefer the old circle, turn off "Analysts and squads" in the same place.
+
+## The Selector and swap trials (Nov 12)
+
+INDIA, the analyst that used to only list how hard your sets were, now scores every lift in your split.
+
+- **Every lift gets a fit score out of 100.** It starts at 100 and loses points for things the app can see in your own sessions: a stall on the plateau watch, a lift whose numbers jump around, a lot of grinders, pain flags, sets you keep leaving out, and two lifts doing the same job on the same day. It is worked out on your phone, free, every time you look. No AI call.
+- **Find it in the Hub**, under "Lift fit". Each lift reads Keep, Watch, Try a swap or Swap allowed. Tap a lift to see exactly which rows took points off.
+- **Right now: 26 lifts keep, 1 watch (Hanging Leg Raise), none marked.** I replayed the scoring over your last 88 days to set the cut-offs. Only one lift would have been marked in that time: Leg Press for about two weeks in late September, the stretch that ended in a reset.
+- **Bench and squat are never swapped and never put on trial.** They can only read Watch.
+- **You can try a replacement without touching your split.** On a lift that is not a clean Keep, tap "Try a replacement" and pick from the app's ranked list. For 4 sessions the new lift takes the old one's place on that day: Today, Live and the agents all show it. Your split in Settings does not change.
+- **When the trial ends, the old lift comes back and a card asks: keep the new lift, or go back.** The card shows how the new lift moved against the line the old one was on. It also tells you plainly that a new lift always climbs fast at first, so a trial leans toward the new lift. Your call either way. If you never answer, nothing changes.
+- **A trial follows the same rules as any experiment**: one at a time, a 7-day gap after the last one, none during a deload, and it closes by itself after 28 days.
+- **The agents can no longer swap a lift permanently on a hunch.** A permanent swap from an agent now needs one of: a finished trial that favoured the new lift, a pain flag on the old lift, or you leaving the old lift out of 3 of its last 4 sessions. Swapping in chat when you ask for it, and editing your split yourself, work as before.
+- **A lift you flagged sore never reads Keep.** A sharp flag reads "Swap allowed".
+
+**One new paid switch, off** (Settings, V5 switches):
+- *Swap trials from DELTA*: when INDIA marks a lift, DELTA may propose a trial in its nightly report, choosing only from the app's own list of replacements. About 2 to 10 cents a month. You still tap Approve to start it.
+
+If you do not want any of this, turn off "Selector and swap trials" in the same place.
