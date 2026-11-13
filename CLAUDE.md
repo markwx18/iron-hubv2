@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 5087 assertions, about 2 minutes. Must be
+**Test suite:** `node test_agents.js`. Currently 5192 assertions, about 2 minutes. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -176,6 +176,7 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | Video letter | `VL_SCENES`, `vlNums()`, `vlLineOk()`, `vlSayClean()`, `vlScript()`, `vlPromptPart()`, `vlIngest()`, `vlLetters()`, `vlOpen()` / `vlPlayTap()` / `vlSpeak()`, `vlInboxItem()`, `vlLibHTML()` |
 | Organization | `orgOn()`, `inboxItems()` / `inboxRaw()`, `inboxRowHTML()`, `inboxDo()`, `homeZonesHTML()`, `renderHubNow()` / `renderHubOut()` / `renderHubLib()`, `orgHubRepaint()`, `cbApply()`, `cbWatch()`, `uiDepth()` |
 | Folds and prefs | `subSection()`, `rawFold()`, `uiPref()`, `notifItems()` |
+| The look and depth | `uiLook()`, `lookOn()`, `lookApply()`, `lookSet()`, `stdWordFor()`, `stdLightsTick()`, `stdCellsHTML()`, `alertRowsFor()`, `alertBandTick()`, `lookChromeTick()`, `sqLaneOrder()`, `lookGaugesHTML()`, `DEPTH_TAGS`, `depthTagApply()`, `techEvidenceHTML()` |
 | Charts | the chart kit: `ckText()`, `ckPath()`, `ckMarks()`, `ckW()`; `anFanChartSVG()`, `lineChart()` |
 
 **Agent system:** four agents: ZULU (lead), CHARLIE (the supervisor: showing up, logging,
@@ -347,6 +348,9 @@ a warm brown-black ground, rounded cards separated by shade. Layout is the A × 
 
 Type: `--disp` Saira Condensed, `--body` Figtree, `--mono` IBM Plex Mono only for tabular data.
 `--r-card` 18px, `--r-ctl` 12px.
+
+That table is the old look. A second look, **Command Deck in Gunmetal**, ships behind a per-device pref (V5 stage 10,
+below): the same token names with other values, scoped under `html[data-look="gunmetal"]`.
 
 - Use CSS variables, never hardcoded hex, in new UI. Colour always comes with a word or icon.
 - **`--bad` is deliberately not the old red.** Re-run the colour-blindness check before moving it
@@ -669,6 +673,46 @@ motion", and a fast-gain amber.
   charts, never a section, and never the whole file (`DISCORD_VIEW_MAX`).
 - The Worker goes live only after `npx wrangler deploy` and `node register-commands.js` from `discord/` (Mark's step).
 
+**Stage 10, The look and the depth layers** (`uiPref('look')`, per device, default off; it has no `OV` row because it is not in `S`)
+- **The look is one per-device pref, and an unknown value is the old look** (`uiLook()`, `lookOn()`, `LOOKS`).
+  `lookApply()` puts it on `<html>` as `data-look`, and the first script block does the same before paint. Nothing about
+  it is in `S`, on the server or in a prompt: on or off, the Standards' lines for the agents and the Discord snapshot are
+  byte-identical.
+- **The skin is one block of CSS, every rule scoped under `html[data-look="gunmetal"]`** (between the `LOOK-CSS`
+  markers; four unscoped rules only hide the look's own elements; the suite parses the block). The old look's rules are
+  not deleted or edited until he says so (the plan names Jan 8).
+- **The token names are kept: under the look `--amber` is still "the accent", and the accent is ice blue.** DELTA stays
+  amber because the agents' colours are hex in `AGENTS`. A caution that borrowed the accent gets its own token
+  (`--grind`, written `var(--grind, var(--amber))`). Never point an agent's colour or a status at `--amber`.
+- **`--bad` under the look is `#E0527A`**, checked with the dataviz validator against the accent, `--warn`, `--good`
+  and the agents' colours on the gunmetal card. The accent sits close to `--good` and to ECHO's violet, so neither
+  pair may ever be the only thing telling two things apart. Re-run the check before moving any of them.
+- **The 3D model and both muscle maps are not restyled** (no rule in the block names them; `BM_C` is unchanged), and
+  LIVE keeps the 0 to 100 effort slider (his notes on the pick).
+- **Under the look a status never names its level** (`stdWordFor()`, which is the analysts' own `anlPillarWord()`): the
+  Standards card (five cells, `stdCellsHTML()`), the bell's titles, the Hub's summary, the lights and the band. Ids keep
+  the level, so what he cleared stays cleared. The old look keeps its words. A new status surface asks `stdWordFor()`.
+- **The top-bar mark gives way to five lights** (`stdLightsTick()`): a letter and a shape each, never colour alone.
+- **Alert mode is worked out when drawn, has no dismiss, and is never on LIVE** (`alertRowsFor()`, `ALERT_SCREENS`,
+  `alertBandTick()`, `ALERT_ON_LIVE`). Only a red raises the band (not an amber, a hold or no data), only on the screens
+  that pillar is about, and a plan in motion is said on it. `#alertBand` sits outside every section. In the Hub a
+  coach whose own squad holds a red leads the lanes (`sqLaneOrder()`).
+- **The look's chrome follows the screen through one tick** (`lookChromeTick()`: from `showMainTab()`, `setMode()`, and
+  the bell's repaint through `stdMarkTick()`). A new piece of chrome goes there, and hides itself with the look off.
+- **Today under the look seats the day's name in the session zone** (`.lk-sess`), lists `LOOK_TODAY_LIFTS` lifts, each
+  a button to its technique card, and draws the coaches as gauges from the Hub's own read (`lookGaugesHTML()`,
+  `anlPass(null, rows)`). The wheel is still drawn and hidden by CSS, so every id and handler is kept. It only reads.
+- **The depth layers are one table applied to the DOM** (`DEPTH_TAGS`, `depthTagApply()`, called by `cbApply()`): a
+  heading rule, a selector rule or a words rule tags a card `data-depth`, only while the look and Organization are on.
+  Its own tags carry `data-dp` and are taken off first. A failure is never tagged, a renderer's own tag is never
+  overwritten, and nothing on Today, Settings or LIVE is tagged (`DEPTH_ON_LIVE`). A rule that matches nothing tags
+  nothing, so a renamed card is simply shown: check the table when a card's heading changes.
+- **A folded card remembers the card it stood before** (`_cbNext`): `cbUnwrap()` puts each back in its own place. When
+  a tagged card is lifted out from among the open ones, the fold stands under what stays open, above the raw data.
+- **The Evidence Library's technique entries show on a lift's technique card only with the library on**
+  (`techEvidenceHTML()`, `TECH_TAGS`, each lift name anchored), drawn by the library's own `evEntryHTML()`.
+- Not built: the Wire, the Play card on Today, a new LIVE layout (LIVE is reskinned, not rearranged).
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
@@ -682,4 +726,4 @@ motion", and a fast-gain amber.
 | 8 Organization: one Inbox worked out when read, a card budget per section, Today in five zones, the Hub in five views, a per-device depth | built 2026-11-13 (`v5i`) |
 | 9 Video letter: six scenes drawn from his data, numbers only through tokens, played in the app with the phone's voice | built 2026-11-13 (`v5j`) |
 | 11 Discord: /ironhub standards, desk, plan and away, read-only from the app's own snapshot | built 2026-11-13 (`v5k`) |
-| 10 Reskin | not started |
+| 10 The look and the depth layers: Command Deck in Gunmetal behind a per-device pref, statuses as reasons, the red band, depth tags | built 2026-11-13 (`v5l`), off until he approves the screenshots |

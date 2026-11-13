@@ -19748,6 +19748,319 @@ setTimeout(async () => {
        "Object.keys(window).filter(function(k){ return /^__11/.test(k); }).forEach(function(k){ try{ delete window[k]; }catch(e){} });");
   }
 
+  console.log('\n=== THE LOOK AND THE DEPTH LAYERS: ONE PER-DEVICE SWITCH, STATUSES AS REASONS, THE RED BAND, DEPTH TAGS (2026-11-13) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    const n = sel => ev('document.querySelectorAll(' + JSON.stringify(sel) + ').length');
+    const txt = sel => ev('(function(){ var e = document.querySelector(' + JSON.stringify(sel) + '); return e ? e.textContent : ""; })()');
+    const hid = id => ev("document.getElementById('" + id + "').hidden");
+    // The words his pick bans from a status: the level's name, in any of the forms the old look uses.
+    const LEVEL = /\b(red|amber|off standard|slipping)\b/i;
+    // A fixed day, a named training day and fixed Standards: nothing here depends on the day the suite runs.
+    ev("window.__10S = JSON.stringify(S); window.__10UI = localStorage.getItem(UI_PREF_KEY); window.__10Today = todayKey; window.__10Std = stdState; window.__10Dash = dashToday;" +
+       "window.__10Live = live; live = null; window.__10Nav = JSON.stringify({mode:MODE, main:activeMainTab}); window.__10Lane = JSON.stringify(sqLaneOpen); window.__10Chat = agActiveChat;" +
+       "todayKey = function(){ return '2026-12-16'; };" +
+       "dashToday = function(){ return {dayKey:'D1', rest:false, name:dayName('D1') || 'D1', logged:false}; };" +
+       "window.__10std = [{pillar:'bulk', label:'Bulk pace', lvl:'red', kind:'loss', rate:-0.4, why:'Lost weight two weeks running.', consequence:'', clearsWhen:'Two weeks in a row at or above 0.5 lb/week.', motion:'', since:'2026-12-01'}," +
+       "  {pillar:'show', label:'Showing up', lvl:'ok', why:'No scheduled day missed.', consequence:'', clearsWhen:'', motion:'', misses:[], excused:[]}," +
+       "  {pillar:'lifts', label:'Lifts', lvl:'amber', lifts:[{lift:'JM Press', word:'slowing'}], why:'JM Press is slowing.', consequence:'', clearsWhen:'JM Press climbing again.', motion:'', since:'2026-12-05'}," +
+       "  {pillar:'intake', label:'Intake', lvl:'ok', under:1, logged:7, why:'Calories at target on 6 of 7 days.', consequence:'', clearsWhen:'', motion:''}," +
+       "  {pillar:'recovery', label:'Recovery', lvl:'nodata', why:'Too few readings.', consequence:'', clearsWhen:'', motion:''}];" +
+       "stdState = function(){ return JSON.parse(JSON.stringify(window.__10std)); };" +
+       "window.__10b = function(ov){ S = JSON.parse(JSON.stringify(DEFAULT_STATE)); S.overhaul = Object.assign({selector:false}, ov || {}); S.logs = []; agState().proposals = []; sqLaneOpen = {}; stdOpen = false; };" +
+       "window.__10look = function(on){ uiPrefSet('look', on ? 'gunmetal' : ''); lookApply(); };" +
+       "window.__10draw = function(){ setMode('review'); showMainTab('home'); renderHome(); renderNotif(); };");
+    ev("__10b(); uiPrefSet('depth', 'basic');");
+
+    // --- the switch ---
+    ev("(function(){ var p = uiPref(); delete p.look; localStorage.setItem(UI_PREF_KEY, JSON.stringify(p)); lookApply(); })()");
+    ok('look: off by default (no pref), and <html> carries nothing', ev('uiLook()') === '' && ev('lookOn()') === false && ev("document.documentElement.hasAttribute('data-look')") === false);
+    ok('look: an unknown value, a prototype key and a non-string are all the old look',
+       ['neon', 'toString', 'constructor', 7, true, {}].every(v => (ev("uiPrefSet('look', " + JSON.stringify(v) + "); lookApply();"), ev('uiLook()') === '' && ev("document.documentElement.hasAttribute('data-look')") === false)));
+    ok('look: the pref key the first script block reads before paint is the real one', ev('UI_PREF_KEY') === 'ironhub:ui' && /localStorage\.getItem\('ironhub:ui'\) \|\| '\{\}'\)\.look === 'gunmetal'\) document\.documentElement\.setAttribute\('data-look', 'gunmetal'\)/.test(html));
+    ev("lookSet('')");   // the same repaints once first, so a renderer's own lazy defaults are already in S
+    const s0 = ev('JSON.stringify(S)');
+    ev("lookSet('gunmetal')");
+    ok('look: a tap sets this device only: the attribute, the pref, and nothing in S', ev("document.documentElement.getAttribute('data-look')") === 'gunmetal' && JSON.parse(ev('localStorage.getItem(UI_PREF_KEY)')).look === 'gunmetal' &&
+       ev('JSON.stringify(S)') === s0 && ev('S.look') === undefined && ev('lookOn()') === true);
+    ok('look: the browser bar colour follows it', ev("document.querySelector('meta[name=\"theme-color\"]').getAttribute('content')") === ev('LOOKS.gunmetal.theme') && ev('LOOKS.gunmetal.theme') === '#11151A');
+    ev("lookSet('nonsense')");
+    ok('look: setting anything unknown is the old look again', ev("document.documentElement.hasAttribute('data-look')") === false && ev('uiLook()') === '' &&
+       ev("document.querySelector('meta[name=\"theme-color\"]').getAttribute('content')") === '#16110E');
+    // Settings: the card, and the way back
+    ev("setMode('review'); showMainTab('settings');");
+    ok('settings: the Look card offers the old look and the new, the old one marked', n('#lookCard [data-l]') === 2 && ev("document.querySelector('#lookCard [data-l=\"\"]').getAttribute('aria-checked')") === 'true' &&
+       ev("document.querySelector('#lookCard [data-l=\"gunmetal\"]').getAttribute('aria-checked')") === 'false');
+    ev("lookTap(document.querySelector('#lookCard [data-l=\"gunmetal\"]'));");
+    ok('settings: a tap turns it on and the card redraws marked', ev('lookOn()') === true && ev("document.querySelector('#lookCard [data-l=\"gunmetal\"]').getAttribute('aria-checked')") === 'true');
+    ev("lookTap(document.querySelector('#lookCard [data-l=\"\"]'));");
+    ok('settings: one tap back is the old look', ev('lookOn()') === false && ev("document.documentElement.hasAttribute('data-look')") === false);
+
+    // --- with the look off, everything is what it was ---
+    ev('__10look(false); __10draw();');
+    const cardOff = txt('#stdCard');
+    ok('off: the Standards card is the card it was (the count line, the level words, the chips, no cells)', /1 off standard/.test(cardOff) && /Off standard/.test(cardOff) && /Slipping/.test(cardOff) &&
+       n('#stdCard .std-sum') === 1 && n('#stdCard .std-chips') === 1 && n('#stdCard .std-cells') === 0, cardOff.slice(0, 200));
+    ok('off: the mark names the red; the lights, the band, the date and the depth bar are hidden', hid('stdMark') === false && /Red/.test(txt('#stdMark')) &&
+       hid('stdLights') === true && hid('alertBand') === true && hid('topDate') === true && hid('depthBar') === true);
+    ok('off: Today is laid out as it was (the day above the zones, two lifts, the agents strip)', ev("(function(){ var c = document.querySelector('#home .cc'); return c.children[0].classList.contains('cc-hero') && c.children[1].classList.contains('cc-main') && !c.classList.contains('lk-today'); })()") === true &&
+       n('#home .lk-sess') === 0 && n('#ccSession .cc-lift') === 2 && n('#home button.cc-agents') === 1 && n('#home .lk-gauges') === 0 && n('#home .lk-call') === 0);
+    ok('off: the bell names the level as it did', J('stdNotifItems().map(function(i){ return i.title; })').some(t => /off standard/.test(t)) && J('stdNotifItems().map(function(i){ return i.title; })').some(t => /slipping/.test(t)));
+    ok('off: stdWordFor() is the old level word', ev('stdWordFor(stdState()[0])') === 'Off standard' && ev('stdWordLc(stdState()[2])') === 'slipping');
+    const idsOf = () => J("(function(){ var o = []; document.querySelectorAll('.app-shell [id]').forEach(function(e){ if(e.closest('#reviewMode main > section:not(.on)')) return; if(o.indexOf(e.id) < 0) o.push(e.id); }); return o; })()");   // what is on screen: a section that is not shown keeps whatever an earlier test drew in it
+    const screens = ["setMode('review'); showMainTab('home'); renderHome();", "setMode('review'); showMainTab('ops','ops');", "setMode('review'); showMainTab('progress','progress');", "setMode('live');"];
+    const idsOff = [];
+    for (const go of screens) { ev(go); await tick(); idsOff.push(idsOf()); }
+    const pOff = ev("stdContextLine() + '|' + stdStrictLine() + '|' + stdBriefLine() + '|' + anlSquadLine('echo') + '|' + JSON.stringify(discordView().standards)");
+
+    // --- on: a status is its colour, its icon and a reason; it never names its level ---
+    ev('__10look(true); __10draw();');
+    const cardOn = txt('#stdCard');
+    const wBulk = ev("anlPillarWord('bulk', stdState()[0])"), wLifts = ev("anlPillarWord('lifts', stdState()[2])");
+    ok('on: the reason words are the analysts\' own, and none is a level', !!wBulk && !!wLifts && !LEVEL.test(wBulk) && !LEVEL.test(wLifts) && /JM Press/.test(wLifts), wBulk + ' / ' + wLifts);
+    ok('on: the Standards card shows five cells and the reasons, with no level named and no count line', n('#stdCard .std-cell') === 5 && n('#stdCard .std-sum') === 0 && n('#stdCard .std-chips') === 0 &&
+       cardOn.indexOf(wBulk) >= 0 && cardOn.indexOf(wLifts) >= 0 && !LEVEL.test(cardOn), cardOn.slice(0, 240));
+    ok('on: each cell still carries an icon as well as a colour', J("Array.prototype.map.call(document.querySelectorAll('#stdCard .std-cell b'), function(b){ return b.textContent; })").join('') === ev("STD_ICON.red + STD_ICON.ok + STD_ICON.amber + STD_ICON.ok + STD_ICON.nodata"));
+    ok('on: the flagged rows are open, the rest open on the cells\' tap', n('#stdCard .std-row') === 2 && (ev('stdToggle()'), n('#stdCard .std-row') === 5) && !LEVEL.test(txt('#stdCard')) && (ev('stdToggle()'), n('#stdCard .std-row') === 2));
+    ok('on: the reason buttons are still on a flagged row (the card lost nothing it does)', n('#stdCard .std-row.red .std-rb') >= 1);
+    ok('on: the mark is hidden and five lights stand in, each a letter and a shape', hid('stdMark') === true && hid('stdLights') === false &&
+       J("Array.prototype.map.call(document.querySelectorAll('#stdLights b'), function(b){ return b.textContent + ':' + b.className; })").join() === 'B:red,S:ok,L:amber,I:ok,R:nodata');
+    ok('on: the lights\' label says the reasons, never a level', (a => /Bulk pace: /.test(a) && a.indexOf(wBulk) >= 0 && !LEVEL.test(a))(ev("document.getElementById('stdLights').getAttribute('aria-label')")));
+    const bell = J('stdNotifItems().map(function(i){ return [i.id, i.title]; })');
+    ok('on: the bell\'s titles carry the reason, and the ids are the ids they were (so a cleared item stays cleared)', bell.length === 2 && bell.every(b => !LEVEL.test(b[1])) && bell[0][1].indexOf(wBulk) >= 0 &&
+       bell[0][0] === 'std:bulk:red:2026-12-01' && bell[1][0] === 'std:lifts:amber:2026-12-05', JSON.stringify(bell));
+    ev('renderHubNow();');
+    ok('on: the Hub\'s Standards summary names no level', (t => t.indexOf(wBulk) >= 0 && !LEVEL.test(t))(txt('#hub_now .hub-std')));
+    ok('on: the top bar shows the date', hid('topDate') === false && /^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}$/.test(txt('#topDate')), txt('#topDate'));
+
+    // --- Today under the look ---
+    ok('today: the day\'s name sits with the session, after the orders', n('#home .cc.lk-today > .cc-hero') === 0 && n('#home .lk-sess > .cc-hero') === 1 && n('#home .lk-sess > #ccSession') === 1 &&
+       ev("!!(document.getElementById('stdCard').compareDocumentPosition(document.querySelector('#home .lk-sess')) & 4)") === true);
+    ok('today: the session panel lists up to LOOK_TODAY_LIFTS lifts, in the day\'s order', n('#ccSession .cc-lift') === Math.min(ev('LOOK_TODAY_LIFTS'), ev("dayExNames('D1').length")) && n('#ccSession .cc-lift') > 2 &&
+       J("Array.prototype.map.call(document.querySelectorAll('#ccSession .cc-lift-n'), function(e){ return e.textContent; })").join('|') === J("dayExNames('D1').slice(0, LOOK_TODAY_LIFTS)").join('|'));
+    ok('today: the wheel\'s buttons are still drawn with their handlers (a restyle keeps them)', n('#home .cc-wheel .cc-start[onclick]') === 1 && n('#home .cc-wheel .cc-tile[onclick]') === 5);
+    ok('today: Start is in the session panel', /Start D1/.test(txt('#ccSession .cc-go')) && ev("document.querySelector('#ccSession .cc-go .btn').getAttribute('onclick')") === "setMode('live')");
+    const lead = J("(function(){ var p = anlPass(); return ANL_LANES.map(function(id){ return anlLeadStatus(id, p.reads).word; }); })()");
+    ok('today: four gauges, each the Hub\'s own read of that coach, no level named', n('#home .lk-gauges .lk-g') === 4 &&
+       J("Array.prototype.map.call(document.querySelectorAll('#home .lk-g .sq-st span'), function(e){ return e.textContent; })").join('|') === lead.join('|') && !LEVEL.test(txt('#home .lk-gauges')) &&
+       J("Array.prototype.map.call(document.querySelectorAll('#home .lk-g'), function(e){ return e.getAttribute('data-lead'); })").join() === 'zulu,charlie,delta,echo');
+    ok('today: a gauge lists its squad, each with an icon', n('#home .lk-g[data-lead="delta"] .lk-g-sq > span') === 3 && /ALPHA/.test(txt('#home .lk-g[data-lead="delta"] .lk-g-sq')) && n('#home .lk-g[data-lead="echo"].red') === 1);
+    ev("agState().proposals = [{id:'p10', agent:'echo', title:'t', status:'pending', expires:'2027-01-01', fix:{type:'calTarget', value:3300}}]; renderHome();");
+    ok('today: a gauge says what is waiting from that coach', /1 request waiting/.test(txt('#home .lk-g[data-lead="echo"] .lk-g-rq')) && /nothing waiting/.test(txt('#home .lk-g[data-lead="delta"] .lk-g-rq')));
+    ev("agState().proposals = [];");
+    ok('today: the gauge of a coach that ran carries no run line', n('#home .lk-g .lk-g-run') === 0);
+    ev("window.__10Strip = agStripState; agStripState = function(id){ return id === 'delta' ? {txt:'missed last night', tone:'bad'} : window.__10Strip(id); }; renderHome();");
+    ok('today: a coach that missed its run says so on its gauge, with an icon (a failure is not dropped from Today)', n('#home .lk-g .lk-g-run') === 1 && /missed/.test(txt('#home .lk-g[data-lead="delta"] .lk-g-run')) && txt('#home .lk-g[data-lead="delta"] .lk-g-run').indexOf(ev('STD_ICON.red')) === 0);
+    ev("agStripState = window.__10Strip; renderHome();");
+    const sT = ev('JSON.stringify(S)');
+    ev('renderHome(); renderNotif(); lookChromeTick();');
+    ok('today: drawing it under the look leaves S byte-identical (Today only reads)', ev('JSON.stringify(S)') === sT);
+    ok('today: the gauges count as one card for the budget', ev("cbKind(document.querySelector('#home .lk-gauges'), 'basic')") === 'card');
+    ev("lookGaugeTap({dataset:{lead:'nobody'}});");
+    ok('today: a gauge tap with an unknown coach does nothing', ev('activeMainTab') === 'home');
+    ev("lookGaugeTap(document.querySelector('#home .lk-g[data-lead=\"echo\"]'));");
+    ok('today: a gauge opens that coach in the Hub\'s Agents view', ev('activeMainTab') === 'ops' && ev('agActiveChat') === 'echo' && ev("document.getElementById('ops').classList.contains('on')") === true);
+    ok('anlPass: handed the Standards rows a repaint already has, it does not read them again',
+       ev("(function(){ var real = stdState, rows = stdState(); stdState = function(){ throw new Error('read twice'); }; try{ return anlPass(null, rows).reads.bravo.lvl; } finally { stdState = real; } })()") === 'red');
+
+    // --- alert mode ---
+    const AR = (rows, secs) => J('alertRowsFor(' + rows + ', ' + JSON.stringify(secs) + ').map(function(r){ return r.pillar; })').join();
+    ok('alert: a red Standard is on the screens it is about, and not on the others', AR('stdState()', ['home']) === 'bulk' && AR('stdState()', ['bulk']) === 'bulk' && AR('stdState()', ['hub_now', 'invest']) === 'bulk' &&
+       AR('stdState()', ['fuel']) === '' && AR('stdState()', ['progress', 'an_over', 'pg_more']) === '' && AR('stdState()', ['settings']) === '');
+    ok('alert: an amber, a held and a no-data Standard raise no band', AR("stdState().map(function(r){ if(r.lvl === 'red') r.lvl = 'held'; return r; })", ['home']) === '' &&
+       AR("stdState().map(function(r){ if(r.lvl === 'red') r.lvl = 'amber'; return r; })", ['home']) === '' && AR("stdState().map(function(r){ r.lvl = 'nodata'; return r; })", ['home']) === '');
+    ok('alert: each pillar has its own screens', AR("stdState().map(function(r){ r.lvl = 'red'; return r; })", ['fuel']) === 'intake' && AR("stdState().map(function(r){ r.lvl = 'red'; return r; })", ['progress']) === 'lifts' &&
+       AR("stdState().map(function(r){ r.lvl = 'red'; return r; })", ['an_recovery']) === 'recovery' && AR("stdState().map(function(r){ r.lvl = 'red'; return r; })", ['log']) === 'show' &&
+       AR("stdState().map(function(r){ r.lvl = 'red'; return r; })", ['home']) === 'bulk,show,lifts,intake,recovery');
+    ok('alert: every screen a pillar names is a real section', J("Object.keys(ALERT_SCREENS).reduce(function(a, p){ return a.concat(ALERT_SCREENS[p]); }, [])").every(id => ev("!!document.getElementById('" + id + "')") === true) &&
+       J('Object.keys(ALERT_SCREENS)').join() === J('STD_PILLARS').join());
+    ev('__10draw();');
+    const band = txt('#alertBand');
+    ok('alert: on Today the band is up: a word, an icon and the reason, with no level named', hid('alertBand') === false && /Bulk pace/.test(band) && band.indexOf(wBulk) >= 0 && band.indexOf(ev('STD_ICON.red')) >= 0 && !LEVEL.test(band), band);
+    ok('alert: the band has no dismiss: one control, and it opens the Standards', n('#alertBand button') === 1 && ev("document.querySelector('#alertBand button').getAttribute('onclick')") === 'stdGo()' && !/dismiss|clear|close|×/i.test(band));
+    ok('alert: on Today it does not repeat the card\'s detail', !/Clears when/.test(band));
+    ev("showMainTab('body','bulk');");
+    ok('alert: on Body › Weight the band is up and says what clears it', hid('alertBand') === false && /Clears when: Two weeks in a row/.test(txt('#alertBand')));
+    ev("showMainTab('body','fuel');");
+    ok('alert: on Fuel, which Bulk pace is not about, there is no band', hid('alertBand') === true && ev("document.getElementById('alertBand').innerHTML") === '');
+    ev("showMainTab('progress','progress');");
+    ok('alert: an amber Lifts puts no band on Progress', hid('alertBand') === true);
+    ev("window.__10std[0].motion = 'a calorie change approved Dec 8'; showMainTab('body','bulk');");
+    ok('alert: a red with a plan in motion is still red, and the band says what is being tried', hid('alertBand') === false && /Plan in motion: a calorie change approved Dec 8/.test(txt('#alertBand')));
+    ev("window.__10std[0].motion = '';");
+    ev("setMode('live');");
+    ok('alert: never on LIVE', ev('ALERT_ON_LIVE') === false && hid('alertBand') === true && hid('depthBar') === true);
+    ev("setMode('review'); showMainTab('home');");
+    ok('alert: back on Today it is up again', hid('alertBand') === false);
+    ev("window.__10std[0].lvl = 'ok'; renderNotif();");
+    ok('alert: when a Standard clears with no navigation, the bell\'s own repaint takes the band down and moves the light', hid('alertBand') === true && ev("document.querySelector('#stdLights b').className") === 'ok');
+    ev("window.__10std[0].lvl = 'red'; renderNotif();");
+    ok('alert: and puts it back when it turns', hid('alertBand') === false && ev("document.querySelector('#stdLights b').className") === 'red');
+    ev("window.__10std.forEach(function(r){ r.lvl = 'red'; }); __10draw();");
+    ok('alert: several reds are named up to ALERT_MAX_ROWS, then counted', n('#alertBand .ab-t') === ev('ALERT_MAX_ROWS') && /and 3 more/.test(txt('#alertBand')));
+    ev("window.__10std.forEach(function(r, i){ r.lvl = ['red', 'ok', 'amber', 'ok', 'nodata'][i]; });");
+    ev("S.overhaul.standards = false; __10draw();");
+    ok('alert: with the Standards switch off there is no band and no lights', hid('alertBand') === true && hid('stdLights') === true && n('#stdCard') === 0);
+    ev("delete S.overhaul.standards; __10look(false); __10draw();");
+    ok('alert: with the look off there is no band', hid('alertBand') === true && ev("document.getElementById('alertBand').innerHTML") === '');
+    ok('alert: nothing about the band is stored', ev('JSON.stringify(S)').indexOf('alert') < 0);
+
+    // --- the Hub: the lane of a red goes first ---
+    ev('__10look(true);');
+    ok('hub: under the look the coach whose own squad holds a red leads the lanes', J('sqLaneOrder(anlPass())').join() === 'echo,zulu,charlie,delta');
+    ev("showMainTab('ops','ops');");
+    await tick();
+    ok('hub: the lanes are drawn in that order, each with its level for the frame', J("Array.prototype.map.call(document.querySelectorAll('#ops .sq-lane'), function(e){ return e.getAttribute('data-lead') + ':' + e.getAttribute('data-lvl'); })").join() === 'echo:red,zulu:red,charlie:ok,delta:amber');
+    ok('hub: with nothing red the order is the usual one', J("sqLaneOrder({reads:{bravo:{lvl:'amber'}, alpha:{lvl:'ok'}}})").join() === 'zulu,charlie,delta,echo' && J('sqLaneOrder(null)').join() === 'zulu,charlie,delta,echo');
+    ev('__10look(false);');
+    ok('hub: with the look off a red does not reorder the lanes', J('sqLaneOrder(anlPass())').join() === 'zulu,charlie,delta,echo');
+
+    // --- every id survives the restyle ---
+    ev('__10look(true);');
+    const lost = [];
+    for (let i = 0; i < screens.length; i++) { ev(screens[i]); await tick(); const on = idsOf(); idsOff[i].forEach(id => { if (on.indexOf(id) < 0) lost.push(i + ':' + id); }); }
+    ok('ids: every element id drawn with the look off is drawn with it on (Today, the Hub, Progress, LIVE)', lost.length === 0 && idsOff[0].length > 20, JSON.stringify(lost));
+    ev("setMode('review'); showMainTab('home');");
+    const dup = J("(function(){ var seen = {}, d = []; document.querySelectorAll('[id]').forEach(function(e){ if(seen[e.id]) d.push(e.id); seen[e.id] = 1; }); return d; })()");
+    ok('ids: the look draws no id twice', dup.filter(d => ['fWorkTime', 'famShareMsg'].indexOf(d) < 0).length === 0, JSON.stringify(dup));
+
+    // --- no prompt and no Discord line changes with the look ---
+    const pOn = ev("stdContextLine() + '|' + stdStrictLine() + '|' + stdBriefLine() + '|' + anlSquadLine('echo') + '|' + JSON.stringify(discordView().standards)");
+    ok('prompts: the Standards\' lines for the agents and the Discord snapshot are byte-identical with the look on', pOn === pOff && /RED/.test(pOn) && pOn.length > 100);
+
+    // --- the depth bar ---
+    ev("showMainTab('home');");
+    ok('depth bar: on every review screen under the look, three choices, Basic marked', hid('depthBar') === false && n('#depthBar [data-d]') === 3 && ev("document.querySelector('#depthBar [data-d=\"basic\"]').getAttribute('aria-checked')") === 'true');
+    const sD = ev('JSON.stringify(S)');
+    ev("depthTap(document.querySelector('#depthBar [data-d=\"mid\"]'));");
+    ok('depth bar: a tap sets this device\'s depth, redraws itself, and writes nothing to S', ev('uiDepth()') === 'mid' && ev("document.querySelector('#depthBar [data-d=\"mid\"]').getAttribute('aria-checked')") === 'true' && ev('JSON.stringify(S)') === sD);
+    ev("uiPrefSet('depth', 'basic'); showMainTab('settings');");
+    ok('depth bar: not on Settings, which has its own card', hid('depthBar') === true);
+    orgOff(); ev("showMainTab('home');");
+    ok('depth bar: not without Organization, whose fold it works through', hid('depthBar') === true);
+    orgBack(); ev("showMainTab('home');");
+
+    // --- the depth tags, on a section built to tell the branches apart ---
+    const build = () => ev(`(function(){
+      var s = document.getElementById('an_fatigue');
+      s.innerHTML = '<div class="card" id="d1">Fatigue model 0.58</div><div class="card" id="d2">Weekly strain, shaded band</div><div class="card" id="d3">Deload forecast: building</div>' +
+        '<div class="card" id="d4" data-fail>Density could not be drawn</div><div class="card" id="d5">Density D1 · 12 sets</div><div class="card" id="d6">Something untagged</div>' +
+        '<div class="sub grp" id="dRaw"><div class="sub-head">raw</div><div class="sub-body"></div></div>';
+      _cbObs && _cbObs.takeRecords(); cbApply(s); _cbObs && _cbObs.takeRecords();
+    })()`);
+    const inFold = id => ev("!!document.getElementById('" + id + "').closest('[data-cb-more]')");
+    const order = () => J("Array.prototype.map.call(document.getElementById('an_fatigue').children, function(c){ return c.id || (c.hasAttribute('data-cb-more') ? 'MORE' : '?'); })").join();
+    build();
+    ok('tags: at Basic a card tagged Intermediate or Advanced is folded, whatever the count', inFold('d2') && inFold('d3') && inFold('d5') && !inFold('d1') && !inFold('d6'));
+    ok('tags: the tags come from the table (mid, adv, adv)', ev("document.getElementById('d2').getAttribute('data-depth')") === 'mid' && ev("document.getElementById('d3').getAttribute('data-depth')") === 'adv' && ev("document.getElementById('d5').getAttribute('data-depth')") === 'adv' &&
+       ev("document.getElementById('d1').hasAttribute('data-depth')") === false);
+    ok('tags: a failure is never tagged and never folded, though its words match a rule', !inFold('d4') && ev("document.getElementById('d4').hasAttribute('data-depth')") === false);
+    ok('tags: the fold stands under what stays open and above the raw data', order() === 'd1,d4,d6,MORE,dRaw', order());
+    ev("cbApply(document.getElementById('an_fatigue'));");
+    ok('tags: applying again changes nothing', order() === 'd1,d4,d6,MORE,dRaw' && n('#an_fatigue [data-cb-more]') === 1 && n('#an_fatigue [data-dp]') === 3);
+    ev("cbUnwrap(document.getElementById('an_fatigue'));");
+    ok('tags: unfolding puts every card back in its own place', order() === 'd1,d2,d3,d4,d5,d6,dRaw', order());
+    ev("uiPrefSet('depth', 'mid'); cbApply(document.getElementById('an_fatigue'));");
+    ok('tags: Intermediate opens the Intermediate card and still folds the Advanced ones', !inFold('d2') && inFold('d3') && inFold('d5'));
+    ev("uiPrefSet('depth', 'adv'); cbApply(document.getElementById('an_fatigue'));");
+    ok('tags: Advanced folds nothing', n('#an_fatigue [data-cb-more]') === 0 && order() === 'd1,d2,d3,d4,d5,d6,dRaw');
+    ev("uiPrefSet('depth', 'basic'); __10look(false); cbApply(document.getElementById('an_fatigue'));");
+    ok('tags: with the look off nothing is tagged, and only the budget folds (the sixth card)', n('#an_fatigue [data-dp]') === 0 && n('#an_fatigue [data-depth]') === 0 && inFold('d6') && !inFold('d2') && !inFold('d3') && !inFold('d5') && order() === 'd1,d2,d3,d4,d5,MORE,dRaw', order());
+    ev('__10look(true);');
+    orgOff(); ev("cbApply(document.getElementById('an_fatigue'));");
+    ok('tags: without Organization there is no fold, so nothing is tagged', n('#an_fatigue [data-dp]') === 0 && n('#an_fatigue [data-cb-more]') === 0);
+    orgBack();
+    // a heading rule takes the heading and what is under it, up to the next heading; a renderer's own tag is left
+    ev(`(function(){
+      var s = document.getElementById('fuel');
+      s.innerHTML = '<div class="card" id="f1">Log today</div><h2 id="fh">Intake — Last 7 Days</h2><div class="stats" id="f2">3,044 avg</div><div class="card" id="f3">Averaging under</div>' +
+        '<h2 id="fh2">Close Today’s Gap</h2><div class="card" id="f4">planner</div><div class="card mt-card" id="f5" data-depth="mid">Meal timing</div>';
+      _cbObs && _cbObs.takeRecords(); cbApply(s); _cbObs && _cbObs.takeRecords();
+    })()`);
+    ok('tags: a heading rule folds the heading and everything under it, and stops at the next heading', inFold('fh') && inFold('f2') && inFold('f3') && !inFold('fh2') && !inFold('f4') && !inFold('f1'));
+    ok('tags: a tag a renderer set is not overwritten, and not removed with the look\'s own', ev("document.getElementById('f5').getAttribute('data-depth')") === 'mid' && ev("document.getElementById('f5').hasAttribute('data-dp')") === false &&
+       (ev("__10look(false); cbApply(document.getElementById('fuel')); __10look(true);"), ev("document.getElementById('f5').getAttribute('data-depth')") === 'mid'));
+    // a words rule is for cards: a heading that opens with the same words is left where it is
+    ev(`(function(){
+      var s = document.getElementById('an_strength');
+      s.innerHTML = '<h2 id="pH">PR history</h2><div class="card" id="p1">PR history: everything you have hit</div><div class="card" id="p2">Something else</div>';
+      _cbObs && _cbObs.takeRecords(); cbApply(s); _cbObs && _cbObs.takeRecords();
+    })()`);
+    ok('tags: a words rule tags the card, never a heading that opens with the same words', inFold('p1') && !inFold('pH') && ev("document.getElementById('pH').hasAttribute('data-depth')") === false && !inFold('p2'));
+    ok('tags: every section the table names is a real section, and every depth a real depth', J('Object.keys(DEPTH_TAGS)').every(id => ev("!!document.getElementById('" + id + "')") === true) &&
+       J("Object.keys(DEPTH_TAGS).reduce(function(a, k){ return a.concat(DEPTH_TAGS[k].map(function(r){ return r.d; })); }, [])").every(d => d === 'mid' || d === 'adv'));
+    ok('tags: nothing on LIVE, Today or Settings is tagged', ev('DEPTH_ON_LIVE') === false && J('Object.keys(DEPTH_TAGS)').every(id => ['home', 'settings', 'live', 'liveBody'].indexOf(id) < 0));
+    // the stage 8 fold, with the look off: a card folded from past a failure returns to its own side of it
+    ev('__10look(false);');
+    ev(`(function(){
+      var s = document.getElementById('hub_lib');
+      s.innerHTML = '<div class="card" id="u1">1</div><div class="card" id="u2">2</div><div class="card" id="u3">3</div><div class="card" id="u4">4</div><div class="card" id="u5">5</div>' +
+        '<div class="card" id="u6">6</div><div class="card" id="uF" data-fail>failed</div><div class="card" id="u7">7</div>';
+      _cbObs && _cbObs.takeRecords(); cbApply(s); cbUnwrap(s); _cbObs && _cbObs.takeRecords();
+    })()`);
+    ok('fold: unfolding keeps the order the renderer drew, around a failure that never moved', J("Array.prototype.map.call(document.getElementById('hub_lib').children, function(c){ return c.id; })").join() === 'u1,u2,u3,u4,u5,u6,uF,u7');
+
+    // --- technique cards: the library's technique entries, only with the library on ---
+    ok('tech: only the five lifts the library read a source for, each name anchored', ev("techTagFor('Barbell Bench Press')") === 'tech-bench' && ev("techTagFor('Barbell Back Squat')") === 'tech-squat' && ev("techTagFor('JM Press')") === 'tech-jm' &&
+       ev("techTagFor('Dips')") === 'tech-dips' && ev("techTagFor('Cable Lateral Raise')") === 'tech-lateral' &&
+       ['Incline Dumbbell Press', 'Plate Loaded Incline Press', 'Bulgarian Split Squat', 'Hack Squat', 'Leg Press', 'Overhead Press Machine', 'Lat Pulldown', ''].every(x => ev('techTagFor(' + JSON.stringify(x) + ')') === ''));
+    ok('tech: every tag it can return is one the library holds an entry for', J('TECH_TAGS.map(function(t){ return t[1]; })').every(t => ev("EVIDENCE.filter(function(e){ return e.tags.indexOf('" + t + "') >= 0; }).length") >= 1));
+    ok('tech: with the Evidence Library off (as it ships) a technique card carries nothing from it', ev('evOn()') === false && ev("techEvidenceHTML('Barbell Bench Press')") === '');
+    ev("showExInfo('Barbell Bench Press');");
+    ok('tech: off, the card is the card it was', n('#exInfoBody #techEv') === 0 && ev("document.getElementById('exInfoBody').innerHTML === (function(){ var d = document.createElement('div'); d.innerHTML = exInfoCardHTML('Barbell Bench Press'); return d.innerHTML; })()") === true);
+    ev("closeExInfo(); S.overhaul.evidence = true;");
+    const te = ev("techEvidenceHTML('Barbell Bench Press')");
+    ok('tech: on, TECH_MAX entries, each labelled as the app\'s inference with its source chip', ev('evOn()') === true && ev('TECH_MAX') === 2 && (te.match(/class="ev-body"/g) || []).length === 2 &&
+       (te.match(/inference, not the paper/g) || []).length === 2 && (te.match(/class="ev-chip"/g) || []).length === 2 && /E54/.test(te), te.slice(0, 200));
+    ok('tech: on, a lift the library has nothing on still gets nothing', ev("techEvidenceHTML('Leg Press')") === '' && ev("techEvidenceHTML('Incline Dumbbell Press')") === '');
+    ev("showExInfo('Barbell Bench Press');");
+    ok('tech: on, the technique card shows them under its own cues', n('#exInfoBody #techEv') === 1 && ev("document.getElementById('exInfoBody').lastElementChild.id") === 'techEv');
+    ev("closeExInfo(); delete S.overhaul.evidence;");
+    // Today under the look: a lift's name opens its technique card
+    ev('__10look(true); __10draw();');
+    ok('tech: under the look a lift on Today is a button that opens its technique card, the name in a data attribute', n('#ccSession button.lk-tech[data-lift]') === n('#ccSession .cc-lift') && n('#ccSession .cc-lift') > 2 &&
+       ev("document.querySelector('#ccSession .lk-tech').getAttribute('onclick')") === 'showExInfo(this.dataset.lift)');
+    ev("document.querySelector('#ccSession .lk-tech').click();");
+    ok('tech: the tap opens that lift', ev("document.getElementById('exInfoOverlay').classList.contains('show')") === true && txt('#exInfoTitle') === J("dayExNames('D1')")[0]);
+    ev("closeExInfo(); __10look(false); __10draw();");
+    ok('tech: with the look off a lift on Today is the plain name it was', n('#ccSession button.lk-tech') === 0 && n('#ccSession span.cc-lift-n') === 2);
+
+    // --- the stylesheet: scoped, and the old look's rules are still there ---
+    const cssAll = html.replace(/\r\n/g, '\n');
+    const a = cssAll.indexOf('/* LOOK-CSS-BEGIN */'), b = cssAll.indexOf('/* LOOK-CSS-END */');
+    const blk = cssAll.slice(a, b).replace(/\/\*[\s\S]*?\*\//g, '');
+    const BASE_OK = ['.top-date[hidden], .std-lights[hidden], .depth-bar[hidden], #alertBand[hidden]', '.top-date, .std-lights', '.look-seg', '.std-cells'];
+    const sels = [];
+    blk.replace(/@media[^{]*\{/g, '').replace(/([^{}]+)\{[^{}]*\}/g, (m, s) => { sels.push(s.trim()); return ''; });
+    const loose = sels.filter(s => BASE_OK.indexOf(s) < 0 && !s.split(',').every(p => p.trim().indexOf('html[data-look="gunmetal"]') === 0));
+    ok('css: the look\'s block exists, once, inside the one stylesheet', a > 0 && b > a && cssAll.indexOf('/* LOOK-CSS-BEGIN */', a + 5) < 0 && cssAll.indexOf('</style>') > b && sels.length > 100);
+    ok('css: every rule of the look is scoped under html[data-look="gunmetal"], bar four that only hide its own elements', loose.length === 0, JSON.stringify(loose.slice(0, 5)));
+    ok('css: the four unscoped rules only hide or lay out the look\'s own elements', BASE_OK.every(s => sels.indexOf(s) >= 0));
+    ok('css: the look names nothing inside the 3D viewer or the muscle maps', !/bm3d|bm-|canvas|\.muscle|BM_C/.test(blk));
+    ok('css: the muscle model\'s colours are the ones they were', JSON.stringify(J('BM_C')) === JSON.stringify({green:'#3a9e6e', yellow:'#c9952a', red:'#c04040', off:'#39424e'}));
+    ok('css: the Gunmetal tokens he picked', /--base:#11151A;/.test(blk) && /--panel:#19212A;/.test(blk) && /--amber:#8EC5FF;/.test(blk) && /--bad:#E0527A;/.test(blk) && !/--good:|--warn:|--cyan:|--violet:/.test(blk));
+    const root = cssAll.slice(cssAll.indexOf(':root{'), cssAll.indexOf('}', cssAll.indexOf('--accent:var(--amber)')));
+    ok('css: the old look\'s tokens are untouched', /--base:#16110E;/.test(root) && /--amber:#F28A3A;/.test(root) && /--bad:#D2476B;/.test(root) && /--r-card:18px;/.test(root) && !/--grind/.test(root));
+    ok('css: grind keeps a warm colour under the look, and is the accent as before without it', /--grind:var\(--warn\);/.test(blk) && /grind:'var\(--grind, var\(--amber\)\)'/.test(cssAll));
+    ok('css: the agents keep their colours under any look (hex, never the accent token)', J("['zulu','charlie','delta','echo'].map(function(k){ return AGENTS[k].col.toLowerCase(); })").join() === '#dfae36,#54c2a4,#f28a3a,#b79bff');
+    ok('css: reduced motion turns the look\'s glow off', /prefers-reduced-motion: reduce\)\{ html\[data-look="gunmetal"\]\{--glow-amber:none;\}/.test(blk));
+    // the shell: the four new elements exist once, hidden in the markup, outside every section
+    ok('shell: the lights, the date, the band and the depth bar are in the page once, hidden until the look draws them',
+       ['stdLights', 'topDate', 'alertBand', 'depthBar'].every(id => (html.match(new RegExp('id="' + id + '" hidden', 'g')) || []).length === 1) &&
+       ev("document.getElementById('alertBand').closest('section')") === null && ev("document.getElementById('alertBand').closest('#liveMode')") === null);
+  } catch (e) {
+    ok('look section', false, e.stack);
+  } finally {
+    orgBack();
+    ev("todayKey = window.__10Today; stdState = window.__10Std; dashToday = window.__10Dash; live = window.__10Live; S = JSON.parse(window.__10S); sqLaneOpen = JSON.parse(window.__10Lane); agActiveChat = window.__10Chat; stdOpen = false;" +
+       "if(window.__10UI === null) localStorage.removeItem(UI_PREF_KEY); else localStorage.setItem(UI_PREF_KEY, window.__10UI); lookApply();" +
+       "['an_fatigue', 'fuel', 'hub_lib', 'an_strength'].forEach(function(id){ document.getElementById(id).innerHTML = ''; });" +
+       "(function(){ var n = JSON.parse(window.__10Nav); try{ setMode(n.mode); showMainTab(n.main); }catch(e){} })();" +
+       "Object.keys(window).filter(function(k){ return /^__10/.test(k); }).forEach(function(k){ try{ delete window[k]; }catch(e){} });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

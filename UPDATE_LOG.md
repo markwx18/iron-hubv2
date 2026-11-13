@@ -334,3 +334,25 @@ Discord can now show the newer parts of the app. Still read-only: nothing typed 
 Everything comes from what the app works out on each sync, so Discord always agrees with the app. If a part is switched off in the app, the command says so.
 
 **To turn them on:** from the `discord` folder run `npx wrangler deploy`, then `node register-commands.js` (with the same three values as before) so Discord shows the new commands.
+
+## The new look, ready when you are (Nov 13)
+
+The look you picked from the mockups, Command Deck in Gunmetal, is built. It is **off** until you turn it on, so nothing changed on your screen today.
+
+**To turn it on:** Settings, App & data, Look, tap **Command Deck · Gunmetal**. Tap **Forge × Ember** to go back. It is per device, so your phone and your desktop each choose, and nothing in your data changes either way.
+
+- **Same app, new skin.** Gunmetal ground, an ice-blue accent, squared cards with a thin outline. Every screen and button is where it was. The 3D muscle viewer is not touched, and LIVE keeps the 0 to 100 effort slider.
+- **Five lights in the top bar** for the five Standards: B, S, L, I, R (Bulk pace, Showing up, Lifts, Intake, Recovery). Filled is off standard, underlined is slipping, outlined is fine, dashed is not enough data. Tap them to open the Standards.
+- **A status says why, not which colour.** "Losing weight", "2 days missed", "JM Press slowing" where the old look says "Off standard" or "Slipping": on the Standards card, the bell, the Hub and the band. The old look keeps its own words.
+- **Today:** the Standards as five cells, then one panel with the day, today's call, the first four lifts and Start, then the Inbox, then the four coaches, each with its analysts and what is waiting from it. Tap a lift's name for its technique card.
+- **The red band.** While a Standard is red, a band sits at the top of the screens it is about, with the reason and what clears it: Bulk pace on Today, Weight and Quality; Intake on Fuel; Lifts on Progress; Showing up on Plan and Log; Recovery on Ready and Fatigue; all of them on Today and the Hub. It cannot be dismissed, and it is never on LIVE.
+- **The Hub** puts the coach whose analyst is red first.
+- **Basic, Intermediate, Advanced on every screen**, as a bar under the tabs. Basic keeps the plan and the coaching and folds the charts. Intermediate opens charts, trends and logs. Advanced opens forecasts, fuel against results and readiness against outcome. A folded card is in "More on this screen", never gone.
+- **The bottom bar** is the same five, with Live as a round dial.
+
+Two things to know before you switch:
+
+- **The blue accent is close to two other colours.** It sits near the green used for "fine" and near ECHO's violet. Nothing relies on colour alone (a status has an icon and a reason, an agent has its name), but if the two look alike to you on your phone, say so and the accent can move.
+- **It has not been seen on your iPhone.** It was checked in a desktop browser at phone widths (393 and 320 pixels).
+
+Once you turn on the Evidence Library (still waiting on your ten checks), the technique cards for bench, squat, JM press, dips and lateral raises also show what the library found for that lift.

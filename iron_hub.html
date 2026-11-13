@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-13-v5k">
+<meta name="ironhub-build" content="2026-11-13-v5l">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2387,6 +2387,224 @@
   .vl-ctl .btn{flex:1; min-height:48px; min-width:0;}
   .vl-ctl #vlPlay{flex:2;}
   .vl-ctl2{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px;}
+  /* LOOK-CSS-BEGIN */
+  /* ============================================================
+     V5 STAGE 10 -- THE LOOK: A, COMMAND DECK, IN GUNMETAL (his pick, 2026-11-12).
+     Everything below the four base rules is scoped under html[data-look="gunmetal"], which lookApply() sets from the
+     per-device pref uiPref('look'). Off (the default) none of it applies and the app is Forge x Ember as it was:
+     no rule above this block was changed or removed.
+     - The token NAMES are kept, as V3 kept them: --amber is still "the accent", and under this look the accent is
+       ice blue. DELTA stays amber because the agents' colours are hex in AGENTS, never this token.
+     - --bad moved from #D2476B to #E0527A. It was re-checked for colour-blind separation against the new accent,
+       --warn and --good on the gunmetal card (docs/HISTORY.md, "The look").
+     - The 3D muscle model is not touched: no rule here names its canvas or its colours (BM_C).
+     - Shape: 8px cards with a hairline, 6px controls, squared segmented controls in mono caps.
+     ============================================================ */
+  .top-date[hidden], .std-lights[hidden], .depth-bar[hidden], #alertBand[hidden]{display:none;}
+  .top-date, .std-lights{display:none;}
+  .look-seg{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .std-cells{display:none;}
+
+  html[data-look="gunmetal"]{
+    color-scheme:dark;
+    --base:#11151A; --base2:#0D1115; --panel:#19212A; --panel2:#222C37;
+    --line:#2F3B48; --line2:#3B4958;
+    --amber:#8EC5FF; --amber-soft:#B9DBFF; --amber-dim:#2F4A63;
+    --red:#E0527A; --red-dim:#5A2438; --bad:#E0527A;
+    --text:#E9EEF3; --muted:#A7B3C0; --dim:#7F8C99;
+    --on-accent:#08121D; --bad-ink:#FFE3EA;
+    --r-card:8px; --r-ctl:6px;
+    --lift:none;
+    --glow:rgba(142,197,255,.18);
+    --glow-amber:0 0 0 1px rgba(142,197,255,.35), 0 0 22px rgba(142,197,255,.22);
+    --grind:var(--warn);
+    --lk-card:color-mix(in srgb, var(--panel) 70%, var(--base));
+  }
+  html[data-look="gunmetal"], html[data-look="gunmetal"] body{background:var(--base);}
+
+  /* the warm tints that were written as numbers, not tokens */
+  html[data-look="gunmetal"] .topbar{background:var(--base); backdrop-filter:none; -webkit-backdrop-filter:none;}
+  html[data-look="gunmetal"] .welcome{background:var(--lk-card); border:1px solid var(--line); border-radius:var(--r-card);}
+  html[data-look="gunmetal"] .prop-card{background:var(--lk-card); border-radius:var(--r-card);}
+  html[data-look="gunmetal"] .resttimer{background:var(--panel2); border-radius:var(--r-card);}
+  html[data-look="gunmetal"] .rm-step.attempt{background:linear-gradient(90deg, var(--glow), transparent);}
+  html[data-look="gunmetal"] .meso-warn{color:var(--warn); background:color-mix(in srgb, var(--warn) 8%, transparent); border-color:color-mix(in srgb, var(--warn) 40%, var(--line));}
+  html[data-look="gunmetal"] .sn-item.sn-live:hover, html[data-look="gunmetal"] .sn-item.sn-live.on{background:var(--glow);}
+  html[data-look="gunmetal"] .lset.lv3-next{background:color-mix(in srgb, var(--amber) 7%, transparent);}
+  html[data-look="gunmetal"] input:focus, html[data-look="gunmetal"] select:focus, html[data-look="gunmetal"] textarea:focus{box-shadow:0 0 0 3px var(--glow);}
+  html[data-look="gunmetal"] .overlay{background:color-mix(in srgb, var(--base2) 95%, transparent);}
+  html[data-look="gunmetal"] .nav-scrim.open{background:color-mix(in srgb, var(--base2) 60%, transparent);}
+  html[data-look="gunmetal"] .modeswitch button.on.live, html[data-look="gunmetal"] .msg.me, html[data-look="gunmetal"] .efftog button.sel, html[data-look="gunmetal"] .meso-wk-now, html[data-look="gunmetal"] .notif-badge{color:var(--on-accent);}
+
+  /* ---- shape ---- */
+  html[data-look="gunmetal"] .card, html[data-look="gunmetal"] .sub, html[data-look="gunmetal"] .bodymap-card, html[data-look="gunmetal"] .goal-card{border:1px solid var(--line); border-radius:var(--r-card); box-shadow:none;}
+  html[data-look="gunmetal"] .card{background:var(--lk-card);}
+  html[data-look="gunmetal"] .card.flat{border:none; background:none;}
+  html[data-look="gunmetal"] .sub.grp{border:none; background:none;}
+  html[data-look="gunmetal"] .sub.grp > .sub-head{border:1px solid var(--line); border-radius:var(--r-card); box-shadow:none; background:var(--lk-card);}
+  html[data-look="gunmetal"] .sub.grp.open > .sub-head{background:var(--panel);}
+  html[data-look="gunmetal"] .btn.sm{border-radius:var(--r-ctl);}
+  html[data-look="gunmetal"] h2:not([class]), html[data-look="gunmetal"] .dash-sec{font-family:var(--disp); font-weight:700; font-size:11.5px; letter-spacing:.15em; text-transform:uppercase; color:var(--muted);}
+  html[data-look="gunmetal"] .notif-panel{border-radius:var(--r-card);}
+  html[data-look="gunmetal"] .inv-banner{border-radius:var(--r-card);}
+
+  /* ---- the top bar: name, date, the five lights, the Inbox, the Hub ---- */
+  html[data-look="gunmetal"] .topbar{gap:6px; padding-left:12px; padding-right:12px;}
+  html[data-look="gunmetal"] .logo-mark{display:none;}
+  html[data-look="gunmetal"] .brand-txt{font-weight:800; font-size:15px; letter-spacing:.16em; white-space:nowrap; top:0;}
+  html[data-look="gunmetal"] .top-date:not([hidden]){display:inline; font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.02em; text-transform:uppercase; color:var(--muted); white-space:nowrap;}
+  html[data-look="gunmetal"] .top-btn, html[data-look="gunmetal"] .notif-btn{width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--panel); box-shadow:none;}
+  html[data-look="gunmetal"] .top-btn svg{width:17px; height:17px;}
+  html[data-look="gunmetal"] .top-btn.on{border-color:var(--amber);}
+  html[data-look="gunmetal"] .notif-btn.has{border:1px solid var(--line);}
+  html[data-look="gunmetal"] .std-mark{display:none;}
+  html[data-look="gunmetal"] .std-lights:not([hidden]){display:inline-flex; align-items:center; gap:2px; flex:none; min-height:34px; padding:0 2px; border:none; background:none; cursor:pointer;}
+  html[data-look="gunmetal"] .std-lights b{width:16px; height:16px; border-radius:3px; display:grid; place-items:center; font:700 9px/1 var(--mono); border:1px solid var(--good); color:var(--good);}
+  html[data-look="gunmetal"] .std-lights b.amber{border-color:var(--warn); color:var(--warn); border-bottom-width:3px;}
+  html[data-look="gunmetal"] .std-lights b.red{background:var(--bad); border-color:var(--bad); color:var(--bad-ink);}
+  html[data-look="gunmetal"] .std-lights b.nodata, html[data-look="gunmetal"] .std-lights b.held{border-color:var(--line2); border-style:dashed; color:var(--dim);}
+  @media (max-width:480px){
+    html[data-look="gunmetal"] .topbar:has(.std-lights:not([hidden])) .wa-count{display:none;}
+  }
+  @media (max-width:420px){ html[data-look="gunmetal"] .top-date:not([hidden]){display:none;} }
+  @media (max-width:350px){
+    html[data-look="gunmetal"] .brand-txt{font-size:13px; letter-spacing:.08em;}
+    html[data-look="gunmetal"] .std-lights b{width:14px; height:14px; font-size:8px;}
+    html[data-look="gunmetal"] .top-btn, html[data-look="gunmetal"] .notif-btn{width:32px; height:32px;}
+    html[data-look="gunmetal"] .topbar{gap:4px; padding-left:8px; padding-right:8px;}
+  }
+  /* an older rule drops the name at this width while the countdown shows; under the look the countdown has already given way */
+  @media (max-width:360px){ html[data-look="gunmetal"] .topbar:has(.std-lights:not([hidden])) .brand-txt{display:block;} }
+
+  /* ---- alert mode: the red band. A word, an icon, the reason; no dismiss ---- */
+  html[data-look="gunmetal"] .ab{display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:4px 10px; align-items:center; width:100%; padding:10px 14px; text-align:left;
+    background:color-mix(in srgb, var(--bad) 20%, var(--base)); border:none; border-top:1px solid var(--bad); border-bottom:1px solid var(--bad);
+    color:var(--text); font-family:var(--body); cursor:pointer;}
+  html[data-look="gunmetal"] .ab-ic{width:28px; height:28px; border-radius:50%; background:var(--bad); color:var(--bad-ink); display:grid; place-items:center; font:800 13px/1 var(--mono);}
+  html[data-look="gunmetal"] .ab-b{display:grid; gap:3px; min-width:0;}
+  html[data-look="gunmetal"] .ab-t{font:600 13.5px/1.2 var(--disp); letter-spacing:.07em; text-transform:uppercase; overflow-wrap:anywhere;}
+  html[data-look="gunmetal"] .ab-t b{font-weight:800; color:color-mix(in srgb, var(--bad) 62%, white);}
+  html[data-look="gunmetal"] .ab-p{font-size:12px; line-height:1.35; color:var(--text); overflow-wrap:anywhere;}
+  html[data-look="gunmetal"] .ab-go{font-size:20px; line-height:1; color:var(--muted);}
+
+  /* ---- the sub-nav and the depth bar: squared, one hairline box each ---- */
+  html[data-look="gunmetal"] .subnav.has{background:var(--base);}
+  html[data-look="gunmetal"] .seg-track{gap:0; padding:0; border:1px solid var(--line); border-radius:var(--r-ctl); background:transparent; box-shadow:none; overflow:hidden;}
+  html[data-look="gunmetal"] .subnav.seg .seg-track button{height:38px; border-radius:0; border-left:1px solid var(--line); font-family:var(--mono); font-weight:600; font-size:10.5px; letter-spacing:.02em; text-transform:uppercase;}
+  html[data-look="gunmetal"] .subnav.seg .seg-track button:first-child{border-left:none;}
+  html[data-look="gunmetal"] .subnav.seg .seg-track button.on{background:var(--amber); color:var(--on-accent); box-shadow:none;}
+  html[data-look="gunmetal"] .subnav button, html[data-look="gunmetal"] .rnav button{border-radius:var(--r-ctl);}
+  html[data-look="gunmetal"] #reviewMode main > .depth-bar{order:-1; margin:10px 0 10px;}
+  html[data-look="gunmetal"] #reviewMode main > .subnav.has + .depth-bar{margin-top:0;}
+  html[data-look="gunmetal"] .dp-seg{gap:0; margin:0; border:1px solid var(--line); border-radius:var(--r-ctl); overflow:hidden;}
+  html[data-look="gunmetal"] .dp-seg button{min-height:34px; padding:6px 2px; border:none; border-left:1px solid var(--line); border-radius:0; background:none;
+    font-family:var(--mono); font-weight:600; font-size:10px; letter-spacing:0; text-transform:uppercase; color:var(--dim);}
+  html[data-look="gunmetal"] .dp-seg button:first-child{border-left:none;}
+  html[data-look="gunmetal"] .dp-seg button.on{background:var(--panel2); color:var(--text); border-color:var(--line);}
+  html[data-look="gunmetal"] .depth-seg button{border-radius:var(--r-ctl);}
+
+  /* ---- the bottom bar: flush, with the wheel as a raised round dial ---- */
+  html[data-look="gunmetal"] .botnav{left:0; right:0; bottom:0; height:auto; padding:8px 6px calc(env(safe-area-inset-bottom) + 10px); border-radius:0; border-top:1px solid var(--line);
+    background:var(--panel); backdrop-filter:none; -webkit-backdrop-filter:none; box-shadow:none;}
+  html[data-look="gunmetal"] .botnav .ni{position:relative; gap:4px; font-size:10px; letter-spacing:.08em;}
+  html[data-look="gunmetal"] .botnav .ni.on{color:var(--amber);}
+  html[data-look="gunmetal"] .botnav .ni.on svg{color:var(--amber);}
+  html[data-look="gunmetal"] .botnav .ni:not(.ni-live).on::before{content:""; position:absolute; top:-8px; left:50%; width:18px; height:3px; margin-left:-9px; border-radius:2px; background:var(--amber);}
+  html[data-look="gunmetal"] .botnav .ni-live{width:54px; height:54px; margin-top:-28px; border:none; border-radius:50%; font-size:10px; letter-spacing:.1em; color:var(--on-accent);
+    background:conic-gradient(var(--amber) 0 25%, var(--amber-soft) 0 50%, var(--amber) 0 75%, var(--amber-soft) 0);
+    box-shadow:0 0 0 4px var(--panel), 0 0 0 5px var(--line);}
+  html[data-look="gunmetal"] .botnav .ni-live.on{color:var(--on-accent); box-shadow:0 0 0 4px var(--panel), 0 0 0 6px var(--amber);}
+  html[data-look="gunmetal"] .botnav .ni-live svg, html[data-look="gunmetal"] .botnav .ni-live.on svg{color:var(--on-accent);}
+  @media(max-width:899px){ html[data-look="gunmetal"] .app-shell{padding-bottom:calc(env(safe-area-inset-bottom) + 92px);} }
+
+  /* ---- Today: orders, the session panel, the Inbox, the coaches, details ---- */
+  html[data-look="gunmetal"] .cc.lk-today{display:block; margin-top:10px;}
+  html[data-look="gunmetal"] .lk-today .cc-main{gap:10px;}
+  html[data-look="gunmetal"] .lk-today .cc-main > .cc-head, html[data-look="gunmetal"] .lk-today .cc-main > .dash-sec{margin:6px 0 0; padding-top:12px; border-top:1px solid var(--line);}
+  html[data-look="gunmetal"] .lk-today .cc-main > .std:first-child > .cc-head{border-top:none;}
+  html[data-look="gunmetal"] .cc-head .dash-sec{color:var(--text);}
+  html[data-look="gunmetal"] .cc-note{font-size:10px; letter-spacing:.04em;}
+  html[data-look="gunmetal"] .std-cells{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; width:100%; margin-top:8px; padding:0; border:none; background:none; color:inherit; font:inherit; cursor:pointer;}
+  html[data-look="gunmetal"] .std-cell{display:grid; gap:3px; justify-items:center; align-content:start; min-width:0; padding:7px 3px 6px; border:1px solid var(--line); border-radius:var(--r-ctl); text-align:center;}
+  html[data-look="gunmetal"] .std-cell b{font:700 12px/1 var(--mono);}
+  html[data-look="gunmetal"] .std-cell-n{font:700 10px/1.05 var(--disp); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); overflow-wrap:anywhere;}
+  html[data-look="gunmetal"] .std-cell-v{font:500 9.5px/1.15 var(--mono); color:var(--dim); overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}
+  html[data-look="gunmetal"] .std-cell.red{border-color:var(--bad); background:color-mix(in srgb, var(--bad) 16%, transparent);}
+  html[data-look="gunmetal"] .std-cell.red .std-cell-n, html[data-look="gunmetal"] .std-cell.red .std-cell-v{color:var(--text);}
+  html[data-look="gunmetal"] .std-cell.amber{border-color:color-mix(in srgb, var(--warn) 60%, var(--line));}
+  html[data-look="gunmetal"] .std-row{background:var(--lk-card); border:1px solid var(--line); border-left:3px solid var(--line2); border-radius:var(--r-card);}
+  html[data-look="gunmetal"] .std-row.red{border-color:color-mix(in srgb, var(--bad) 45%, var(--line)); border-left-color:var(--bad);}
+  html[data-look="gunmetal"] .std-row.amber{border-left-color:var(--warn);} html[data-look="gunmetal"] .std-row.ok{border-left-color:var(--good);}
+  html[data-look="gunmetal"] .std-w{font-size:10.5px;}
+  html[data-look="gunmetal"] .lk-sess{border:1px solid var(--line); border-radius:var(--r-card); overflow:hidden; background:var(--lk-card); min-width:0;}
+  html[data-look="gunmetal"] .lk-sess .cc-hero{display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:3px 10px; padding:12px; background:var(--panel); position:static;}
+  html[data-look="gunmetal"] .lk-sess .cc-eyebrow{grid-column:1; font-size:10px; color:var(--amber);}
+  html[data-look="gunmetal"] .lk-sess .cc-title{grid-column:1; font-size:clamp(24px, 7.4vw, 30px); line-height:1; letter-spacing:.04em; text-align:left; overflow-wrap:anywhere;}
+  html[data-look="gunmetal"] .lk-sess .cc-sub{grid-column:1; font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted);}
+  html[data-look="gunmetal"] .lk-sess .lk-call{grid-column:2; grid-row:1 / span 3; align-self:center; max-width:118px; padding:5px 8px; border:1px solid var(--amber); border-radius:999px;
+    font:600 10px/1.15 var(--mono); letter-spacing:.04em; text-transform:uppercase; color:var(--amber); text-align:center;}
+  html[data-look="gunmetal"] .lk-sess .cc-wheel{display:none;}
+  html[data-look="gunmetal"] .lk-sess .cc-why{grid-column:1 / -1; margin:4px 0 0; max-width:none; font-size:12.5px; line-height:1.4; text-align:left; color:var(--muted);}
+  html[data-look="gunmetal"] .lk-sess .cc-lifts{border-top:1px solid var(--line); padding:2px 12px 12px;}
+  html[data-look="gunmetal"] .lk-sess .cc-lift{padding:9px 0; border-bottom:1px solid var(--line);}
+  html[data-look="gunmetal"] .lk-sess .cc-lift-k{width:32px; font-size:10px; color:var(--dim);}
+  html[data-look="gunmetal"] .lk-sess .cc-lift-n{font-size:13.5px;}
+  html[data-look="gunmetal"] .lk-sess button.lk-tech{padding:0; border:none; background:none; color:var(--text); font-family:var(--body); font-weight:600; text-align:left; cursor:pointer; text-decoration:underline; text-decoration-color:var(--line2); text-underline-offset:3px;}
+  html[data-look="gunmetal"] .tech-ev{margin:14px 16px 16px; text-align:left;}
+  html[data-look="gunmetal"] .lk-sess .cc-lift-v{font-size:17px;}
+  html[data-look="gunmetal"] .cc-go .btn:not(.ghost){padding:15px 12px; background:var(--amber); border-color:var(--amber); color:var(--on-accent); font-weight:800; font-size:18px; letter-spacing:.1em;}
+  html[data-look="gunmetal"] .ibx-r{border-left:none; padding-left:0;}
+  html[data-look="gunmetal"] .ibx-chip{border:none; border-radius:4px; padding:3px 5px; background:var(--panel2); font-weight:600; font-size:9.5px; letter-spacing:.06em;}
+  html[data-look="gunmetal"] .lk-gauges{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; min-width:0;}
+  html[data-look="gunmetal"] .lk-g{display:grid; gap:5px; align-content:start; min-width:0; padding:9px; border:1px solid var(--line); border-radius:var(--r-ctl); background:none; color:var(--text);
+    font-family:var(--body); text-align:left; cursor:pointer;}
+  html[data-look="gunmetal"] .lk-g.red{border-color:var(--bad);}
+  html[data-look="gunmetal"] .lk-g-h{display:flex; align-items:baseline; gap:6px; min-width:0;}
+  html[data-look="gunmetal"] .lk-g-h b{font:800 15px/1 var(--disp); letter-spacing:.08em; color:var(--c);}
+  html[data-look="gunmetal"] .lk-g-h small{font:500 9.5px/1 var(--mono); text-transform:uppercase; color:var(--dim);}
+  html[data-look="gunmetal"] .lk-g .sq-st{font-size:11.5px;}
+  html[data-look="gunmetal"] .lk-g-sq{display:flex; flex-wrap:wrap; gap:3px 8px; font:500 9.5px/1.2 var(--mono); color:var(--muted);}
+  html[data-look="gunmetal"] .lk-g-sq i{font-style:normal; margin-right:3px;}
+  html[data-look="gunmetal"] .lk-g-rq{font:600 10px/1.2 var(--mono); color:var(--amber);}
+  html[data-look="gunmetal"] .lk-g-rq.none{color:var(--dim);}
+  html[data-look="gunmetal"] .lk-g-run{font:600 10px/1.2 var(--mono); color:var(--amber);}
+  html[data-look="gunmetal"] .lk-g-run.bad{color:var(--bad);}
+
+  /* ---- the Hub: lanes as accordions, analysts as instruments ---- */
+  html[data-look="gunmetal"] .hub-title{font-size:26px; letter-spacing:.1em;}
+  html[data-look="gunmetal"] .sq-lights{justify-content:flex-start;}
+  html[data-look="gunmetal"] .sq-lanes{gap:6px;}
+  html[data-look="gunmetal"] .sq-lane{background:none; border:1px solid var(--line); border-radius:var(--r-card); box-shadow:none; overflow:hidden;}
+  html[data-look="gunmetal"] .sq-lane.on{box-shadow:none; border-color:color-mix(in srgb, var(--c) 55%, var(--line));}
+  html[data-look="gunmetal"] .sq-lane[data-lvl="red"]{border-color:var(--bad);}
+  html[data-look="gunmetal"] .sq-lead{background:var(--panel);}
+  html[data-look="gunmetal"] .sq-lane[data-lead="zulu"] > .sq-lead{background:color-mix(in srgb, var(--c) 12%, var(--panel));}
+  html[data-look="gunmetal"] .sq-lead .hub-g{width:34px; height:34px; border-radius:50%; background:var(--c); color:var(--base); font-size:15px; display:grid; place-items:center;}
+  html[data-look="gunmetal"] .sq-lead-n{font-weight:800; font-size:16px; letter-spacing:.08em; color:var(--c);}
+  html[data-look="gunmetal"] .sq-lead-n small{font-family:var(--mono); font-weight:500; font-size:10px; letter-spacing:.02em; color:var(--dim);}
+  html[data-look="gunmetal"] .sq-tiles{gap:6px; padding:10px;}
+  html[data-look="gunmetal"] .sq-tile{background:var(--base); border:1px solid var(--line); border-radius:var(--r-ctl);}
+  html[data-look="gunmetal"] .sq-tile[data-lvl="red"]{border-color:var(--bad);}
+  html[data-look="gunmetal"] .sq-tile.open{box-shadow:none; border-color:var(--amber);}
+  html[data-look="gunmetal"] .sq-tile-h b{font-family:var(--mono); font-weight:600; font-size:11px; letter-spacing:.08em;}
+  html[data-look="gunmetal"] .sq-job{font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--dim);}
+  html[data-look="gunmetal"] .sq-line{font-family:var(--mono); font-size:10.5px; line-height:1.35;}
+  html[data-look="gunmetal"] .sq-strip i{border-radius:1px;}
+  html[data-look="gunmetal"] .sq-detail{background:var(--base); border:1px dashed var(--line2); border-radius:var(--r-ctl);}
+  html[data-look="gunmetal"] .hub-agent, html[data-look="gunmetal"] .ag-chat, html[data-look="gunmetal"] .ag-prop{border-radius:var(--r-card);}
+
+  /* ---- LIVE: the same order as today, in the new skin. The 0 to 100 effort slider is kept ---- */
+  html[data-look="gunmetal"] .lv3-log, html[data-look="gunmetal"] .btn.lv3-log, html[data-look="gunmetal"] .btn.lv3-done{border-radius:var(--r-card);}
+  /* grind is a caution, so it keeps a warm colour while the accent is blue */
+  html[data-look="gunmetal"] .efflv input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--red) 0%,var(--grind) 33%,var(--muted) 62%,var(--cyan) 100%);}
+  html[data-look="gunmetal"] .efflv input[type=range]::-moz-range-track{background:linear-gradient(90deg,var(--red) 0%,var(--grind) 33%,var(--muted) 62%,var(--cyan) 100%);}
+  html[data-look="gunmetal"] .leff.e-grind{color:var(--grind); border-color:color-mix(in srgb, var(--grind) 45%, var(--line));}
+  html[data-look="gunmetal"] .efftog button.sel.e-grind{background:var(--grind); border-color:var(--grind);}
+  html[data-look="gunmetal"] .lv4 .lv3-eff button[data-e="grind"]::before{background:var(--grind);}
+  html[data-look="gunmetal"] .fat-banner{border-radius:var(--r-card);}
+
+  @media (prefers-reduced-motion: reduce){ html[data-look="gunmetal"]{--glow-amber:none;} }
+  /* LOOK-CSS-END */
 </style>
 
 
@@ -2416,8 +2634,10 @@
     <button class="top-btn top-menu" id="topMenu" onclick="navDrawerToggle()" title="Menu" aria-label="Open menu" aria-expanded="false" aria-controls="sidenav"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
     <span class="logo-mark"></span>
     <div class="brand-txt">Iron Hub</div>
+    <span class="top-date" id="topDate" hidden></span>
     <div class="spacer wa-slot"><button class="wa-count" id="waCount" hidden onclick="setMode('review');showMainTab('home')" aria-label="Winter Arc"></button></div>
     <button class="std-mark" id="stdMark" hidden onclick="stdGo()" title="A standard is off" aria-label="A standard is off"></button>
+    <button class="std-lights" id="stdLights" hidden onclick="stdGo()" title="The five Standards" aria-label="The five Standards"></button>
     <button class="notif-btn" id="notifBtn" onclick="notifToggle()" title="Notifications" aria-label="Notifications">
       <span class="notif-ic">◉</span><span class="notif-badge" id="notifBadge"></span>
     </button>
@@ -2429,6 +2649,8 @@
   <!-- Slim always-on pulse check. Rendered on every review tab and NEVER during LIVE:
        that screen is deliberately uncluttered while actually training. -->
   <div id="statusStrip"></div>
+  <!-- V5 stage 10: the red band of the new look. Outside every section, so no repaint and no card budget touch it. -->
+  <div id="alertBand" hidden></div>
 
   <div id="liveMode">
     <div class="live-body" id="liveBody"></div>
@@ -2438,6 +2660,7 @@
     <div class="review-body">
       <main>
         <div class="subnav" id="subnav"></div>
+        <div class="depth-bar" id="depthBar" hidden></div>
         <section id="home"></section>
         <section id="progress" class="on" data-title="Overview"></section>
         <section id="road" data-title="Road to target"></section>
@@ -2544,6 +2767,9 @@
 
 <script>
 'use strict';
+/* V5 stage 10: the look is a per-device pref, put on <html> before anything is drawn so the old look never flashes.
+   The key is UI_PREF_KEY's own value (declared in the second block); lookApply() is the real setter. */
+try{ if(JSON.parse(localStorage.getItem('ironhub:ui') || '{}').look === 'gunmetal') document.documentElement.setAttribute('data-look', 'gunmetal'); }catch(e){}
 /* ================= STATE ================= */
 const LS_KEY = 'ironhub:v1';
 const DEFAULT_SPLIT = {
@@ -10795,6 +11021,7 @@ function renderSettings(){
     '<p class="small" style="margin-top:8px">Export regularly — localStorage can be wiped by browser cleanup. The JSON file is your backup.</p></div>';
   app += html;
   try{ const dc = depthCardHTML(); if(dc) app += '<h2>Detail</h2>'+dc; }catch(e){}   // V5 stage 8, per device
+  try{ app += '<h2>Look</h2>'+lookCardHTML(); }catch(e){}   // V5 stage 10, per device
   app += ovCardHTML();   // V5 switches: empty until a stage registers one
   // Folded by default and remembered per device: eleven sections on one page was the complaint.
   el.innerHTML = '<div class="set-head"><span class="cc-eyebrow">This device</span><h2 class="hub-title">Settings</h2></div>'+
@@ -10881,7 +11108,7 @@ function cycleScheduleEditorHTML(){
     const isToday = i===todayPos;
     let opts = '<option value="REST"'+(day==='REST'?' selected':'')+'>Rest</option>';
     Object.keys(S.split).forEach(k=>{ opts += '<option value="'+k+'"'+(day===k?' selected':'')+'>'+k+' \u2014 '+esc(S.split[k].name)+'</option>'; });
-    h += '<div class="row" style="align-items:center'+(isToday?';background:rgba(242,138,58,.08);border-radius:8px;padding:4px 6px':'')+'">'+
+    h += '<div class="row" style="align-items:center'+(isToday?';background:color-mix(in srgb, var(--amber) 8%, transparent);border-radius:8px;padding:4px 6px':'')+'">'+
       '<div style="flex:0 0 80px" class="small"><b>Day '+(i+1)+'</b>'+(isToday?' <span style="color:var(--amber)">\u2190 today</span>':'')+'</div>'+
       '<div style="flex:0 0 auto"><select onchange="cycleSetDay('+i+',this.value)">'+opts+'</select></div>'+
       '<div style="margin-left:auto;display:flex;gap:4px">'+
@@ -11159,6 +11386,7 @@ function setMode(m){
   else { showMainTab(activeMainTab, navMemory[activeMainTab]); }
   // The strip must vanish the instant LIVE opens, not on the next timer tick.
   try{ renderStatusStrip(); }catch(e){}
+  try{ lookChromeTick(); }catch(e){}   // the band is never on LIVE (V5 stage 10)
   try{ invUpdateBadge(); }catch(e){}
   window.scrollTo({top:0, behavior:'instant'});
 }
@@ -11309,6 +11537,7 @@ function showMainTab(mainId, subId){
     sec.style.order = i>=0 ? String(i) : '';
   });
   renderSidenav(); renderSubnav(); buildBotNav();
+  try{ lookChromeTick(); }catch(e){}   // V5 stage 10: the depth bar, the lights and the band follow the screen
   // This render is a navigation, so it may animate in (see .enter / _navEnter). A repaint from
   // rerenderActive() goes through navRenderSub() alone and never sets either.
   _navEnter = true;
@@ -12051,7 +12280,7 @@ function painHTML(ex, i){
 function effLeverReadout(){
   const v = (liveDockLever === null) ? '' : liveDockLever;
   const b = (liveDockLever === null) ? (liveDockEff || '') : effBucketFromLever(liveDockLever);
-  const col = {fail:'var(--red)', grind:'var(--amber)', solid:'var(--muted)', easy:'var(--cyan)'}[b] || 'var(--dim)';
+  const col = {fail:'var(--red)', grind:'var(--grind, var(--amber))', solid:'var(--muted)', easy:'var(--cyan)'}[b] || 'var(--dim)';
   return {v:v, col:col, txt:(b ? b.toUpperCase()+' \u00b7 '+(v===''?'':v) : 'not set')};
 }
 function effLeverHTML(){
@@ -13677,10 +13906,33 @@ function exInfoCardHTML(name){
 }
 function showExInfo(name){
   document.getElementById('exInfoTitle').textContent=name;
-  document.getElementById('exInfoBody').innerHTML=exInfoCardHTML(name);
+  let tech = '';
+  try{ tech = techEvidenceHTML(name); }catch(e){ tech = ''; }   // V5 stage 10: only with the Evidence Library on
+  document.getElementById('exInfoBody').innerHTML=exInfoCardHTML(name)+tech;
   document.getElementById('exInfoOverlay').classList.add('show');
 }
 function closeExInfo(){ document.getElementById('exInfoOverlay').classList.remove('show'); }
+/* V5 stage 10: the Evidence Library's technique entries on a lift's technique card. Only the five lifts the library
+   read a source for, each name anchored (a press is not a bench press, a split squat is not a back squat), and only
+   while the library is on: it is held off until he has checked ten entries, and this is the same guidance. The entry
+   is drawn by the library's own evEntryHTML(), so the inference is labelled as the app's, never the paper's claim. */
+const TECH_TAGS = [[/\bbarbell bench press\b/i, 'tech-bench'], [/\bback squat\b/i, 'tech-squat'], [/\bjm press\b/i, 'tech-jm'],
+  [/\bdips\b/i, 'tech-dips'], [/\blateral raise\b/i, 'tech-lateral']];
+const TECH_MAX = 2;   // entries on one technique card
+function techTagFor(name){
+  const n = String(name || '');
+  for(let i = 0; i < TECH_TAGS.length; i++) if(TECH_TAGS[i][0].test(n)) return TECH_TAGS[i][1];
+  return '';
+}
+function techEvidenceHTML(name){
+  if(!evOn()) return '';
+  const tag = techTagFor(name);
+  if(!tag) return '';
+  const es = EVIDENCE.filter(function(e){ return e.tags.indexOf(tag) >= 0; }).slice(0, TECH_MAX);
+  if(!es.length) return '';
+  return '<div class="tech-ev" id="techEv"><div class="dash-sec">From the Evidence Library</div>'+
+    es.map(function(e){ return evEntryHTML(e)+'<div class="ev-cite">'+evChipHTML(e)+'</div>'; }).join('')+'</div>';
+}
 
 /* ===================== 2 + 6. LAST SESSION + DELTAS ===================== */
 function lastSessionFor(name){ const h=historyFor(name); return h.length?h[0]:null; }
@@ -14718,7 +14970,7 @@ function liveExHTML_1rm(ex, i, active){
     const logged = ex.sets[si];
     const isPast = si < curStep;
     const isCur  = si === curStep && !allDone;
-    h += '<div class="lset '+(isPast?'logged':'')+'" style="'+(isCur?'background:rgba(242,138,58,0.05)':'')+'">'+
+    h += '<div class="lset '+(isPast?'logged':'')+'" style="'+(isCur?'background:color-mix(in srgb, var(--amber) 5%, transparent)':'')+'">'+
       '<span class="lsn" style="min-width:18px">'+(isPast?'\u2713':isCur?'\u25b8':'\u25cb')+'</span>'+
       '<span class="lval" style="color:var('+(isPast?'--cyan':isCur?'--text':'--dim')+')">'+(step.w==='Bar'?'Bar':step.w+' lb')+
         '<span class="x" style="margin:0 3px">\u00d7</span>'+(isPast&&logged?logged.r:step.reps)+'</span>'+
@@ -15041,7 +15293,7 @@ function fatigueBannerHTML(){
   try{ fi = fatigueSuggestsDeload(); }catch(e){ return ''; }
   if(!fi) return '';
   const hard = fi.status==='overreached';
-  return '<div class="card fat-banner" style="border-left:3px solid '+(hard?'var(--red)':'var(--amber)')+';background:'+(hard?'rgba(210,71,107,.06)':'rgba(242,138,58,.05)')+'">'+
+  return '<div class="card fat-banner" style="border-left:3px solid '+(hard?'var(--red)':'var(--amber)')+';background:'+(hard?'color-mix(in srgb, var(--bad) 6%, transparent)':'color-mix(in srgb, var(--amber) 5%, transparent)')+'">'+
     '<div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">'+
     '<b style="color:'+(hard?'var(--red)':'var(--amber)')+';letter-spacing:.04em;font-family:var(--disp);font-size:15px">'+
       (hard?'FATIGUE: OVERREACHED':'FATIGUE RUNNING HIGH')+'</b>'+
@@ -20134,7 +20386,7 @@ function readinessFactorsCardHTML(){
   if(!keys.length) return h+'<p class="small" style="color:var(--dim)">Each factor needs '+AN_RD_MIN_SESSIONS+' sessions at two different answers before it is compared.</p></div>';
   keys.forEach(function(k){
     h += '<div class="small" style="margin:10px 0 2px;color:var(--text)">'+name[k]+'</div>';
-    f[k].forEach(function(x){ h += anBarRow(x.value, Math.round(x.rate*100), Math.round(x.rate*100)+'% grind/fail \u00b7 '+x.n, 'var(--amber)'); });
+    f[k].forEach(function(x){ h += anBarRow(x.value, Math.round(x.rate*100), Math.round(x.rate*100)+'% grind/fail \u00b7 '+x.n, 'var(--grind, var(--amber))'); });
   });
   return h+'<p class="small" style="margin-top:8px;color:var(--dim)">Share of effort-tagged sets that came back grind or fail, by each answer. Energy is left out on WHOOP days unless you changed its pre-fill.</p></div>';
 }
@@ -20594,7 +20846,7 @@ function renderAnReadiness(){
   if(t.ok){
     const gap = anRdPct(t.keptRate) - anRdPct(t.trimRate);
     h += anBarRow('Trimmed', anRdPct(t.trimRate), anRdPct(t.trimRate)+'% grind/fail · '+t.trimmed+' sessions', 'var(--cyan)')+
-         anBarRow('Kept full plan', anRdPct(t.keptRate), anRdPct(t.keptRate)+'% grind/fail · '+t.kept+' sessions', 'var(--amber)')+
+         anBarRow('Kept full plan', anRdPct(t.keptRate), anRdPct(t.keptRate)+'% grind/fail · '+t.kept+' sessions', 'var(--grind, var(--amber))')+
          '<p class="small" style="margin-top:12px">'+
          (gap>2   ? 'Trimming is doing real work — '+gap+' points less grinding than the low days you pushed through, at '+
                     (Math.round(t.trimSets*10)/10)+' vs '+(Math.round(t.keptSets*10)/10)+' sets/session.'
@@ -21071,7 +21323,7 @@ function anFanChartSVG(res, w, h, opts){
   s += mk.under;
   // shaded p10\u2013p90 envelope, its edges the same curves as the two lines
   s += '<path class="ck-fan" d="'+ckSmoothD(xyOf(series[90]))+' '+ckSmoothD(xyOf(series[10].slice().reverse())).replace(/^M/, 'L')+' Z"'+
-    ' fill="'+(opts.bandFill||'rgba(242,138,58,.12)')+'" stroke="none"/>';
+    ' fill="'+(opts.bandFill||'color-mix(in srgb, var(--amber) 12%, transparent)')+'" stroke="none"/>';
   // y labels, one per gridline
   ticks.forEach(v=>{ s += ckText(L-7, py(v)+4, step < 1 ? v.toFixed(1) : Math.round(v), {anchor:'end', size:fs(11)}); });
 
@@ -26411,7 +26663,7 @@ let _stdPass = null;   // the rows, handed down ONE synchronous repaint of the b
 function stdNotifItems(){
   if(!stdOn()) return [];
   return stdFlagged(_stdPass || stdState()).map(function(r){
-    return {id:'std:'+r.pillar+':'+r.lvl+':'+(r.since || ''), tone:STD_COL[r.lvl], title:STD_ICON[r.lvl]+' '+r.label+' — '+STD_WORD[r.lvl].toLowerCase(),
+    return {id:'std:'+r.pillar+':'+r.lvl+':'+(r.since || ''), tone:STD_COL[r.lvl], title:STD_ICON[r.lvl]+' '+r.label+' — '+stdWordLc(r),
       body:r.why+(r.consequence ? ' '+r.consequence : '')+(r.motion ? ' Plan in motion: '+r.motion : '')+(r.clearsWhen ? ' Clears when: '+r.clearsWhen : ''),
       when:null, go:'stdGo()', sticky:r.lvl === 'red' && !r.motion};
   });
@@ -26437,7 +26689,7 @@ function stdReasonBtns(pillar, date, offer){
 function stdRowHTML(r){
   const col = STD_COL[r.lvl], bad = STD_RANK[r.lvl] > 0;
   let h = '<div class="std-row '+r.lvl+'"><div class="std-h"><span class="std-n">'+esc(r.label)+'</span>'+
-    '<span class="std-w" style="color:'+col+'"><b aria-hidden="true">'+STD_ICON[r.lvl]+'</b> '+esc(STD_WORD[r.lvl])+
+    '<span class="std-w" style="color:'+col+'"><b aria-hidden="true">'+STD_ICON[r.lvl]+'</b> '+esc(stdWordFor(r))+
     (bad && r.since ? ' · since '+esc(homeShortDate(r.since)) : '')+'</span></div>';
   if(r.why) h += '<p class="std-p">'+esc(r.why)+'</p>';
   if(r.consequence) h += '<p class="std-p c">'+esc(r.consequence)+'</p>';
@@ -26472,9 +26724,12 @@ function stdCardHTML(given){
   rows.forEach(function(r){ cnt[r.lvl] = (cnt[r.lvl] || 0) + 1; });
   const sum = ['red', 'amber', 'ok', 'held', 'nodata'].filter(function(k){ return cnt[k]; })
     .map(function(k){ return cnt[k]+' '+STD_WORD[k].toLowerCase(); }).join(' · ');
-  let h = '<div class="std" id="stdCard"><div class="cc-head"><span class="dash-sec">Standards</span><span class="std-sum">'+esc(sum)+'</span></div>';
+  const lk = lookOn();   // V5 stage 10: the look shows five cells and never a level's name
+  let h = '<div class="std" id="stdCard"><div class="cc-head"><span class="dash-sec">Standards</span>'+(lk ? '' : '<span class="std-sum">'+esc(sum)+'</span>')+'</div>';
+  if(lk) h += stdCellsHTML(rows);
   if(bad.length) h += '<div class="std-rows">'+bad.map(stdRowHTML).join('')+'</div>';
-  if(rest.length){
+  if(lk){ if(rest.length && stdOpen) h += '<div class="std-rows">'+rest.map(stdRowHTML).join('')+'</div>'; }
+  else if(rest.length){
     h += '<button class="std-chips" onclick="stdToggle()" aria-expanded="'+(stdOpen ? 'true' : 'false')+'">'+rest.map(function(r){
       return '<span class="std-chip"><b aria-hidden="true" style="color:'+STD_COL[r.lvl]+'">'+STD_ICON[r.lvl]+'</b>'+esc(r.label)+
         (r.lvl === 'ok' ? '' : '<i>'+esc(STD_WORD[r.lvl].toLowerCase())+'</i>')+'</span>';
@@ -26487,8 +26742,11 @@ function stdCardHTML(given){
 function stdMarkTick(given){
   const el = document.getElementById('stdMark');
   if(!el) return;
-  let rows = [];
-  try{ if(stdOn()) rows = stdStrictRows(given || _stdPass || stdState()); }catch(e){ rows = []; }
+  let rows = [], all = null;
+  try{ if(stdOn()) all = given || _stdPass || stdState(); }catch(e){ all = null; }
+  // V5 stage 10: under the look the five lights replace this mark, which names a level.
+  try{ stdLightsTick(all); alertBandTick(all); }catch(e){}
+  try{ if(all && !lookOn()) rows = stdStrictRows(all); }catch(e){ rows = []; }
   if(!rows.length){ if(!el.hidden){ el.hidden = true; el.innerHTML = ''; } return; }
   const h = '<b aria-hidden="true">'+STD_ICON.red+'</b><span>'+(rows.length > 1 ? rows.length+' red' : 'Red')+'</span>';
   if(el.innerHTML !== h) el.innerHTML = h;
@@ -30292,12 +30550,14 @@ function renderHome(){
 
   /* -- the hero: the day, the wheel, why -- */
   const shape = todayPlanShape(t.dayKey);
-  let h = '<div class="cc"><div class="cc-hero">'+
+  const lk = lookOn();
+  let h = '<div class="cc-hero">'+
     '<span class="cc-eyebrow">'+esc(homeEyebrow(t))+'</span>'+
     '<h2 class="cc-title">'+esc(t.rest ? 'Rest day' : t.name)+'</h2>'+
     (t.rest ? '<span class="cc-sub">Recover, eat your surplus, sleep.</span>'
             : '<span class="cc-sub">'+shape.lifts+' lift'+(shape.lifts === 1 ? '' : 's')+' · '+shape.sets+' sets'+
               (shape.mins ? ' · about '+shape.mins+' min' : '')+'</span>')+
+    (lk ? lookCallHTML(t, rd, dc) : '')+
     homeWheelHTML(rd, t, dc, pend.length);
   let why = '';
   if(deloadActive()) why = 'Deload week: lighter loads, same movements.';
@@ -30307,12 +30567,13 @@ function renderHome(){
   h += '<p class="cc-why">'+esc(why)+'</p></div>';
   // V5 stage 8: Today in five zones while Organization is on. Off, the page below is exactly as it was.
   if(orgOn()){
-    const z = homeZonesHTML(t, rd, dc, callForPlan, brief, streak);
-    el.innerHTML = h+'<div class="cc-main" data-cb-root>'+z.html+'</div></div>';
+    // V5 stage 10: under the look the day's name sits with the session (zone 2), after the orders, not above them.
+    const z = homeZonesHTML(t, rd, dc, callForPlan, brief, streak, lk ? h : '');
+    el.innerHTML = '<div class="cc'+(lk ? ' lk-today' : '')+'">'+(lk ? '' : h)+'<div class="cc-main" data-cb-root>'+z.html+'</div></div>';
     try{ stdMarkTick(z.stdNow); }catch(e){}
     return;
   }
-  h += '<div class="cc-main">';
+  h = '<div class="cc">'+h+'<div class="cc-main">';
   // The Standards lead the page (V5 stage 1). Computed here and nowhere stored: Today still only reads.
   let stdNow = null;   // read once for the card and the top-bar mark
   try{ if(stdOn()){ stdNow = stdState(); h += stdCardHTML(stdNow); } }catch(e){ console.warn('standards card failed', e); }
@@ -30428,7 +30689,7 @@ function homeJumpHTML(){
    2 today's session with Start, 3 the Inbox's top three, 4 the agents and the brief, 5 everything else in one fold.
    Each part is tried on its own, so one that throws costs that part. It only reads, like the page it replaces. */
 const HOME_ZONES = ['orders', 'session', 'inbox', 'agents', 'details'];
-function homeZonesHTML(t, rd, dc, callForPlan, brief, streak){
+function homeZonesHTML(t, rd, dc, callForPlan, brief, streak, hero){
   let h = '', stdNow = null, waVisible = false;
   // 1. Orders
   try{ if(stdOn()){ stdNow = stdState(); h += stdCardHTML(stdNow); } }catch(e){ console.warn('standards card failed', e); }
@@ -30437,21 +30698,23 @@ function homeZonesHTML(t, rd, dc, callForPlan, brief, streak){
   try{ if(waPhase() === 'active'){ h += waCardHTML(); waVisible = true; } }catch(e){ console.warn('winter arc card failed', e); }
   // 2. Today's session, with Start
   try{
-    const kl = live ? [] : todayKeyLifts(t.dayKey, callForPlan, 2);
-    h += '<div class="cc-head"><span class="dash-sec">Today’s session</span></div><div class="cc-lifts" id="ccSession">'+kl.map(function(x, i){
+    const kl = live ? [] : todayKeyLifts(t.dayKey, callForPlan, hero ? LOOK_TODAY_LIFTS : 2);
+    h += (hero ? '<div class="lk-sess">'+hero : '<div class="cc-head"><span class="dash-sec">Today’s session</span></div>')+'<div class="cc-lifts" id="ccSession">'+kl.map(function(x, i){
       const d = x.delta;
       const chg = (d === null || d === undefined) ? '' : (d > 0 ? '+'+d : d < 0 ? String(d) : '=');
-      return '<div class="cc-lift"><span class="cc-lift-k">'+(i === 0 ? 'Key' : 'Next')+'</span><span class="cc-lift-n">'+esc(x.name)+'</span>'+
+      return '<div class="cc-lift"><span class="cc-lift-k">'+(i === 0 ? 'Key' : i === 1 ? 'Next' : String(i + 1))+'</span>'+
+        (hero ? '<button class="cc-lift-n lk-tech" data-lift="'+esc(x.name)+'" onclick="showExInfo(this.dataset.lift)" aria-label="'+esc(x.name)+': technique card">'+esc(x.name)+'</button>'
+              : '<span class="cc-lift-n">'+esc(x.name)+'</span>')+
         (x.w > 0 ? '<span class="cc-lift-v">'+x.w+' × '+x.lo+'–'+x.hi+'</span>' : '<span class="cc-lift-v cc-dim">'+(x.lo ? x.lo+'–'+x.hi : '')+'</span>')+
         '<span class="cc-lift-d'+(d > 0 ? ' up' : '')+'">'+chg+'</span></div>';
     }).join('')+
     '<div class="cc-go"><button class="btn'+(t.rest || t.logged || live ? ' ghost' : '')+'" onclick="setMode(\'live\')">⚡ '+
-      (live ? 'Back to the session' : t.rest || t.logged ? 'Open LIVE' : 'Start '+esc(t.dayKey))+'</button></div></div>';
-  }catch(e){ console.warn('session zone failed', e); }
+      (live ? 'Back to the session' : t.rest || t.logged ? 'Open LIVE' : 'Start '+esc(t.dayKey))+'</button></div></div>'+(hero ? '</div>' : '');
+  }catch(e){ console.warn('session zone failed', e); if(hero) h += '<div class="lk-sess">'+hero+'</div>'; }
   // 3. The Inbox's top three
   try{ h += inboxTodayHTML(t); }catch(e){ console.warn('inbox zone failed', e); h += '<div class="card" data-fail><p class="small" style="color:var(--bad)">✖ The Inbox could not be drawn. The bell still lists what is waiting.</p></div>'; }
-  // 4. The agents
-  try{ h += homeAgentsHTML(); }catch(e){ console.warn('agents strip failed', e); }
+  // 4. The agents (under the look, the four coaches as gauges with their squads)
+  try{ h += (hero && anlOn()) ? lookGaugesHTML(stdNow) : homeAgentsHTML(); }catch(e){ console.warn('agents strip failed', e); try{ h += homeAgentsHTML(); }catch(e2){} }
   try{ h += homeBriefHTML(brief); }catch(e){ console.warn('brief card failed', e); }
   // 5. Details, folded
   let d = '';
@@ -30611,6 +30874,7 @@ function renderNotifDraw(){
   const panel = document.getElementById('notifPanel');
   if(!btn || !panel) return;
   try{ stdMarkTick(); }catch(e){}
+  try{ topDateTick(); }catch(e){}
   const n = notifCount();
   if(badge){
     badge.textContent = n > 9 ? '9+' : String(n);
@@ -30669,7 +30933,7 @@ const INBOX_ON_TODAY = ['std:', 'plan:', 'brief:'];
 const INBOX_PRI = {red:0, ask:1, fail:1, routine:2};
 // What an open card is, at the top of a section: a panel. Headings, lines of text and folds are not cards; a wrapper
 // that holds a panel counts once.
-const CB_CARD_SEL = '.card, .goal-card, .bodymap-card, .str-sec, .std, .ag-prop, .ag-chat, .hub-agent, .cc-lifts, .cc-agents, .ibx, .lg-list, .lib-list';
+const CB_CARD_SEL = '.card, .goal-card, .bodymap-card, .str-sec, .std, .ag-prop, .ag-chat, .hub-agent, .cc-lifts, .cc-agents, .ibx, .lg-list, .lib-list, .lk-gauges';
 const CB_TEXT_TAGS = ['H1','H2','H3','H4','P'];
 /* The type chip and the priority, from the item's own id. The id prefixes are the sources' own (notifItems()). */
 const INBOX_TYPES = [
@@ -30847,7 +31111,7 @@ function hubNowStdHTML(){
   const rows = stdState(), bad = stdFlagged(rows);
   const line = bad.length ? bad.length+' of '+rows.length+' need attention' : 'All '+rows.length+' as they should be, or not enough data to say';
   return '<div class="card hub-std"><div class="plan-h"><b>Standards</b><span class="pw-note">'+esc(line)+'</span></div>'+
-    bad.map(function(r){ return '<p class="small" style="margin-top:6px"><b style="color:'+STD_COL[r.lvl]+'"><span aria-hidden="true">'+STD_ICON[r.lvl]+'</span> '+esc(r.label)+' · '+esc(STD_WORD[r.lvl])+'</b> '+esc(r.why || '')+'</p>'; }).join('')+
+    bad.map(function(r){ return '<p class="small" style="margin-top:6px"><b style="color:'+STD_COL[r.lvl]+'"><span aria-hidden="true">'+STD_ICON[r.lvl]+'</span> '+esc(r.label)+' · '+esc(stdWordFor(r))+'</b> '+esc(r.why || '')+'</p>'; }).join('')+
     '<button class="btn ghost sm" style="margin-top:8px" onclick="stdGo()">All five on Today</button></div>';
 }
 /* Outlook, under Forecasts: experiments, and the watches in one line (they live on the Desk). */
@@ -30920,6 +31184,7 @@ function uiDepth(){ const d = uiPref().depth; return DEPTH_LEVELS.indexOf(d) >= 
 function depthSet(d){
   if(DEPTH_LEVELS.indexOf(d) < 0) return;
   uiPrefSet('depth', d);   // a choice about this screen, so per device and never in S
+  try{ depthBarTick(); }catch(e){}
   try{ renderSettings(); }catch(e){}
   try{ rerenderActive(true); }catch(e){}
 }
@@ -30960,7 +31225,14 @@ function cbUnwrap(sec){
   Array.prototype.slice.call(root.children).forEach(function(f){
     if(!f.hasAttribute('data-cb-more')) return;
     const body = f.querySelector('.sub-body');
-    while(body && body.firstChild) root.insertBefore(body.firstChild, f);
+    // Each card goes back before the card it stood before (_cbNext, set when it was folded), so a tagged card that
+    // was lifted out from among the open ones (V5 stage 10) returns to its own place, not to where the fold stood.
+    while(body && body.firstChild){
+      const c = body.firstChild, nx = c._cbNext;
+      // null was recorded for a card with nothing after it: it goes back to the end. No record at all: where the fold stood.
+      root.insertBefore(c, nx === null ? null : (nx && nx.parentNode === root) ? nx : f);
+      try{ delete c._cbNext; }catch(e){}
+    }
     root.removeChild(f);
   });
 }
@@ -30975,6 +31247,7 @@ function cbApply(sec){
   const a = document.activeElement, typing = a && a !== document.body && sec.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName || '');
   if(typing) return;   // moving a node blurs it: wait for the next repaint
   cbUnwrap(sec);
+  try{ depthTagApply(sec); }catch(e){ console.warn('depth tags failed', e); }   // V5 stage 10: only tags while the look is on
   if(!orgOn()) return;
   const depth = uiDepth(), budget = cbBudgetFor(sec.id, depth), root = cbRoot(sec);
   const kids = Array.prototype.slice.call(root.children), kinds = kids.map(function(c){ return cbKind(c, depth); });
@@ -31006,7 +31279,22 @@ function cbApply(sec){
   wrap.innerHTML = subSection('More on this screen', '', false, {pref:'cb.'+sec.id, summary:esc(sum), cls:'grp cb-more'});
   const fold = wrap.firstElementChild;
   fold.setAttribute('data-cb-more', '');
-  root.insertBefore(fold, moveSet[0]);
+  // Where each folded card stood: the next card that stays. cbUnwrap() reads it.
+  idx.forEach(function(i){
+    let nx = null;
+    for(let j = i + 1; j < kids.length; j++){ if(idx.indexOf(j) < 0){ nx = kids[j]; break; } }
+    kids[i]._cbNext = nx;
+  });
+  // The fold stands where the first folded card stood. When a card tagged deeper than this depth was lifted out from
+  // among the open ones (V5 stage 10), it stands under everything that stays open instead, still above the folds.
+  let anchor = moveSet[0];
+  if(idx.some(function(i){ return i < start; })){
+    let last = -1;
+    kids.forEach(function(c, i){ if(idx.indexOf(i) < 0 && kinds[i] !== 'fold' && kinds[i] !== 'skip') last = i; });
+    anchor = null;
+    for(let i = last + 1; i < kids.length; i++){ if(idx.indexOf(i) < 0){ anchor = kids[i]; break; } }
+  }
+  root.insertBefore(fold, anchor);
   const body = fold.querySelector('.sub-body');
   moveSet.forEach(function(c){ body.appendChild(c); });
 }
@@ -31034,6 +31322,251 @@ function cbWatch(){
   });
   // Today's cards sit one level down, but its main column is redrawn with the section, so watching sections is enough.
   document.querySelectorAll('#reviewMode main > section').forEach(function(sec){ _cbObs.observe(sec, {childList:true}); });
+}
+
+/* ============================================================
+   THE LOOK AND THE DEPTH LAYERS (V5 stage 10, 2026-11-13). His pick from the mockup round: A, Command Deck, in the
+   Gunmetal palette. Everything here is behind ONE per-device pref, uiPref('look'), default off, and the old look is
+   one tap back (Settings, App & data, Look). Nothing in S changes, no prompt changes, the server never has it.
+   - THE SKIN is a stylesheet scoped under html[data-look="gunmetal"]: it redefines the same tokens and restyles the
+     same elements. No old rule was deleted, and every id and handler is kept. The 3D muscle model is not restyled.
+   - THE ACCENT IS NOT DELTA under this look: --amber (the accent's token name, kept so every var() follows) is ice
+     blue, and DELTA stays amber through AGENTS.delta.col, which is a hex and never read the token.
+   - A STATUS NEVER NAMES ITS LEVEL under the look (his pick: "Everywhere"): the Standards card, the bell, the Hub
+     and the band show the colour, the icon and the short reason the analysts already use (stdWordFor()).
+   - ALERT MODE: a red Standard puts a band on the screens that pillar is about (ALERT_SCREENS) and brings its coach's
+     lane to the front of the Hub. The band is worked out when drawn, like the Standards themselves; it has no
+     dismiss; it is never on LIVE (ALERT_ON_LIVE), which stays uncluttered.
+   - THE DEPTH LAYERS tag cards for the stage 8 fold (data-depth), from one table (DEPTH_TAGS), applied to the DOM
+     after a section is drawn and only while the look is on. A tag only ever folds a card into "More on this
+     screen": nothing is removed, a failure is never folded, and LIVE is never filtered (DEPTH_ON_LIVE).
+   ============================================================ */
+const LOOKS = {gunmetal:{label:'Command Deck · Gunmetal', theme:'#11151A'}};
+const LOOK_THEME_OLD = '#16110E';
+const LOOK_TODAY_LIFTS = 4;     // lifts in Today's session panel under the look (the old look shows 2)
+const ALERT_ON_LIVE = false;    // the band never shows on LIVE
+const DEPTH_ON_LIVE = false;    // nothing on LIVE folds by depth
+const ALERT_MAX_ROWS = 2;       // red Standards named on one band before "and N more"
+/* An unknown value is the old look, so a typo or a look removed later can never leave a half-styled app. */
+function uiLook(){
+  let l = '';
+  try{ l = uiPref().look; }catch(e){ l = ''; }
+  return (typeof l === 'string' && Object.prototype.hasOwnProperty.call(LOOKS, l)) ? l : '';
+}
+function lookOn(){ return uiLook() !== ''; }
+function lookApply(){
+  const l = uiLook(), de = document.documentElement;
+  if(l) de.setAttribute('data-look', l); else de.removeAttribute('data-look');
+  try{ const m = document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute('content', l ? LOOKS[l].theme : LOOK_THEME_OLD); }catch(e){}
+}
+function lookSet(l){
+  uiPrefSet('look', Object.prototype.hasOwnProperty.call(LOOKS, l) ? l : '');   // this device only, never in S
+  lookApply();
+  try{ renderSettings(); }catch(e){}
+  try{ buildBotNav(); }catch(e){}
+  try{ rerenderActive(true); }catch(e){}
+  try{ lookChromeTick(); }catch(e){}
+}
+function lookTap(el){ lookSet((el && el.getAttribute && el.getAttribute('data-l')) || ''); }
+function lookCardHTML(){
+  const cur = uiLook();
+  const opts = [['', 'Forge × Ember']].concat(Object.keys(LOOKS).map(function(k){ return [k, LOOKS[k].label]; }));
+  return '<div class="card" id="lookCard"><p class="small"><b>The look of the app.</b> Command Deck in Gunmetal is the V5 look you picked: the same screens, ids and buttons in a new skin, '+
+    'statuses as a colour, an icon and a short reason, a red band on the screens a red Standard is about, and Basic, Intermediate and Advanced on every screen. '+
+    'This device only. Nothing in your data changes, and the old look is one tap back.</p>'+
+    '<div class="depth-seg look-seg" role="radiogroup" aria-label="Look">'+opts.map(function(o){
+      return '<button role="radio" aria-checked="'+(o[0] === cur ? 'true' : 'false')+'" class="'+(o[0] === cur ? 'on' : '')+'" data-l="'+o[0]+'" onclick="lookTap(this)">'+esc(o[1])+'</button>';
+    }).join('')+'</div></div>';
+}
+/* The short reason beside a Standard's icon. The old look keeps its level words; the new one never names a level. */
+function stdWordFor(r){
+  if(lookOn()){ try{ const w = anlPillarWord(r.pillar, r); if(w) return w; }catch(e){} }
+  return STD_WORD[r.lvl];
+}
+function stdWordLc(r){ return lookOn() ? stdWordFor(r) : STD_WORD[r.lvl].toLowerCase(); }
+/* The five lights in the top bar: a letter each, and a shape as well as a colour (outline, underlined, filled). */
+const STD_LETTER = {bulk:'B', show:'S', lifts:'L', intake:'I', recovery:'R'};
+function stdLightsTick(rows){
+  const el = document.getElementById('stdLights');
+  if(!el) return;
+  if(!lookOn() || !stdOn() || !rows || !rows.length){ if(!el.hidden){ el.hidden = true; el.innerHTML = ''; } return; }
+  const h = rows.map(function(r){ return '<b class="'+r.lvl+'" aria-hidden="true">'+(STD_LETTER[r.pillar] || '')+'</b>'; }).join('');
+  if(el.innerHTML !== h) el.innerHTML = h;
+  el.setAttribute('aria-label', 'Standards. '+rows.map(function(r){ return r.label+': '+stdWordFor(r); }).join('. ')+'. Open Today.');
+  el.hidden = false;
+}
+/* The five cells on the Standards card under the look: the icon, the pillar, the short reason. One button: it opens
+   the rows that are not flagged, as the chips did. */
+function stdCellsHTML(rows){
+  return '<button class="std-cells" onclick="stdToggle()" aria-expanded="'+(stdOpen ? 'true' : 'false')+'" aria-label="The five Standards. '+(stdOpen ? 'Hide' : 'Show')+' the detail.">'+
+    rows.map(function(r){
+      return '<span class="std-cell '+r.lvl+'"><b aria-hidden="true" style="color:'+STD_COL[r.lvl]+'">'+STD_ICON[r.lvl]+'</b><span class="std-cell-n">'+esc(r.label)+'</span>'+
+        '<span class="std-cell-v">'+esc(stdWordFor(r))+'</span></span>';
+    }).join('')+'</button>';
+}
+/* ---- alert mode ---- */
+// The sections a pillar is about. Today and the Hub's Now and Agents views carry every red.
+const ALERT_SCREENS = {
+  bulk:['home', 'hub_now', 'ops', 'bulk', 'an_dev'],
+  show:['home', 'hub_now', 'ops', 'meso', 'log'],
+  lifts:['home', 'hub_now', 'ops', 'progress', 'an_pred', 'an_overload'],
+  intake:['home', 'hub_now', 'ops', 'fuel'],
+  recovery:['home', 'hub_now', 'ops', 'an_recovery', 'an_fatigue']
+};
+function alertShown(){
+  if(MODE !== 'review') return (ALERT_ON_LIVE && MODE === 'live') ? ['live'] : [];
+  try{ return navShows(activeMainTab, navMemory[activeMainTab] || activeReviewTab) || []; }catch(e){ return []; }
+}
+/* The red Standards a set of sections is about. A held Standard is not red, so a hold quiets the band too. */
+function alertRowsFor(rows, secIds){
+  return (rows || []).filter(function(r){
+    return r && r.lvl === 'red' && (ALERT_SCREENS[r.pillar] || []).some(function(id){ return secIds.indexOf(id) >= 0; });
+  });
+}
+function alertBandHTML(red, secIds){
+  const lines = red.slice(0, ALERT_MAX_ROWS).map(function(r){
+    return '<span class="ab-t"><b>'+esc(r.label)+'</b> · '+esc(stdWordFor(r))+'</span>';
+  }).join('');
+  const more = red.length - Math.min(red.length, ALERT_MAX_ROWS);
+  // Today's card is right below and says the rest; anywhere else one red gets its own line of why.
+  const one = red.length === 1 && secIds.indexOf('home') < 0 ? red[0] : null;
+  const det = one ? '<span class="ab-p">'+esc(one.motion ? 'Plan in motion: '+one.motion : one.clearsWhen ? 'Clears when: '+one.clearsWhen : one.why || '')+'</span>' : '';
+  return '<button class="ab" onclick="stdGo()" aria-label="Off standard: '+esc(red.map(function(r){ return r.label+', '+stdWordFor(r); }).join('; '))+'. Open the Standards on Today.">'+
+    '<span class="ab-ic" aria-hidden="true">'+STD_ICON.red+'</span><span class="ab-b">'+lines+
+    (more > 0 ? '<span class="ab-p">and '+more+' more</span>' : '')+det+'</span><span class="ab-go" aria-hidden="true">›</span></button>';
+}
+function alertBandTick(rows){
+  const el = document.getElementById('alertBand');
+  if(!el) return;
+  let red = [], secs = [];
+  try{ if(lookOn() && stdOn() && rows){ secs = alertShown(); red = alertRowsFor(rows, secs); } }catch(e){ red = []; }
+  const h = red.length ? alertBandHTML(red, secs) : '';
+  if(el.innerHTML !== h) el.innerHTML = h;
+  el.hidden = !red.length;
+}
+/* Which coach's lane leads the Hub: under the look, a lane whose own squad holds a red goes first. */
+function sqLaneOrder(pass){
+  if(!lookOn()) return ANL_LANES;
+  const red = function(id){ return anlSquad(id).some(function(a){ const r = pass && pass.reads && pass.reads[a]; return !!r && r.lvl === 'red'; }); };
+  return ANL_LANES.filter(red).concat(ANL_LANES.filter(function(id){ return !red(id); }));
+}
+/* ---- the top bar's date, the depth bar, and the one tick that keeps the look's chrome current ---- */
+function topDateTick(){
+  const el = document.getElementById('topDate');
+  if(!el) return;
+  if(!lookOn()){ if(!el.hidden) el.hidden = true; return; }
+  const d = new Date(), t = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '+d.getDate()+' '+HOME_MONTHS[d.getMonth()];
+  if(el.textContent !== t) el.textContent = t;
+  el.hidden = false;
+}
+function depthBarTick(){
+  const el = document.getElementById('depthBar');
+  if(!el) return;
+  const show = lookOn() && orgOn() && MODE === 'review' && activeMainTab !== 'settings';
+  const cur = uiDepth();
+  const h = !show ? '' : '<div class="depth-seg dp-seg" role="radiogroup" aria-label="Detail on this screen">'+DEPTH_LEVELS.map(function(d){
+    return '<button role="radio" aria-checked="'+(d === cur ? 'true' : 'false')+'" class="'+(d === cur ? 'on' : '')+'" data-d="'+d+'" onclick="depthTap(this)">'+DEPTH_LABEL[d]+'</button>';
+  }).join('')+'</div>';
+  if(el.innerHTML !== h) el.innerHTML = h;
+  el.hidden = !show;
+}
+/* Called on every navigation and mode change, and by the bell's repaint (which hands its one read of the Standards
+   down). With the look off it only makes sure the four elements are hidden. */
+function lookChromeTick(given){
+  try{ depthBarTick(); }catch(e){}
+  try{ topDateTick(); }catch(e){}
+  let rows = null;
+  try{ if(lookOn() && stdOn()) rows = given || _stdPass || stdState(); }catch(e){ rows = null; }
+  try{ stdLightsTick(rows); }catch(e){}
+  try{ alertBandTick(rows); }catch(e){}
+}
+/* ---- Today under the look ---- */
+/* Today's call beside the day's name (the wheel that carried it is hidden under the look). Words only, no level. */
+function lookCallHTML(t, rd, dc){
+  let w = '';
+  try{
+    if(t.rest) w = '';
+    else if(deloadActive()) w = 'Deload week';
+    else if(dc && dc.conf !== 'none') w = 'Call · '+DC_LABEL[dc.call].replace(/ day$/, '');
+    else if(rd) w = 'Ready · '+rd.label;
+  }catch(e){ w = ''; }
+  return w ? '<span class="lk-call">'+esc(w)+'</span>' : '';
+}
+/* The four coaches as gauges: the lead's status (the worst in its squad, the Hub's own read), its analysts each with
+   their icon, and what is waiting on him from that coach. It only reads. */
+function lookGaugesHTML(stdRows){
+  const pass = anlPass(null, stdRows), pend = agPending();
+  return '<div class="cc-head"><span class="dash-sec">Agents</span><span class="cc-note">4 coaches · '+ANL_ORDER.length+' analysts</span></div><div class="lk-gauges">'+
+    ANL_LANES.map(function(id){
+      const A = AGENTS[id], st = anlLeadStatus(id, pass.reads), n = pend.filter(function(p){ return p.agent === id; }).length;
+      // The old strip said when a coach missed its run or is running now. A failure must not drop off Today with it.
+      let run = {tone:'ok', txt:''};
+      try{ run = agStripState(id); }catch(e){ run = {tone:'ok', txt:''}; }
+      const runLine = (run.tone === 'bad' || run.tone === 'run') ? '<span class="lk-g-run '+run.tone+'">'+(run.tone === 'bad' ? STD_ICON.red+' ' : '')+esc(hubShort(run.txt))+'</span>' : '';
+      return '<button class="lk-g '+st.lvl+'" style="--c:'+A.col+'" data-lead="'+id+'" onclick="lookGaugeTap(this)" aria-label="'+A.name+', '+HUB_ROLE[id]+'. '+esc(st.word)+'. '+
+          (n ? n+' request'+(n === 1 ? '' : 's')+' waiting' : 'Nothing waiting')+'. Open in the Hub.">'+
+        '<span class="lk-g-h"><b>'+A.name+'</b><small>'+HUB_ROLE[id]+'</small></span>'+
+        '<span class="sq-st" style="color:'+STD_COL[st.lvl]+'"><i>'+STD_ICON[st.lvl]+'</i><span>'+esc(st.word)+'</span></span>'+
+        '<span class="lk-g-sq">'+anlSquad(id).map(function(a){ const r = pass.reads[a] || {lvl:'nodata'};
+          return '<span><i style="color:'+STD_COL[r.lvl]+'">'+STD_ICON[r.lvl]+'</i>'+ANALYSTS[a].name+'</span>'; }).join('')+'</span>'+
+        '<span class="lk-g-rq'+(n ? '' : ' none')+'">'+(n ? n+' request'+(n === 1 ? '' : 's')+' waiting' : 'nothing waiting')+'</span>'+runLine+'</button>';
+    }).join('')+'</div>';
+}
+function lookGaugeTap(el){
+  const id = el && el.dataset && el.dataset.lead;
+  if(!Object.prototype.hasOwnProperty.call(AGENTS, id)) return;
+  agActiveChat = id; sqLaneOpen[id] = true;
+  setMode('review'); showMainTab('ops', 'ops');
+}
+/* ---- the depth layers ----
+   What each depth shows, by section: Basic is the plan, the Standards and the coaching; Intermediate adds logs, charts
+   and trends; Advanced adds forecasts, fuel against results, readiness against outcome and the heavier numbers.
+   A rule names a heading (h: the heading and everything under it, up to the next heading or fold), a selector (sel),
+   or the words a card opens with (t). A rule that matches nothing tags nothing, so a renamed card is simply shown. */
+const DEPTH_TAGS = {
+  progress:[{h:/^Weekly Volume/i, d:'mid'}, {h:/^Trajectory/i, d:'adv'}, {sel:'.card.flat + .card', d:'mid'}],
+  an_over:[{sel:'.card', d:'mid'}],
+  pg_more:[{sel:'.p2-photos', d:'mid'}],
+  road:[{sel:'.p2-onerm', d:'mid'}],
+  an_strength:[{t:/^PR history/i, d:'mid'}],
+  an_pred:[{t:/^Ensemble projection/i, d:'adv'}, {t:/^Prediction record/i, d:'adv'}],
+  an_fatigue:[{t:/^Weekly strain/i, d:'mid'}, {t:/^Deload forecast/i, d:'adv'}, {t:/^Density/i, d:'adv'}],
+  bulk:[{t:/^Where it.s heading/i, d:'adv'}, {t:/^Weekly averages/i, d:'mid'}, {sel:'.p2-sleep', d:'mid'}],
+  fuel:[{h:/^Intake/i, d:'mid'}, {sel:'.mt-card', d:'adv'}],
+  an_dev:[{t:/^Same window/i, d:'mid'}, {t:/^Lifts in the index/i, d:'mid'}, {t:/^Rate of gain/i, d:'mid'}, {t:/^What you ate/i, d:'adv'}],
+  an_recovery:[{t:/^How recovery affects you/i, d:'adv'}, {t:/^Readiness vs outcome/i, d:'adv'}, {t:/^What moves your sessions/i, d:'adv'}],
+  ops:[{sel:'.cmem-card', d:'mid'}, {sel:'.hub-pw', d:'mid'}, {sel:'.cc-chips', d:'mid'}, {h:/^Lift fit/i, d:'mid'}]
+};
+function depthIsHead(c){ return /^H[1-4]$/.test(c.tagName) || c.classList.contains('dash-sec') || c.classList.contains('cc-head'); }
+/* Tags a drawn section's cards, and takes its own tags off again first (data-dp marks them), so it is idempotent and
+   turning the look off leaves no tag behind. A fold, a failure and anything already tagged by a renderer are left. */
+function depthTagApply(sec){
+  const root = cbRoot(sec);
+  if(!root) return 0;
+  const kids = Array.prototype.slice.call(root.children);
+  kids.forEach(function(c){ if(c.hasAttribute('data-dp')){ c.removeAttribute('data-dp'); c.removeAttribute('data-depth'); } });
+  if(!lookOn() || !orgOn()) return 0;
+  const rules = DEPTH_TAGS[sec.id];
+  if(!rules) return 0;
+  let n = 0;
+  const tag = function(c, d){
+    if(c.hasAttribute('data-depth') || c.hasAttribute('data-cb-more') || c.classList.contains('sub')) return;
+    if(c.matches('[data-fail]') || c.querySelector('[data-fail]')) return;
+    c.setAttribute('data-depth', d); c.setAttribute('data-dp', ''); n++;
+  };
+  rules.forEach(function(r){
+    kids.forEach(function(c, i){
+      const txt = (c.textContent || '').trim();
+      let hit = false;
+      if(r.h) hit = depthIsHead(c) && r.h.test(txt);
+      else if(r.sel) hit = c.matches(r.sel);
+      else if(r.t) hit = !depthIsHead(c) && r.t.test(txt);
+      if(!hit) return;
+      tag(c, r.d);
+      if(r.h) for(let j = i + 1; j < kids.length && !depthIsHead(kids[j]) && !kids[j].classList.contains('sub'); j++) tag(kids[j], r.d);
+    });
+  });
+  return n;
 }
 
 /* ---- rendering ---- */
@@ -31868,9 +32401,9 @@ const ANL_READ = {
 };
 /* THE read: {std:{pillar:row}, reads:{id:{id, lvl, word, line, change, nums?}}}. Pure. An analyst that throws reads
    "nodata": a broken read is never a flag and never a clean bill. */
-function anlPass(endKey){
+function anlPass(endKey, given){
   const t = endKey || todayKey(), std = {}, reads = {};
-  try{ stdState(t).forEach(function(r){ std[r.pillar] = r; }); }catch(e){}
+  try{ (given || stdState(t)).forEach(function(r){ std[r.pillar] = r; }); }catch(e){}
   ANL_ORDER.forEach(function(id){
     let r;
     try{ r = ANL_READ[id](t, std); }catch(e){ r = null; }
@@ -32133,7 +32666,7 @@ function sqCells(id, r, strips){
 function sqTileHTML(id, r, strips){
   const A = ANALYSTS[id], col = STD_COL[r.lvl], cells = sqCells(id, r, strips), open = sqTileOpen === id;
   const nFlag = cells ? cells.filter(function(l){ return STD_RANK[l] > 0; }).length : 0;
-  return '<button class="sq-tile'+(open ? ' open' : '')+'" data-a="'+id+'" onclick="sqTileTap(this)" aria-expanded="'+open+'" '+
+  return '<button class="sq-tile'+(open ? ' open' : '')+'" data-a="'+id+'" data-lvl="'+r.lvl+'" onclick="sqTileTap(this)" aria-expanded="'+open+'" '+
     'aria-label="'+A.name+', '+esc(A.job)+': '+esc(r.word)+'">'+
     '<span class="sq-tile-h"><b>'+A.name+'</b><span class="sq-job">'+esc(A.job)+'</span></span>'+
     '<span class="sq-st" style="color:'+col+'"><i>'+STD_ICON[r.lvl]+'</i><span>'+esc(r.word)+'</span></span>'+
@@ -32169,7 +32702,7 @@ function sqLaneHTML(id, sel, pass, strips){
       (id === 'delta' ? dosListHTML() : '');
   }
   // A div, not a <section>: the app hides every section that is not the active tab, and three lanes vanished.
-  return '<div class="sq-lane'+(id === sel ? ' on' : '')+(open ? ' open' : '')+'" style="--c:'+A.col+'" data-lead="'+id+'">'+
+  return '<div class="sq-lane'+(id === sel ? ' on' : '')+(open ? ' open' : '')+'" style="--c:'+A.col+'" data-lead="'+id+'" data-lvl="'+st.lvl+'">'+
     '<button class="sq-lead hub-p-'+id+'" onclick="sqLaneTap(\''+id+'\')" aria-expanded="'+open+'" aria-pressed="'+(id === sel)+'" '+
       'aria-label="'+A.name+', '+HUB_ROLE[id]+'. '+esc(st.word)+'. '+esc(s.txt)+'">'+
     '<span class="hub-g">'+A.name.charAt(0)+'</span>'+
@@ -32190,7 +32723,7 @@ function hubSquadsHTML(sel){
     }).join('')+'</div>';
   }
   return h+'<div class="sq-lanes" role="group" aria-label="The four coaches and their analysts">'+
-    ANL_LANES.map(function(id){ return sqLaneHTML(id, sel, pass, strips); }).join('')+'</div>'+
+    sqLaneOrder(pass).map(function(id){ return sqLaneHTML(id, sel, pass, strips); }).join('')+'</div>'+
     '<p class="hub-hint">Tap a coach for its report and chat, a tile for its numbers. The analysts are worked out on this device, free.</p>';
 }
 /* ---- the Intelligence Hub (V4 stage 3) ----

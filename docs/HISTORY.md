@@ -3205,3 +3205,110 @@ this week, with the app's three suggestions. Away: nothing coming up. His note o
 **Tests.** 15 new app assertions (5087 in all) and 39 new Worker assertions (126 in all). 10 app mutants and 9 Worker
 mutants, each red at its named assertion (one first crashed its section, now guarded). Nothing is deployed:
 `npx wrangler deploy` and `node register-commands.js` from `discord/` are Mark's steps.
+
+### V5 stage 10: the look and the depth layers (2026-11-13, `v5l`)
+
+**What it is.** The reskin he picked from the mockup round on 2026-11-12 ("I'm gonna go with option A with Gunmetal":
+A, Command Deck, in the Gunmetal palette), with his three notes: the 3D humanoid viewer is not touched, LIVE keeps the
+0 to 100 effort slider, and a status shows its colour and a reason, never the colour's name ("Everywhere"). Plus the
+spec's depth layers and alert mode. All of it sits behind one per-device pref, `uiPref('look')`, off by default: he
+turns it on once he has seen the screenshots, and the old look is one tap back (Settings, App & data, Look).
+
+**Why a per-device pref and not an `OV` row.** The spec names `uiPref('look')`. A look is a fact about a screen, not
+about his data: it must not ride a sync, and the server (which is the app, headless) has no screen to skin. So nothing
+about it is in `S`. `uiLook()` treats anything it does not know as the old look (a prototype key such as `toString`
+included: the first version used `in`, and the mutant caught it), and the first script block puts the attribute on
+`<html>` before anything is drawn so the old look never flashes.
+
+**Why the skin could be CSS alone.** V3 kept the token names when it changed the palette, and V4 moved almost every
+colour onto tokens: the stylesheet held 17 warm numbers that were not tokens, and the script four. So the look is one
+block scoped under `html[data-look="gunmetal"]` that redefines the tokens and restyles the same elements. No old rule
+was edited. The suite parses the block and fails if a rule in it is unscoped (four are allowed: they only hide the
+look's own elements while it is off).
+
+**`--amber` is the accent's name, not a colour.** Under the look the accent is ice blue (`#8EC5FF`), so `--amber` is
+ice blue. DELTA stays amber because `AGENTS[...].col` was always a hex. One thing did lean on the accent being warm:
+"grind", the caution on the effort chips, the slider's track and three analytics rows. Blue there read as "your next
+set", not "that was hard", so those now ask `var(--grind, var(--amber))`: the look defines `--grind` as `--warn`, and
+the old look, which defines no `--grind`, draws exactly what it drew.
+
+**The colour check.** CLAUDE.md asks for it before `--bad` or the accent moves. Run with the dataviz validator
+(`validate_palette.js --pairs all`, dark, on the gunmetal card `#19212A`; OKLab ΔE ×100, 8 is the target under
+simulated protan and deutan, 15 the floor for normal vision). The new `--bad` `#E0527A` against: the accent 20.1 (normal
+29.4); `--warn` 18.9 (25.2); `--good` 9.5 (30.6); DELTA's amber 13.8 (16.7); ECHO's violet 18.8 (22.1); ZULU's gold 17.4
+(24.7). All pass, and bad against the accent is wider than the old pair was (16.4). Two pairs that do NOT involve
+`--bad` are close in his palette: the accent against `--good` (normal 14.8, just under the floor; deutan 12.1), and the
+accent against ECHO's violet (normal 11.5; deutan 6.1). Both are his picks from the mockup and neither is ever alone:
+a status carries an icon and a reason, an agent its name. It is in the report for him, and it is why the rule says
+neither pair may be the only thing telling two things apart.
+
+**A status as a reason.** Stage 4 already had the words: `anlPillarWord()` writes "Losing weight", "2 days missed",
+"JM Press slowing". `stdWordFor()` hands those to every place that printed a level under the old look: the Standards
+card, the bell's titles, the Hub's summary. The card's count line ("1 off standard · 1 slipping") is replaced by five
+cells (icon, pillar, reason), which are also the button that opens the rows that are not flagged. The top bar's "2 RED"
+mark is replaced by five lights, a letter each, with a shape as well as a colour (outline, underlined, filled, dashed).
+The bell's item ids still carry the level, so an item he cleared under one look stays cleared under the other. The old
+look's words are unchanged.
+
+**Today.** The mockup has no wheel on Today: orders first, then one panel with the day's name, today's call and the
+lifts, then Start. `renderHome()` already built the hero as a string before the zones, so under the look it hands that
+string to `homeZonesHTML()`, which seats it in the session zone (`.lk-sess`). The wheel is still in the markup and CSS
+hides it, which is the cheap way to honour "every id and handler kept". The panel lists four lifts, not two
+(`LOOK_TODAY_LIFTS`), through the same read-only `todayKeyLifts()`. The agents strip becomes four gauges built from the
+Hub's own read (`anlPass()`, handed the Standards rows the repaint already has, so Today still reads them once).
+The old strip also said when a coach missed its run; a gauge keeps that line, because dropping a failure off Today to
+make room for a tidier tile is exactly what "a fold must never hide a failure" forbids.
+
+**Alert mode.** The spec: a red Standard re-skins the affected screen with a red band, a word and an icon, and the Hub
+focuses on that pillar. Built as one element outside every section (`#alertBand`), worked out when drawn from the same
+`stdState()` rows as everything else: only a red raises it (an amber, a hold and "no data" do not), only on the screens
+that pillar is about (`ALERT_SCREENS`; Today and the Hub's Now and Agents views carry every red), and a red with a plan
+in motion says what is being tried. There is no dismiss, as on the card. It is never on LIVE (`ALERT_ON_LIVE`): the
+mockup drew a slim band there, but LIVE is deliberately bare while he trains (the status strip's own rule), and a band
+he cannot act on mid-set is clutter. That is the one place the build departs from the picture, and it is one constant.
+In the Hub the lanes are reordered so a coach whose own squad holds a red comes first (ZULU's roll-up does not count,
+or ZULU would always lead).
+
+**The depth layers.** Stage 8 left the hook: a card tagged `data-depth` folds below that depth. Tagging every renderer
+would have touched forty functions and changed the old look's markup. Instead one table (`DEPTH_TAGS`) is applied to
+the DOM after a section is drawn, the way the card budget is. A rule is a heading (the heading and everything under it),
+a selector, or the words a card opens with, because most cards have no id. A rule that stops matching tags nothing, so
+the failure mode of a renamed heading is "the card is shown", never "the card is lost". Basic keeps the plan, the
+Standards and the coaching; Intermediate adds charts, trends and logs; Advanced adds forecasts, fuel against results
+and readiness against outcome. Nothing on Today, Settings or LIVE is tagged.
+
+Two things in the fold had to change for it. The fold used to stand where the first folded card stood, which with a
+tagged card lifted out of the middle put "More on this screen" between two open cards; it now stands under what stays
+open, above the raw data. And `cbUnwrap()` used to put everything back where the fold stood, which was only right while
+the folded cards were one run at the end: each folded card now remembers the card it stood before (`_cbNext`). That
+also fixed an order slip that predates this stage (a card folded from beyond a failure came back on the wrong side of
+it), which the suite now pins with the look off.
+
+**Technique cards.** The spec's Basic layer includes "technique cards per lift (cues from the Evidence Library)". The
+cards exist (the exercise info sheet). Under the look a lift on Today is a button that opens its card. The library's
+five technique entries are appended to the card for the lifts they are about, each name anchored (`TECH_TAGS`), and
+only while the Evidence Library is on: it is still held off until he has checked ten entries, and these are the same
+kind of guidance.
+
+**What was not built.** The Wire, the Play card on Today (stage 9 made it an Inbox row because Today's budget is
+full), and a new LIVE layout: LIVE is reskinned through the tokens and keeps its order and its slider. Per-screen depth
+(one depth per screen) was not built either: depth is one setting per device, shown as a bar on every screen.
+
+**The old look is what it was.** Checked two ways. In the suite: with the pref off the Standards card, the mark, Today's
+layout, the bell's words and the lane order are asserted as they were, and the four new shell elements are hidden. In a
+real browser: every view's markup, from the shipped build (`v5k`) and from this one with the look off, on the same
+state. Sixteen of twenty views are identical; the other four differ only by the Look card in Settings, the build
+number, a `data-lvl` attribute on the Hub's lanes and tiles that no old rule reads, and four accent tints that were
+written as `rgba(242,138,58,…)` in the script and are now `color-mix(in srgb, var(--amber) N%, transparent)`, the same
+colour at the same alpha.
+
+**Tests.** 105 new assertions (5192 in all), 100 mutants, each red at a named assertion. Three mutants stayed green on
+the first pass and each pointed at a missing test rather than a wrong rule: the bell's repaint refreshing the band and
+the lights with no navigation, a words rule that must not take a heading, and an anchor that had not landed. The moved
+clock is green on all seven V5 instants. Layout was checked in headless Chrome at 393px and 320px on every view and on
+LIVE with a set open: no element past the viewport in either look. One thing found there and fixed: at 320px an older
+rule hides the app's name while the Winter Arc countdown shows, and under the look the countdown has already given way
+to the lights, so the bar had no name at all.
+
+**Left for later.** Deleting the old CSS and the pref (the plan says a week after he switches). The plan builder's
+reps and RPE boxes clip a two-digit number at phone width in both looks (27px wide); it predates this stage.
