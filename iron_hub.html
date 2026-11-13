@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-12-v5d">
+<meta name="ironhub-build" content="2026-11-12-v5e">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1955,6 +1955,52 @@
   .hub-s.warn{color:var(--warn);} .hub-s.bad{color:var(--bad);} .hub-s.run{color:var(--amber);}
   .hub-p-zulu{left:50%; top:50%;} .hub-p-delta{left:50%; top:12.4%;} .hub-p-echo{left:20.3%; top:68.8%;} .hub-p-charlie{left:79.7%; top:68.8%;}
   .hub-hint{text-align:center; font-size:12px; color:var(--dim); margin:4px 0 0;}
+  /* ===== V5 STAGE 4: SQUADS =====
+     The map became four lanes: a coach's card, and under it the analysts that report to it as tiles. Stacked on a
+     phone, two lanes a row on a wide screen. A status is a colour, an icon and a short reason, never a level's name. */
+  .sq-lights{display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin:12px 0 0;}
+  .sq-light{display:inline-flex; align-items:center; gap:5px; font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.04em;
+    text-transform:uppercase; padding:5px 9px; border-radius:999px; background:var(--panel); white-space:nowrap;}
+  .sq-light i{font-style:normal; font-size:11px;}
+  .sq-lanes{display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin:12px 0 0;}
+  @media (min-width:900px){ .sq-lanes{grid-template-columns:repeat(2, minmax(0,1fr)); align-items:start;} }
+  .sq-lane{background:var(--panel); border-radius:var(--r-card); min-width:0; box-shadow:inset 3px 0 0 color-mix(in srgb, var(--c) 45%, transparent);}
+  .sq-lane.on{box-shadow:inset 3px 0 0 var(--c), inset 0 0 0 1.5px color-mix(in srgb, var(--c) 50%, transparent);}
+  .sq-lead{display:flex; align-items:center; gap:10px; width:100%; min-height:56px; padding:10px 12px 10px 14px; border:none; background:none;
+    color:var(--text); text-align:left; cursor:pointer; position:static; transform:none;}
+  .sq-lead .hub-g{font-size:26px; flex:none; width:22px; text-align:center;}
+  .sq-lead-t{display:flex; flex-direction:column; gap:2px; min-width:0; flex:1;}
+  .sq-lead-n{font-family:var(--disp); font-weight:700; font-size:15px; letter-spacing:.05em; text-transform:uppercase;}
+  .sq-lead-n small{font-size:12px; color:var(--muted); font-weight:600; letter-spacing:.04em;}
+  .sq-st{display:flex; align-items:baseline; gap:5px; font-size:12.5px; line-height:1.25; min-width:0;}
+  .sq-st i{font-style:normal; font-size:11px; flex:none;}
+  .sq-st span{min-width:0; overflow-wrap:anywhere;}
+  .sq-lead .hub-s{flex:none; max-width:92px; text-align:right; font-size:11px;}
+  .sq-chev{flex:none; color:var(--dim); font-size:12px; transition:none;}
+  .sq-tiles{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); grid-auto-flow:dense; gap:8px; padding:0 10px 12px;}
+  @media (max-width:359px){ .sq-tiles{grid-template-columns:minmax(0,1fr);} }
+  .sq-tile{display:flex; flex-direction:column; gap:5px; align-items:stretch; min-width:0; padding:10px; border:none; border-radius:var(--r-ctl);
+    background:var(--panel2); color:var(--text); text-align:left; cursor:pointer;}
+  .sq-tile.open{box-shadow:inset 0 0 0 1.5px var(--line2);}
+  .sq-tile-h{display:flex; flex-direction:column; gap:1px; min-width:0;}
+  .sq-tile-h b{font-family:var(--disp); font-weight:700; font-size:14px; letter-spacing:.06em;}
+  .sq-job{font-size:11px; color:var(--muted); line-height:1.2;}
+  .sq-line{font-size:11.5px; color:var(--muted); line-height:1.3; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}
+  .sq-strip{display:flex; gap:2px; margin-top:auto; padding-top:3px;}
+  .sq-strip i{flex:1; height:7px; border-radius:2px; background:var(--line2); min-width:0;}
+  .sq-strip-n{font-family:var(--mono); font-size:10px; color:var(--dim);}
+  .sq-spark{display:block; width:100%; height:24px;}
+  .sq-detail{grid-column:1 / -1; background:var(--panel2); border-radius:var(--r-ctl); padding:12px; min-width:0;}
+  .sq-detail h4{margin:0 0 6px; font-family:var(--disp); font-weight:700; font-size:13px; letter-spacing:.05em; text-transform:uppercase;}
+  .sq-num{display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-top:1px solid var(--line); font-size:12.5px;}
+  .sq-num span:first-child{color:var(--muted); flex:none; max-width:45%;}
+  .sq-num span:last-child{font-family:var(--mono); font-size:12px; text-align:right; min-width:0; overflow-wrap:anywhere;}
+  .sq-num.long{display:block;} .sq-num.long span:first-child{display:block; max-width:none; margin-bottom:2px;}
+  .sq-num.long span:last-child{display:block; text-align:left; font-family:var(--body); font-size:12.5px; line-height:1.4;}
+  .sq-detail p{margin:8px 0 0; font-size:12.5px; line-height:1.4;}
+  .sq-dos{padding:0 12px 12px;}
+  .sq-dos-row{padding:8px 0; border-top:1px solid var(--line); font-size:12.5px; line-height:1.4;}
+  .sq-dos-row b{font-family:var(--disp); letter-spacing:.04em; text-transform:uppercase; font-size:13px;}
   .hub-agent{background:var(--panel); border-radius:var(--r-card); padding:16px; display:flex; flex-direction:column; gap:12px; margin-top:14px;}
   .hub-agent-h{display:flex; align-items:center; gap:10px;}
   .hub-agent-t{display:flex; flex-direction:column; flex:1; min-width:0;}
@@ -8050,6 +8096,14 @@ function applyPulled(d, exportedAt){
       Object.keys(localAgents.diagnoses).forEach(function(k){
         const loc = localAgents.diagnoses[k];
         if(loc && loc.at && (!a.diagnoses[k] || loc.at > (a.diagnoses[k].at || ''))) a.diagnoses[k] = loc;
+      });
+    }
+    // DELTA's lift dossiers (V5 stage 4): per lift, newer wins, like its plateau reads.
+    if(localAgents.dossiers && typeof localAgents.dossiers === 'object'){
+      if(!a.dossiers || typeof a.dossiers !== 'object') a.dossiers = {};
+      Object.keys(localAgents.dossiers).forEach(function(k){
+        const loc = localAgents.dossiers[k];
+        if(loc && loc.at && (!a.dossiers[k] || loc.at > (a.dossiers[k].at || ''))) a.dossiers[k] = loc;
       });
     }
     // The agents' questions: by id, the newer answer (or undo) wins, so an answer given on one device
@@ -23854,6 +23908,8 @@ function exAcceptName(raw){
 // experiment: DELTA and ECHO, each only its OWN templates (EXP_TEMPLATES[t].owner, checked in expValidate).
 const AG_FIX_ALLOWED = {charlie:['schedule','cycleSchedule'], delta:['liftReset','deload','addEx','swapEx','setCount','experiment'], echo:['cal','pro','fuelFood','experiment']};
 function agFixAllowedFor(who, type){
+  // An analyst (V5 stage 4) has no fix types at all. Nothing hands the validator an analyst's id; this is the guarantee.
+  try{ if(Object.prototype.hasOwnProperty.call(ANALYSTS, who)) return false; }catch(e){}
   const list = AG_FIX_ALLOWED[who];
   return !list || list.indexOf(type) >= 0;
 }
@@ -26299,6 +26355,8 @@ function agJsonSpec(id){
     // A question for him: only the agent whose turn it is, only on a night one may be asked.
     qaSpecLine(id)+
     // Plateau diagnosis (V4 stage 6): only on a night with lifts to diagnose.
+    // Lift dossiers (V5 stage 4, a paid switch, off): before the diagnosis, which stays last.
+    (id==='delta' ? dosSpecLine(dosTargets()) : '')+
     (id==='delta' ? pdSpecLine(pdTargets()) : '');
 }
 
@@ -26322,9 +26380,12 @@ function agBaseContext(id){
   // Cited principles (V5 stage 3): only with BOTH evidence switches on. Empty otherwise, before DELTA's tail.
   let evd = '';
   try{ evd = agEvidenceBlock(id); }catch(e){ evd = ''; }
-  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+std+intel+evl+lref+desk+evd+
+  // Its squad's flagged readings (V5 stage 4): only with the paid switch on, and only when one is flagged.
+  let sqd = '';
+  try{ sqd = anlSquadLine(id); }catch(e){ sqd = ''; }
+  return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+std+sqd+intel+evl+lref+desk+evd+
     ((id==='delta' || id==='zulu') ? agFeelLine()+agPracticeLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+fcTrackLine(id)+qaContextLine(id)+
-    (id==='delta' ? agTodaySessionNote()+olAgentContext()+pdContextLine(pdTargets()) : '');
+    (id==='delta' ? agTodaySessionNote()+olAgentContext()+dosContextLine(dosTargets())+pdContextLine(pdTargets()) : '');
 }
 /* His own read after recent sessions (S.sessionMeta), for the agents that coach training (2026-10-16). It reached
    only DELTA's debrief, for one session, so a note like "knee felt off" was gone the next night. His words are
@@ -26830,6 +26891,8 @@ async function agRunSpecialist(id, manual){
   const dbFor = (id==='delta') ? ((agDebriefTarget()||{}).id || null) : null;
   // The lifts asked about for a diagnosis, taken before the await for the same reason.
   const pdFor = (id==='delta') ? pdTargets().map(function(r){ return {lift:r.lift, lvl:r.lvl}; }) : null;
+  // The lifts a dossier was asked for (V5 stage 4), before the await too. Empty unless the paid switch is on.
+  const dosFor = (id==='delta') ? dosTargets() : null;
   // Whether it was offered a question tonight, taken before the await like the two above.
   const qaAsk = qaOfferTo(id);
   // The Desk items it may reply to, taken before the await from the same state its prompt was built from.
@@ -26844,7 +26907,7 @@ async function agRunSpecialist(id, manual){
   // did not report, which is the truth. Half a sentence stored as a summary is not.
   if(aiTruncated(res)) throw new Error('reply hit the '+AG_MAXTOK+'-token ceiling before it finished');
   const parsed = parseLooseJSON(res.text);
-  if(parsed){ parsed._consulted = consulted; if(dbFor) parsed._debriefFor = dbFor; if(pdFor && pdFor.length) parsed._pdFor = pdFor; if(qaAsk) parsed._qaAsk = true;
+  if(parsed){ parsed._consulted = consulted; if(dbFor) parsed._debriefFor = dbFor; if(pdFor && pdFor.length) parsed._pdFor = pdFor; if(dosFor && dosFor.length) parsed._dosFor = dosFor; if(qaAsk) parsed._qaAsk = true;
     if(rtPeers.length) parsed._rtPeers = rtPeers; parsed._deskIds = deskIds; }
   return parsed;
 }
@@ -27053,6 +27116,17 @@ async function agRunAll(manual){
             if(keys.length > PD_KEEP) keys.sort(function(x, y){ return String(a2.diagnoses[y].at).localeCompare(String(a2.diagnoses[x].at)); })
               .slice(PD_KEEP).forEach(function(k){ delete a2.diagnoses[k]; });
           } else if(r.val._pdFor && r.val.diagnosis) agLog('delta','My read on the flagged lifts did not pass the check, so it is not shown.');
+        }catch(e){}
+        // Lift dossiers (V5 stage 4): only the lifts it was asked about before the await, into the same live S.
+        try{
+          const ds = agValidateDossiers(r.val.dossiers, r.val._dosFor);
+          if(ds.length){
+            if(!a2.dossiers || typeof a2.dossiers !== 'object') a2.dossiers = {};
+            ds.forEach(function(d){ a2.dossiers[d.lift] = d; });
+            const dk = Object.keys(a2.dossiers);
+            if(dk.length > DOS_KEEP) dk.sort(function(x, y){ return String(a2.dossiers[y].at).localeCompare(String(a2.dossiers[x].at)); })
+              .slice(DOS_KEEP).forEach(function(k){ delete a2.dossiers[k]; });
+          } else if(r.val._dosFor && r.val.dossiers) agLog('delta','My lift notes did not pass the check, so they are not shown.');
         }catch(e){}
       }
     });
@@ -28726,6 +28800,489 @@ function agClearChat(id){
   if(id==='zulu'){ S.chat = []; } else { agState().chats[id] = []; }
   save(); renderOps();
 }
+/* ============================================================
+   ANALYSTS AND SQUADS (V5 stage 4, 2026-11-12). Eight analysts under the four coaches. An analyst is a pure function
+   of his data: it makes no call, has no fix types, no chat and no prompt of its own, and its text is a template.
+   - A reading is worked out when read. It is never stored and never posted to the Desk: a stored verdict would lose
+     to an older snapshot, exactly like the Standards.
+   - The five analysts that own a Standards pillar take their LEVEL from stdState() and nothing else, so a tile can
+     never disagree with the Standards card. What a tile adds is the numbers behind the level.
+   - FOXTROT (volume) has no pillar. It lists the moves and judges nothing (FOX_FLAGS is false: on his history a flag
+     was noise); with FOX_FLAGS on it can read amber, never red. INDIA scores nothing until the Selector exists, and
+     KILO only reports what the library would hand out, so neither can flag.
+   - A coach's status is the worst status in its squad (ZULU: in all of them, ANL_ZULU_ROLLUP).
+   - A status is shown as a colour, an icon and a short reason. It never names its level (his pick, 2026-11-12).
+   - The 14-day strip is each level re-read as of each past day, memoised on the day and on what the data holds.
+   - In the prompts, both additions are paid switches, off: a coach's flagged squad readings (anlSquadLine()), and
+     lift dossiers inside DELTA's existing call (dos*). Off, or with nothing to say, the prompt is byte-identical.
+   ============================================================ */
+OV.analysts = {label:'Analysts and squads', paid:false, note:'Eight computed analysts under the four coaches, and the Hub’s Agents view in four lanes. Worked out on the device. No model call.'};
+OV.squadPrompts = {label:'Squad readings in the nightly prompts', paid:true, note:'Hands each coach its analysts’ flagged readings, at most 600 characters a night: an estimated 3 to 15 cents a month. Needs Analysts on.'};
+OV.dossiers = {label:'Lift dossiers from DELTA', paid:true, note:'DELTA writes a short note on up to 2 main lifts a night inside its existing call, each lift at most once a week: an estimated 10 to 30 cents a month. Needs Analysts on.'};
+// The callsigns are placeholders he can rename: nothing keys on `name`, everything on the id.
+const ANALYSTS = {
+  kilo:    {name:'KILO',    lead:'zulu',    job:'Evidence librarian', tags:[]},
+  hotel:   {name:'HOTEL',   lead:'charlie', job:'Consistency', pillar:'show', tags:['frequency']},
+  golf:    {name:'GOLF',    lead:'charlie', job:'Recovery against your usual', pillar:'recovery', tags:['sleep']},
+  alpha:   {name:'ALPHA',   lead:'delta',   job:'Strength trend, main lifts', pillar:'lifts', tags:['overload', 'plateau']},
+  foxtrot: {name:'FOXTROT', lead:'delta',   job:'Weekly volume per muscle', tags:['volume']},
+  india:   {name:'INDIA',   lead:'delta',   job:'Lift fit and noise', tags:['selection']},
+  bravo:   {name:'BRAVO',   lead:'echo',    job:'Bulk pace', pillar:'bulk', tags:['bulk']},
+  juliet:  {name:'JULIET',  lead:'echo',    job:'Intake against targets', pillar:'intake', tags:['protein']}
+};
+const ANL_ORDER = Object.keys(ANALYSTS);
+const ANL_LANES = ['zulu', 'charlie', 'delta', 'echo'];
+const ANL_ZULU_ROLLUP = true;      // ZULU's status is the worst across every squad, not only its own
+const ANL_STRIP_DAYS = 14;         // days on a tile's status strip, today included
+const ANL_PROMPT_MAX = 600;        // characters of squad readings one nightly prompt may carry
+// FOXTROT: one full rotation before the day (his cycle's length; 7 days on a weekday schedule), against the mean of up
+// to 4 such windows before it. Today is left out because today's session may not have happened yet. A muscle is read
+// only if its usual is FOX_MIN_SETS sets or more.
+const FOX_WIN = 7, FOX_BACK = 4, FOX_MIN_WINS = 2, FOX_MIN_SETS = 6, FOX_DROP = 0.35, FOX_JUMP = 0.4;
+// It LISTS the moves and judges nothing unless this is true. Replayed over his 88 days to 2026-11-12, a flag at these
+// thresholds read amber on 46 days of 88 over his 8-day rotation (67 over 7 days), and on 28 at 50% and 60%: his sets
+// per muscle swing that much most rotations (floating rest days, a strength block, a deload), so a flag would be noise.
+let FOX_FLAGS = false;
+function anlFoxDays(){
+  try{ if(scheduleMode() === 'cycle'){ const n = cyclePattern().length; if(n >= 5 && n <= 14) return n; } }catch(e){}
+  return FOX_WIN;
+}
+const ANL_SPARK_PTS = 14;
+function anlOn(){ return ovOn('analysts'); }
+function anlSquad(lead){ return ANL_ORDER.filter(function(id){ return ANALYSTS[id].lead === lead; }); }
+function anlCap(s){ s = String(s || ''); return s.charAt(0).toUpperCase()+s.slice(1); }
+const ANL_NODATA = {bulk:'Too few weigh-ins', show:'No sessions yet', lifts:'Not enough history', intake:'Too few days logged', recovery:'Too few WHOOP readings'};
+/* The short reason beside a pillar analyst's icon. Words for what is happening, never for the level. */
+function anlPillarWord(p, r){
+  if(r.lvl === 'held') return 'Held to '+homeShortDate(r.held.until);
+  if(r.lvl === 'nodata') return ANL_NODATA[p];
+  const bad = STD_RANK[r.lvl] > 0;
+  if(p === 'bulk'){
+    if(r.kind === 'fast') return 'Gaining fast';
+    if(r.kind === 'loss') return (r.rate != null && bulkBand(r.rate) === 'losing') ? 'Losing weight' : 'Not cleared yet';
+    return r.rate != null ? anlCap(STD_BAND_WORD[bulkBand(r.rate)]) : 'In the band';
+  }
+  if(p === 'show') return !bad ? 'No misses' : (r.misses && r.misses.length) ? stdPl(r.misses.length, 'day')+' missed' : 'Not cleared yet';
+  if(p === 'lifts'){
+    if(!bad || !(r.lifts && r.lifts.length)) return 'On track';
+    return r.lifts[0].lift+' '+r.lifts[0].word+(r.lifts.length > 1 ? ', +'+(r.lifts.length - 1)+' more' : '');
+  }
+  if(p === 'intake') return !bad ? 'On target' : 'Under on '+r.under+' of '+r.logged+' days';
+  return !bad ? 'Near your usual' : 'Under on '+r.under+' of '+r.days+' days';
+}
+/* What would move a pillar analyst: the Standard's own exit while it is flagged, its entry while it is not. */
+function anlPillarChange(p, r){
+  if(r.lvl === 'held') return r.clearsWhen || '';
+  if(r.lvl === 'nodata') return 'It reads once there is enough data.';
+  if(STD_RANK[r.lvl] > 0) return r.clearsWhen || '';
+  return ({bulk:'A week of weight loss, or two weeks in a row over '+BULK_FAST+' lb/week.',
+    show:stdPl(STD_SHOW_AMBER, 'scheduled day')+' missed with no reason inside '+SV_DAYS+' days.',
+    lifts:'A main lift the plateau watch reads slowing or falling.',
+    intake:'Calories under target on '+STD_INTAKE_AMBER+' of the last '+STD_INTAKE_DAYS+' days.',
+    recovery:'Recovery '+PC_REC_UNDER+' or more points under your usual on '+STD_REC_AMBER+' of '+STD_REC_DAYS+' days.'})[p];
+}
+function anlFromPillar(p, rows){
+  const r = rows[p];
+  if(!r) return {lvl:'nodata', word:'Could not be read', line:'The Standard this reads from could not be worked out.', change:''};
+  return {lvl:r.lvl, word:anlPillarWord(p, r), line:r.why+(r.motion ? ' Plan in motion: '+r.motion : ''), change:anlPillarChange(p, r), row:r};
+}
+/* FOXTROT. Sets per muscle in the 7 days before the day, against his usual. A deload week and held days are not
+   part of "usual" and are not judged against it (the fatigue norm's rule). */
+function anlFoxWin(endKey, i){ const n = anlFoxDays(), to = mesoAddDays(endKey, -1 - n * i); return {from:mesoAddDays(to, -(n - 1)), to:to}; }
+function anlFoxtrot(endKey){
+  const logs = S.logs || [];
+  const dl = function(w){ return logs.some(function(l){ return l && l.deload && l.date >= w.from && l.date <= w.to; }); };
+  const away = function(w){ for(let d = w.from; d <= w.to; d = mesoAddDays(d, 1)) if(holdOn(d)) return true; return false; };
+  const sum = function(v){ return MUSCLE_GROUPS.reduce(function(a, g){ return a + (v[g] || 0); }, 0); };
+  const cur = anlFoxWin(endKey, 0), N = anlFoxDays();
+  if(away(cur)) return {lvl:'held', word:'Away days', line:'The last '+N+' days include held days, so volume is not compared.', change:'It reads again '+N+' days after the block.', nums:[]};
+  if(dl(cur)) return {lvl:FOX_FLAGS ? 'ok' : 'nodata', word:'Deload week', line:'A deload session is inside the last '+N+' days. Volume is not compared with a usual week.', change:'It compares again once the deload is '+N+' days back.', nums:[]};
+  const now = weeklyVolumeByGroup(cur.from, cur.to), past = [];
+  for(let i = 1; i <= FOX_BACK; i++){
+    const w = anlFoxWin(endKey, i);
+    if(dl(w) || away(w)) continue;
+    const v = weeklyVolumeByGroup(w.from, w.to);
+    if(sum(v) > 0) past.push(v);
+  }
+  if(past.length < FOX_MIN_WINS) return {lvl:'nodata', word:'Too few weeks', line:'Volume needs '+FOX_MIN_WINS+' ordinary weeks before the last '+N+' days to compare against.', change:'It reads once there is enough data.', nums:[]};
+  const rows = MUSCLE_GROUPS.map(function(g){
+    const norm = past.reduce(function(a, v){ return a + (v[g] || 0); }, 0) / past.length, n = now[g] || 0;
+    return {g:g, now:n, norm:norm, d:norm > 0 ? (n - norm) / norm : 0};
+  });
+  const flag = rows.filter(function(r){ return r.norm >= FOX_MIN_SETS && (r.d <= -FOX_DROP || r.d >= FOX_JUMP); })
+    .sort(function(a, b){ return Math.abs(b.d) - Math.abs(a.d); });
+  const say = function(r){ return r.g+' '+(r.d < 0 ? 'down' : 'up')+' '+Math.round(Math.abs(r.d) * 100)+'%'; };
+  const nums = rows.filter(function(r){ return r.norm > 0 || r.now > 0; }).map(function(r){ return [r.g, stdN1(r.now)+' sets · usual '+stdN1(r.norm)]; });
+  if(!FOX_FLAGS) return {lvl:'nodata', word:'Listed, not judged',
+    line:'Sets per muscle in the '+N+' days to '+homeShortDate(cur.to)+', against the '+stdPl(past.length, 'ordinary week')+' before. '+
+      (flag.length ? 'Largest moves: '+flag.slice(0, 3).map(say).join(', ')+'.' : 'No muscle is '+Math.round(FOX_DROP * 100)+'% off its usual.')+
+      ' Listed, not judged: your sets per muscle move this much most weeks.',
+    change:'Nothing: it has no level. It lists the numbers for you and DELTA to read.', nums:nums};
+  return {lvl:flag.length ? 'amber' : 'ok',
+    word:flag.length ? say(flag[0])+(flag.length > 1 ? ', +'+(flag.length - 1)+' more' : '') : 'Steady',
+    line:'Sets per muscle in the '+N+' days to '+homeShortDate(cur.to)+', against the '+stdPl(past.length, 'ordinary week')+' before.'+
+      (flag.length ? ' Off its usual by '+Math.round(FOX_DROP * 100)+'% or more: '+flag.map(say).join(', ')+'.' : ' No muscle is '+Math.round(FOX_DROP * 100)+'% off its usual.'),
+    change:flag.length ? 'Each muscle back within '+Math.round(FOX_DROP * 100)+'% under and '+Math.round(FOX_JUMP * 100)+'% over its usual.'
+      : 'A muscle '+Math.round(FOX_DROP * 100)+'% under or '+Math.round(FOX_JUMP * 100)+'% over its usual sets.',
+    nums:nums};
+}
+/* INDIA. The fit score is the Selector's (stage 5). Until it exists this reports the hard-set share and judges nothing. */
+function anlIndia(){
+  let mains = [];
+  try{ mains = predLifts(); }catch(e){ mains = []; }
+  const nums = mains.map(function(n){ const h = liftHardShare(n); return [n, h.pct === null ? 'no effort tags yet' : h.pct+'% of '+h.tagged+' tagged sets were grinders or fails']; });
+  return {lvl:'nodata', word:'Not scoring yet', line:'Fit scores arrive with the Selector. Until then this lists how hard each main lift’s recent sets were, and judges nothing.',
+    change:'Nothing yet: it has no level until the Selector is built.', nums:nums};
+}
+/* KILO. What the library would hand each coach today. It reports; it never flags. */
+function anlKilo(endKey){
+  if(!evOn()) return {lvl:'nodata', word:'Library off', line:'The Evidence Library is off until you have checked ten entries (Settings, V5 switches).', change:'Turning the Evidence Library on.', nums:[]};
+  const nums = ANL_LANES.map(function(id){
+    let ids = [];
+    try{ ids = evidenceFor(evTagsFor(id), EVD_MAX_CHARS, endKey).map(function(e){ return e.id; }); }catch(e){ ids = []; }
+    return [AGENTS[id].name, ids.length ? ids.join(', ') : 'none'];
+  });
+  const all = {};
+  nums.forEach(function(x){ if(x[1] !== 'none') x[1].split(', ').forEach(function(i){ all[i] = 1; }); });
+  const n = Object.keys(all).length;
+  return {lvl:'ok', word:stdPl(n, 'entry').replace('entrys', 'entries')+' picked', line:'Picked for today from '+EVIDENCE.length+' findings, by what is going on and each coach’s lane.'+
+    (evPromptsOn() ? ' They go into the nightly prompts.' : ' They are not in the prompts: that switch is off.'), change:'A hold coming up, a main lift off track, or a deload moves a shelf to the front.', nums:nums};
+}
+const ANL_READ = {
+  kilo:function(t){ return anlKilo(t); },
+  hotel:function(t, rows){ return anlFromPillar('show', rows); },
+  golf:function(t, rows){ return anlFromPillar('recovery', rows); },
+  alpha:function(t, rows){ return anlFromPillar('lifts', rows); },
+  foxtrot:function(t){ return anlFoxtrot(t); },
+  india:function(){ return anlIndia(); },
+  bravo:function(t, rows){ return anlFromPillar('bulk', rows); },
+  juliet:function(t, rows){ return anlFromPillar('intake', rows); }
+};
+/* THE read: {std:{pillar:row}, reads:{id:{id, lvl, word, line, change, nums?}}}. Pure. An analyst that throws reads
+   "nodata": a broken read is never a flag and never a clean bill. */
+function anlPass(endKey){
+  const t = endKey || todayKey(), std = {}, reads = {};
+  try{ stdState(t).forEach(function(r){ std[r.pillar] = r; }); }catch(e){}
+  ANL_ORDER.forEach(function(id){
+    let r;
+    try{ r = ANL_READ[id](t, std); }catch(e){ r = null; }
+    if(!r || !Object.prototype.hasOwnProperty.call(STD_RANK, r.lvl)) r = {lvl:'nodata', word:'Could not be read', line:'This reading could not be worked out.', change:''};
+    r.id = id;
+    reads[id] = r;
+  });
+  return {std:std, reads:reads};
+}
+function anlState(endKey){ return anlPass(endKey).reads; }
+/* A coach's status: the worst in its squad, and which analyst it came from. Nothing flagged: clear if any analyst
+   could read, held if one is held, otherwise no data. */
+function anlLeadStatus(lead, reads){
+  const ids = (lead === 'zulu' && ANL_ZULU_ROLLUP) ? ANL_ORDER : anlSquad(lead);
+  let worst = null, ok = false, held = false;
+  ids.forEach(function(id){
+    const r = reads && reads[id];
+    if(!r) return;
+    if(r.lvl === 'ok') ok = true;
+    if(r.lvl === 'held') held = true;
+    if(STD_RANK[r.lvl] > 0 && (!worst || STD_RANK[r.lvl] > STD_RANK[worst.lvl])) worst = r;
+  });
+  if(worst) return {lvl:worst.lvl, word:ANALYSTS[worst.id].name+': '+worst.word, by:worst.id};
+  return ok ? {lvl:'ok', word:'Nothing flagged', by:null} : held ? {lvl:'held', word:'Held', by:null} : {lvl:'nodata', word:'No reading yet', by:null};
+}
+/* The numbers behind a reading, as [label, value] pairs. Today's only: they are drawn in an open tile and, behind a
+   paid switch, handed to the coach. Worked out when asked for, so a closed tile costs nothing. */
+function anlNums(id, r){
+  if(r && Array.isArray(r.nums)) return r.nums;
+  const t = todayKey(), row = (r && r.row) || {}, out = [];
+  try{
+    if(id === 'bravo'){
+      if(row.rate != null) out.push(['Last completed week', stdRate(row.rate)+' lb/week']);
+      const r4 = bulkRate(4, mesoAddDays(weekKeyOf(t), -1));
+      if(r4 && isFinite(r4.rate)) out.push(['Four-week rate', stdRate(r4.rate)+' lb/week']);
+      out.push(['Band', BULK_LO+' to '+BULK_HI+' lb/week']);
+      const ws = (S.weights || []).filter(function(x){ return x && x.date && +x.lbs > 0 && x.date <= t; }).sort(function(a, b){ return a.date < b.date ? -1 : 1; });
+      if(ws.length) out.push(['Latest weigh-in', (+ws[ws.length - 1].lbs).toFixed(1)+' lb, '+homeShortDate(ws[ws.length - 1].date)]);
+      const mon = weekKeyOf(t);
+      out.push(['Weigh-ins this week', String(ws.filter(function(x){ return x.date >= mon; }).length)]);
+      if(row.consequence) out.push(['Ahead', row.consequence]);
+    } else if(id === 'hotel'){
+      const sv = svSheet(t);
+      out.push(['Planned days, last '+SV_DAYS, sv.done+' of '+sv.planned+' trained']);
+      out.push(['Missed, no reason', sv.missed.length ? sv.missed.map(function(x){ return homeShortDate(x.date)+' ('+x.day+')'; }).join(', ') : 'none']);
+      if(sv.excused.length) out.push(['With a reason', sv.excused.map(function(x){ return homeShortDate(x.date)+' ('+x.why+')'; }).join(', ')]);
+      const s = streakStats();
+      out.push(['Run of sessions', s.current+(s.longest > s.current ? ' (best '+s.longest+')' : '')]);
+      const from = mesoAddDays(t, -28);
+      const mins = (S.logs || []).filter(function(l){ return l && l.date >= from && +l.startedAt > 0; }).map(function(l){ const d = new Date(+l.startedAt); return d.getHours() * 60 + d.getMinutes(); });
+      if(mins.length >= 3){
+        const m = Math.round(pxMedian(mins));
+        out.push(['Usual start, last 28 days', new Date(2000, 0, 1, Math.floor(m / 60), m % 60).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})+' ('+stdPl(mins.length, 'session')+')']);
+      }
+    } else if(id === 'golf'){
+      const wr = whoopOn(t) || {}, b = recoveryBaseline(t);
+      out.push(['Recovery today', typeof wr.recovery === 'number' ? Math.round(wr.recovery)+'%'+(wr.provisional ? ' (not final)' : '')+(b ? ' · usual '+Math.round(b.recovery)+'%' : '') : 'no reading yet']);
+      if(typeof wr.hrv === 'number') out.push(['HRV', Math.round(wr.hrv)+' ms'+(b && typeof b.hrv === 'number' ? ' · usual '+Math.round(b.hrv) : '')]);
+      if(typeof wr.sleepHours === 'number') out.push(['Sleep', wr.sleepHours.toFixed(1)+' h'+(b && typeof b.sleepHours === 'number' ? ' · usual '+b.sleepHours.toFixed(1) : '')]);
+      if(typeof wr.strainYday === 'number') out.push(['Strain yesterday', wr.strainYday.toFixed(1)]);
+      if(row.days != null) out.push(['Days under your usual, last '+STD_REC_DAYS, (row.under || 0)+' of '+row.days+' with a reading']);
+      if(row.consequence) out.push(['On days like these', row.consequence]);
+    } else if(id === 'juliet'){
+      const days = (S.nutrition || []).filter(function(n){ return n && n.date && +n.cals > 0 && n.date < t && n.date >= mesoAddDays(t, -STD_INTAKE_DAYS); });
+      if(days.length){
+        const cal = days.reduce(function(a, n){ return a + (+n.cals); }, 0) / days.length, tg = days.reduce(function(a, n){ return a + calTargetOn(n.date); }, 0) / days.length;
+        out.push(['Calories, '+stdPl(days.length, 'logged day'), 'avg '+Math.round(cal)+' against '+Math.round(tg)]);
+        const pr = days.filter(function(n){ return +n.protein > 0; });
+        if(pr.length) out.push(['Protein, '+stdPl(pr.length, 'logged day'), 'avg '+Math.round(pr.reduce(function(a, n){ return a + (+n.protein); }, 0) / pr.length)+' g against '+proTarget()+' g']);
+      } else out.push(['Logged days, last '+STD_INTAKE_DAYS, 'none']);
+      if(row.consequence) out.push(['Shortfall', row.consequence]);
+      const f = fuelVsResults();
+      if(f && f.ok){
+        const sg = function(v, d){ return v === null ? '–' : (v >= 0 ? '+' : '')+v.toFixed(d); };
+        f.shown.forEach(function(k){ const g = f.groups[k]; out.push(['Weeks at '+g.label+' cal ('+g.n+')', sg(g.bwPerWeek, 2)+' lb, '+sg(g.strPctPerWeek, 1)+'% e1RM the week after']); });
+        out.push(['Read it as', 'what followed, not proof']);
+      }
+    } else if(id === 'alpha'){
+      pwMainRows(plateauWatch()).forEach(function(w){
+        let v = w.word+(w.pctPerWeek != null ? ', '+stdRate(w.pctPerWeek)+'% a week' : '');
+        try{
+          const res = anEnsembleFor(w.lift, STD_HORIZON_DAYS), a = anFanAt(res, mesoAddDays(t, STD_HORIZON_DAYS));
+          if(a) v += ', trend reads e1RM '+Math.round(a.p50)+' in '+STD_HORIZON_DAYS+' days (best '+Math.round(res.cur)+')';
+        }catch(e){}
+        out.push([w.lift, v]);
+      });
+    }
+  }catch(e){}
+  return out;
+}
+/* A tile's sparkline values, oldest first. Today's data only; [] when there is nothing worth a line. */
+function anlSpark(id, r){
+  const t = todayKey();
+  try{
+    if(id === 'bravo') return bodyweightSeriesSmoothed().filter(function(p){ return p.date <= t; }).slice(-28).map(function(p){ return p.v; });
+    if(id === 'golf'){
+      const v = [];
+      for(let i = ANL_SPARK_PTS - 1; i >= 0; i--){ const w = whoopOn(mesoAddDays(t, -i)); if(w && typeof w.recovery === 'number') v.push(w.recovery); }
+      return v;
+    }
+    if(id === 'juliet') return (S.nutrition || []).filter(function(n){ return n && n.date && +n.cals > 0 && n.date <= t && n.date > mesoAddDays(t, -ANL_SPARK_PTS); })
+      .sort(function(a, b){ return a.date < b.date ? -1 : 1; }).map(function(n){ return +n.cals; });
+    if(id === 'hotel' || id === 'foxtrot'){
+      const v = [];
+      for(let i = 7; i >= 0; i--){
+        const w = anlFoxWin(t, i);
+        if(id === 'hotel'){ const seen = {}; (S.logs || []).forEach(function(l){ if(l && l.date >= w.from && l.date <= w.to) seen[l.date] = 1; }); v.push(Object.keys(seen).length); }
+        else { const x = weeklyVolumeByGroup(w.from, w.to); v.push(MUSCLE_GROUPS.reduce(function(a, g){ return a + (x[g] || 0); }, 0)); }
+      }
+      return v;
+    }
+    if(id === 'alpha'){
+      const row = (r && r.row) || {};
+      let nm = row.lifts && row.lifts[0] && row.lifts[0].lift;
+      if(!nm) nm = predLifts()[0];
+      return nm ? e1rmSeries(nm).slice(-12).map(function(p){ return p.v; }) : [];
+    }
+  }catch(e){}
+  return [];
+}
+function anlSparkSVG(vals, col){
+  const v = (vals || []).filter(function(x){ return typeof x === 'number' && isFinite(x); });
+  if(v.length < 3) return '';
+  const W = 120, H = 24, lo = Math.min.apply(null, v), hi = Math.max.apply(null, v), span = (hi - lo) || 1;
+  const xy = v.map(function(y, i){ return [2 + i * (W - 4) / (v.length - 1), H - 3 - (y - lo) / span * (H - 6)]; });
+  return '<svg class="sq-spark" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'+ckPath(ckD(xy), col, {w:1.5})+'</svg>';
+}
+/* The strips: every level as it read on each of the 13 days before today. A past day's level only moves when his data
+   does, so this is kept until the day or the data changes; today's cell is the live reading and is never kept.
+   Derived, never state. _anlStripMs is how long the last rebuild took, for the suite and for measuring a repaint. */
+let _anlStrip = {key:null, days:[]}, _anlStripMs = 0, _anlStripBuilds = 0;
+function anlStripKey(){
+  return [todayKey(), (S.meta && S.meta.changedAt) || 0, (S.logs || []).length, (S.weights || []).length, (S.nutrition || []).length, whoopHistRows().length,
+    (S.dayReasons || []).length, (S.holds || []).length, JSON.stringify(S.overhaul || null), ((S.agents && S.agents.proposals) || []).length].join('|');
+}
+function anlLevelsOn(d){
+  const lv = {}, by = {};
+  try{ stdState(d).forEach(function(r){ by[r.pillar] = r.lvl; }); }catch(e){}
+  ANL_ORDER.forEach(function(id){ const p = ANALYSTS[id].pillar; if(p) lv[id] = by[p] || 'nodata'; });
+  try{ lv.foxtrot = anlFoxtrot(d).lvl; }catch(e){ lv.foxtrot = 'nodata'; }
+  return lv;
+}
+function anlStrips(){
+  const key = anlStripKey();
+  if(_anlStrip.key === key) return _anlStrip.days;
+  const t0 = Date.now(), t = todayKey(), days = [];
+  for(let i = ANL_STRIP_DAYS - 1; i >= 1; i--){ const d = mesoAddDays(t, -i); days.push({d:d, lv:anlLevelsOn(d)}); }
+  _anlStrip = {key:key, days:days};
+  _anlStripMs = Date.now() - t0; _anlStripBuilds++;
+  return days;
+}
+/* For a coach's nightly prompt, behind the paid switch: its squad's flagged readings with their numbers, capped.
+   Empty with the switch off, and empty when nothing in the squad is flagged, so those prompts are byte-identical. */
+function anlSquadOn(){ return anlOn() && ovOn('squadPrompts'); }
+function anlSquadLine(id){
+  if(!anlSquadOn() || !Object.prototype.hasOwnProperty.call(AGENTS, id)) return '';
+  let reads;
+  try{ reads = anlState(); }catch(e){ return ''; }
+  const head = '\nYOUR SQUAD’S FLAGGED READINGS (worked out by the app from his data. They are numbers, not advice, and no analyst proposes anything):\n';
+  let left = ANL_PROMPT_MAX;
+  const lines = [];
+  anlSquad(id).forEach(function(a){
+    const r = reads[a];
+    if(!r || !(STD_RANK[r.lvl] > 0) || left < 40) return;
+    let ln = ANALYSTS[a].name+' ('+ANALYSTS[a].job.toLowerCase()+'): '+r.word+'. '+anlNums(a, r).map(function(x){ return x[0]+': '+x[1]; }).join('; ');
+    if(ln.length > left) ln = ln.slice(0, left - 1).replace(/\s+\S*$/, '')+'…';
+    left -= ln.length;
+    lines.push(ln);
+  });
+  return lines.length ? head+'- '+lines.join('\n- ')+'\n' : '';
+}
+/* ---- lift dossiers: a paid key inside DELTA's existing nightly call (off) ----
+   The diagnosis pattern, widened from flagged lifts to the main lifts: DELTA is handed the analysts' numbers for up to
+   DOS_MAX main lifts and writes one short note on each. A lift is asked about at most once in DOS_QUIET_DAYS, and never
+   on a night it is already being diagnosed. Commentary only: validated and clipped, and it changes nothing. */
+const DOS_MAX = 2, DOS_QUIET_DAYS = 7, DOS_SHOW_DAYS = 21, DOS_NOTE_MAX = 220, DOS_KEEP = 12;
+function dosOn(){ return anlOn() && ovOn('dossiers'); }
+function dosTargets(){
+  if(!dosOn()) return [];
+  let mains = [], pd = [];
+  try{ mains = predLifts(); }catch(e){ mains = []; }
+  try{ pd = pdTargets().map(function(r){ return r.lift; }); }catch(e){ pd = []; }
+  const dg = agState().dossiers || {};
+  const age = function(n){ return dg[n] ? pdAge(dg[n]) : Infinity; };
+  return mains.filter(function(n){ return pd.indexOf(n) < 0 && age(n) >= DOS_QUIET_DAYS; })
+    .map(function(n, i){ return {n:n, i:i, a:age(n)}; })
+    .sort(function(x, y){ return (y.a === x.a ? 0 : y.a > x.a ? 1 : -1) || x.i - y.i; }).slice(0, DOS_MAX).map(function(x){ return x.n; });
+}
+function dosFacts(nm){
+  const bits = [];
+  try{ const w = plateauWatch().filter(function(r){ return r.lift === nm; })[0]; if(w) bits.push('ALPHA: '+w.word+(w.pctPerWeek != null ? ', '+stdRate(w.pctPerWeek)+'% a week over its clean sessions' : '')); }catch(e){}
+  try{ const s = e1rmSeries(nm); if(s.length) bits.push('e1RM '+Math.round(s[s.length - 1].v)+' on '+s[s.length - 1].date+', best '+Math.round(Math.max.apply(null, s.map(function(p){ return p.v; })))+' over '+stdPl(s.length, 'session')); }catch(e){}
+  try{ const h = liftHardShare(nm); if(h.pct !== null) bits.push('INDIA: '+h.pct+'% of '+h.tagged+' tagged sets were grinders or fails'); }catch(e){}
+  return bits.join('; ') || 'no numbers yet';
+}
+function dosContextLine(targets){
+  if(!targets || !targets.length) return '';
+  return '\nLIFT DOSSIERS (the app’s numbers for these main lifts; write your note on each in "dossiers"):\n'+
+    targets.map(function(n){ return '- '+n+': '+dosFacts(n)+'.'; }).join('\n')+'\n';
+}
+function dosSpecLine(targets){
+  if(!targets || !targets.length) return '';
+  return '\nALSO include a top-level "dossiers" key, one entry per lift under LIFT DOSSIERS:\n'+
+    '  "dossiers":[{"lift":"<exact name from that list>","note":"<='+DOS_NOTE_MAX+' chars: where this lift stands and the one thing you are watching on it, from his numbers"}]\n'+
+    '  A dossier is a note for him to read. It changes nothing: a change he should apply still goes in proposals.\n';
+}
+/* Validated like the diagnosis: only lifts it was asked about, each once, a string, clipped. Anything else is dropped. */
+function agValidateDossiers(raw, asked){
+  if(!Array.isArray(raw) || !Array.isArray(asked) || !asked.length) return [];
+  const out = [], seen = {};
+  raw.forEach(function(d){
+    if(!d || typeof d !== 'object' || out.length >= DOS_MAX || typeof d.lift !== 'string' || typeof d.note !== 'string') return;
+    const nm = asked.filter(function(x){ return typeof x === 'string' && invNormName(x) === invNormName(d.lift); })[0];
+    if(!nm || seen[nm]) return;
+    let note = d.note.replace(/\s+/g, ' ').trim();
+    if(note.length > DOS_NOTE_MAX) note = note.slice(0, DOS_NOTE_MAX - 1).replace(/\s+\S*$/, '')+'…';
+    if(!note) return;
+    seen[nm] = 1;
+    out.push({lift:nm, note:note, at:new Date().toISOString(), day:todayKey()});
+  });
+  return out;
+}
+function dosListHTML(){
+  if(!dosOn()) return '';
+  const dg = agState().dossiers || {};
+  const rows = Object.keys(dg).map(function(k){ return dg[k]; }).filter(function(d){ return d && d.lift && d.note && pdAge(d) <= DOS_SHOW_DAYS; })
+    .sort(function(a, b){ return String(b.at).localeCompare(String(a.at)); });
+  if(!rows.length) return '<div class="sq-dos"><div class="sq-dos-row" style="color:var(--dim)">Lift dossiers: DELTA writes the first ones on its next nightly run.</div></div>';
+  return '<div class="sq-dos">'+rows.map(function(d){
+    return '<div class="sq-dos-row"><b>'+esc(d.lift)+'</b> <span class="pw-note">DELTA · '+esc(homeShortDate(d.day))+'</span><br>'+esc(d.note)+'</div>'; }).join('')+'</div>';
+}
+/* ---- the Hub's Agents view as four lanes ----
+   Open state is module-scoped (the tab is regenerated). A lane with no choice of his own is open when it is the
+   selected coach or when something in it is flagged. One tile is open at a time. */
+let sqLaneOpen = {}, sqTileOpen = '', _sqShown = {};
+function sqRepaint(){
+  // A tap on a tile must not eat a half-typed chat message: the composer is regenerated with everything else.
+  const i = document.getElementById('agChatIn'), v = i ? i.value : '', who = agActiveChat;
+  renderOps();
+  if(v && who === agActiveChat){ const j = document.getElementById('agChatIn'); if(j) j.value = v; }
+}
+function sqLaneTap(id){
+  if(!Object.prototype.hasOwnProperty.call(AGENTS, id)) return;
+  if(agActiveChat === id) sqLaneOpen[id] = !_sqShown[id];
+  else { agActiveChat = id; sqLaneOpen[id] = true; }
+  sqRepaint();
+}
+function sqTileTap(el){
+  const id = el && el.dataset && el.dataset.a;
+  if(!Object.prototype.hasOwnProperty.call(ANALYSTS, id)) return;
+  sqTileOpen = sqTileOpen === id ? '' : id;
+  sqRepaint();
+}
+function sqCells(id, r, strips){
+  if(!strips || !(ANALYSTS[id].pillar || (id === 'foxtrot' && FOX_FLAGS))) return null;
+  return strips.map(function(x){ return x.lv[id] || 'nodata'; }).concat([r.lvl]);
+}
+function sqTileHTML(id, r, strips){
+  const A = ANALYSTS[id], col = STD_COL[r.lvl], cells = sqCells(id, r, strips), open = sqTileOpen === id;
+  const nFlag = cells ? cells.filter(function(l){ return STD_RANK[l] > 0; }).length : 0;
+  return '<button class="sq-tile'+(open ? ' open' : '')+'" data-a="'+id+'" onclick="sqTileTap(this)" aria-expanded="'+open+'" '+
+    'aria-label="'+A.name+', '+esc(A.job)+': '+esc(r.word)+'">'+
+    '<span class="sq-tile-h"><b>'+A.name+'</b><span class="sq-job">'+esc(A.job)+'</span></span>'+
+    '<span class="sq-st" style="color:'+col+'"><i>'+STD_ICON[r.lvl]+'</i><span>'+esc(r.word)+'</span></span>'+
+    '<span class="sq-line">'+esc(r.line)+'</span>'+
+    (cells ? '<span class="sq-strip" role="img" aria-label="Last '+cells.length+' days: flagged on '+nFlag+'">'+
+      cells.map(function(l){ return '<i style="background:'+(l === 'ok' ? 'var(--good)' : STD_RANK[l] > 0 ? STD_COL[l] : 'var(--line2)')+'"></i>'; }).join('')+'</span>'+
+      '<span class="sq-strip-n">'+cells.length+' days · '+(nFlag ? nFlag+' flagged' : 'none flagged')+'</span>' : '')+
+    anlSparkSVG(anlSpark(id, r), col)+'</button>';
+}
+function sqDetailHTML(id, r, strips){
+  const A = ANALYSTS[id], cells = sqCells(id, r, strips);
+  let nums = [];
+  try{ nums = anlNums(id, r); }catch(e){ nums = []; }
+  let chips = '';
+  try{ if(evOn() && A.tags.length) chips = evidenceFor(A.tags, 700).slice(0, EVD_CITE_MAX).map(evChipHTML).join(''); }catch(e){ chips = ''; }
+  const cnt = function(f){ return cells.filter(f).length; };
+  return '<div class="sq-detail" id="sqDetail" data-a="'+id+'"><h4>'+A.name+' · '+esc(A.job)+'</h4><p style="margin-top:0">'+esc(r.line)+'</p>'+
+    nums.map(function(x){ return '<div class="sq-num'+(String(x[1]).length > 44 ? ' long' : '')+'"><span>'+esc(x[0])+'</span><span>'+esc(x[1])+'</span></div>'; }).join('')+
+    (r.change ? '<p><b>What would change it:</b> '+esc(r.change)+'</p>' : '')+
+    (cells ? '<p class="small">Last '+cells.length+' days: flagged on '+cnt(function(l){ return STD_RANK[l] > 0; })+', held on '+cnt(function(l){ return l === 'held'; })+
+      ', no reading on '+cnt(function(l){ return l === 'nodata'; })+'.</p>' : '')+
+    (chips ? '<div class="ev-cite"><span class="ev-none">From the library</span>'+chips+'</div>' : '')+
+    '<p class="small" style="color:var(--dim)">Worked out on this device from your data. No model wrote it, and it proposes nothing: ask '+AGENTS[A.lead].name+'.</p></div>';
+}
+function sqLaneHTML(id, sel, pass, strips){
+  const A = AGENTS[id], st = anlLeadStatus(id, pass.reads), s = agStripState(id), tone = ({warn:1, bad:1, run:1})[s.tone] ? ' '+s.tone : '';
+  const open = Object.prototype.hasOwnProperty.call(sqLaneOpen, id) ? !!sqLaneOpen[id] : (id === sel || STD_RANK[st.lvl] > 0);
+  _sqShown[id] = open;
+  const squad = anlSquad(id);
+  let body = '';
+  if(open){
+    body = '<div class="sq-tiles">'+squad.map(function(a){ return sqTileHTML(a, pass.reads[a], strips)+(a === sqTileOpen ? sqDetailHTML(a, pass.reads[a], strips) : ''); }).join('')+'</div>'+
+      (id === 'delta' ? dosListHTML() : '');
+  }
+  // A div, not a <section>: the app hides every section that is not the active tab, and three lanes vanished.
+  return '<div class="sq-lane'+(id === sel ? ' on' : '')+(open ? ' open' : '')+'" style="--c:'+A.col+'" data-lead="'+id+'">'+
+    '<button class="sq-lead hub-p-'+id+'" onclick="sqLaneTap(\''+id+'\')" aria-expanded="'+open+'" aria-pressed="'+(id === sel)+'" '+
+      'aria-label="'+A.name+', '+HUB_ROLE[id]+'. '+esc(st.word)+'. '+esc(s.txt)+'">'+
+    '<span class="hub-g">'+A.name.charAt(0)+'</span>'+
+    '<span class="sq-lead-t"><span class="sq-lead-n">'+A.name+' <small>· '+HUB_ROLE[id]+'</small></span>'+
+      '<span class="sq-st" style="color:'+STD_COL[st.lvl]+'"><i>'+STD_ICON[st.lvl]+'</i><span>'+esc(st.word)+'</span></span></span>'+
+    '<span class="hub-s'+tone+'">'+esc(hubShort(s.txt))+'</span><span class="sq-chev" aria-hidden="true">'+(open ? '▴' : '▾')+'</span></button>'+
+    body+'</div>';
+}
+function hubSquadsHTML(sel){
+  let pass, strips = null;
+  try{ pass = anlPass(); }catch(e){ pass = {std:{}, reads:{}}; ANL_ORDER.forEach(function(id){ pass.reads[id] = {id:id, lvl:'nodata', word:'Could not be read', line:'', change:''}; }); }
+  try{ strips = anlStrips(); }catch(e){ strips = null; }
+  let h = '';
+  if(stdOn()){
+    h += '<div class="sq-lights" role="group" aria-label="The five Standards">'+STD_PILLARS.map(function(p){
+      const r = pass.std[p];
+      return r ? '<span class="sq-light" style="color:'+STD_COL[r.lvl]+'" title="'+esc(r.why || '')+'"><i>'+STD_ICON[r.lvl]+'</i>'+esc(STD_LABEL[p])+'</span>' : '';
+    }).join('')+'</div>';
+  }
+  return h+'<div class="sq-lanes" role="group" aria-label="The four coaches and their analysts">'+
+    ANL_LANES.map(function(id){ return sqLaneHTML(id, sel, pass, strips); }).join('')+'</div>'+
+    '<p class="hub-hint">Tap a coach for its report and chat, a tile for its numbers. The analysts are worked out on this device, free.</p>';
+}
 /* ---- the Intelligence Hub (V4 stage 3) ----
    The four cards became one map and one card: ZULU in the middle, the specialists around it, and
    the selected agent's report with its chat underneath. Every state shown is read from what
@@ -28911,7 +29468,10 @@ function renderOps(){
   let h = '<div class="hub-head"><span class="cc-eyebrow">Intelligence</span><h2 class="hub-title">Hub</h2>'+
     '<span class="hub-status '+hs.tone+'"><i></i>'+esc(hs.txt)+'</span></div>';
   // the map, then the selected agent's report with its chat directly beneath
-  h += hubMapHTML(agActiveChat)+hubAgentHTML(agActiveChat)+agChatHTML();
+  // V5 stage 4: the map is four lanes with their analysts while the Analysts switch is on. Off, the map is back.
+  let _top = '';
+  if(anlOn()){ try{ _top = hubSquadsHTML(agActiveChat); }catch(e){ console.warn('squads failed', e); _top = ''; } }
+  h += (_top || hubMapHTML(agActiveChat))+hubAgentHTML(agActiveChat)+agChatHTML();
   // DELTA's lifts, as the plateau watch reads them (V4 stage 5). On the device and free.
   try{ const pw = plateauWatch(); if(pw.length) h += '<div class="cc-head hub-pw"><span class="dash-sec">DELTA is watching</span><span class="cc-note">worked out on this device, free</span></div>'+pwChipsHTML(pw); }catch(e){}
   h += '<div class="ag-bar" style="margin-top:16px">'+

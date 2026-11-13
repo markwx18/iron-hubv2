@@ -11854,6 +11854,8 @@ setTimeout(async () => {
     // put ECHO's miss back for the map
     ev("agState().status.echo.at = '" + ago(10 + 1440) + "'; agState().log.unshift({id: 'h1', agent: 'echo', at: '" + h1At + "', text: 'I could not complete tonight\\u2019s check (Load failed). Nothing changed.'});");
 
+    // The map is the layout with the Analysts switch off (V5 stage 4 put four lanes in its place); the lanes have their own section.
+    ev("S.overhaul = Object.assign({}, S.overhaul || {}, {analysts:false});");
     ev("setMode('review'); showMainTab('ops');");
     const OPS = "document.getElementById('ops')";
     ok('hub: the map has all four agents', ev(OPS + ".querySelectorAll('.hub-node').length") === 4 &&
@@ -17701,6 +17703,318 @@ setTimeout(async () => {
        "_stdSince = {}; S = JSON.parse(window.__eS);" +
        "if(window.__eLS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__eLS);" +
        "['__eS','__eLS','__eToday','__eConfirm','__ePW','__ePL','__eOpen','__eChk','__ebase','__epw','__emain','__el','__asked','__di'].forEach(function(k){ delete window[k]; });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
+  // ===== V5 stage 4: analysts and squads (2026-11-12) =====
+  console.log('\n=== ANALYSTS: EIGHT COMPUTED READINGS, LEVELS FROM THE STANDARDS, NEVER STORED, THE HUB IN FOUR LANES, PROMPTS AND DOSSIERS BEHIND PAID SWITCHES (2026-11-12) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    ev("window.__aS = JSON.stringify(S); window.__aLS = localStorage.getItem(LS_KEY); window.__aToday = todayKey; window.__aPW = plateauWatch; window.__aPL = predLifts; window.__aStd = stdState; window.__aPdt = pdTargets;" +
+       "window.__aRead = Object.assign({}, ANL_READ); window.__aChat = agActiveChat;");
+    ev(`window.__abase = function(ov){
+        S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+        S.scheduleMode = 'dow'; S.schedule = {0:'D1',1:'D1',2:'D1',3:'D1',4:'D1',5:'D1',6:'D1'}; S.settings.apiKey = 'sk-test';
+        var t = todayKey(), i = 0;
+        for(var d = mesoAddDays(t, -20); d < t; d = mesoAddDays(d, 1)) S.logs.push({id:'al'+(i++), date:d, day:'D1', scheduled:'D1', entries:[]});
+        S.overhaul = ov || {}; _stdSince = {}; sqLaneOpen = {}; sqTileOpen = ''; _anlStrip = {key:null, days:[]}; agState().proposals = [];
+        window.__std = null; window.__apw = []; window.__amain = []; window.__apdt = [];
+      };
+      window.__avol = function(spec){
+        S.logs = S.logs.filter(function(l){ return !/^av/.test(l.id); });
+        spec.forEach(function(x, i){
+          var sets = []; for(var k = 0; k < x[1]; k++) sets.push({w:135, r:8});
+          S.logs.push({id:'av'+i, date:mesoAddDays(todayKey(), -x[0]), day:'D1', scheduled:'D1', deload:!!x[2], entries:[{exercise:'Barbell Bench Press', sets:sets}]});
+        });
+      };
+      todayKey = function(){ return '2026-12-14'; };
+      plateauWatch = function(){ return window.__apw || []; }; predLifts = function(){ return window.__amain || []; }; pdTargets = function(){ return window.__apdt || []; };
+      window.__aAgo = function(n){ return new Date(mesoAddDays(todayKey(), -n)+'T12:00:00').toISOString(); };
+      stdState = function(k){ return window.__std ? JSON.parse(JSON.stringify(window.__std)) : window.__aStd(k); };`);
+    const AG = ['zulu', 'charlie', 'delta', 'echo'];
+    const prompts = () => AG.map(id => ev("agBaseContext('" + id + "')")).concat(AG.map(id => ev("chatContext('" + id + "')"))).concat(AG.map(id => ev("agJsonSpec('" + id + "')")));
+    const QUIET = [
+      {pillar:'bulk', label:'Bulk pace', lvl:'ok', rate:0.7, why:'Last week: +0.70 lb/week (in the band).', consequence:'', clearsWhen:''},
+      {pillar:'show', label:'Showing up', lvl:'ok', why:'No scheduled day missed without a reason in the last 7 days.', consequence:'', clearsWhen:'', misses:[], excused:[]},
+      {pillar:'lifts', label:'Lifts', lvl:'ok', why:'3 main lifts on the plateau watch, none flagged.', consequence:'', clearsWhen:'', lifts:[]},
+      {pillar:'intake', label:'Intake', lvl:'ok', why:'At or over target on 5 of 6 logged days in the last 7.', consequence:'', clearsWhen:'', logged:6, under:1},
+      {pillar:'recovery', label:'Recovery', lvl:'ok', why:'Recovery within 15 points of your usual (60%) on the days that count.', consequence:'', clearsWhen:'', days:6, under:0}];
+    const withRow = (p, patch) => QUIET.map(r => r.pillar === p ? Object.assign({}, r, patch) : r);
+    const setStd = rows => { w.__std = rows; };
+    const BULK_RED = {lvl:'red', kind:'loss', rate:-0.4, since:'2026-12-07', why:'Lost weight last week (−0.40 lb/week): 2 losing weeks since it last cleared.', consequence:'At −0.40 lb/week you are 7.6 lb behind the 1.5 lb/week line by Jan 11.', clearsWhen:'Two weeks in a row at or above 0.5 lb/week.'};
+    const LIFTS_RED = {lvl:'red', since:'2026-12-10', why:'Zz Long Name Press One: falling (down 4% over 5 clean sessions).', clearsWhen:'The plateau watch reads Zz Long Name Press One on track again.',
+      lifts:[{lift:'Zz Long Name Press One', lvl:'red', word:'falling'}, {lift:'Zz Long Name Press Two', lvl:'amber', word:'slowing'}]};
+
+    // ---- the roster and the switches ----
+    ev('__abase()');
+    ok('eight analysts, each under one of the four coaches, and none of them is an agent', ev('ANL_ORDER.length') === 8 && ev("ANL_ORDER.every(function(id){ return AGENTS[ANALYSTS[id].lead] && !AGENTS[id]; })") === true &&
+      ev("anlSquad('delta').join()") === 'alpha,foxtrot,india' && ev("anlSquad('echo').join()") === 'bravo,juliet' && ev("anlSquad('charlie').join()") === 'hotel,golf' && ev("anlSquad('zulu').join()") === 'kilo');
+    ok('each Standards pillar is owned by exactly one analyst', ev("STD_PILLARS.every(function(p){ return ANL_ORDER.filter(function(id){ return ANALYSTS[id].pillar === p; }).length === 1; })") === true);
+    ok('analysts is a free switch, on; squad readings in the prompts and lift dossiers are paid switches, off', ev('OV.analysts.paid') === false && !ev('OV.analysts.hold') && ev('anlOn()') === true &&
+      ev('OV.squadPrompts.paid') === true && ev("ovOn('squadPrompts')") === false && ev('anlSquadOn()') === false && ev('OV.dossiers.paid') === true && ev("ovOn('dossiers')") === false && ev('dosOn()') === false);
+    ok('both paid parts also need Analysts on', (() => { ev("S.overhaul = {analysts:false, squadPrompts:true, dossiers:true};"); const r = ev('anlSquadOn()') === false && ev('dosOn()') === false; ev("S.overhaul = {};"); return r; })());
+    ok('an analyst has no fix types and cannot raise a request', ev("ANL_ORDER.every(function(id){ return !Object.prototype.hasOwnProperty.call(AG_FIX_ALLOWED, id); })") === true &&
+      !ev("agValidateFix({type:'deload', payload:{}}, 'alpha')") && !!ev("agValidateFix({type:'deload', payload:{}}, 'delta')"), String(ev("JSON.stringify(agValidateFix({type:'deload', payload:{}}, 'delta'))")));
+
+    // ---- levels come from the Standards, and from nowhere else ----
+    const PAIRS = [['bravo', 'bulk'], ['hotel', 'show'], ['alpha', 'lifts'], ['juliet', 'intake'], ['golf', 'recovery']];
+    ['ok', 'amber', 'red', 'nodata'].forEach(function (lv) {
+      setStd(QUIET.map(r => Object.assign({}, r, {lvl:lv})));
+      const st = J('anlState()');
+      ok('every pillar analyst reads the Standards level when all five are ' + lv, PAIRS.every(p => st[p[0]].lvl === lv), JSON.stringify(PAIRS.map(p => st[p[0]].lvl)));
+    });
+    setStd(withRow('bulk', BULK_RED));
+    let st = J('anlState()');
+    ok('BRAVO carries the Standard\'s own sentence and its exit as what would change it', st.bravo.lvl === 'red' && st.bravo.word === 'Losing weight' && st.bravo.line === BULK_RED.why && st.bravo.change === BULK_RED.clearsWhen);
+    ok('and nothing else moved: the other four are quiet', ['hotel', 'alpha', 'juliet', 'golf'].every(id => st[id].lvl === 'ok'));
+    setStd(withRow('show', {lvl:'held', was:'amber', held:{until:'2027-01-08', why:'trip Dec 28 to Jan 1'}, clearsWhen:'Until Jan 8 (trip Dec 28 to Jan 1).'}));
+    st = J('anlState()');
+    ok('a held Standard is a held reading that says until when, not a flag', st.hotel.lvl === 'held' && st.hotel.word === 'Held to Jan 8' && ev("STD_RANK['held']") === 0);
+    setStd(QUIET.filter(r => r.pillar !== 'intake'));
+    ok('a pillar that is missing reads as no data, never as clear', J('anlState()').juliet.lvl === 'nodata');
+
+    // ---- a status is a reason, never the name of a level ----
+    const words = [];
+    [withRow('bulk', BULK_RED), withRow('bulk', {lvl:'amber', kind:'fast', rate:1.8}), withRow('bulk', {lvl:'red', kind:'loss', rate:0.6}), withRow('show', {lvl:'red', misses:[{date:'2026-12-10', day:'D1'}, {date:'2026-12-11', day:'D1'}]}),
+     withRow('show', {lvl:'red', misses:[]}), withRow('lifts', LIFTS_RED), withRow('intake', {lvl:'amber', under:3, logged:6}), withRow('recovery', {lvl:'red', under:5, days:7}),
+     QUIET, QUIET.map(r => Object.assign({}, r, {lvl:'nodata'}))].forEach(function (rows) {
+      setStd(rows); const s2 = J('anlState()');
+      Object.keys(s2).forEach(id => { words.push(s2[id].word); });
+      AG.forEach(id => { words.push(ev("anlLeadStatus('" + id + "', anlState()).word")); });
+    });
+    ok('the words say what is happening', ['Losing weight', 'Gaining fast', 'Not cleared yet', '2 days missed', 'Zz Long Name Press One falling, +1 more', 'Under on 3 of 6 days', 'Under on 5 of 7 days', 'In the band', 'No misses', 'On track', 'On target', 'Near your usual', 'Too few weigh-ins', 'Too few WHOOP readings'].every(x => words.indexOf(x) >= 0), JSON.stringify(words.filter((x, i, a) => a.indexOf(x) === i)));
+    ok('no status word names a colour or a level', words.length > 80 && words.every(x => typeof x === 'string' && x.length > 0 && !/\b(red|amber|green|yellow|ok|watch|off standard|slipping|nodata)\b/i.test(x)), JSON.stringify(words.filter(x => /\b(red|amber|green|yellow|ok|watch|off standard|slipping|nodata)\b/i.test(x))));
+
+    // ---- an analyst that breaks ----
+    setStd(QUIET);
+    ev("ANL_READ.bravo = function(){ throw new Error('boom'); }; ANL_READ.golf = function(){ return {lvl:'purple', word:'x', line:'y'}; };");
+    st = J('anlState()');
+    ok('an analyst that throws, or answers with a level that does not exist, reads as no data: never a flag, never a clean bill', st.bravo.lvl === 'nodata' && st.golf.lvl === 'nodata' && st.bravo.word === 'Could not be read' && st.juliet.lvl === 'ok');
+    ev("Object.assign(ANL_READ, window.__aRead);");
+
+    // ---- a coach's status is the worst in its squad ----
+    const L = (lead, reads) => J("anlLeadStatus('" + lead + "', " + JSON.stringify(reads) + ")");
+    const rd = (o) => { const out = {}; Object.keys(o).forEach(k => { out[k] = {id:k, lvl:o[k], word:'w-' + k}; }); return out; };
+    ok('worst wins: one red among ambers', L('delta', rd({alpha:'amber', foxtrot:'amber', india:'nodata'})).lvl === 'amber' && L('delta', rd({alpha:'amber', foxtrot:'ok', india:'nodata'})).by === 'alpha' &&
+      (() => { const x = L('echo', rd({bravo:'amber', juliet:'red'})); return x.lvl === 'red' && x.by === 'juliet' && x.word === 'JULIET: w-juliet'; })());
+    ok('a coach only answers for its own squad', L('charlie', rd({bravo:'red', juliet:'red', hotel:'ok', golf:'ok'})).lvl === 'ok');
+    ok('ZULU is the roll-up: the worst anywhere', (() => { const x = L('zulu', rd({kilo:'ok', bravo:'amber', alpha:'red', hotel:'ok'})); return x.lvl === 'red' && x.by === 'alpha'; })());
+    ok('nothing flagged: clear only if an analyst could actually read', L('echo', rd({bravo:'ok', juliet:'nodata'})).lvl === 'ok' && L('echo', rd({bravo:'nodata', juliet:'nodata'})).lvl === 'nodata' &&
+      L('echo', rd({bravo:'held', juliet:'nodata'})).lvl === 'held' && L('echo', {}).lvl === 'nodata');
+
+    // ---- FOXTROT: volume against his usual ----
+    const USUAL = [[9, 4], [12, 4], [16, 4], [19, 5], [23, 4], [26, 4], [30, 4], [33, 3]];   // 8, 9, 8, 7 chest sets in the four weeks before
+    ev('__abase(); __avol(' + JSON.stringify(USUAL.concat([[3, 4]])) + ');');
+    let fx = J("anlFoxtrot(todayKey())");
+    ok('FOXTROT lists the moves and judges nothing by default: no level, the largest move named, his own sets behind it', ev('FOX_FLAGS') === false && fx.lvl === 'nodata' && fx.word === 'Listed, not judged' &&
+      /^Sets per muscle in the 7 days to Dec 13, against the 4 ordinary weeks before\. Largest moves: Chest down 50%\. Listed, not judged/.test(fx.line) && fx.nums.some(x => x[0] === 'Chest' && x[1] === '4 sets · usual 8'), JSON.stringify(fx));
+    ok('so it has no strip, and it can never put DELTA or ZULU into a flagged state', ev("sqCells('foxtrot', anlState().foxtrot, anlStrips())") === null && ev("STD_RANK[anlFoxtrot(todayKey()).lvl]") === 0);
+    ok('FOXTROT compares one full rotation: his cycle\'s length, or 7 days on a weekday schedule', (() => { const d0 = ev('anlFoxDays()'); ev("window.__aSM = scheduleMode; window.__aCP = cyclePattern; scheduleMode = function(){ return 'cycle'; }; cyclePattern = function(){ return ['D1','D2','D3','REST','D4','D5','D6','REST']; };");
+      const d1 = ev('anlFoxDays()'), w0 = J('anlFoxWin(todayKey(), 0)'), w1 = J('anlFoxWin(todayKey(), 1)'); ev("cyclePattern = function(){ return ['D1']; };"); const d2 = ev('anlFoxDays()');
+      ev("scheduleMode = window.__aSM; cyclePattern = window.__aCP;"); return d0 === 7 && d1 === 8 && d2 === 7 && w0.from === '2026-12-06' && w0.to === '2026-12-13' && w1.to === '2026-12-05' && w1.from === '2026-11-28'; })());
+    // The flagging path, kept behind FOX_FLAGS: every rule of it is still tested, so turning it on later is one constant.
+    ev('FOX_FLAGS = true;');
+    fx = J("anlFoxtrot(todayKey())");
+    ok('FOXTROT: a muscle 50% under its usual is flagged by name, and only that one', fx.lvl === 'amber' && fx.word === 'Chest down 50%', JSON.stringify([fx.lvl, fx.word]));
+    ok('FOXTROT: the numbers behind it are his own sets', fx.nums.some(x => x[0] === 'Chest' && x[1] === '4 sets · usual 8') && /^Sets per muscle in the 7 days to Dec 13, against the 4 ordinary weeks before\. Off its usual by 35% or more: Chest down 50%\.$/.test(fx.line), fx.line + ' ' + JSON.stringify(fx.nums));
+    ev('__avol(' + JSON.stringify(USUAL.concat([[3, 4], [0, 4]])) + ');');
+    ok('FOXTROT: today is not counted, because today\'s session may not have happened yet', J("anlFoxtrot(todayKey())").word === 'Chest down 50%');
+    ev('__avol(' + JSON.stringify(USUAL.concat([[3, 7]])) + ');');
+    ok('FOXTROT: inside 35% of his usual it is steady', (() => { const x = J("anlFoxtrot(todayKey())"); return x.lvl === 'ok' && x.word === 'Steady'; })());
+    ev('__avol(' + JSON.stringify(USUAL) + ');');
+    ok('FOXTROT: it can read amber and never anything worse, even at zero sets', J("anlFoxtrot(todayKey())").lvl === 'amber' && J("anlFoxtrot(todayKey())").word === 'Chest down 100%');
+    ev('__avol(' + JSON.stringify(USUAL.concat([[3, 4, 1]])) + ');');
+    ok('FOXTROT: a deload week is not judged against a usual week', (() => { const x = J("anlFoxtrot(todayKey())"); return x.lvl === 'ok' && x.word === 'Deload week'; })());
+    ev('__avol(' + JSON.stringify([[9, 4], [12, 4], [16, 4, 1], [19, 5], [23, 4], [26, 4], [30, 4], [33, 4], [3, 5]]) + ');');
+    ok('FOXTROT: a past week with a deload in it is not part of his usual', (() => { const x = J("anlFoxtrot(todayKey())"); return x.lvl === 'amber' && x.word === 'Chest down 38%' && /the 3 ordinary weeks before/.test(x.line); })(), JSON.stringify(J("anlFoxtrot(todayKey())")));
+    ev('__avol(' + JSON.stringify(USUAL.concat([[3, 4]])) + "); holdAdd({kind:'sick', from:mesoAddDays(todayKey(), -2), to:mesoAddDays(todayKey(), -1)});");
+    ok('FOXTROT: held days are not judged', (() => { const x = J("anlFoxtrot(todayKey())"); return ev('holdBlocks().length') === 1 && x.lvl === 'held' && x.word === 'Away days'; })(), JSON.stringify(J("anlFoxtrot(todayKey())")));
+    ev('__abase(); __avol(' + JSON.stringify([[9, 4], [12, 4], [3, 4]]) + ');');
+    ok('FOXTROT: one week of history is no usual, so it reads no data', J("anlFoxtrot(todayKey())").lvl === 'nodata' && J("anlFoxtrot(todayKey())").word === 'Too few weeks');
+    ev('FOX_FLAGS = false;');
+
+    // ---- INDIA and KILO never flag ----
+    ev("__abase(); window.__amain = ['Zz A', 'Zz B'];");
+    ok('INDIA has no level until the Selector exists, and says so', (() => { const x = J('anlIndia()'); return x.lvl === 'nodata' && x.word === 'Not scoring yet' && x.nums.length === 2 && x.nums[0][0] === 'Zz A'; })());
+    ok('KILO with the library off reads as off, not as clear', (() => { const x = J('anlKilo(todayKey())'); return x.lvl === 'nodata' && x.word === 'Library off'; })());
+    ev("S.overhaul = {evidence:true};");
+    ok('KILO with the library on lists what each coach would be handed, by id', (() => { const x = J('anlKilo(todayKey())'); return x.lvl === 'ok' && /^\d+ entries picked$/.test(x.word) && x.nums.length === 4 && /^E\d+(, E\d+)*$/.test(x.nums[2][1]) && /not in the prompts/.test(x.line); })(), JSON.stringify(J('anlKilo(todayKey())')));
+
+    // ---- nothing is stored, nothing is posted ----
+    ev('__abase(); __avol(' + JSON.stringify(USUAL.concat([[3, 4]])) + ');');
+    setStd(withRow('bulk', BULK_RED));
+    ev("setMode('review'); showMainTab('ops'); renderOps();");
+    const snapS = ev('JSON.stringify(S)');
+    ev("anlPass(); anlState(); anlStrips(); ANL_ORDER.forEach(function(id){ anlNums(id, anlState()[id]); anlSpark(id, anlState()[id]); }); sqTileTap({dataset:{a:'bravo'}}); sqLaneTap('echo'); renderOps();");
+    ok('readings, strips, numbers and an open tile leave S byte-identical: nothing is stored', ev('JSON.stringify(S)') === snapS);
+    ok('and nothing reaches the Desk or the queue', ev("(agState().desk || []).length") === 0 && ev('agState().proposals.length') === 0);
+
+    // ---- the strips: each level as it read on each past day ----
+    ev("__abase(); S.logs = S.logs.filter(function(l){ return l.date !== mesoAddDays(todayKey(), -5); });");
+    const cells = () => J("anlStrips().map(function(x){ return x.lv.hotel; })");
+    ok('strip: 13 past days, oldest first, each read as of that day (a miss shows from the day after it, not before)', (() => { const c = cells(); return c.length === 13 && c.join() === Array(9).fill('ok').concat(Array(4).fill('amber')).join() &&
+      J('anlStrips()')[0].d === ev('mesoAddDays(todayKey(), -13)') && J('anlStrips()')[12].d === ev('mesoAddDays(todayKey(), -1)'); })(), cells().join());
+    ok('strip: today\'s cell is the live reading, so the tile shows 14', J("sqCells('hotel', anlState().hotel, anlStrips())").length === 14 && J("sqCells('hotel', anlState().hotel, anlStrips())")[13] === 'amber' && ev("sqCells('india', anlState().india, anlStrips())") === null);
+    const b0 = ev('_anlStripBuilds');
+    ev('anlStrips(); anlStrips(); hubSquadsHTML("zulu");');
+    ok('strip: a repaint with nothing changed does not work it out again', ev('_anlStripBuilds') === b0);
+    ev("S.weights.push({date:mesoAddDays(todayKey(), -1), lbs:150}); anlStrips();");
+    ok('strip: a new weigh-in does', ev('_anlStripBuilds') === b0 + 1);
+    ev("S.meta.changedAt = (S.meta.changedAt || 0) + 5; anlStrips();");
+    ok('strip: so does any saved change', ev('_anlStripBuilds') === b0 + 2);
+    ev("todayKey = function(){ return '2026-12-15'; }; anlStrips();");
+    ok('strip: and so does a new day', ev('_anlStripBuilds') === b0 + 3 && J('anlStrips()')[12].d === '2026-12-14');
+    ev("todayKey = function(){ return '2026-12-14'; };");
+    console.log('    (strip rebuild in jsdom: ' + ev('_anlStripMs') + ' ms)');
+
+    // ---- the prompts: free means free ----
+    ev('__abase({analysts:false});'); setStd(withRow('bulk', BULK_RED));
+    const P0 = prompts();
+    ev("S.overhaul = {};");
+    const P1 = prompts();
+    ok('Analysts on, both paid switches off: every nightly prompt, chat prompt and reply spec is byte-identical, flagged readings or not', P1.every((p, i) => p === P0[i]) && P0[0].length > 50 && /STANDARDS/.test(P0[3]));
+    ev("S.overhaul = {squadPrompts:true};"); setStd(QUIET);
+    const Q1 = prompts();
+    ev("S.overhaul = {};");
+    const Q0 = prompts();
+    ok('squad readings on, nothing flagged: byte-identical too', Q1.every((p, i) => p === Q0[i]) && ev("(S.overhaul = {squadPrompts:true}, anlSquadLine('echo'))") === '');
+    setStd(withRow('bulk', BULK_RED));
+    const blk = ev("anlSquadLine('echo')");
+    ok('squad readings on and BRAVO flagged: ECHO is handed the reading with its numbers', /^\nYOUR SQUAD’S FLAGGED READINGS/.test(blk) && /\n- BRAVO \(bulk pace\): Losing weight\. Last completed week: −0\.40 lb\/week; /.test(blk) && /Band: 0\.5 to 1 lb\/week/.test(blk), blk);
+    ok('only the flagged analyst: JULIET is quiet and is not in it', !/JULIET/.test(blk));
+    ok('it is in ECHO\'s nightly prompt, straight after the Standards, and removing it gives back the prompt without the switch', (() => { const p = ev("agBaseContext('echo')"); return p.indexOf(blk) > p.indexOf('STANDARDS') && p.replace(blk, '') === P0[3]; })());
+    ok('a coach is only handed its own squad', ev("anlSquadLine('delta')") === '' && ev("anlSquadLine('charlie')") === '' && ev("anlSquadLine('zulu')") === '' && ev("agBaseContext('delta')") === P0[2]);
+    ok('never in chat, and it is not a new instruction in the reply spec', AG.every((id, i) => ev("chatContext('" + id + "')") === P0[4 + i] && ev("agJsonSpec('" + id + "')") === P0[8 + i]));
+    ok('the block says the analysts are numbers and propose nothing, and no line tells a model it is another agent', /numbers, not advice, and no analyst proposes anything/.test(blk) && !/You are /.test(blk));
+    ev("S.overhaul = {analysts:false, squadPrompts:true};");
+    ok('with Analysts off the paid switch does nothing', ev("anlSquadLine('echo')") === '' && ev("agBaseContext('echo')") === P0[3]);
+    // FOXTROT, not judging, is never in the block even when a muscle has moved
+    ev('__abase({squadPrompts:true}); __avol(' + JSON.stringify(USUAL.concat([[3, 4]])) + ');'); setStd(QUIET);
+    ok('a reading with no level is never handed to a coach: FOXTROT by default adds nothing', ev("anlSquadLine('delta')") === '');
+    // capped: DELTA with two flagged analysts and long numbers (FOXTROT flagging, for the length)
+    ev('FOX_FLAGS = true; __abase({squadPrompts:true}); __avol(' + JSON.stringify(USUAL.concat([[3, 4]])) + ');'); setStd(withRow('lifts', LIFTS_RED));
+    ev("window.__apw = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'].map(function(n){ return {lift:'Zz Long Name Press With A Longer Label '+n, lvl:'red', word:'falling', pctPerWeek:-1.25, sig:[{txt:'down over its clean sessions'}]}; });" +
+       "window.__amain = window.__apw.map(function(r){ return r.lift; });");
+    const big = ev("anlSquadLine('delta')");
+    const bigLines = big.split('\n').filter(x => /^- /.test(x)).map(x => x.slice(2));
+    ok('capped: two flagged analysts with long numbers still fit in ANL_PROMPT_MAX characters, ALPHA first', bigLines.length === 2 && /^ALPHA /.test(bigLines[0]) && /^FOXTROT /.test(bigLines[1]) && bigLines.join('').length <= ev('ANL_PROMPT_MAX') &&
+      bigLines.join('').length > 500 && /…$/.test(bigLines[1]), bigLines.join('').length + ' ' + big);
+    ok('INDIA has no level, so it is never in the block', !/INDIA/.test(big));
+    ev('FOX_FLAGS = false;');
+
+    // ---- lift dossiers: a paid key in DELTA's existing call ----
+    ev("__abase(); window.__amain = ['Zz Bench', 'Zz Squat', 'Zz Row'];"); setStd(QUIET);
+    const specOff = ev("agJsonSpec('delta')"), ctxOff = ev("agBaseContext('delta')");
+    ok('dossiers off: no targets, nothing asked, nothing handed over', J('dosTargets()').length === 0 && !/dossier/i.test(specOff) && !/DOSSIER/.test(ctxOff) && ev('dosListHTML()') === '');
+    ev("S.overhaul = {dossiers:true};");
+    ok('dossiers on: at most DOS_MAX main lifts a night, in the main lifts\' order', J('dosTargets()').join() === 'Zz Bench,Zz Squat' && ev('DOS_MAX') === 2);
+    const specOn = ev("agJsonSpec('delta')"), ctxOn = ev("agBaseContext('delta')");
+    ok('DELTA is asked for the key and handed the lifts; nobody else is', /ALSO include a top-level "dossiers" key/.test(specOn) && /\nLIFT DOSSIERS [^\n]+\n- Zz Bench: [^\n]+\n- Zz Squat: /.test(ctxOn) && !/Zz Row/.test(ctxOn) &&
+      ['zulu', 'charlie', 'echo'].every(id => !/dossier/i.test(ev("agJsonSpec('" + id + "')")) && !/DOSSIER/.test(ev("agBaseContext('" + id + "')"))));
+    ok('taking the two additions out gives back the prompt without the switch', specOn.replace(ev('dosSpecLine(dosTargets())'), '') === specOff && ctxOn.replace(ev('dosContextLine(dosTargets())'), '') === ctxOff);
+    ev("window.__pdc = pdContextLine; window.__pds = pdSpecLine; pdContextLine = function(){ return 'PDCTX'; }; pdSpecLine = function(){ return 'PDSPEC'; };");
+    ok('the diagnosis stays last in both', /PDCTX$/.test(ev("agBaseContext('delta')")) && /PDSPEC$/.test(ev("agJsonSpec('delta')")) && ev("agBaseContext('delta')").indexOf('LIFT DOSSIERS') > 0);
+    ev("pdContextLine = window.__pdc; pdSpecLine = window.__pds;");
+    ev("window.__apdt = [{lift:'Zz Bench', lvl:'red'}];");
+    ok('a lift being diagnosed tonight is not also given a dossier', J('dosTargets()').join() === 'Zz Squat,Zz Row');
+    ev("window.__apdt = []; window.__amain = ['Zz Bench', 'Zz Squat']; agState().dossiers = {'Zz Bench':{lift:'Zz Bench', note:'n', at:__aAgo(3), day:mesoAddDays(todayKey(), -3)}};");
+    ok('a lift written about inside DOS_QUIET_DAYS is left alone', J('dosTargets()').join() === 'Zz Squat');
+    ev("agState().dossiers['Zz Bench'].at = __aAgo(9);");
+    ok('after that it is due again, behind a lift never written about', J('dosTargets()').join() === 'Zz Squat,Zz Bench');
+    ev("window.__amain = [];");
+    ok('no main lifts: nothing is asked and the prompt is byte-identical', J('dosTargets()').length === 0 && ev("agJsonSpec('delta')") === specOff && ev("agBaseContext('delta')") === ctxOff);
+    const askedD = "['Zz Bench', 'Zz Squat']";
+    const VD = raw => J('agValidateDossiers(' + raw + ', ' + askedD + ')');
+    let vd = VD("[{lift:'zz bench', note:'  Holding at 185.   Watching bar speed. '}]");
+    ok('validate: a note on an asked lift is kept under the app\'s spelling, tidied, dated', vd.length === 1 && vd[0].lift === 'Zz Bench' && vd[0].note === 'Holding at 185. Watching bar speed.' && vd[0].day === ev('todayKey()') && typeof vd[0].at === 'string');
+    ok('validate: a lift it was not asked about is dropped', VD("[{lift:'Zz Row', note:'x'}, {lift:'Barbell Bench Press', note:'y'}]").length === 0);
+    ok('validate: a note that is not a string, or is empty, is dropped', VD("[{lift:'Zz Bench', note:{a:1}}, {lift:'Zz Squat', note:'   '}, {lift:'Zz Squat'}, null, 'x']").length === 0);
+    ok('validate: long notes are clipped', (() => { const n = VD("[{lift:'Zz Bench', note:'" + 'word '.repeat(90) + "'}]")[0].note; return n.length <= ev('DOS_NOTE_MAX') && /…$/.test(n); })());
+    ok('validate: one note per lift', VD("[{lift:'Zz Bench', note:'a'}, {lift:'Zz Bench', note:'b'}, {lift:'Zz Squat', note:'c'}]").map(x => x.note).join('') === 'ac');
+    ok('validate: anything that is not a list, or nothing asked, is nothing', VD("{lift:'Zz Bench', note:'a'}").length === 0 && ev("agValidateDossiers([{lift:'Zz Bench', note:'a'}], null).length") === 0 && ev("agValidateDossiers([{lift:'Zz Bench', note:'a'}], []).length") === 0);
+    ev("window.__amain = ['Zz Bench']; agState().dossiers = {'Zz Bench':{lift:'Zz Bench', note:'Holding at <b>185</b>.', at:__aAgo(0), day:todayKey()}, 'Zz Old':{lift:'Zz Old', note:'stale', at:__aAgo(30), day:mesoAddDays(todayKey(), -30)}, 'Zz Edge':{lift:'Zz Edge', note:'edge', at:__aAgo(21), day:mesoAddDays(todayKey(), -21)}};");
+    ok('the lane lists a fresh dossier, escaped, and not one older than DOS_SHOW_DAYS', (() => { const h = ev('dosListHTML()'); return /Zz Bench/.test(h) && /Holding at &lt;b&gt;185/.test(h) && !/Zz Old/.test(h) && /Zz Edge/.test(h); })(), ev('dosListHTML()'));
+    ev("S.overhaul = {};");
+    ok('and with the switch off a stored dossier is not drawn', ev('dosListHTML()') === '');
+    // a pull keeps both devices' dossiers
+    ev("agState().dossiers = {'Zz A':{lift:'Zz A', note:'local newer', at:'2099-01-01T00:00:00.000Z', day:todayKey()}, 'Zz L':{lift:'Zz L', note:'local only', at:'2026-01-01T00:00:00.000Z', day:todayKey()}};");
+    const snapD = ev('JSON.parse(JSON.stringify(S))');
+    snapD.agents.dossiers = {'Zz A':{lift:'Zz A', note:'remote older', at:'2020-01-01T00:00:00.000Z', day:'2020-01-01'}, 'Zz R':{lift:'Zz R', note:'remote only', at:'2026-01-02T00:00:00.000Z', day:'2026-01-02'}};
+    w.__snapD = snapD;
+    ev('applyPulled(window.__snapD, Date.now())');
+    const mdD = J('agState().dossiers');
+    ok('sync: dossiers on different lifts from two devices both survive a pull, and on one lift the newer wins', mdD['Zz L'] && mdD['Zz R'] && mdD['Zz L'].note === 'local only' && mdD['Zz R'].note === 'remote only' && mdD['Zz A'].note === 'local newer', JSON.stringify(mdD));
+
+    // ---- the Hub: four lanes ----
+    ev("__abase(); S.logs = S.logs.filter(function(l){ return l.date !== mesoAddDays(todayKey(), -5); }); window.__amain = ['Zz Bench']; agActiveChat = 'delta'; setMode('review'); showMainTab('ops'); renderOps();");
+    const OPS4 = "document.getElementById('ops')";
+    const q = sel => ev(OPS4 + ".querySelectorAll('" + sel + "').length");
+    ok('lanes: four, ZULU first, and the map is gone', q('.sq-lane') === 4 && ev("[].slice.call(" + OPS4 + ".querySelectorAll('.sq-lane')).map(function(e){ return e.getAttribute('data-lead'); }).join()") === 'zulu,charlie,delta,echo' && q('.hub-map') === 0 && q('.hub-node') === 0);
+    ok('lanes: every id the old layout had is still there', q('#hubAgent') === 1 && q('#agChatBox') === 1 && q('#agChatIn') === 1 && /DELTA/.test(ev(OPS4 + ".querySelector('#hubAgent').textContent")));
+    ok('lanes: the selected coach\'s lane is open with its squad; a flagged lane opens by itself (HOTEL has a miss); a quiet one stays shut', ev("[].slice.call(" + OPS4 + ".querySelectorAll('.sq-lane.open')).map(function(e){ return e.getAttribute('data-lead'); }).join()") === 'zulu,charlie,delta' &&
+      ev("[].slice.call(" + OPS4 + ".querySelectorAll('.sq-lane[data-lead=delta] .sq-tile')).map(function(e){ return e.getAttribute('data-a'); }).join()") === 'alpha,foxtrot,india' && q('.sq-lane[data-lead=echo] .sq-tile') === 0);
+    ok('lanes: a coach shows the worst reading in its squad, as an icon and a reason, named by analyst', ev(OPS4 + ".querySelector('.sq-lane[data-lead=charlie] .sq-lead .sq-st').textContent") === '▲HOTEL: 1 day missed' &&
+      ev(OPS4 + ".querySelector('.sq-lane[data-lead=zulu] .sq-lead .sq-st').textContent") === '▲HOTEL: 1 day missed' && ev(OPS4 + ".querySelector('.sq-lane[data-lead=echo] .sq-lead .sq-st').textContent") === '–No reading yet');
+    ok('lanes: no status on the screen names a level', !/\b(RED|AMBER|Off standard|Slipping|On track\b.*\bOK)\b/.test(ev(OPS4 + ".querySelector('.sq-lanes').textContent")) && !/>(red|amber|ok|nodata)</i.test(ev(OPS4 + ".querySelector('.sq-lanes').innerHTML")));
+    ok('tile: callsign, job, reason, the reading, and a 14-day strip with its count in words', (() => { const t = OPS4 + ".querySelector('.sq-tile[data-a=hotel]')"; return ev(t + ".querySelector('b').textContent") === 'HOTEL' && ev(t + ".querySelector('.sq-job').textContent") === 'Consistency' &&
+      ev(t + ".querySelector('.sq-st').textContent") === '▲1 day missed' && /1 scheduled day missed with no reason/.test(ev(t + ".querySelector('.sq-line').textContent")) && ev(t + ".querySelectorAll('.sq-strip i').length") === 14 &&
+      ev(t + ".querySelector('.sq-strip-n').textContent") === '14 days · 5 flagged'; })());
+    ok('tile: an analyst with no history to draw has no strip', q('.sq-tile[data-a=india] .sq-strip') === 0 && q('.sq-tile[data-a=kilo] .sq-strip') === 0);
+    ok('lights: one per Standard, and none with Standards off', q('.sq-light') === 5 && (() => { ev("S.overhaul = {standards:false}; renderOps();"); const n = q('.sq-light'); ev("S.overhaul = {}; renderOps();"); return n === 0 && q('.sq-light') === 5; })());
+    const snapH = ev('JSON.stringify(S)');
+    ev(OPS4 + ".querySelector('#agChatIn').value = 'half typed';");
+    ev(OPS4 + ".querySelector('.sq-tile[data-a=hotel]').click();");
+    ok('a tap on a tile opens its numbers in place: what is behind the reading, and what would change it', q('#sqDetail') === 1 && ev(OPS4 + ".querySelector('#sqDetail').getAttribute('data-a')") === 'hotel' &&
+      /Planned days, last 14/.test(ev(OPS4 + ".querySelector('#sqDetail').textContent")) && /What would change it: A full week with no unexplained miss/.test(ev(OPS4 + ".querySelector('#sqDetail').textContent")) &&
+      /Last 14 days: flagged on 5, held on 0, no reading on 0\./.test(ev(OPS4 + ".querySelector('#sqDetail').textContent")) && ev(OPS4 + ".querySelector('.sq-tile[data-a=hotel]').getAttribute('aria-expanded')") === 'true');
+    ok('opening a tile is a view: S is byte-identical and the state is module-scoped', ev('JSON.stringify(S)') === snapH && ev('sqTileOpen') === 'hotel');
+    ok('and it does not eat a half-typed chat message', ev(OPS4 + ".querySelector('#agChatIn').value") === 'half typed');
+    ev('renderOps();');
+    ok('the open tile survives a repaint', q('#sqDetail') === 1);
+    ev(OPS4 + ".querySelector('.sq-tile[data-a=hotel]').click();");
+    ok('a second tap closes it', q('#sqDetail') === 0 && ev('sqTileOpen') === '');
+    ev(OPS4 + ".querySelector('.sq-lane[data-lead=echo] .sq-lead').click();");
+    ok('a tap on a coach selects it and opens its lane', ev('agActiveChat') === 'echo' && q('.sq-lane[data-lead=echo].open.on') === 1 && q('.sq-lane[data-lead=echo] .sq-tile') === 2 && /ECHO/.test(ev(OPS4 + ".querySelector('#hubAgent').textContent")) && q('.sq-lane[data-lead=delta].open') === 0);
+    ev(OPS4 + ".querySelector('.sq-lane[data-lead=echo] .sq-lead').click();");
+    ok('a second tap folds it, and it stays the selected coach', ev('agActiveChat') === 'echo' && q('.sq-lane[data-lead=echo].open') === 0 && q('.sq-lane[data-lead=echo].on') === 1);
+    ev("sqLaneTap('alpha'); sqLaneTap('constructor'); sqTileTap({dataset:{a:'zulu'}}); sqTileTap({dataset:{a:'constructor'}}); sqTileTap(null);");
+    ok('an analyst cannot be selected for chat, and a coach is not a tile', ev('agActiveChat') === 'echo' && ev('sqTileOpen') === '');
+    ev("agState().proposals = [{id:'ap1', agent:'delta', status:'pending', title:'t', reasoning:'r', created:todayKey(), expires:mesoAddDays(todayKey(), 7), fix:{type:'setCount', payload:{}}}]; renderOps();");
+    ok('a coach\'s card still says what is waiting on him, as requests', ev(OPS4 + ".querySelector('.hub-p-delta .hub-s').textContent") === '1 request' && ev(OPS4 + ".querySelector('.hub-p-delta .hub-s').classList.contains('warn')") === true);
+    ev("agState().proposals = []; S.overhaul = {analysts:false}; renderOps();");
+    ok('with Analysts off the old map is back, whole', q('.sq-lane') === 0 && q('.sq-light') === 0 && q('.hub-map') === 1 && q('.hub-node') === 4 && q('.hub-edge') === 3 && q('#hubAgent') === 1);
+    ev("S.overhaul = {}; hubSquadsHTML = (function(f){ window.__aHS = f; return function(){ throw new Error('boom'); }; })(hubSquadsHTML); renderOps();");
+    ok('if the lanes cannot be drawn the map is drawn instead: the Hub never comes up empty', q('.hub-map') === 1 && q('#agChatIn') === 1);
+    ev("hubSquadsHTML = window.__aHS; renderOps();");
+
+    // ---- a real cycle: the dossier is filed against the lifts asked about before the await ----
+    ev("todayKey = window.__aToday; __abase({dossiers:true}); window.__amain = ['Zz Bench', 'Zz Squat', 'Zz Row']; agState().lastRun = ''; agState().log = [];");
+    stubAgents({delta: {summary: 'd', proposals: [], overload: null,
+      dossiers: [{lift: 'Zz Bench', note: 'Holding its top set; bar speed is the thing to watch.'}, {lift: 'Zz Row', note: 'Not asked about.'}, {lift: 'Zz Squat', note: 7}]}});
+    ev("window.__cc4 = callClaudeWithData; callClaudeWithData = async function(m, sys, a, b, c){ var r = await window.__cc4(m, sys, a, b, c);" +
+       " if(/LIFT DOSSIERS/.test(sys)){ window.__d4sys = sys; S = JSON.parse(JSON.stringify(S)); window.__amain = ['Zz Row']; } return r; };");
+    await ev('agRunAll(true)');
+    ev("callClaudeWithData = window.__cc4;");
+    const dsr = J('agState().dossiers || {}');
+    ok('cycle: DELTA\'s note is stored against a lift it was asked about, in the live S after a mid-reply swap', dsr['Zz Bench'] && /bar speed/.test(dsr['Zz Bench'].note) && /- Zz Bench: /.test(String(ev('window.__d4sys'))), JSON.stringify(dsr));
+    ok('cycle: a lift it was not asked about, and a note that is not text, are not', !dsr['Zz Row'] && !dsr['Zz Squat'] && Object.keys(dsr).length === 1);
+    stubAgents({delta: {summary: 'd', proposals: [], overload: null, dossiers: [{lift: 'Somebody Else', note: 'x'}]}});
+    ev("agState().lastRun = ''; agState().dossiers = {}; window.__amain = ['Zz Bench'];");
+    await ev('agRunAll(true)');
+    ok('cycle: a reply that fails the check leaves evidence in the feed', Object.keys(J('agState().dossiers || {}')).length === 0 && ev("agState().log.some(function(l){ return l.agent === 'delta' && /lift notes did not pass the check/.test(l.text); })"));
+    stubAgents({delta: {summary: 'd', proposals: [], overload: null, dossiers: [{lift: 'Zz Bench', note: 'Unasked.'}]}});
+    ev("S.overhaul = {}; agState().lastRun = ''; agState().dossiers = {};");
+    await ev('agRunAll(true)');
+    ok('cycle: with the switch off a "dossiers" key in a reply is ignored', Object.keys(J('agState().dossiers || {}')).length === 0);
+    unstubAgents();
+  } catch (e) {
+    ok('analysts section', false, e.stack);
+  } finally {
+    ev("FOX_FLAGS = false; if(window.__aSM){ scheduleMode = window.__aSM; cyclePattern = window.__aCP; } todayKey = window.__aToday; plateauWatch = window.__aPW; predLifts = window.__aPL; stdState = window.__aStd; pdTargets = window.__aPdt; Object.assign(ANL_READ, window.__aRead); agActiveChat = window.__aChat;" +
+       "if(window.__aHS) hubSquadsHTML = window.__aHS; if(window.__cc4) callClaudeWithData = window.__cc4; if(window.__pdc){ pdContextLine = window.__pdc; pdSpecLine = window.__pds; }" +
+       "_stdSince = {}; sqLaneOpen = {}; sqTileOpen = ''; _anlStrip = {key:null, days:[]}; S = JSON.parse(window.__aS);" +
+       "if(window.__aLS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__aLS);" +
+       "['__aS','__aLS','__aToday','__aPW','__aPL','__aStd','__aPdt','__aRead','__aChat','__abase','__avol','__aAgo','__aSM','__aCP','__std','__apw','__amain','__apdt','__aHS','__cc4','__d4sys','__snapD','__pdc','__pds'].forEach(function(k){ delete window[k]; });");
     try { ev('renderHome(); renderNotif();'); } catch (e) {}
   }
 

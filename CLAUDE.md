@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 4486 assertions, about 1 m 45 s. Must be
+**Test suite:** `node test_agents.js`. Currently 4582 assertions, about 1 m 45 s. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -165,6 +165,7 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | Agents, nightly | `agRunAll()`, `agBaseContext()`, `intelSummary()`, `svSheet()`, `agIngest()`, `agLog()` |
 | Agents, the queue | `agValidateFix()` = `agValidateFixShape()` then `agConflict()`, `agApprove()`, `agApplyFix()` |
 | Agents, chat | `chatContext()`, `coachToolDefs()`, `coachValidateAction()`, `coachApplyProposal()` |
+| Analysts and squads | `ANALYSTS`, `anlPass()` (the one read), `anlLeadStatus()`, `anlNums()`, `anlStrips()`, `anlSquadLine()`, `dosTargets()`, `hubSquadsHTML()` |
 | Agents, extras | roundtable `agRoundtable()`, Desk `agValidateDesk()`, questions `qaDue()`, diagnosis `pdTargets()`, letter `agWriteLetter()`, brief `agRunBrief()` |
 | API | `aiSend()` (the one transport), `aiBody()`, `callClaudeWithData()`, `spendPreflight()`, `aiUsageNote()` |
 | Server and schedulers | `agForegroundCheck()`, `runnerTick()`, `agMaybeAutoRun()`, `agMaybeMorningBrief()` |
@@ -478,10 +479,41 @@ motion", and a fast-gain amber.
   `EVD_MAX_CHARS`, rotated by the day. The names are `EVD_*` because `EV_*` belongs to the events.
 - A refresh of the library is a Code session that opens each source; never add an entry from memory.
 
+**Stage 4, Analysts** (`ovOn('analysts')`, free; `ovOn('squadPrompts')` and `ovOn('dossiers')`, paid, off)
+- **An analyst is a pure function, not an agent** (`ANALYSTS`, eight; the callsigns are placeholders and nothing keys
+  on `name`). No call, no prompt, no chat, no fix types: `agFixAllowedFor()` refuses an analyst's id. Only leads propose.
+- **The readings are worked out when read, and ONE result**: `anlPass()` / `anlState()`. Never stored, never posted to
+  the Desk.
+- **A pillar analyst takes its level from `stdState()` and nowhere else** (`anlFromPillar()`), so a tile cannot
+  disagree with the Standards card. FOXTROT has no pillar (amber at most, and only with `FOX_FLAGS`); INDIA has no level until the
+  Selector fills `anlIndia()` (stage 5); KILO only reports.
+- **A broken analyst reads `nodata`**, and so does a level that does not exist. No data is never clear:
+  `anlLeadStatus()` says clear only when an analyst could actually read.
+- **A lead's status is the worst in its squad** (ZULU: across every squad, `ANL_ZULU_ROLLUP`).
+- **A status is a colour, an icon and a short reason. It never names its level** (his pick, 2026-11-12:
+  "Everywhere"). A new status word has to pass the suite's level-name check.
+- **FOXTROT lists the moves and judges nothing** (`FOX_FLAGS` is false). On his history a volume flag read amber on
+  46 to 67 of 88 days, so it has no level, no strip, and never reaches a prompt. Replay before turning it on.
+- **FOXTROT reads one full rotation before the day** (`anlFoxDays()`; never today, whose session may not have happened
+  yet) against his ordinary weeks: a deload week and held days are neither read nor part of his usual (`FOX_*`).
+- **The 14-day strips are as-of and memoised** (`anlStrips()`, `anlStripKey()`). Anything new that can move a level
+  goes in the key. Today's cell is the live reading and is never kept.
+- **Squad readings in a prompt are a paid switch** (`anlSquadLine()`): the lead's own squad, flagged readings only,
+  capped at `ANL_PROMPT_MAX`, nightly only. Off, or with nothing flagged, every prompt is byte-identical.
+- **Lift dossiers are a paid key inside DELTA's existing call** (`dosTargets()`, `agValidateDossiers()`): main lifts
+  only, at most `DOS_MAX` a night, one lift once in `DOS_QUIET_DAYS`, never a lift being diagnosed that night, asked
+  before the await. `S.agents.dossiers` is merged per lift in `applyPulled()`. The diagnosis stays last in the prompt.
+- **The Hub's Agents view is four lanes while the switch is on** (`hubSquadsHTML()`). Off, or if the lanes throw, the
+  map is drawn (`hubMapHTML()`). Lane and tile open-state is module-scoped (`sqLaneOpen`, `sqTileOpen`), and a tile
+  tap keeps a half-typed chat message (`sqRepaint()`). **A lane is a `<div>`, never a `<section>`**: the app hides
+  every section that is not the active tab.
+- Not built yet: the List and Week views, the Wire, tension markers, lit lines, the Plan of Record bar.
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
 | 1 Standards: five computed pillars, reasons, plan in motion | built 2026-11-12 (`v5b`) |
 | 2 Holds: one block type for trips, sickness and exams, and the trip plan | built 2026-11-12 (`v5c`) |
 | 3 Evidence: the cited library, source chips, held off until he checks ten | built 2026-11-12 (`v5d`) |
-| 4 Analysts · 5 Selector · 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |
+| 4 Analysts: eight computed analysts, squads, the Hub in four lanes | built 2026-11-12 (`v5e`) |
+| 5 Selector · 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |

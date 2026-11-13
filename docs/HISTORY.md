@@ -2683,3 +2683,89 @@ opened the three findings.
 
 Not built: evidence in chat prompts, a browsable view of all 60 entries, and the technique cards (stage 10). The
 agents' prompts do not mention `cite` at all unless both switches are on.
+
+### V5 stage 4: analysts, squads and the Hub in four lanes (2026-11-12, `v5e`)
+
+**An analyst is a pure function, not an agent.** The spec's twelve-agent roster is four coaches that make paid calls
+and eight analysts that make none. `ANALYSTS` holds the eight (KILO under ZULU; HOTEL and GOLF under CHARLIE; ALPHA,
+FOXTROT and INDIA under DELTA; BRAVO and JULIET under ECHO). The callsigns are the spec's placeholders and nothing keys
+on `name`. An analyst has no prompt, no chat and no fix types. Nothing ever handed the validator an analyst's id, but
+`agFixAllowedFor()` answered "allowed" for any id it did not know (that is how ZULU may use every shape), so it now
+refuses an id that is in `ANALYSTS`: the guarantee, not the hint.
+
+**The readings are worked out when read, and ONE result** (`anlPass()`, `anlState()`). Nothing is stored and nothing
+is posted to `S.agents.desk`: a stored verdict would lose to an older snapshot, exactly as a stored Standard would.
+
+**A pillar analyst takes its level from `stdState()` and nowhere else.** The first sketch gave each analyst its own
+thresholds. That would have put two verdicts on the same data on two screens, and the first time they disagreed
+neither could be trusted. So BRAVO is the Bulk pace row, HOTEL Showing up, ALPHA Lifts, JULIET Intake and GOLF
+Recovery: same level, the Standard's own sentence, and its exit condition as "what would change it". What a tile adds
+is the numbers behind the level (`anlNums()`), worked out only for an open tile or, behind a paid switch, a prompt.
+
+**A broken analyst reads `nodata`.** One that throws, or answers with a level that does not exist, is neither a flag
+nor a clean bill. `anlLeadStatus()` follows the same rule one level up: a coach reads clear only when at least one of
+its analysts could actually read; all-nodata is "No reading yet".
+
+**A status is a colour, an icon and a short reason. It never names its level.** His pick on the mockups, 2026-11-12,
+answered "Everywhere": "just leave it as the color and accompanied reason". So a tile says "✖ Losing weight" or
+"▲ 1 day missed", a coach says "✖ BRAVO: Not cleared yet", and the suite runs every status word through a check for
+red, amber, green, ok, watch, "off standard" and "slipping". (The top bar's "4 RED" mark and the Standards card are
+stage 1's and are left for the reskin.)
+
+**FOXTROT lists the moves and judges nothing, because the replay said a flag would be noise.** It was written to flag a
+muscle 35% under or 40% over its usual sets. Replayed over his real 88 days to 2026-11-12, that read amber on 67 days
+of 88. His schedule is an 8-day rotation (D1 D2 D3 REST D4 D5 D6 REST), so a 7-day window holds a different mix of
+days every time; comparing one full rotation (`anlFoxDays()`) is plainly right and is kept, but it still read amber on
+46 days, and on 28 at 50% and 60%. The swings are real (floating rest days, the strength block in October, the deload
+week), and they are not problems. So `FOX_FLAGS` is false: FOXTROT has no level ("Listed, not judged"), no strip, and
+never reaches a prompt; it names the largest moves and lists every muscle against its usual. The flagging path is
+still there and every rule of it is tested with the constant on (today is not counted, a deload week and held days
+are neither read nor part of his usual, a muscle whose usual is under 6 sets is ignored, amber at most), so turning
+it on is one constant and a replay.
+
+**INDIA and KILO cannot flag.** INDIA is the Selector's analyst and the Selector is stage 5, so `anlIndia()` lists the
+hard-set share of each main lift (`liftHardShare()`, the one grind-share measure) and has no level. KILO reports what
+the library would hand each coach today; with the library off it reads "Library off", not clear.
+
+**The 14-day strips are as-of and memoised.** `anlStrips()` re-reads `stdState(d)` for each of the 13 days before today
+and keeps the answer under `anlStripKey()` (the day, `changedAt`, and how many logs, weigh-ins, intake rows, WHOOP
+rows, reasons, holds and requests there are, plus the switches). Today's cell is the live reading and is never kept.
+Measured on his real state in jsdom: a rebuild takes about 230 ms (thirteen as-of plateau watches are most of it), a
+repaint that reuses it about 60 ms against about 40 for the old map. In Chrome on a seeded state of 59 sessions the
+rebuild was 44 ms and a warm repaint 11 ms. The rebuild happens once per change to his data, not on the 30-second
+repaint.
+
+**Both additions to a prompt are paid switches, off.** `anlSquadLine()` hands a coach its own squad's flagged readings
+with their numbers, capped at `ANL_PROMPT_MAX` (600) characters, in the nightly prompt only, straight after the
+Standards block. On his state today that is 725 characters for DELTA and 737 for ECHO with the heading. Lift dossiers
+are the diagnosis pattern widened from flagged lifts to the main lifts: `dosTargets()` picks at most `DOS_MAX` (2) main
+lifts a night, never one being diagnosed that night and never one written about in the last `DOS_QUIET_DAYS` (7);
+DELTA is handed the app's numbers for them and returns a "dossiers" key; `agValidateDossiers()` keeps only lifts that
+were asked about before the await, one note each, clipped to 220 characters; `S.agents.dossiers` is merged per lift in
+`applyPulled()`. The diagnosis context and spec stay last. With either switch off, or with nothing to say, every
+nightly prompt, chat prompt and reply spec is byte-identical, and the suite checks all twelve.
+
+**The Hub's Agents view is four lanes.** `hubSquadsHTML()` draws one light per Standard, then ZULU, CHARLIE, DELTA and
+ECHO as lanes: the coach's card (status reason, what is waiting on him, a chevron) and, when open, its analysts as
+tiles (callsign, job, reason, the reading, a 14-day strip with its count in words, a sparkline through `ckPath()`). A
+lane he has not touched is open when it is the selected coach or when something in it is flagged. A tap on a tile
+opens its numbers under it, with "what would change it", the strip in words, and source chips when the library is on.
+Every id and handler the old layout had is kept (`hubAgent`, `agChatBox`, `agChatIn`, `.hub-p-<id> .hub-s`), the
+selected coach's report and chat sit under the lanes as before, and with the switch off, or if the lanes throw, the
+old map is drawn.
+
+**Two things only a real browser found.** The lanes were `<section>` elements, and the app hides every section that is
+not the active tab: three of four lanes had `display:none` and jsdom, which has no layout, passed every test. They are
+`<div>`s now. And the first cut put an open tile's numbers after the last tile of the lane; on a 320 px screen, where
+tiles stack, that was two tiles away from the one tapped. It now follows its tile, with `grid-auto-flow:dense` so the
+neighbour still sits beside it at 393 px. A tap on a tile repaints the Hub, which regenerates the chat box, so
+`sqRepaint()` carries a half-typed message across.
+
+**Measured.** The suite is 4582 assertions (96 new), 0 failed; 60 mutants, each red; `scripts/clock_run.js` green.
+The lanes, an open tile and the lights were checked in Chrome at 393 px and 320 px with a seeded state: no element
+past the edge, tiles 167 px wide in two columns at 393 and 268 px in one at 320, lane headers 62 px tall. Read-only
+replay on his state of 2026-11-12: BRAVO "Not cleared yet", JULIET "Under on 4 of 7 days", ALPHA "Barbell Back Squat
+slowing", HOTEL "No misses", GOLF "Too few WHOOP readings", so ECHO and ZULU read BRAVO's reason and DELTA ALPHA's.
+
+Not built: the List and Week views, the Wire, tension markers, a lit line from an analyst to its lead, the Plan of
+Record in a ZULU bar (stages 6 to 8), and analyst cards on the Desk (stage 6).

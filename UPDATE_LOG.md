@@ -220,3 +220,22 @@ The app now carries 60 research findings on training and nutrition, each with a 
 - **Two different things are kept apart.** The finding is what the paper reports. "What it means for you" is the app's own inference, and it is labelled that way every time. Most findings are marked "limited", because that is the state of the research.
 - **The agents only see it if you turn on a second switch**, "Evidence in the agents' prompts". That one is paid: an estimated 15 to 40 cents a month. Until then their prompts are exactly what they were.
 - **Plan my trip** uses the findings on short breaks once the library is on. It still may not tell you how much strength or muscle a break costs.
+
+## Analysts and squads (Nov 12)
+
+The Hub's Agents view is new. The circle of four is now four lanes, one for each coach, and each coach has analysts under it.
+
+- **Eight analysts, and they cost nothing.** They are not AI calls. Each one is the app working something out from your data, on your phone, every time you look: ALPHA (strength on your main lifts), FOXTROT (sets per muscle), INDIA (how hard your sets were), BRAVO (bulk pace), JULIET (intake), HOTEL (showing up), GOLF (recovery) and KILO (the evidence library). The names are placeholders; tell me if you want others.
+- **Each coach shows the worst thing in its squad**, as a colour, an icon and a short reason: "BRAVO: Losing weight", "HOTEL: 1 day missed". No more "RED" or "AMBER" there, as you asked.
+- **Tap a coach** to open its lane and get its report and chat underneath, same as before. A lane opens by itself when something in it is flagged.
+- **Tap a tile** to see the numbers behind it, what would change it, and its last 14 days.
+- **They agree with the Standards card.** BRAVO, JULIET, HOTEL, GOLF and ALPHA take their level straight from your five Standards, so the Hub and Today can never say different things.
+- **FOXTROT only lists.** I tested a "volume is off" warning against your real last 88 days and it would have gone off on more than half of them, because your sets per muscle move a lot from one rotation to the next. So it shows the numbers and warns about nothing.
+- **INDIA does not score yet.** That arrives with the exercise selector.
+- **Analysts never propose changes and you cannot chat with them.** Ask the coach.
+
+**Two new paid switches, both off** (Settings, V5 switches):
+- *Squad readings in the nightly prompts*: each coach gets its analysts' flagged numbers each night. About 3 to 15 cents a month.
+- *Lift dossiers from DELTA*: a short note from DELTA on each main lift, about once a week per lift, shown in DELTA's lane. About 10 to 30 cents a month.
+
+If you prefer the old circle, turn off "Analysts and squads" in the same place.
