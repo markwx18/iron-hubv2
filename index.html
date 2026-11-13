@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-12-v5f">
+<meta name="ironhub-build" content="2026-11-13-v5g">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2173,7 +2173,49 @@
   .hold-plan p + p{margin-top:4px;}
   .hold-dates{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
   .hold-dates label{flex:1 1 130px; min-width:0; font-size:12px; color:var(--muted);}
-  .hold-dates input{width:100%; box-sizing:border-box; margin-top:4px;}
+  .hold-dates input, .hold-dates select{width:100%; box-sizing:border-box; margin-top:4px;}
+  /* The Desk, expanded (V5 stage 6): the Plan of Record, what needs his answer, filters, watches, analyst cards. */
+  .plan-card{border-left:3px solid var(--amber);}
+  .plan-h{display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap;}
+  .plan-h b{font-family:var(--disp); font-weight:700; font-size:17px; letter-spacing:.04em; text-transform:uppercase;}
+  .plan-h .pw-note{margin-left:0;}
+  .plan-p{padding:10px 0 0; margin-top:10px; border-top:1px solid var(--panel2); min-width:0;}
+  .plan-p-h{display:flex; justify-content:space-between; align-items:baseline; gap:8px;}
+  .plan-std{font-family:var(--disp); font-weight:700; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);}
+  .plan-by{font-family:var(--mono); font-size:10.5px; color:var(--dim); flex:none;}
+  .plan-chk{display:block; margin-top:3px; font-size:14.5px; line-height:1.35; overflow-wrap:anywhere;}
+  .plan-x{margin-top:4px; color:var(--muted); overflow-wrap:anywhere;}
+  .plan-v{display:flex; align-items:baseline; gap:6px; margin-top:4px; font-size:13px; min-width:0;}
+  .plan-v i{font-style:normal; flex:none;}
+  .plan-v span{min-width:0; overflow-wrap:anywhere;}
+  .plan-last{margin-top:12px; padding-top:10px; border-top:1px solid var(--line);}
+  .desk-n{padding:12px 0; border-top:1px solid var(--panel2); min-width:0;}
+  .desk-n:first-child{border-top:0; padding-top:2px;}
+  .desk-n-h{display:flex; align-items:center; gap:8px; min-width:0;}
+  .desk-n-h .cc-glyph{width:22px; height:22px; border-radius:7px; font-size:11px; flex:none;}
+  .desk-n-h b{font-family:var(--disp); font-size:13px; letter-spacing:.05em; text-transform:uppercase;}
+  .desk-n-ic{width:22px; text-align:center; flex:none;}
+  .desk-n .qa-ch{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center;}
+  .desk-fs{display:flex; flex-direction:column; gap:6px; margin:14px 0 2px;}
+  .desk-fr{display:flex; flex-wrap:wrap; gap:6px;}
+  .desk-f{min-height:36px; padding:6px 11px; border:none; border-radius:999px; background:var(--panel); color:var(--muted); font-family:var(--disp); font-weight:700;
+    font-size:12px; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;}
+  .desk-f.on{background:var(--panel2); color:var(--c, var(--text)); box-shadow:inset 0 0 0 1.5px var(--line2);}
+  .desk-w{display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--panel2); min-width:0;}
+  .desk-w:first-child{border-top:0; padding-top:2px;}
+  .desk-w-t{display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;}
+  .desk-w-t b{font-size:14px; line-height:1.35; overflow-wrap:anywhere;}
+  .desk-w-t .small{color:var(--muted); overflow-wrap:anywhere;}
+  .desk-w-t .small.desk-w-bad{color:var(--bad);}
+  .desk-w .btn{flex:none;}
+  .desk-anl{display:flex; flex-direction:column; gap:0;}
+  .desk-an{padding:12px 0; border-top:1px solid var(--panel2); min-width:0;}
+  .desk-an:first-child{border-top:0; padding-top:2px;}
+  .desk-an .cc-glyph{width:22px; height:22px; border-radius:7px; font-size:11px; flex:none;}
+  .desk-an-st{margin-top:8px;}
+  .desk-an-c{margin-top:4px; color:var(--muted); overflow-wrap:anywhere;}
+  .desk-an-s{padding-top:10px; border-top:1px solid var(--panel2); color:var(--dim);}
+  .desk-an-s:first-child{border-top:0; padding-top:0;}
   .wp-dow{font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim);}
   .wp-k{font-family:var(--disp); font-weight:700; font-size:13px; letter-spacing:.03em; text-transform:uppercase; max-width:100%;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -2488,6 +2530,11 @@ const DEFAULT_STATE = {
                                // corrections to the plateau watch. Immutable rows, newest wins. See pwMark().
   dayReasons: [],              // {id, pillar, date, why, at, t} — his reason for a missed day or beside a Standard. Immutable
                                // rows, newest wins, an empty `why` is his undo. See stdReasonSet().
+  watches: [],                 // {id, series, lift?, op:'below'|'above', thr, within, by, src?, day, at, t} — a watch he accepted or made;
+                               // {id, cancel:<watch id>} removes one, {id, no:<desk item id>} turns an agent's offer down. Immutable
+                               // rows; whether one fired is worked out when read. See watchList().
+  planRecord: [],              // {id, week:<Monday>, by:'zulu'|'me', pri:[{standard, check:{type,...}, byDate, text?, cite?}], day, at, t} — the
+                               // Plan of Record, a row per write; {id, cancel:<row id>} withdraws one. The verdict is never stored.
   swapTrials: [],              // finished swap trials and his keep / go back, as immutable rows: see swtRecord(), swtDecide()
   holds: [],                   // {id, from, to, kind:'trip'|'sick'|'exams', gym:'none'|'hotel'|'home', note, at, t} — a block of days
                                // he is away, sick or in exams, or {id, cancel:<block id>, from, at, t}, his removal of one.
@@ -2821,6 +2868,8 @@ const SYNC_HISTORY = {
   dayReasons: {key: r=>'y|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>DR_KEEP},
   holds: {key: r=>'h|'+r.id, ord: r=>String(r.from||'')+'|'+String(r.id||''), cap:()=>HOLD_KEEP},
   swapTrials: {key: r=>'s|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>SWT_KEEP},
+  watches: {key: r=>'a|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.id||''), cap:()=>WATCH_KEEP},
+  planRecord: {key: r=>'o|'+r.id, ord: r=>String(r.week||'')+'|'+String(r.id||''), cap:()=>PLAN_KEEP},
   spend:    {key: r=>'$|'+r.id, ord: r=>String(r.day||'')+'|'+String(r.dev||''), cap:()=>SPEND_REC_MAX},
   targetHist: {key: r=>'g|'+r.id, ord: r=>String(r.date||'')+'|'+String(r.id||''), cap:()=>TARGET_HIST_MAX}
 };
@@ -26487,6 +26536,8 @@ function agBaseContext(id){
   try{ sqd = anlSquadLine(id); }catch(e){ sqd = ''; }
   // The Selector's marked lifts and their candidates (V5 stage 5): DELTA only, behind the paid switch, when one is due.
   try{ sqd += selContextLine(id); }catch(e){}
+  // Its watches that fired (V5 stage 6): behind the paid switch, and only on the nights after one fires.
+  try{ sqd += watchFiredLine(id); }catch(e){}
   return coachMemContext()+trainingContext()+agContext()+agCalendarContext()+std+sqd+intel+evl+lref+desk+evd+
     ((id==='delta' || id==='zulu') ? agFeelLine()+agPracticeLine() : '')+(id==='charlie' ? svContextLine() : '')+agRecentSaid(id)+(id === 'zulu' ? '' : agPeersSaid(id))+agTrackLine(id)+fcTrackLine(id)+qaContextLine(id)+
     (id==='delta' ? agTodaySessionNote()+olAgentContext()+dosContextLine(dosTargets())+pdContextLine(pdTargets()) : '');
@@ -26672,12 +26723,20 @@ const DESK_DAYS = 14, DESK_LINE_MAX = 900, DESK_EV_SPAN = 28, DESK_SHOW = 8;
 const DESK_SERIES = {
   e1rm:{label:'e1RM', unit:'lb', dp:0}, sets:{label:'hard sets a week', dp:0}, bw:{label:'bodyweight, weekly average', unit:'lb', dp:1},
   cals:{label:'calories a day', dp:0}, protein:{label:'protein a day', unit:'g', dp:0}, recovery:{label:'WHOOP recovery', unit:'%', dp:0},
-  hrv:{label:'HRV', unit:'ms', dp:0}, sleep:{label:'sleep', unit:'h', dp:1}, strain:{label:'day strain', dp:1}, sessions:{label:'sessions a week', dp:0}
+  hrv:{label:'HRV', unit:'ms', dp:0}, sleep:{label:'sleep', unit:'h', dp:1}, strain:{label:'day strain', dp:1}, sessions:{label:'sessions a week', dp:0},
+  // V5 stage 6. Drawn whenever a stored item names one; OFFERED to the agents only behind the paid switch (deskSeriesFor()).
+  fatigue:{label:'fatigue index, week by week', dp:2}, allsets:{label:'hard sets a week, summed over muscles', dp:0}
 };
 // Each agent charts from its own area; ZULU from any.
+const DESK_SERIES_BASE = ['e1rm', 'sets', 'bw', 'cals', 'protein', 'recovery', 'hrv', 'sleep', 'strain', 'sessions'];
 const DESK_SERIES_FOR = {delta:['e1rm', 'sets', 'recovery'], echo:['bw', 'cals', 'protein', 'sleep'], charlie:['sessions', 'sleep', 'strain'], zulu:null};
+// The wider set (V5 stage 6): more words in the spec line of a paid call, so it is offered only with the paid switch on.
+const DESK_SERIES_MORE = {delta:['fatigue', 'allsets'], echo:[], charlie:['fatigue'], zulu:['fatigue', 'allsets']};
 let deskAll = false;   // "Show all", module-scoped so the 30 s repaint keeps it
-function deskSeriesFor(id){ return DESK_SERIES_FOR[id] || Object.keys(DESK_SERIES); }
+function deskSeriesFor(id){
+  const base = DESK_SERIES_FOR[id] || DESK_SERIES_BASE;
+  return (watchKeyOn() && DESK_SERIES_MORE[id] && DESK_SERIES_MORE[id].length) ? base.concat(DESK_SERIES_MORE[id]) : base;
+}
 function agDeskItems(){ const d = agState().desk; return Array.isArray(d) ? d.filter(function(x){ return x && x.id && AGENTS[x.agent] && !x.hid; }) : []; }
 function deskNewest(arr){ return arr.slice().sort(function(a, b){ return String(b.at || '').localeCompare(String(a.at || '')); }); }
 function deskEvText(ev){ return homeShortDate(ev.from)+(ev.to && ev.to !== ev.from ? '–'+homeShortDate(ev.to) : '')+' “'+ev.label+'”'; }
@@ -26723,9 +26782,10 @@ function deskSpecLine(id){
     '"re":"<an id from THE DESK, optional>","chart":{"series":"'+ser.join('|')+'"'+
     (ser.indexOf('e1rm') >= 0 ? ',"lift":"<exact lift name, e1rm only>"' : '')+
     (ser.indexOf('sets') >= 0 ? ',"group":"<'+MUSCLE_GROUPS.join('|')+', sets only>"' : '')+',"weeks":2..26},'+
-    '"event":{"from":"YYYY-MM-DD","to":"YYYY-MM-DD","label":"<='+DESK_LABEL_MAX+' chars"}}]. '+
+    '"event":{"from":"YYYY-MM-DD","to":"YYYY-MM-DD","label":"<='+DESK_LABEL_MAX+' chars"}'+watchSpecPart(id)+'}]. '+
     'chart and event are optional. The app draws a chart from his own data, so give no numbers for it. An event flags a '+
     'stretch inside the last '+Math.round(EV_DAYS / 7)+' weeks worth remembering (a trip, a slump, a change), shown as your read. '+
+    watchSpecNote(id)+
     'The Desk changes nothing: anything to apply still goes in proposals.'+'\n';
 }
 /* The gate. Strings clipped, a series only from this agent's own area, a lift resolved to a real one, a group from the
@@ -26769,6 +26829,12 @@ function agValidateDesk(raw, id, shown){
     }
     const ct = evCiteClean(x.cite);
     if(ct.length) it.cite = ct;
+    // A watch it proposes (V5 stage 6): only with the paid switch on, only a spec that passes, and it is an OFFER.
+    // Nothing is watched until he taps Accept, and that tap checks it again (watchAccept()).
+    if(x.watch && watchKeyOn()){
+      const ws = watchSpecFrom(x.watch, id);
+      if(ws) it.watch = ws; else drop.push('watch');
+    }
     if(drop.length) it._drop = drop;
     res.items.push(it);
   });
@@ -26808,6 +26874,9 @@ function deskSeriesPts(ch){
   if(wf) return whoopHistRows().filter(function(r){ return inWin(r) && typeof r[wf] === 'number'; }).sort(byDate).map(function(r){ return {date:r.date, v:r[wf]}; });
   if(ch.series === 'sets') return weeks(function(a, b){ return (weeklyVolumeByGroup(a, b) || {})[ch.group] || 0; });
   if(ch.series === 'sessions') return weeks(function(a, b){ return (S.logs || []).filter(function(l){ return l && l.date >= a && l.date <= b; }).length; });
+  if(ch.series === 'allsets') return weeks(function(a, b){ const v = weeklyVolumeByGroup(a, b) || {}; return MUSCLE_GROUPS.reduce(function(s, g){ return s + (v[g] || 0); }, 0); });
+  // The index as it read at the end of each completed week; a week it could not be read (no norm yet) has no point.
+  if(ch.series === 'fatigue') return weeks(function(a, b){ const f = fatigueIndex(b); return (f && f.ok) ? f.ratio : null; }).filter(function(p){ return p.v !== null; });
   return [];
 }
 function deskChartLabel(ch){
@@ -26834,7 +26903,7 @@ function deskSparkSVG(it){
   const px = function(k){ return L + (ms(k) - t0) / (t1 - t0) * (R - L); };
   const py = function(v){ return B - (v - lo) / (hi - lo) * (B - T); };
   const xy = pts.map(function(p){ return [px(p.date), py(p.v)]; }), last = xy[xy.length-1], lv = pts[pts.length-1].v;
-  const fmt = function(v){ return D.dp ? (Math.round(v * 10) / 10).toFixed(1) : String(Math.round(v)); };
+  const fmt = function(v){ return D.dp > 1 ? (+v).toFixed(D.dp) : D.dp ? (Math.round(v * 10) / 10).toFixed(1) : String(Math.round(v)); };
   let s = '<svg class="ck desk-spark" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(deskChartLabel(ch))+': '+fmt(pts[0].v)+' to '+fmt(lv)+'">';
   if(it.event){
     const a = Math.max(L, Math.min(R, px(it.event.from))), b = Math.max(L, Math.min(R, px(it.event.to) + 3));
@@ -26859,17 +26928,20 @@ function deskItemHTML(x, reply){
     '<p class="desk-i-x">'+esc(x.text)+'</p>'+
     (x.event ? '<span class="desk-ev" style="color:'+A.col+'">Flagged · '+esc(deskEvText(x.event))+'</span>' : '')+
     (x.chart ? '<div class="desk-ch"><span class="desk-ch-l">'+esc(deskChartLabel(x.chart))+'</span>'+deskSparkSVG(x)+'</div>' : '')+
+    deskItemWatchHTML(x)+
     evCiteHTML(x.cite, 'desk:'+x.id)+
     '</div>';
 }
-/* The Hub's Desk: last night's table on top, then the items, newest first, each reply under what it answers. */
-function hubDeskHTML(){
-  const items = deskNewest(agDeskItems());
-  const rt = agRoundtable(), rl = (rt && Array.isArray(rt.lines)) ? rt.lines.filter(function(l){ return l && AGENTS[l.from] && AGENTS[l.to] && l.text; }) : [];
+/* The coaches' board: last night's table on top, then the items, newest first, each reply under what it answers.
+   `plus` (V5 stage 6) is the expanded Desk drawing it as its last part: no intro of its own, and the agent filter. */
+function deskBoardHTML(plus){
+  const fa = plus ? deskFilter.agent : 'all';
+  const items = deskNewest(agDeskItems()).filter(function(x){ return fa === 'all' || x.agent === fa; });
+  const rt = agRoundtable(), rl = (rt && Array.isArray(rt.lines)) ? rt.lines.filter(function(l){ return l && AGENTS[l.from] && AGENTS[l.to] && l.text && (fa === 'all' || l.from === fa || l.to === fa); }) : [];
   // Its own tab, so the tab names it: one line on what it is, then the board.
-  let h = '<p class="small desk-intro">What the agents noticed, said to each other and flagged. Their read, not the app\u2019s numbers: it changes nothing in your plan.</p><div class="card desk">';
+  let h = (plus ? '' : '<p class="small desk-intro">What the agents noticed, said to each other and flagged. Their read, not the app\u2019s numbers: it changes nothing in your plan.</p>')+'<div class="card desk" id="deskBoard">';
   if(!items.length && !rl.length)
-    return h+'<p class="ag-empty">Nothing on the Desk yet. The agents post here at night when something is worth noting, and talk to each other here.</p></div>';
+    return h+'<p class="ag-empty">'+(fa !== 'all' ? 'Nothing from '+AGENTS[fa].name+' on the Desk.' : 'Nothing on the Desk yet. The agents post here at night when something is worth noting, and talk to each other here.')+'</p></div>';
   if(rl.length) h += '<div class="desk-rt"><div class="desk-rt-h">At the table last night</div>'+rl.map(function(l){
       const A = AGENTS[l.from], T = AGENTS[l.to];
       return '<div class="desk-rt-l"><span class="cc-glyph" style="color:'+A.col+'">'+esc(A.name.charAt(0))+'</span>'+
@@ -26883,6 +26955,16 @@ function hubDeskHTML(){
   if(top.length > DESK_SHOW) h += '<button class="btn ghost sm" onclick="deskToggleAll()">'+(deskAll ? 'Show fewer' : 'Show all '+top.length)+'</button>';
   return h+'</div>';
 }
+/* The Hub's Desk. With the stage 6 switch off it is the coaches' board exactly as it was. On, the board is the last
+   part, under the Plan of Record, what needs his answer, the watches and the analysts' cards. If that top part throws,
+   the failure is said on screen and the board is still drawn: a fold or a catch must never hide a failure. */
+function hubDeskHTML(){
+  if(!deskPlusOn()) return deskBoardHTML(false);
+  let top;
+  try{ top = deskPlusTopHTML(); }
+  catch(e){ console.warn('desk top failed', e); top = '<div class="card" id="deskTopErr"><p class="small" style="color:var(--bad)">✖ The watches and the analysts’ cards could not be drawn. The coaches’ board is below.</p></div>'; }
+  return top+(deskFilter.tier === 'analysts' ? '' : deskBoardHTML(true));
+}
 function deskToggleAll(){ deskAll = !deskAll; renderDesk(); }
 /* Hiding is his tap: it syncs (save()), and a hide wins on a pull, so a hidden item does not come back. */
 function deskHide(id){
@@ -26891,6 +26973,537 @@ function deskHide(id){
   it.hid = Date.now();
   save();
   try{ renderDesk(); }catch(e){}
+}
+/* ============================================================
+   THE DESK, EXPANDED (V5 stage 6, 2026-11-13). The Desk becomes where the monitoring shows up.
+   - ANALYST CARDS are derived when the Desk is drawn, from anlPass() and the 14-day strips: an analyst whose reading
+     is flagged, or whose level changed inside the strip, gets a card. Nothing is posted to S.agents.desk and nothing
+     is stored, so a card can never disagree with the Hub's tile or the Standards card.
+   - WATCHES. A watch is a spec {series, lift?, op, thr, within} the app measures every time it is read, for free:
+     "bench e1RM below 215 for 2 sessions in a row". S.watches is a SYNC_HISTORY collection (key 'a|') of immutable
+     rows: a watch, {cancel:<id>} removing one, {no:<desk item>} turning an agent's offer down. Whether one FIRED is
+     worked out when read (watchEval()), from readings dated on or after the day it was made. At most WATCH_MAX_OPEN
+     are open. A watch changes nothing in his plan: it is something the app tells him.
+   - A watch exists only by his tap: his own form, or Accept on a coach's offer. An offer is a Desk post carrying a
+     validated spec; the tap checks the spec again (watchAdd()). A row that fails watchRowOk() is ignored, never repaired.
+   - PAID, off: `watchKey`. It lets the coaches propose a watch (words in the Desk spec line), chart two more series,
+     and hear on the night that one of their watches fired. Off, every prompt and reply spec is byte-identical.
+   - THE PLAN OF RECORD is stored and shown here (S.planRecord, key 'o|'); stage 7 writes and scores it.
+   - Interventions are NOT a call (his choice, 2026-11-11): the morning brief already leads with a new red.
+   ============================================================ */
+OV.deskPlus = {label:'Desk: analyst cards and watches', paid:false, note:'The analysts’ readings as cards on the Desk, watches the app checks every day, and what is waiting on your answer pinned on top. Worked out on the device. No model call.'};
+OV.watchKey = {label:'Watch proposals and wider charts from the coaches', paid:true, note:'Lets each coach propose a watch on a Desk post (you still accept each one), chart two more series, and hear the night one of its watches fires: an estimated 3 to 10 cents a month. Needs the Desk switch on.'};
+OV.planRecord = {label:'Plan of Record', paid:false, note:'The week’s priorities, at most three, each tied to a Standard and to a check the app can measure. Shown on Today and the Desk. No model call.'};
+function deskPlusOn(){ return ovOn('deskPlus'); }
+function watchKeyOn(){ return deskPlusOn() && ovOn('watchKey'); }
+const WATCH_KEEP = 200;
+const WATCH_MAX_OPEN = 5;          // watches open at once
+const WATCH_WITHIN_MAX = 6;        // readings in a row a watch may ask for
+const WATCH_LIFE_DAYS = 90;        // an open watch that never fired ends after this long
+const WATCH_FIRED_SHOW = 14;       // days a fired watch stays pinned and in the bell
+const WATCH_OFFER_DAYS = 14;       // days a coach's offer waits for his answer
+const WATCH_TELL_DAYS = 3;         // nights the owning coach is told about a fired watch
+const WATCH_CTX_MAX = 420;         // characters that line may add to one prompt
+const WATCH_BW_MIN = STD_BW_MIN_WEIGHS;   // weigh-ins a week needs before its average is a reading
+const WATCH_OPS = {below:'below', above:'above'};
+// What can be watched: a fixed set the app measures. lo/hi are the range a threshold must sit in (outside is refused,
+// never clamped); `per` is what one reading is; `owner` is the coach told when his own watch fires.
+const WATCH_SERIES = {
+  e1rm:    {label:'e1RM', unit:'lb', lo:20, hi:1500, per:'session', lift:true, owner:'delta'},
+  bw:      {label:'weekly average bodyweight', unit:'lb', lo:70, hi:450, per:'week', owner:'echo'},
+  cals:    {label:'calories', unit:'kcal', lo:500, hi:8000, per:'logged day', owner:'echo'},
+  protein: {label:'protein', unit:'g', lo:10, hi:500, per:'logged day', owner:'echo'},
+  sessions:{label:'sessions a week', unit:'', lo:0, hi:14, per:'week', owner:'charlie'},
+  recovery:{label:'WHOOP recovery', unit:'%', lo:1, hi:99, per:'day', owner:'charlie'},
+  sleep:   {label:'sleep', unit:'h', lo:2, hi:14, per:'night', owner:'charlie'}
+};
+// A coach proposes a watch only on a series in its own charting lane; ZULU on any.
+function watchSeriesFor(id){
+  const lane = DESK_SERIES_FOR[id] || DESK_SERIES_BASE;
+  return Object.keys(WATCH_SERIES).filter(function(k){ return lane.indexOf(k) >= 0; });
+}
+/* THE shape check, for a stored row, his form and a model's offer alike. A clean spec or null. Nothing is coerced
+   into range: a threshold outside the series' range, or a "within" that is not a whole number from 1 to
+   WATCH_WITHIN_MAX, is refused. `lift` must already be a name (a model's is resolved first, watchSpecFrom()). */
+function watchSpecOk(s){
+  if(!s || typeof s !== 'object' || !holdOwn(WATCH_SERIES, s.series) || !holdOwn(WATCH_OPS, s.op)) return null;
+  const D = WATCH_SERIES[s.series], thr = s.thr, n = s.within;
+  if(typeof thr !== 'number' || !isFinite(thr) || thr < D.lo || thr > D.hi) return null;
+  if(typeof n !== 'number' || Math.round(n) !== n || n < 1 || n > WATCH_WITHIN_MAX) return null;
+  const out = {series:s.series, op:s.op, thr:Math.round(thr * 10) / 10, within:n};
+  if(D.lift){
+    if(typeof s.lift !== 'string' || !s.lift.trim() || s.lift.length > 80) return null;
+    out.lift = s.lift;
+  } else if(s.lift !== undefined && s.lift !== null && s.lift !== '') return null;
+  return out;
+}
+/* A model's offer: a series from its own lane, the lift resolved to a real one (never trusted), then the same check. */
+function watchSpecFrom(raw, id){
+  if(!raw || typeof raw !== 'object' || watchSeriesFor(id).indexOf(raw.series) < 0) return null;
+  const s = {series:raw.series, op:raw.op, thr:raw.threshold, within:raw.within};
+  if(WATCH_SERIES[raw.series].lift){
+    const nm = agResolveExName(raw.lift);
+    if(!nm) return null;
+    s.lift = nm;
+  } else if(raw.lift) return null;
+  return watchSpecOk(s);
+}
+// The words in the Desk spec line. Both are '' with the paid switch off, so that line is byte-identical.
+function watchSpecPart(id){
+  if(!watchKeyOn()) return '';
+  const ser = watchSeriesFor(id);
+  return ',"watch":{"series":"'+ser.join('|')+'"'+(ser.indexOf('e1rm') >= 0 ? ',"lift":"<exact lift name, e1rm only>"' : '')+
+    ',"op":"below|above","threshold":<a number>,"within":1..'+WATCH_WITHIN_MAX+'}';
+}
+function watchSpecNote(id){
+  if(!watchKeyOn()) return '';
+  return 'watch is optional and rare: it asks the app to keep measuring one of his numbers and to tell him when it crosses, e.g. '+
+    'e1rm below 215 within 2 means two sessions in a row under 215. One reading is a session (e1rm), a completed week (bw, sessions), '+
+    'a logged day (cals, protein) or a day (recovery, sleep). He has to accept it, at most '+WATCH_MAX_OPEN+' run at once, and the app does the measuring. ';
+}
+function watchRows(){ return Array.isArray(S.watches) ? S.watches : []; }
+function watchRowOk(r){
+  if(!r || typeof r.id !== 'string' || !r.id || !holdDayOk(r.day)) return false;
+  if(r.by !== 'me' && !holdOwn(AGENTS, r.by)) return false;
+  const s = watchSpecOk(r);
+  return !!s && s.thr === r.thr;
+}
+/* The readings a watch is judged on, oldest first: only those dated on or after the day it was made, so a watch never
+   fires on history. e1RM leaves out deload and HOME sessions (e1rmSeries()); a week is a completed Monday-to-Sunday
+   week; intake is a logged day before today (today's log is not finished); WHOOP is its history, never today. */
+function watchPts(r, endKey){
+  const t = endKey || todayKey(), from = r.day;
+  const inWin = function(p){ return p && p.date >= from && p.date <= t; };
+  const byDate = function(a, b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; };
+  const weeks = function(fn){
+    const out = [];
+    for(let k = weekKeyOf(from); mesoAddDays(k, 6) < t; k = mesoAddDays(k, 7)){ const v = fn(k, mesoAddDays(k, 6)); if(v !== null) out.push({date:mesoAddDays(k, 6), v:v}); }
+    return out;
+  };
+  if(r.series === 'e1rm') return e1rmSeries(r.lift, {excludeHome:true}).filter(inWin);
+  if(r.series === 'bw') return weeks(function(a, b){
+    const ws = (S.weights || []).filter(function(x){ return x && x.date >= a && x.date <= b && +x.lbs > 0; });
+    return ws.length >= WATCH_BW_MIN ? Math.round(ws.reduce(function(s, x){ return s + (+x.lbs); }, 0) / ws.length * 10) / 10 : null;
+  });
+  if(r.series === 'sessions') return weeks(function(a, b){ return (S.logs || []).filter(function(l){ return l && l.date >= a && l.date <= b; }).length; });
+  if(r.series === 'cals' || r.series === 'protein')
+    return (S.nutrition || []).filter(function(n){ return inWin(n) && n.date < t && +n[r.series] > 0; }).sort(byDate).map(function(n){ return {date:n.date, v:+n[r.series]}; });
+  const wf = {recovery:'recovery', sleep:'sleepHours'}[r.series];
+  if(wf) return whoopHistRows().filter(function(x){ return inWin(x) && typeof x[wf] === 'number'; }).sort(byDate).map(function(x){ return {date:x.date, v:x[wf]}; });
+  return [];
+}
+/* Fired: the first time `within` readings in a row sat on the wrong side. Pure, and worked out every time it is read. */
+function watchEval(r, endKey){
+  const pts = watchPts(r, endKey);
+  let run = 0, firedOn = null;
+  for(let i = 0; i < pts.length && !firedOn; i++){
+    const hit = r.op === 'below' ? pts[i].v < r.thr : pts[i].v > r.thr;
+    run = hit ? run + 1 : 0;
+    if(run >= r.within) firedOn = pts[i].date;
+  }
+  return {n:pts.length, run:run, last:pts.length ? pts[pts.length - 1] : null, firedOn:firedOn};
+}
+function watchNum(r, v){
+  const D = WATCH_SERIES[r.series], x = (v === undefined ? r.thr : v);
+  return (Math.round(x) === x ? String(x) : (+x).toFixed(1))+(D.unit === '%' ? '%' : D.unit ? ' '+D.unit : '');
+}
+function watchText(r){
+  const D = WATCH_SERIES[r.series];
+  return (D.lift ? r.lift+' ' : '')+D.label+' '+r.op+' '+watchNum(r)+(r.within > 1 ? ' for '+r.within+' '+D.per+'s in a row' : ' on one '+D.per);
+}
+/* Every watch that stands (valid, not removed), each with its state, oldest first:
+   open, fired (for WATCH_FIRED_SHOW days), done (fired longer ago), ended (never fired in WATCH_LIFE_DAYS), or broken
+   (it could not be read: shown as a failure, never as quiet). */
+function watchList(endKey){
+  const t = endKey || todayKey(), gone = {};
+  watchRows().forEach(function(r){ if(r && typeof r.cancel === 'string') gone[r.cancel] = 1; });
+  return watchRows().filter(function(r){ return r && !r.cancel && !r.no && !gone[r.id] && watchRowOk(r) && r.day <= t; })
+    .sort(function(a, b){ return a.day < b.day ? -1 : a.day > b.day ? 1 : (+a.at || 0) - (+b.at || 0); })
+    .map(function(r){
+      let ev = null;
+      try{ ev = watchEval(r, t); }catch(e){ ev = null; }
+      const v = {id:r.id, row:r, text:watchText(r), owner:r.by !== 'me' ? r.by : WATCH_SERIES[r.series].owner, ev:ev};
+      if(!ev) v.state = 'broken';
+      else if(ev.firedOn) v.state = daysBetween(ev.firedOn, t) <= WATCH_FIRED_SHOW ? 'fired' : 'done';
+      else v.state = daysBetween(r.day, t) > WATCH_LIFE_DAYS ? 'ended' : 'open';
+      return v;
+    });
+}
+function watchLive(v){ return v.state === 'open' || v.state === 'broken'; }
+function watchProgress(v){
+  if(v.state === 'broken') return 'It could not be read.';
+  const r = v.row, e = v.ev;
+  if(v.state === 'fired') return 'Fired '+homeShortDate(e.firedOn)+(e.last ? ': '+watchNum(r, e.last.v)+' on the last reading.' : '.');
+  if(!e.last) return 'No reading since '+homeShortDate(r.day)+' yet.';
+  return 'Last reading '+watchNum(r, e.last.v)+' ('+homeShortDate(e.last.date)+')'+(r.within > 1 ? ', '+e.run+' of '+r.within+' in a row.' : '.');
+}
+function watchPush(row){
+  if(!Array.isArray(S.watches)) S.watches = [];
+  S.watches.push(stampRec(row));
+  if(S.watches.length > WATCH_KEEP) S.watches = S.watches.slice(-WATCH_KEEP);
+}
+function watchId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2, 6); }
+/* His tap, from his form or from Accept: checked again here, then one immutable row and a save(). */
+function watchAdd(spec, by, src){
+  if(!deskPlusOn()) return {ok:false, error:'Watches are switched off in Settings.'};
+  if(by !== 'me' && !holdOwn(AGENTS, by)) return {ok:false, error:'That watch has no owner.'};
+  const s = watchSpecOk(spec);
+  if(!s) return {ok:false, error:'That did not pass the check. Pick what to watch, below or above, a number in its range, and 1 to '+WATCH_WITHIN_MAX+' readings.'};
+  if(s.lift){
+    const nm = agResolveExName(s.lift);
+    if(!nm) return {ok:false, error:'That lift is not one the app knows.'};
+    s.lift = nm;
+  }
+  const live = watchList().filter(watchLive);
+  if(live.length >= WATCH_MAX_OPEN) return {ok:false, error:WATCH_MAX_OPEN+' watches are open already. Remove one first.'};
+  if(live.some(function(v){ const r = v.row; return r.series === s.series && r.op === s.op && r.thr === s.thr && r.within === s.within && (r.lift || '') === (s.lift || ''); }))
+    return {ok:false, error:'You are already watching that.'};
+  const row = Object.assign({id:watchId('wa'), by:by, day:todayKey(), at:Date.now()}, s);
+  if(src) row.src = String(src);
+  watchPush(row);
+  save();
+  return {ok:true, id:row.id};
+}
+/* Removing a watch (or clearing a fired one) is a row too. */
+function watchCancel(id){
+  const v = watchList().filter(function(x){ return x.id === id; })[0];
+  if(!v) return false;
+  watchPush({id:watchId('wc'), cancel:id, day:todayKey(), at:Date.now()});
+  save();
+  return true;
+}
+/* The coaches' offers still waiting on him: a Desk post carrying a watch that passes the check, not hidden, not yet
+   accepted or turned down, inside WATCH_OFFER_DAYS. Derived: accepting one is the row that names it (`src`). */
+function watchOffers(){
+  if(!deskPlusOn()) return [];
+  const t = todayKey(), used = {};
+  watchRows().forEach(function(r){ if(!r) return; if(typeof r.src === 'string') used[r.src] = 1; if(typeof r.no === 'string') used[r.no] = 1; });
+  return deskNewest(agDeskItems()).filter(function(x){
+    return x.watch && !used[x.id] && holdDayOk(x.day) && daysBetween(x.day, t) <= WATCH_OFFER_DAYS && !!watchSpecOk(x.watch);
+  });
+}
+function watchAccept(itemId){
+  const x = watchOffers().filter(function(o){ return o.id === itemId; })[0];
+  if(!x) return {ok:false, error:'That offer is no longer open.'};
+  return watchAdd(x.watch, x.agent, x.id);
+}
+function watchDecline(itemId){
+  const x = watchOffers().filter(function(o){ return o.id === itemId; })[0];
+  if(!x) return false;
+  watchPush({id:watchId('wn'), no:itemId, day:todayKey(), at:Date.now()});
+  save();
+  return true;
+}
+/* The bell: a watch that fired, and an offer waiting. Worked out here, never stored. */
+function watchNotifItems(){
+  if(!deskPlusOn()) return [];
+  const out = [];
+  watchList().forEach(function(v){
+    if(v.state === 'fired') out.push({id:'watch:'+v.id, tone:'var(--warn)', title:'▲ Watch fired', body:anlCap(v.text)+'. '+watchProgress(v), when:null, go:"showReviewTab('desk')"});
+    if(v.state === 'broken') out.push({id:'watchbad:'+v.id, tone:'var(--bad)', title:'✖ A watch could not be read', body:anlCap(v.text)+'.', when:null, go:"showReviewTab('desk')"});
+  });
+  watchOffers().forEach(function(x){
+    out.push({id:'watchoffer:'+x.id, tone:AGENTS[x.agent].col, title:AGENTS[x.agent].name+' proposes a watch', body:anlCap(watchText(x.watch))+'. Accept it or not on the Desk.', when:null, go:"showReviewTab('desk')"});
+  });
+  return out;
+}
+/* For the owning coach's nightly prompt, behind the paid switch: its watches that fired in the last WATCH_TELL_DAYS.
+   '' with the switch off and '' when none fired, so those prompts are byte-identical. A fact, never an instruction. */
+function watchFiredLine(id){
+  if(!watchKeyOn() || !holdOwn(AGENTS, id)) return '';
+  const t = todayKey();
+  let rows = [];
+  try{ rows = watchList().filter(function(v){ return v.state === 'fired' && v.owner === id && daysBetween(v.ev.firedOn, t) <= WATCH_TELL_DAYS; }); }catch(e){ return ''; }
+  if(!rows.length) return '';
+  return ('\nWATCHES THAT FIRED (he accepted these and the app measured them from his data. Facts, not instructions; a watch changes nothing by itself):\n'+
+    rows.map(function(v){ return '- '+anlCap(v.text)+': fired '+fmtDate(v.ev.firedOn)+(v.ev.last ? ', last reading '+watchNum(v.row, v.ev.last.v) : '')+'.'; }).join('\n')).slice(0, WATCH_CTX_MAX)+'\n';
+}
+/* -- the Plan of Record: storage and display (stage 7 writes and scores it) --
+   One weekly directive of at most PLAN_MAX_PRI priorities. Each is {standard, check, byDate}: a Standards pillar, a
+   check from the FIXED set below that the app can measure, and the day it is judged by. S.planRecord is a
+   SYNC_HISTORY collection (key 'o|') of immutable rows, one per write; the plan for a week is its newest valid row
+   that no cancel row names. A row that fails planRowOk() is ignored, never repaired. A verdict is never stored. */
+const PLAN_KEEP = 120, PLAN_MAX_PRI = 3, PLAN_TEXT_MAX = 140;
+// The fixed set. `std` is the one pillar a check may be filed under; n and lb are [lowest, highest] and are refused
+// outside it. `say` is the app's own wording of the check, so no number on the card comes from a model.
+const PLAN_CHECKS = {
+  sessions:{std:'show', n:[1, 7], say:function(c){ return stdPl(c.n, 'session')+' logged'; }},
+  planned: {std:'show', say:function(){ return 'Every scheduled day trained'; }},
+  weighIns:{std:'bulk', n:[3, 7], say:function(c){ return c.n+' weigh-ins'; }},
+  bwUp:    {std:'bulk', lb:[0.25, BULK_HI], say:function(c){ return 'Bodyweight up at least '+c.lb+' lb on the week'; }},
+  calDays: {std:'intake', n:[3, 7], say:function(c){ return 'Calories at or over target on '+stdPl(c.n, 'day'); }},
+  proDays: {std:'intake', n:[3, 7], say:function(c){ return 'Protein at target on '+stdPl(c.n, 'day'); }},
+  topSet:  {std:'lifts', lift:true, say:function(c){ return c.lift+': a set at the weight the app called, in its rep range'; }},
+  checkins:{std:'recovery', n:[3, 7], say:function(c){ return stdPl(c.n, 'morning check-in'); }}
+};
+function planOn(){ return ovOn('planRecord'); }
+/* A clean check or null. A type outside the set, or a number outside its range, is refused: never coerced. */
+function planCheckOk(c){
+  if(!c || typeof c !== 'object' || !holdOwn(PLAN_CHECKS, c.type)) return null;
+  const D = PLAN_CHECKS[c.type], out = {type:c.type};
+  if(D.n){
+    if(typeof c.n !== 'number' || Math.round(c.n) !== c.n || c.n < D.n[0] || c.n > D.n[1]) return null;
+    out.n = c.n;
+  }
+  if(D.lb){
+    if(typeof c.lb !== 'number' || !isFinite(c.lb) || c.lb < D.lb[0] || c.lb > D.lb[1]) return null;
+    out.lb = Math.round(c.lb * 100) / 100;
+  }
+  if(D.lift){
+    if(typeof c.lift !== 'string' || !c.lift.trim() || c.lift.length > 80) return null;
+    out.lift = c.lift;
+  }
+  return out;
+}
+/* A clean priority or null: a real pillar, a check from the set filed under ITS pillar, a day inside the plan's week. */
+function planPriOk(p, week){
+  if(!p || typeof p !== 'object' || STD_PILLARS.indexOf(p.standard) < 0) return null;
+  const c = planCheckOk(p.check);
+  if(!c || PLAN_CHECKS[c.type].std !== p.standard) return null;
+  if(!holdDayOk(p.byDate) || p.byDate < week || p.byDate > mesoAddDays(week, 6)) return null;
+  const out = {standard:p.standard, check:c, byDate:p.byDate};
+  if(p.text !== undefined){
+    if(typeof p.text !== 'string' || p.text.length > PLAN_TEXT_MAX) return null;
+    if(p.text) out.text = p.text;
+  }
+  if(Array.isArray(p.cite) && p.cite.length) out.cite = p.cite.filter(function(x){ return typeof x === 'string'; }).slice(0, EVD_CITE_MAX);
+  return out;
+}
+function planWeekOk(w){ return holdDayOk(w) && weekKeyOf(w) === w; }
+function planRowOk(r){
+  if(!r || typeof r.id !== 'string' || !r.id || !planWeekOk(r.week) || (r.by !== 'zulu' && r.by !== 'me')) return false;
+  if(!Array.isArray(r.pri) || !r.pri.length || r.pri.length > PLAN_MAX_PRI) return false;
+  return r.pri.every(function(p){ return !!planPriOk(p, r.week); });
+}
+function planRows(){ return Array.isArray(S.planRecord) ? S.planRecord : []; }
+/* The plan for a week: its newest valid row that was not withdrawn, or null. */
+function planFor(week){
+  if(!planOn()) return null;
+  const gone = {};
+  planRows().forEach(function(r){ if(r && typeof r.cancel === 'string') gone[r.cancel] = 1; });
+  let best = null;
+  planRows().forEach(function(r){
+    if(!r || r.cancel || gone[r.id] || r.week !== week || !planRowOk(r)) return;
+    if(!best || (+r.at || 0) >= (+best.at || 0)) best = r;
+  });
+  return best;
+}
+function planNow(){ return planFor(weekKeyOf(todayKey())); }
+function planCheckSay(c){ try{ return PLAN_CHECKS[c.type].say(c); }catch(e){ return ''; } }
+/* One priority on the card: the pillar, the check in the app's words, the day, then the coach's line as its words. */
+function planPriHTML(p, row, i){
+  return '<div class="plan-p"><div class="plan-p-h"><span class="plan-std">'+esc(STD_LABEL[p.standard])+'</span>'+
+      '<span class="plan-by">by '+esc(homeShortDate(p.byDate))+'</span></div>'+
+    '<b class="plan-chk">'+esc(planCheckSay(p.check))+'</b>'+
+    planVerdictHTML(p, row)+
+    (p.text ? '<p class="small plan-x">'+esc(p.text)+'</p>' : '')+
+    (row.by === 'zulu' ? evCiteHTML(p.cite, 'plan:'+row.id+':'+i) : '')+'</div>';
+}
+function planVerdictHTML(p, row){ return ''; }   // stage 7 fills this: the verdict is worked out when read
+function planCardExtraHTML(where, week, row){ return ''; }   // stage 7: last week's score, and setting a plan by his tap
+/* The card: on Today under the Standards (only when a plan stands), and first on the Desk (which also says when none does). */
+function planCardHTML(where){
+  if(!planOn()) return '';
+  const wk = weekKeyOf(todayKey()), row = planFor(wk);
+  const head = '<div class="plan-h"><b>Plan of Record</b><span class="pw-note">week of '+esc(homeShortDate(wk))+(row ? ' · '+(row.by === 'zulu' ? 'ZULU' : 'set by you') : '')+'</span></div>';
+  const id = where === 'desk' ? 'planCardDesk' : 'planCard';
+  let extra = '';
+  try{ extra = planCardExtraHTML(where, wk, row); }catch(e){ extra = ''; }
+  if(!row){
+    if(where !== 'desk' && !extra) return '';
+    return '<div class="card plan-card" id="'+id+'">'+head+(where === 'desk' ? '<p class="small">No plan for this week.</p>' : '')+extra+'</div>';
+  }
+  return '<div class="card plan-card" id="'+id+'">'+head+row.pri.map(function(p, i){ return planPriHTML(p, row, i); }).join('')+extra+'</div>';
+}
+/* -- the Desk's top part -- */
+let deskFilter = {agent:'all', tier:'all'};   // module-scoped: the 30 s repaint keeps it
+let watchDraft = {open:false, series:'e1rm', lift:'', op:'below', thr:'', within:'2', err:''};
+function watchDraftReset(){ watchDraft = {open:false, series:'e1rm', lift:'', op:'below', thr:'', within:'2', err:''}; }
+function deskRepaint(){ try{ renderDesk(); }catch(e){} try{ renderNotif(); }catch(e){} }
+function deskFilterSet(k, v){
+  if(k === 'agent' && (v === 'all' || holdOwn(AGENTS, v))) deskFilter.agent = v;
+  if(k === 'tier' && ['all', 'coaches', 'analysts'].indexOf(v) >= 0) deskFilter.tier = v;
+  watchDraftRead();
+  try{ renderDesk(); }catch(e){}
+}
+/* What is typed in the form, taken before anything repaints it. */
+function watchDraftRead(){
+  const g = function(id){ const el = document.getElementById(id); return el ? String(el.value || '') : null; };
+  const s = g('watchSeries'), l = g('watchLift'), th = g('watchThr'), n = g('watchWithin');
+  if(s !== null && holdOwn(WATCH_SERIES, s)) watchDraft.series = s;
+  if(l !== null) watchDraft.lift = l;
+  if(th !== null) watchDraft.thr = th;
+  if(n !== null) watchDraft.within = n;
+}
+function watchFormOpen(on){ watchDraftReset(); watchDraft.open = !!on; try{ renderDesk(); }catch(e){} }
+function watchDraftSet(k, v){
+  watchDraftRead();
+  if(k === 'op' && holdOwn(WATCH_OPS, v)) watchDraft.op = v;
+  watchDraft.err = '';
+  try{ renderDesk(); }catch(e){}
+}
+function watchDraftSave(){
+  watchDraftRead();
+  const d = watchDraft, D = WATCH_SERIES[d.series];
+  const spec = {series:d.series, op:d.op, thr:(String(d.thr).trim() === '' ? NaN : +d.thr), within:+d.within};
+  if(D && D.lift) spec.lift = d.lift;
+  const r = watchAdd(spec, 'me');
+  if(r.ok) watchDraftReset(); else watchDraft.err = r.error;
+  deskRepaint();
+  return r.ok;
+}
+function watchRemoveTap(el){
+  const id = el && el.dataset && el.dataset.id, v = watchList().filter(function(x){ return x.id === id; })[0];
+  if(!v) return;
+  if(v.state !== 'fired' && !confirm('Stop watching: '+v.text+'?')) return;
+  watchCancel(id);
+  deskRepaint();
+}
+function watchOfferTap(el, yes){
+  const id = el && el.dataset && el.dataset.id;
+  if(yes){ const r = watchAccept(id); if(!r.ok) alert(r.error); }
+  else watchDecline(id);
+  deskRepaint();
+}
+function deskQaTap(el, i){
+  const id = el && el.dataset && el.dataset.id;
+  if(i === null) qaSkip(id); else qaAnswer(id, i);
+  try{ renderDesk(); }catch(e){}
+}
+// The lifts his form offers: every loaded lift in the split in force.
+function watchLiftChoices(){
+  const seen = {}, out = [];
+  try{
+    const sp = activeSplitObj() || {};
+    Object.keys(sp).forEach(function(k){ ((sp[k] || {}).exercises || []).forEach(function(x){ const n = exName(x); if(n && !seen[n] && !isBodyweight(n)){ seen[n] = 1; out.push(n); } }); });
+  }catch(e){}
+  return out;
+}
+function deskItemWatchHTML(x){
+  if(!x.watch || !deskPlusOn() || !watchSpecOk(x.watch)) return '';
+  let st = 'waiting on you, above';
+  const rows = watchRows();
+  if(rows.some(function(r){ return r && r.src === x.id; })) st = 'accepted';
+  else if(rows.some(function(r){ return r && r.no === x.id; })) st = 'turned down';
+  else if(!watchOffers().some(function(o){ return o.id === x.id; })) st = 'no longer open';
+  return '<span class="desk-ev" style="color:'+AGENTS[x.agent].col+'">Proposes a watch · '+esc(watchText(x.watch))+' · '+st+'</span>';
+}
+function deskWatchRowHTML(v){
+  const A = AGENTS[v.owner], bad = v.state === 'broken';
+  return '<div class="desk-w" data-id="'+esc(v.id)+'"><div class="desk-w-t"><b>'+esc(anlCap(v.text))+'</b>'+
+      '<span class="small'+(bad ? ' desk-w-bad' : '')+'">'+(bad ? '✖ ' : '')+esc(watchProgress(v))+' '+
+      (v.row.by === 'me' ? 'Yours' : esc(A.name)+'’s')+', since '+esc(homeShortDate(v.row.day))+'.</span></div>'+
+    '<button class="btn ghost sm" data-id="'+esc(v.id)+'" onclick="watchRemoveTap(this)">Remove</button></div>';
+}
+function watchFormHTML(){
+  const d = watchDraft, D = WATCH_SERIES[d.series];
+  const lifts = watchLiftChoices();
+  const opt = function(v, lab, cur){ return '<option value="'+esc(v)+'"'+(v === cur ? ' selected' : '')+'>'+esc(lab)+'</option>'; };
+  const pill = function(v, lab){ return '<button class="rd3-pill'+(d.op === v ? ' on' : '')+'" style="min-width:0;padding:8px 4px;font-size:12px" onclick="watchDraftSet(\'op\',\''+v+'\')">'+lab+'</button>'; };
+  let within = '';
+  for(let i = 1; i <= WATCH_WITHIN_MAX; i++) within += opt(String(i), i === 1 ? '1 '+D.per : i+' '+D.per+'s in a row', String(d.within));
+  return '<div class="hold-form watch-form" id="watchForm">'+
+    '<div class="hold-dates"><label>What to watch<select id="watchSeries" onchange="watchDraftSet(\'series\',this.value)">'+
+      Object.keys(WATCH_SERIES).map(function(k){ return opt(k, anlCap(WATCH_SERIES[k].label), d.series); }).join('')+'</select></label>'+
+      (D.lift ? '<label>Lift<select id="watchLift" onchange="watchDraft.lift=this.value">'+lifts.map(function(n){ return opt(n, n, d.lift); }).join('')+'</select></label>' : '')+'</div>'+
+    '<div class="rd3-group" style="margin-top:10px"><span class="rd3-gl">Tell me when it is</span><div class="rd3-pills">'+pill('below', 'Below')+pill('above', 'Above')+'</div></div>'+
+    '<div class="hold-dates"><label>'+(D.unit ? 'Number ('+esc(D.unit)+')' : 'Number')+'<input type="number" inputmode="decimal" step="any" id="watchThr" value="'+esc(d.thr)+'" oninput="watchDraft.thr=this.value"></label>'+
+      '<label>For<select id="watchWithin" onchange="watchDraft.within=this.value">'+within+'</select></label></div>'+
+    '<p class="small" style="margin-top:8px;color:var(--dim)">One reading is one '+esc(D.per)+'. Only readings from today on count, and the app does the measuring.</p>'+
+    (d.err ? '<p class="small" id="watchErr" style="margin-top:6px;color:var(--bad)">✖ '+esc(d.err)+'</p>' : '')+
+    '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn sm" onclick="watchDraftSave()">Watch it</button>'+
+    '<button class="btn ghost sm" onclick="watchFormOpen(false)">Cancel</button></div></div>';
+}
+/* The analysts' cards: derived now, never stored. A card for a flagged reading, or a level that changed inside the
+   strip; the rest are named in one line. An analyst the strip does not read (KILO) has no "changed". */
+function deskAnalystCards(pass, strips){
+  const t = todayKey(), cards = [], steady = [];
+  ANL_ORDER.forEach(function(id){
+    const r = pass.reads[id];
+    if(!r) return;
+    const seq = (strips || []).filter(function(d){ return d && d.lv && d.lv[id] !== undefined; }).map(function(d){ return {d:d.d, lv:d.lv[id]}; });
+    let since = null;
+    if(seq.length){
+      seq.push({d:t, lv:r.lvl});
+      for(let i = seq.length - 1; i >= 1; i--) if(seq[i - 1].lv !== seq[i].lv){ since = seq[i].d; break; }
+    }
+    if(!(STD_RANK[r.lvl] > 0) && !since){ steady.push(id); return; }
+    cards.push({id:id, r:r, since:since});
+  });
+  cards.sort(function(a, b){ return (STD_RANK[b.r.lvl] - STD_RANK[a.r.lvl]) || String(b.since || '').localeCompare(String(a.since || '')); });
+  return {cards:cards, steady:steady};
+}
+function deskAnalystHTML(c){
+  const A = ANALYSTS[c.id], L = AGENTS[A.lead], row = c.r.row;
+  const when = c.since ? 'changed '+homeShortDate(c.since) : (row && row.since) ? 'since '+homeShortDate(row.since) : 'over '+ANL_STRIP_DAYS+' days';
+  return '<div class="desk-an" data-an="'+c.id+'">'+
+    '<div class="desk-i-h"><span class="cc-glyph" style="color:'+L.col+'" aria-hidden="true">'+esc(A.name.charAt(0))+'</span>'+
+      '<span class="desk-i-who">'+esc(A.name)+' · analyst, '+esc(L.name)+'</span><span class="desk-i-when">'+esc(when)+'</span></div>'+
+    '<span class="sq-st desk-an-st" style="color:'+STD_COL[c.r.lvl]+'"><i>'+STD_ICON[c.r.lvl]+'</i><span>'+esc(c.r.word)+'</span></span>'+
+    '<p class="desk-i-x">'+esc(c.r.line)+'</p>'+
+    (c.r.change ? '<p class="small desk-an-c">What would change it: '+esc(c.r.change)+'</p>' : '')+'</div>';
+}
+function deskFilterHTML(){
+  const f = deskFilter;
+  const chip = function(k, v, lab, col){ const on = f[k] === v;
+    return '<button class="desk-f'+(on ? ' on' : '')+'" aria-pressed="'+on+'"'+(col ? ' style="--c:'+col+'"' : '')+' onclick="deskFilterSet(\''+k+'\',\''+v+'\')">'+lab+'</button>'; };
+  return '<div class="desk-fs" id="deskFilters"><div class="desk-fr">'+chip('agent', 'all', 'All')+
+      ANL_LANES.map(function(id){ return chip('agent', id, AGENTS[id].name, AGENTS[id].col); }).join('')+'</div>'+
+    '<div class="desk-fr">'+chip('tier', 'all', 'Everything')+chip('tier', 'coaches', 'Coaches')+chip('tier', 'analysts', 'Analysts')+'</div></div>';
+}
+function deskPlusTopHTML(){
+  const f = deskFilter;
+  const showA = function(a){ return f.agent === 'all' || f.agent === a; };
+  let h = '<p class="small desk-intro">What the agents noticed and said to each other, what the analysts read, and what the app is watching for you. It changes nothing in your plan.</p>';
+  h += planCardHTML('desk');
+  // Needs your answer: an open question, a coach's watch offer, a watch that fired.
+  const need = [];
+  if(f.tier !== 'analysts'){
+    const q = qaOpen();
+    if(q && showA(q.agent)){
+      const A = AGENTS[q.agent] || {name:q.agent, col:'var(--muted)'};
+      need.push('<div class="desk-n" data-kind="qa"><div class="desk-n-h"><span class="cc-glyph" style="color:'+A.col+'">'+esc(A.name.charAt(0))+'</span><b>'+esc(A.name)+' asks</b></div>'+
+        '<p class="desk-i-x">'+esc(q.q)+'</p><div class="qa-ch">'+q.choices.map(function(c, i){
+          return '<button type="button" class="lv-chip" data-id="'+esc(q.id)+'" onclick="deskQaTap(this,'+i+')">'+esc(c)+'</button>'; }).join('')+
+        '<button type="button" class="btn ghost sm" data-id="'+esc(q.id)+'" onclick="deskQaTap(this,null)">Skip</button></div></div>');
+    }
+    watchOffers().forEach(function(x){
+      if(!showA(x.agent)) return;
+      const A = AGENTS[x.agent];
+      need.push('<div class="desk-n" data-kind="offer"><div class="desk-n-h"><span class="cc-glyph" style="color:'+A.col+'">'+esc(A.name.charAt(0))+'</span><b>'+esc(A.name)+' proposes a watch</b></div>'+
+        '<p class="desk-i-x">'+esc(anlCap(watchText(x.watch)))+'.</p><p class="small">'+esc(rtClip(x.text, 160))+'</p>'+
+        '<div class="qa-ch"><button class="btn sm" data-id="'+esc(x.id)+'" onclick="watchOfferTap(this,true)">Accept</button>'+
+        '<button class="btn ghost sm" data-id="'+esc(x.id)+'" onclick="watchOfferTap(this,false)">Not now</button></div></div>');
+    });
+  }
+  const wl = watchList();
+  wl.forEach(function(v){
+    if(v.state !== 'fired' || !showA(v.owner)) return;
+    need.push('<div class="desk-n" data-kind="fired"><div class="desk-n-h"><span class="desk-n-ic" style="color:var(--warn)">▲</span><b>Watch fired</b></div>'+
+      '<p class="desk-i-x">'+esc(anlCap(v.text))+'.</p><p class="small">'+esc(watchProgress(v))+' A watch is one-shot: set it again if you still want it.</p>'+
+      '<div class="qa-ch"><button class="btn ghost sm" data-id="'+esc(v.id)+'" onclick="watchRemoveTap(this)">Clear</button></div></div>');
+  });
+  if(need.length) h += '<div class="dash-sec">Needs your answer</div><div class="card desk-need" id="deskNeed">'+need.join('')+'</div>';
+  h += deskFilterHTML();
+  // Watching.
+  const live = wl.filter(function(v){ return watchLive(v) && showA(v.owner); }), liveAll = wl.filter(watchLive).length;
+  h += '<div class="dash-sec">Watching · '+liveAll+' of '+WATCH_MAX_OPEN+'</div><div class="card desk-watch" id="deskWatch">'+
+    (live.length ? live.map(deskWatchRowHTML).join('') : '<p class="ag-empty">'+(liveAll ? 'None for this filter.' : 'Nothing is being watched. A watch asks the app to keep checking one number and tell you when it crosses.')+'</p>')+
+    (watchDraft.open ? watchFormHTML() : (liveAll < WATCH_MAX_OPEN ? '<button class="btn ghost sm" style="margin-top:8px" onclick="watchFormOpen(true)">Add a watch</button>' : ''))+'</div>';
+  // The analysts.
+  if(anlOn() && f.tier !== 'coaches'){
+    let body;
+    try{
+      const a = deskAnalystCards(anlPass(), anlStrips());
+      const cards = a.cards.filter(function(c){ return showA(ANALYSTS[c.id].lead); }), steady = a.steady.filter(function(id){ return showA(ANALYSTS[id].lead); });
+      body = cards.map(deskAnalystHTML).join('')+
+        (steady.length ? '<p class="small desk-an-s">Unchanged for '+ANL_STRIP_DAYS+' days, nothing flagged: '+steady.map(function(id){ return esc(ANALYSTS[id].name); }).join(', ')+'.</p>' : '')+
+        (!cards.length && !steady.length ? '<p class="ag-empty">No analyst for this filter.</p>' : '');
+    }catch(e){ console.warn('analyst cards failed', e); body = '<p class="small" style="color:var(--bad)">✖ The analysts’ cards could not be worked out.</p>'; }
+    h += '<div class="dash-sec">From the analysts · worked out by the app</div><div class="card desk-anl" id="deskAnalysts">'+body+'</div>';
+  }
+  if(f.tier !== 'analysts') h += '<div class="dash-sec">From the coaches · their read</div>';
+  return h;
 }
 /* ---- cross-review, ZULU's half (his call, 2026-10-18) ----
    The code half (agConflict) refuses what collides with a rule. This half is judgement: ZULU, already reading the
@@ -28562,6 +29175,8 @@ function renderHome(){
   // The Standards lead the page (V5 stage 1). Computed here and nowhere stored: Today still only reads.
   let stdNow = null;   // read once for the card and the top-bar mark
   try{ if(stdOn()){ stdNow = stdState(); h += stdCardHTML(stdNow); } }catch(e){ console.warn('standards card failed', e); }
+  // The Plan of Record sits with the Standards (V5 stage 6): shown only while a plan stands. It only reads.
+  try{ h += planCardHTML('home'); }catch(e){ console.warn('plan card failed', e); }
   try{ h += holdTodayHTML(); }catch(e){ console.warn('hold banner failed', e); }
   try{ h += waLaunchHTML(); }catch(e){ console.warn('winter arc launch card failed', e); }
 
@@ -28702,6 +29317,8 @@ function notifItems(){
   try{ pwNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   // V5 stage 1: a Standard that is amber or red. Worked out here, never stored.
   try{ stdNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
+  // V5 stage 6: a watch that fired, and a coach's watch offer. Worked out here, never stored.
+  try{ watchNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   // Forecasts that settled, and a big picture waiting on his rating (2026-11-03).
   try{ fcNotifItems().forEach(function(i){ out.push(i); }); }catch(e){}
   // A pantry update from the family drop box, until he applies or ignores it.

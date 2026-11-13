@@ -2887,3 +2887,56 @@ stripped): the Selector card, an open row, the candidate list (49 px rows), a ru
 
 Not built: nothing new for cites (a trial request carries the ordinary `cite`), no chat tool for trials, and the
 technique cards the spec mentions beside a swap are stage 10's.
+
+### V5 stage 6: the Desk, expanded (2026-11-13, `v5g`)
+
+**An analyst's card on the Desk is derived when the Desk is drawn.** The spec said each analyst "posts a code-written
+card when its state changes". Posting would have meant writing to `S.agents.desk`, and stage 4's rule is that a reading is
+never stored: a stored card would lose to an older snapshot and could disagree with the Hub's tile. So
+`deskAnalystCards(anlPass(), anlStrips())` works the cards out each time: an analyst whose reading is flagged, or whose
+level changed inside the 14-day strip, gets a card with the day it changed; the rest are named in one line. KILO has no
+strip, so it has no "changed". The cards sit in their own part, "From the analysts, worked out by the app", above the
+coaches' board, "their read". The classes are `desk-anl` and `desk-an`, not `desk` and `desk-i`: six older tests count
+the coaches' items by those names, and they were right to.
+
+**Watches.** His ask was constant plateau monitoring with the app doing the measuring. A watch is
+`{series, lift?, op, thr, within}`: seven series the app can measure (`WATCH_SERIES`), below or above, a threshold
+inside the series' range, and how many readings in a row. `S.watches` is a history collection (`a|`) of immutable rows:
+a watch, a cancel row, and a row that turns a coach's offer down. Whether a watch fired is `watchEval()`, every time it
+is read: the first time `within` readings in a row sat on the wrong side, counting only readings dated on or after the
+day the watch was made. Without that last rule a watch made today on "bench under 210 for two sessions" would fire at
+once on two sessions from September. A reading is a session for e1RM (deload and HOME sessions are left out, as
+`e1rmSeries()` does), a completed Monday-to-Sunday week for bodyweight (3 weigh-ins, the Standards' own minimum) and
+sessions, a logged day before today for intake, a day of WHOOP history for recovery and sleep. A fired watch is pinned
+on the Desk and in the bell for 14 days, then it is done; it is one-shot. An open one that never fires ends after 90
+days. At most five are open. One that throws reads "broken" with a mark and a bell item: a watch that silently stopped
+would be the worst kind.
+
+**A watch exists only by his tap.** He makes one in a small form on the Desk, or accepts a coach's. A coach's offer is
+an ordinary Desk post carrying `watch`, validated at ingest by the same check (its own lane only, the lift resolved,
+out of range refused and never clamped) and re-checked by the tap. The offer is derived: a post with a spec that no
+row names as accepted (`src`) or turned down (`no`), for 14 days. A watch is not a fix: it changes nothing in his plan
+and never reaches `agValidateFix()`.
+
+**The paid switch.** The coaches' side adds words to calls that already run, so it is `watchKey`, paid, off: the watch
+part of the Desk spec line (480 to 557 characters per coach on his state), two more chart series (the fatigue index
+week by week, and hard sets a week summed over muscles), and one line to the owning coach for three nights after a
+watch fires. With it off the suite checks that every nightly prompt, reply spec and chat prompt is byte-identical, with
+and without a fired watch and a stored plan, and separately that no spec mentions a watch at all: the first comparison
+alone passed a mutant, because both sides of it carried the same mutation.
+
+**The Plan of Record, stored and shown.** `S.planRecord` (`o|`; the spec's `p|` was taken by PR history). A row is one
+write of one week's plan: at most three priorities, each `{standard, check, byDate}` with the check from the fixed
+`PLAN_CHECKS` (eight, each filed under one pillar) and the day inside the plan's Monday-to-Sunday week. The card words
+each check itself (`say`), so no number on it comes from a model; the coach's line is shown beside it as its words.
+Stage 7 writes and scores it.
+
+**Interventions were not built**, by his choice on 2026-11-11: a red Standard is free, and the brief leads with it.
+
+**Measured.** 117 new assertions; 98 mutants, each red (a 99th, the pillar check in `planPriOk()`, is implied by the
+check's own pillar and cannot be told apart). On his state in jsdom the Desk draws in about 50 ms and leaves `S`
+byte-identical; it shows three analyst cards (BRAVO not cleared yet, ALPHA squat slowing, JULIET under on 4 of 7 days),
+no watches, no plan, and his ten Desk posts. Checked in a real browser at 393 px and 320 px, on a seeded state with
+every part filled and on his real state with the keys stripped: nothing past the edge.
+
+Not built: the Wire, tension markers, a chat tool for watches, and a watch on anything outside the seven series.

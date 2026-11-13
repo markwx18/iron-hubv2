@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 4715 assertions, about 1 m 45 s. Must be
+**Test suite:** `node test_agents.js`. Currently 4832 assertions, about 1 m 45 s. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -167,6 +167,7 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | Agents, chat | `chatContext()`, `coachToolDefs()`, `coachValidateAction()`, `coachApplyProposal()` |
 | Selector and swap trials | `selState()` (one row per lift), `selScore()`, `selCandidates()`, `swapTrialOn()`, `swtView()`, `baseSplitObj()`, `swtCheck()`, `swtStartMine()`, `swtTrials()`, `swtDecide()`, `agSwapNeeds()`, `selContextLine()` |
 | Analysts and squads | `ANALYSTS`, `anlPass()` (the one read), `anlLeadStatus()`, `anlNums()`, `anlStrips()`, `anlSquadLine()`, `dosTargets()`, `hubSquadsHTML()` |
+| Desk, watches, Plan of Record | `hubDeskHTML()`, `deskPlusTopHTML()`, `deskAnalystCards()`, `WATCH_SERIES`, `watchSpecOk()`, `watchList()`, `watchEval()`, `watchAdd()`, `watchOffers()`, `watchFiredLine()`, `PLAN_CHECKS`, `planRowOk()`, `planFor()`, `planCardHTML()` |
 | Agents, extras | roundtable `agRoundtable()`, Desk `agValidateDesk()`, questions `qaDue()`, diagnosis `pdTargets()`, letter `agWriteLetter()`, brief `agRunBrief()` |
 | API | `aiSend()` (the one transport), `aiBody()`, `callClaudeWithData()`, `spendPreflight()`, `aiUsageNote()` |
 | Server and schedulers | `agForegroundCheck()`, `runnerTick()`, `agMaybeAutoRun()`, `agMaybeMorningBrief()` |
@@ -423,7 +424,7 @@ motion", and a fast-gain amber.
 
 **Rules every stage follows**
 - New history is a `SYNC_HISTORY` collection with immutable rows and its own key prefix. Taken:
-  `w n r l p x b m q f v k $ g y h s`.
+  `w n r l p x b m q f v k $ g y h s a o`.
 - Anything an analyst shows is worked out when read, never stored and never posted to the Desk.
 - A stage ends with: acorn, the suite at 0 failed, a mutant per new rule, `scripts/clock_run.js`,
   the build marker, the copy to `index.html`, this file and `UPDATE_LOG.md`, a commit and a
@@ -548,6 +549,31 @@ motion", and a fast-gain amber.
   prompt is byte-identical.
 - **A trial result leans toward the new lift, and says so** (`SWT_LEAN`). Never "proven".
 
+**Stage 6, Desk** (`ovOn('deskPlus')` and `ovOn('planRecord')`, free; the coaches' watch key is `ovOn('watchKey')`, paid, off)
+- **An analyst's card on the Desk is derived when the Desk is drawn** (`deskAnalystCards()`, from `anlPass()` and the
+  strips): a flagged reading, or a level that changed inside the strip. Never stored, never posted to `S.agents.desk`.
+- **A watch is a spec the app measures, and whether it fired is worked out when read** (`watchEval()`, `watchList()`).
+  `S.watches` (key `a|`) holds immutable rows: a watch, `{cancel}` removing one, `{no}` turning an offer down. A row that
+  fails `watchRowOk()` is ignored, never repaired. Nothing about a firing is stored.
+- **`watchSpecOk()` is the one shape check**, for a stored row, his form and a coach's offer: a series from
+  `WATCH_SERIES`, `below` or `above`, a threshold inside the series' range, a whole `within` from 1 to
+  `WATCH_WITHIN_MAX`. Out of range is refused, never clamped. A model's lift is resolved first (`watchSpecFrom()`).
+- **A watch never fires on history**: only readings dated on or after the day it was made count. A week is a completed
+  Monday-to-Sunday week, today's intake log is not a reading, a deload session is not a reading, WHOOP is its history.
+- **A watch exists only by his tap**: his form, or Accept on a coach's offer. An offer is a Desk post carrying a
+  validated spec, and the tap checks it again (`watchAdd()`). At most `WATCH_MAX_OPEN` open. A fired watch is one-shot.
+- **A watch changes nothing in his plan.** It is not a fix and never reaches `agValidateFix()`.
+- **A watch that cannot be read says so** (`broken`: a mark on the Desk and a bell item). Never quiet, never "fired".
+- **The coaches' side is one paid switch** (`watchKeyOn()`): the watch part of the Desk spec line, two more chart series
+  (`DESK_SERIES_MORE`), and the owner's line on the nights after a firing (`watchFiredLine()`, capped). Off, or with
+  nothing fired, every prompt and reply spec is byte-identical. Chat gets none of it.
+- **The Plan of Record is stored and shown; a verdict is never stored.** `S.planRecord` (key `o|`): immutable rows, the
+  newest valid row for a week stands, `{cancel}` withdraws one, and a row that fails `planRowOk()` is ignored. A
+  priority is `{standard, check, byDate}` with `check` from the fixed `PLAN_CHECKS`, filed under that check's own pillar.
+- **The Desk with the switch off is the coaches' board as it was** (`deskBoardHTML()`). On, if the top part throws, the
+  failure is said on screen and the board is still drawn. Filters and the watch form's draft are module-scoped.
+- Interventions are not a call (his choice): the brief already leads with a new red.
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
@@ -556,4 +582,5 @@ motion", and a fast-gain amber.
 | 3 Evidence: the cited library, source chips, held off until he checks ten | built 2026-11-12 (`v5d`) |
 | 4 Analysts: eight computed analysts, squads, the Hub in four lanes | built 2026-11-12 (`v5e`) |
 | 5 Selector: a computed fit score for every lift, swap trials as a third split in force, grounds for a permanent swap | built 2026-11-12 (`v5f`) |
-| 6 Desk · 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |
+| 6 Desk: analyst cards derived at render, watches measured when read, the Plan of Record stored and shown | built 2026-11-13 (`v5g`) |
+| 7 Accountability · 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |

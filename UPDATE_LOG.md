@@ -258,3 +258,20 @@ INDIA, the analyst that used to only list how hard your sets were, now scores ev
 - *Swap trials from DELTA*: when INDIA marks a lift, DELTA may propose a trial in its nightly report, choosing only from the app's own list of replacements. About 2 to 10 cents a month. You still tap Approve to start it.
 
 If you do not want any of this, turn off "Selector and swap trials" in the same place.
+
+## The Desk does more (Nov 13)
+
+The Desk (Hub, second tab) used to be only what the four coaches wrote. Now it is where the app's monitoring shows up too.
+
+- **Watches.** Tell the app a number to keep an eye on, and it tells you when it crosses. For example: "bench e1RM below 210 for 2 sessions in a row", or "weekly average bodyweight below 158 for 2 weeks". Tap **Add a watch** on the Desk, pick what to watch, below or above, the number, and how many readings in a row. The app checks it every time you open it, free, with no AI call.
+- **A watch only counts from the day you make it.** It never fires on old sessions. Deload sessions and home sessions do not count for a lift. A week only counts once it is over.
+- **When one fires** it is pinned at the top of the Desk and shows in the bell. A watch fires once; set it again if you still want it. You can have five open at a time.
+- **The analysts' readings are on the Desk as cards.** Any analyst whose reading is flagged, or changed in the last two weeks, gets a card: what it reads, since when, and what would change it. Right now that is BRAVO (bulk pace not cleared yet), ALPHA (squat slowing) and JULIET (under on calories 4 of 7 days). They are worked out by the app each time, never written by an AI.
+- **Needs your answer** is pinned on top: an agent's open question (you can answer it right there), a watch a coach proposed, a watch that fired.
+- **Filters.** Show one coach's things, or only coaches, or only analysts.
+- **Plan of Record.** A card for the week's priorities now sits at the top of the Desk and under the Standards on Today. It is empty until a plan is set.
+
+**One new paid switch, off** (Settings, V5 switches):
+- *Watch proposals and wider charts from the coaches*: lets a coach propose a watch on a Desk post (you still tap Accept), chart two more things (fatigue index and total hard sets a week), and hear about it the night one of its watches fires. About 3 to 10 cents a month.
+
+If you want the old Desk back, turn off "Desk: analyst cards and watches" in the same place.

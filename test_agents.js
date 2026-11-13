@@ -18421,6 +18421,406 @@ setTimeout(async () => {
     try { ev('renderHome(); renderNotif();'); } catch (e) {}
   }
 
+  // ===== V5 stage 6: the Desk, expanded (2026-11-13) =====
+  console.log('\n=== DESK, EXPANDED: ANALYST CARDS DERIVED AT RENDER, WATCHES AS IMMUTABLE ROWS MEASURED WHEN READ, OFFERS ONLY BY HIS TAP, THE PLAN OF RECORD STORED AND SHOWN (2026-11-13) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    ev("window.__6S = JSON.stringify(S); window.__6LS = localStorage.getItem(LS_KEY); window.__6Today = todayKey; window.__6PW = plateauWatch; window.__6PL = predLifts; window.__6Std = stdState;" +
+       "window.__6Save = save; window.__6Strips = anlStrips; window.__6WL = watchList; window.__6Confirm = window.confirm; window.__6Alert = window.alert; window.__6Nav = JSON.stringify({mode:MODE, main:activeMainTab, mem:navMemory, rev:activeReviewTab});");
+    /* The fixture. The day is NAMED (a Wednesday), never today's. Bench sessions sit on fixed days around it with reps
+       that wobble by fixed offsets, so "two in a row" has something real to trip on. */
+    ev(`window.__6day = '2026-12-16';
+      todayKey = function(){ return window.__6day; };
+      plateauWatch = function(){ return []; }; predLifts = function(){ return ['Barbell Bench Press']; };
+      stdState = function(k){ return window.__6std ? JSON.parse(JSON.stringify(window.__6std)) : window.__6Std(k); };
+      window.__6n = 0;
+      window.__6log = function(date, w, reps, extra){
+        var l = Object.assign({id:'d6l'+(window.__6n++), date:date, day:'D1', scheduled:'D1', entries:[{exercise:'Barbell Bench Press', sets:reps.map(function(r){ return {w:w, r:r}; })}]}, extra || {});
+        S.logs.push(l); return l;
+      };
+      window.__6b = function(ov){
+        S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+        S.scheduleMode = 'dow'; S.schedule = {0:'D1',1:'D1',2:'D1',3:'D1',4:'D1',5:'D1',6:'D1'}; S.settings.apiKey = 'sk-test';
+        S.split = {D1:{name:'Upper', exercises:[{name:'Barbell Bench Press', inc:5}, 'Cable Row', 'Hanging Leg Raise']}};
+        S.overhaul = Object.assign({selector:false}, ov || {}); S.logs = []; S.watches = []; S.planRecord = [];
+        agState().proposals = []; agState().desk = []; agState().questions = [];
+        window.__6day = '2026-12-16'; window.__6std = null; _stdSince = {}; _anlStrip = {key:null, days:[]};
+        deskFilter = {agent:'all', tier:'all'}; watchDraftReset(); deskAll = false;
+        // history before the watch: a strong run, so nothing here is under 210
+        window.__6log('2026-11-30', 190, [6, 5, 5]); window.__6log('2026-12-04', 190, [6, 6, 5]); window.__6log('2026-12-09', 175, [5, 5, 4]); window.__6log('2026-12-12', 190, [6, 5, 5]);
+      };
+      window.__6w = function(id){ return watchList().filter(function(v){ return v.id === id; })[0]; };
+      window.__6sv = 0; save = function(t){ if(t !== false) window.__6sv++; return window.__6Save.apply(this, arguments); };`);
+    const AG = ['zulu', 'charlie', 'delta', 'echo'];
+    const nightly = () => AG.map(id => ev("agBaseContext('" + id + "')")).concat(AG.map(id => ev("agJsonSpec('" + id + "')")));
+    const chats = () => AG.map(id => ev("chatContext('" + id + "')"));
+    const BENCH = {series:'e1rm', lift:'Barbell Bench Press', op:'below', thr:210, within:2};
+    const add = (spec, by, src) => J('watchAdd(' + JSON.stringify(spec) + ',' + JSON.stringify(by || 'me') + (src ? ',' + JSON.stringify(src) : '') + ')');
+    const setDay = k => ev('window.__6day = ' + JSON.stringify(k) + '; _stdSince = {};');
+    const DESK = "document.getElementById('desk')";
+
+    // ---- the switches ----
+    ev('__6b()');
+    ok('switches: the Desk part and the Plan of Record are free and on; watch proposals are paid and off', ev("ovOn('deskPlus')") === true && ev('OV.deskPlus.paid') === false && ev("ovOn('planRecord')") === true && ev('OV.planRecord.paid') === false &&
+      ev("ovOn('watchKey')") === false && ev('OV.watchKey.paid') === true && ev('watchKeyOn()') === false);
+    ok('the paid part also needs the Desk switch on', (() => { ev("S.overhaul = {deskPlus:false, watchKey:true};"); const r = ev('watchKeyOn()') === false; ev("S.overhaul = {watchKey:true};"); const r2 = ev('watchKeyOn()') === true; ev("S.overhaul = {selector:false};"); return r && r2; })());
+    ok('sync: watches and the Plan of Record are history collections with their own key prefixes', ev("SYNC_HISTORY.watches.key({id:'x'})") === 'a|x' && ev("SYNC_HISTORY.planRecord.key({id:'x'})") === 'o|x' &&
+      (() => { const pf = ev("Object.keys(SYNC_HISTORY).map(function(k){ return SYNC_HISTORY[k].key({id:'i', date:'d', exercise:'e', e1rm:1}).split('|')[0]; })"); return new Set(pf).size === pf.length; })() &&
+      Array.isArray(ev('DEFAULT_STATE.watches')) && Array.isArray(ev('DEFAULT_STATE.planRecord')));
+
+    // ---- the one shape check ----
+    ok('spec: a good one passes, and the threshold keeps one decimal', JSON.stringify(J('watchSpecOk(' + JSON.stringify(Object.assign({}, BENCH, {thr:210.26})) + ')')) === JSON.stringify({series:'e1rm', op:'below', thr:210.3, within:2, lift:'Barbell Bench Press'}));
+    const bad = [
+      ['a series outside the set', {series:'steps', op:'below', thr:150, within:1}],
+      ['an op outside the set', Object.assign({}, BENCH, {op:'under'})],
+      ['a threshold over the range (refused, not clamped)', Object.assign({}, BENCH, {thr:5000})],
+      ['a threshold under the range', {series:'bw', op:'below', thr:12, within:1}],
+      ['a threshold that is a string', Object.assign({}, BENCH, {thr:'210'})],
+      ['within of 0', Object.assign({}, BENCH, {within:0})],
+      ['within over the cap', Object.assign({}, BENCH, {within:7})],
+      ['within that is not whole', Object.assign({}, BENCH, {within:1.5})],
+      ['within that is a string', Object.assign({}, BENCH, {within:'2'})],
+      ['e1rm with no lift', {series:'e1rm', op:'below', thr:210, within:2}],
+      ['a lift on a series that has none', {series:'bw', op:'below', thr:158, within:1, lift:'Barbell Bench Press'}]];
+    bad.forEach(b => ok('spec refused: ' + b[0], ev('watchSpecOk(' + JSON.stringify(b[1]) + ')') === null));
+    ok('spec from a coach: its own lane only (ECHO cannot watch a lift, DELTA cannot watch bodyweight, ZULU may watch any)',
+      ev('watchSpecFrom(' + JSON.stringify({series:'e1rm', lift:'Barbell Bench Press', op:'below', threshold:210, within:2}) + ",'echo')") === null &&
+      ev('watchSpecFrom(' + JSON.stringify({series:'bw', op:'below', threshold:158, within:1}) + ",'delta')") === null &&
+      !!ev('watchSpecFrom(' + JSON.stringify({series:'bw', op:'below', threshold:158, within:1}) + ",'echo')") &&
+      !!ev('watchSpecFrom(' + JSON.stringify({series:'bw', op:'below', threshold:158, within:1}) + ",'zulu')"));
+    ok('spec from a coach: the lift is resolved to a real one, and an unknown lift is refused',
+      J('watchSpecFrom(' + JSON.stringify({series:'e1rm', lift:'barbell bench press', op:'below', threshold:210, within:2}) + ",'delta')").lift === 'Barbell Bench Press' &&
+      ev('watchSpecFrom(' + JSON.stringify({series:'e1rm', lift:'Zz Not A Lift', op:'below', threshold:210, within:2}) + ",'delta')") === null);
+
+    // ---- adding, the cap, removing ----
+    ev('window.__6sv = 0;');
+    const a1 = add(BENCH);
+    const r1 = J('S.watches[0]');
+    ok('add: his tap writes one row with a save(), dated the named day, his', a1.ok && ev('S.watches.length') === 1 && ev('window.__6sv') === 1 && r1.day === '2026-12-16' && r1.by === 'me' && r1.thr === 210 && typeof r1.t === 'number');
+    ok('add: the same watch twice is refused', add(BENCH).ok === false && /already watching/.test(add(BENCH).error) && ev('S.watches.length') === 1);
+    [200, 195, 190, 185].forEach(t => add(Object.assign({}, BENCH, {thr:t})));
+    ok('add: five may be open, and the sixth is refused with the reason', ev('watchList().filter(watchLive).length') === 5 && add(Object.assign({}, BENCH, {thr:180})).ok === false && /open already/.test(add(Object.assign({}, BENCH, {thr:180})).error) && ev('S.watches.length') === 5);
+    ok('add: with the Desk switch off nothing is added',
+      (() => { ev("S.overhaul.deskPlus = false;"); const r = add({series:'bw', op:'below', thr:158, within:1}); ev("delete S.overhaul.deskPlus;"); return r.ok === false && /switched off/.test(r.error); })());
+    const before = ev('JSON.stringify(S.watches.slice(0, 5))');
+    ev('window.__6sv = 0;');
+    ok('remove: a cancel row and a save(); the watch is gone from the list and its own row is untouched', ev('watchCancel(' + JSON.stringify(r1.id) + ')') === true && ev('window.__6sv') === 1 && ev('S.watches.length') === 6 &&
+      ev('S.watches[5].cancel') === r1.id && ev('JSON.stringify(S.watches.slice(0, 5))') === before && ev('watchList().length') === 4 && ev('watchList().filter(watchLive).length') === 4);
+    ok('add: an unknown lift is refused with the reason (four are open, so it is not the cap speaking)', /not one the app knows/.test(add(Object.assign({}, BENCH, {lift:'Zz Not A Lift', thr:181})).error || '') && ev('S.watches.length') === 6);
+    ev("S.watches.push({id:'bad1', by:'me', day:'2026-12-16', series:'e1rm', lift:'Barbell Bench Press', op:'below', thr:99999, within:2}); S.watches.push({id:'bad2', by:'nobody', day:'2026-12-16', series:'bw', op:'below', thr:158, within:1});");
+    ok('a row that fails the check is ignored, never repaired', ev('watchList().length') === 4 && ev("S.watches.filter(function(r){ return r.id === 'bad1'; })[0].thr") === 99999);
+
+    // ---- measured when read ----
+    ev('__6b()');
+    const w1 = add(BENCH).id;
+    ok('a watch never fires on history: sessions before the day it was made are not readings', J("__6w('" + w1 + "')").state === 'open' && J("__6w('" + w1 + "')").ev.n === 0 && /No reading since Dec 16 yet/.test(ev("watchProgress(__6w('" + w1 + "'))")));
+    ev("window.__6log('2026-12-16', 175, [5, 5, 4]);");   // 204.2
+    ok('one low session is one of two, not a firing', J("__6w('" + w1 + "')").state === 'open' && J("__6w('" + w1 + "')").ev.run === 1 && /1 of 2 in a row/.test(ev("watchProgress(__6w('" + w1 + "'))")));
+    setDay('2026-12-22');
+    ev("window.__6log('2026-12-18', 190, [6, 5, 5]); window.__6log('2026-12-20', 175, [5, 4, 4]);");   // 228 resets, then 204.2
+    ok('a good session between two low ones resets the run', J("__6w('" + w1 + "')").state === 'open' && J("__6w('" + w1 + "')").ev.run === 1);
+    ev("window.__6log('2026-12-21', 150, [5, 5, 5], {deload:true});");
+    ok('a deload session is not a reading', J("__6w('" + w1 + "')").state === 'open' && J("__6w('" + w1 + "')").ev.n === 3);
+    ev("window.__6log('2026-12-22', 170, [6, 5, 5]);");   // 204 again: two in a row
+    const f1 = J("__6w('" + w1 + "')");
+    ok('two low sessions in a row fire it, dated the second one', f1.state === 'fired' && f1.ev.firedOn === '2026-12-22' && /Fired Dec 22/.test(ev("watchProgress(__6w('" + w1 + "'))")));
+    ev("showMainTab('ops', 'desk');");
+    const sBefore = ev('JSON.stringify(S)');
+    ev("watchList(); watchNotifItems(); renderDesk();");
+    ok('fired is worked out when read: reading it, the bell and drawing the Desk leave S byte-identical', ev('JSON.stringify(S)') === sBefore && ev("S.watches.every(function(r){ return r.fired === undefined && r.state === undefined; })") === true);
+    ok('bell: a fired watch is an item that opens the Desk', J('watchNotifItems()').some(i => i.id === 'watch:' + w1 && /Watch fired/.test(i.title) && /Barbell Bench Press e1RM below 210 lb for 2 sessions in a row/.test(i.body) && /desk/.test(i.go)) &&
+      J('notifItems()').some(i => i.id === 'watch:' + w1));
+    ok('a fired watch no longer counts as open', ev('watchList().filter(watchLive).length') === 0);
+    setDay('2027-01-05');
+    ok('a fired watch is pinned for 14 days, then it is done', J("__6w('" + w1 + "')").state === 'fired' && (setDay('2027-01-06'), J("__6w('" + w1 + "')").state === 'done') && J('watchNotifItems()').length === 0);
+    ev('__6b()');
+    const w2 = add({series:'e1rm', lift:'Barbell Bench Press', op:'above', thr:400, within:1}).id;
+    setDay('2027-03-16');
+    ok('an open watch that never fired ends after 90 days', J("__6w('" + w2 + "')").state === 'open' && (setDay('2027-03-17'), J("__6w('" + w2 + "')").state === 'ended') && ev('watchList().filter(watchLive).length') === 0);
+    // weekly bodyweight: completed Monday-to-Sunday weeks with 3 weigh-ins; the week in progress is not a reading
+    ev('__6b()'); setDay('2026-12-09');
+    const w3 = add({series:'bw', op:'below', thr:158, within:2}).id;
+    ev("[['2026-12-07',157.2],['2026-12-09',157.6],['2026-12-11',157.9],['2026-12-14',157.0],['2026-12-15',157.4],['2026-12-17',156.8],['2026-12-21',156.0],['2026-12-22',156.2]].forEach(function(x){ S.weights.push({date:x[0], lbs:x[1]}); });");
+    setDay('2026-12-20');
+    ok('bodyweight: the week still in progress is not a reading (one completed week, not two)', J("__6w('" + w3 + "')").ev.n === 1 && J("__6w('" + w3 + "')").state === 'open');
+    setDay('2026-12-21');
+    ok('bodyweight: two completed weeks under the line fire it, dated the Sunday', J("__6w('" + w3 + "')").state === 'fired' && J("__6w('" + w3 + "')").ev.firedOn === '2026-12-20');
+    setDay('2026-12-28');
+    ok('bodyweight: a week with under 3 weigh-ins is not a reading', J("__6w('" + w3 + "')").ev.n === 2);
+    // intake: logged days before today
+    ev('__6b()');
+    const w4 = add({series:'cals', op:'below', thr:2600, within:2}).id;
+    ev("S.nutrition = [{date:'2026-12-15', cals:2000, protein:120}, {date:'2026-12-16', cals:2400, protein:150}, {date:'2026-12-17', cals:2500, protein:150}, {date:'2026-12-18', cals:1200, protein:60}];");
+    setDay('2026-12-18');
+    ok('intake: today\'s log is not finished, so it is not a reading; yesterday and the day before fire it', J("__6w('" + w4 + "')").ev.n === 2 && J("__6w('" + w4 + "')").ev.firedOn === '2026-12-17');
+    ev('__6b()');
+    const w5 = add({series:'sessions', op:'below', thr:4, within:1}).id;
+    setDay('2026-12-21');
+    ok('sessions a week: the completed week is counted from the logs', J("__6w('" + w5 + "')").ev.last.v === 0 && J("__6w('" + w5 + "')").state === 'fired' && (ev("window.__6log('2026-12-14', 190, [5]); window.__6log('2026-12-15', 190, [5]); window.__6log('2026-12-17', 190, [5]); window.__6log('2026-12-19', 190, [5]);"), J("__6w('" + w5 + "')").state === 'open'));
+    ev('__6b()');
+    const w6 = add({series:'recovery', op:'below', thr:40, within:2}).id;
+    ev("S.whoop = {history:[{date:'2026-12-14', recovery:20}, {date:'2026-12-16', recovery:35}, {date:'2026-12-17', recovery:38}]};");
+    setDay('2026-12-18');
+    ok('recovery: WHOOP history from the watch\'s day on', J("__6w('" + w6 + "')").ev.n === 2 && J("__6w('" + w6 + "')").ev.firedOn === '2026-12-17');
+    // a watch that cannot be read is a failure on screen, never quiet
+    ev("window.__6E = e1rmSeries; __6b();");
+    const w7 = add(BENCH).id;
+    ev("e1rmSeries = function(){ throw new Error('boom'); };");
+    ok('a watch that cannot be read says so: broken, in the bell, with a mark on the Desk, and never "fired"', J("__6w('" + w7 + "')").state === 'broken' && J('watchNotifItems()').some(i => i.id === 'watchbad:' + w7) &&
+      (ev("showMainTab('ops', 'desk'); renderDesk();"), /could not be read/.test(ev(DESK + ".querySelector('#deskWatch .desk-w-bad').textContent"))));
+    ev("e1rmSeries = window.__6E;");
+
+    // ---- a coach's offer: only with the paid switch, only a spec that passes, only by his tap ----
+    ev('__6b()');
+    const RAW = [{text:'Bench has slipped twice.', watch:{series:'e1rm', lift:'barbell bench press', op:'below', threshold:210, within:2}}];
+    const vOff = J('agValidateDesk(' + JSON.stringify(RAW) + ",'delta',[])");
+    ok('paid switch off: a "watch" in a reply is not read at all, and the note is kept', vOff.items.length === 1 && vOff.items[0].watch === undefined && vOff.items[0]._drop === undefined);
+    ev("S.overhaul.watchKey = true;");
+    const vOn = J('agValidateDesk(' + JSON.stringify(RAW) + ",'delta',[])");
+    ok('paid switch on: a watch that passes rides on the Desk item as a spec, the lift resolved', vOn.items.length === 1 && JSON.stringify(vOn.items[0].watch) === JSON.stringify({series:'e1rm', op:'below', thr:210, within:2, lift:'Barbell Bench Press'}));
+    const vBad = J('agValidateDesk(' + JSON.stringify([{text:'Weight is drifting.', watch:{series:'bw', op:'below', threshold:158, within:1}}, {text:'And this.', watch:{series:'e1rm', lift:'Barbell Bench Press', op:'below', threshold:9999, within:2}}]) + ",'delta',[])");
+    ok('a watch outside the coach\'s lane, or out of range, is dropped and named, and the note it came with is kept', vBad.items.length === 2 && vBad.items.every(i => i.watch === undefined && i._drop && i._drop.indexOf('watch') >= 0));
+    ev("agDeskIngest(agState(), 'delta', " + JSON.stringify(RAW) + ", []);");
+    const offId = ev('agState().desk[0].id');
+    ok('an offer is not a watch: nothing is watched until he accepts', ev('watchOffers().length') === 1 && ev('watchList().length') === 0 && ev('S.watches.length') === 0 &&
+      J('watchNotifItems()').some(i => i.id === 'watchoffer:' + offId && /DELTA proposes a watch/.test(i.title)));
+    ev("showMainTab('ops', 'desk'); renderDesk();");
+    ok('Desk: the offer is pinned under Needs your answer with Accept and Not now, the id in a data attribute', ev(DESK + ".querySelectorAll('#deskNeed .desk-n[data-kind=\"offer\"]').length") === 1 &&
+      ev(DESK + ".querySelectorAll('#deskNeed .desk-n[data-kind=\"offer\"] button[data-id=\"" + offId + "\"]').length") === 2 && /waiting on you/.test(ev(DESK + ".querySelector('#deskBoard').textContent")));
+    ev('window.__6sv = 0;');
+    ev(DESK + ".querySelector('#deskNeed .desk-n[data-kind=\"offer\"] .btn:not(.ghost)').click();");
+    const acc = J('S.watches[0]');
+    ok('Accept: his tap writes the row with a save(), owned by the coach and naming the post', ev('S.watches.length') === 1 && ev('window.__6sv') === 1 && acc.by === 'delta' && acc.src === offId && acc.lift === 'Barbell Bench Press' && ev('watchList()[0].owner') === 'delta');
+    ok('Accept: the offer is gone, the post reads accepted, and the watch is listed as DELTA\'s', ev('watchOffers().length') === 0 && ev(DESK + ".querySelector('#deskNeed')") === null && /accepted/.test(ev(DESK + ".querySelector('#deskBoard').textContent")) &&
+      /DELTA’s, since Dec 16/.test(ev(DESK + ".querySelector('#deskWatch').textContent")));
+    ev('__6b({watchKey:true})');
+    ev("agDeskIngest(agState(), 'delta', " + JSON.stringify(RAW) + ", []);");
+    const off2 = ev('agState().desk[0].id');
+    ev('window.__6sv = 0;');
+    ok('Not now: a row that turns the offer down, a save(), and nothing is watched', ev('watchDecline(' + JSON.stringify(off2) + ')') === true && ev('window.__6sv') === 1 && ev('S.watches[0].no') === off2 && ev('watchOffers().length') === 0 && ev('watchList().length') === 0 &&
+      (ev('renderDesk()'), /turned down/.test(ev(DESK + ".querySelector('#deskBoard').textContent"))));
+    ev('__6b({watchKey:true})');
+    ev("agDeskIngest(agState(), 'delta', " + JSON.stringify(RAW) + ", []); agState().desk[0].watch.thr = 99999;");
+    ok('the tap checks again: an offer whose stored spec no longer passes is not offered and cannot be accepted', ev('watchOffers().length') === 0 && J('watchAccept(' + JSON.stringify(ev('agState().desk[0].id')) + ')').ok === false && ev('S.watches.length') === 0);
+    ev('__6b({watchKey:true})');
+    ev("agDeskIngest(agState(), 'delta', " + JSON.stringify(RAW) + ", []);");
+    const off3 = ev('agState().desk[0].id');
+    [200, 195, 190, 185, 180].forEach(t => add(Object.assign({}, BENCH, {thr:t})));
+    ok('the cap holds for an offer too', J('watchAccept(' + JSON.stringify(off3) + ')').ok === false && ev('S.watches.length') === 5);
+    ev("S.watches = []; agState().desk[0].hid = 1;");
+    ok('a post he hid is no offer', ev('watchOffers().length') === 0);
+    ev("delete agState().desk[0].hid;");
+    setDay('2026-12-30');
+    ok('an offer waits 14 days', ev('watchOffers().length') === 1 && (setDay('2026-12-31'), ev('watchOffers().length') === 0));
+    ev('__6b({watchKey:true})');
+    ev("agDeskIngest(agState(), 'delta', " + JSON.stringify(RAW) + ", []); S.overhaul.watchKey = false;");
+    ok('an offer already made stays his to answer when the paid switch goes off', ev('watchOffers().length') === 1);
+
+    // ---- the prompts: byte-identical with the paid switch off ----
+    ev('__6b({deskPlus:false})');
+    const n0 = nightly(), c0 = chats();
+    ev('__6b()');
+    ok('paid switch off, nothing watched: every nightly prompt and reply spec is byte-identical to the Desk part being off', JSON.stringify(nightly()) === JSON.stringify(n0) && JSON.stringify(chats()) === JSON.stringify(c0));
+    ok('paid switch off: no reply spec offers a watch or says a word about one', nightly().every(t => !/"watch":/.test(t) && !/watch is optional/.test(t) && !/WATCHES THAT FIRED/.test(t)));
+    add(BENCH);
+    ev("window.__6log('2026-12-16', 175, [5, 5, 4]); window.__6log('2026-12-17', 170, [6, 5, 5]); S.planRecord.push({id:'p1', week:'2026-12-14', by:'me', day:'2026-12-14', at:1, pri:[{standard:'show', check:{type:'sessions', n:4}, byDate:'2026-12-20'}]});");
+    setDay('2026-12-17');
+    ev('__6keep = JSON.stringify({w:S.watches, l:S.logs, p:S.planRecord});');
+    ok('...the fixture really holds a fired watch and a plan', ev("watchList()[0].state") === 'fired' && !!ev('planNow()'));
+    ev("(function(){ var k = JSON.parse(__6keep); __6b({deskPlus:false}); S.logs = k.l; window.__6day = '2026-12-17'; })()");
+    const n1 = nightly(), c1 = chats();
+    ev("(function(){ var k = JSON.parse(__6keep); __6b(); S.logs = k.l; S.watches = k.w; S.planRecord = k.p; window.__6day = '2026-12-17'; })()");
+    ok('paid switch off, a watch fired and a plan stored: every nightly and chat prompt is still byte-identical', JSON.stringify(nightly()) === JSON.stringify(n1) && JSON.stringify(chats()) === JSON.stringify(c1));
+    ev("S.overhaul.watchKey = true;");
+    const n2 = nightly();
+    ok('paid switch on: only DELTA, the owner, is told its watch fired; the others\' context is unchanged', /WATCHES THAT FIRED/.test(n2[2]) && /Barbell Bench Press e1RM below 210 lb for 2 sessions in a row: fired/.test(n2[2]) &&
+      n2[0] === n1[0] && n2[1] === n1[1] && n2[3] === n1[3]);
+    ok('paid switch on: each coach\'s reply spec offers a watch in its own lane, and DELTA and ZULU the wider chart series', [4, 5, 6, 7].every(i => /"watch":\{"series":"/.test(n2[i]) && n2[i] !== n1[i]) &&
+      /"watch":\{"series":"e1rm\|recovery","lift"/.test(n2[6]) && /"watch":\{"series":"bw\|cals\|protein\|sleep","op"/.test(n2[7]) && /"chart":\{"series":"e1rm\|sets\|recovery\|fatigue\|allsets"/.test(n2[6]) && !/fatigue/.test(n1[6]));
+    ok('paid switch on: chat prompts do not change', JSON.stringify(chats()) === JSON.stringify(c1));
+    setDay('2026-12-20');
+    ok('the coach is told for 3 nights, then the line is gone', /WATCHES THAT FIRED/.test(ev("agBaseContext('delta')")) && (setDay('2026-12-21'), !/WATCHES THAT FIRED/.test(ev("agBaseContext('delta')"))) && ev("watchFiredLine('delta')") === '');
+    setDay('2026-12-17');
+    ev("S.watches = []; for(var i = 0; i < 5; i++){ S.watches.push({id:'cw'+i, by:'delta', day:'2026-12-16', at:i, series:'e1rm', lift:'Barbell Bench Press', op:'below', thr:206 + i, within:1}); }");
+    ok('that line is capped', ev("watchFiredLine('delta').length") <= ev('WATCH_CTX_MAX') + 1 && ev("watchList().filter(function(v){ return v.state === 'fired'; }).length") === 5);
+    ok('his own watch goes to the coach whose lane the series is in', ev("watchFiredLine('echo')") === '' && (ev("S.watches = [{id:'mw', by:'me', day:'2026-12-16', at:1, series:'e1rm', lift:'Barbell Bench Press', op:'below', thr:210, within:1}];"), /fired/.test(ev("watchFiredLine('delta')"))) && ev("watchFiredLine('zulu')") === '');
+
+    // ---- more chart series, drawn by the app ----
+    ev('__6b()');
+    ok('series: with the paid switch off the coaches are offered exactly the old lists', ev("deskSeriesFor('zulu').join()") === 'e1rm,sets,bw,cals,protein,recovery,hrv,sleep,strain,sessions' && ev("deskSeriesFor('delta').join()") === 'e1rm,sets,recovery');
+    const CH = [{text:'Load has crept up.', chart:{series:'allsets', weeks:6}}];
+    ok('series: a chart on a wider series is dropped with the switch off and kept with it on', J('agValidateDesk(' + JSON.stringify(CH) + ",'delta',[])").items[0].chart === undefined &&
+      (ev("S.overhaul.watchKey = true;"), J('agValidateDesk(' + JSON.stringify(CH) + ",'delta',[])").items[0].chart.series === 'allsets') && J('agValidateDesk(' + JSON.stringify(CH) + ",'echo',[])").items[0].chart === undefined);
+    setDay('2026-12-16');
+    const pts = J("deskSeriesPts({series:'allsets', weeks:3})");
+    ok('series: hard sets a week is counted from his logs, completed weeks only', pts.length === 3 && pts[0].v === 0 && pts[1].date === '2026-11-30' && pts[1].v > 0 && pts[1].v === ev("(function(){ var v = weeklyVolumeByGroup('2026-11-30', '2026-12-06'); return MUSCLE_GROUPS.reduce(function(s, g){ return s + (v[g] || 0); }, 0); })()") && !pts.some(p => p.date === '2026-12-14'), JSON.stringify(pts));
+    ok('series: a stored chart on a wider series still draws after the switch goes off', (ev("S.overhaul.watchKey = false;"), /hard sets a week, summed over muscles/.test(ev("deskItemHTML({id:'x1', agent:'delta', text:'t', day:'2026-12-16', chart:{series:'allsets', weeks:3}}, false)"))));
+
+    // ---- analyst cards: derived when the Desk is drawn, never stored ----
+    ev('__6b()');
+    const QUIET = [
+      {pillar:'bulk', label:'Bulk pace', lvl:'ok', rate:0.7, why:'Last week: +0.70 lb/week (in the band).', consequence:'', clearsWhen:''},
+      {pillar:'show', label:'Showing up', lvl:'ok', why:'No scheduled day missed without a reason in the last 7 days.', consequence:'', clearsWhen:'', misses:[], excused:[]},
+      {pillar:'lifts', label:'Lifts', lvl:'ok', why:'1 main lift on the plateau watch, none flagged.', consequence:'', clearsWhen:'', lifts:[]},
+      {pillar:'intake', label:'Intake', lvl:'ok', why:'At or over target on 5 of 6 logged days in the last 7.', consequence:'', clearsWhen:'', logged:6, under:1},
+      {pillar:'recovery', label:'Recovery', lvl:'ok', why:'Recovery within 15 points of your usual (60%) on the days that count.', consequence:'', clearsWhen:'', days:6, under:0}];
+    const stdWith = (p, patch) => QUIET.map(r => r.pillar === p ? Object.assign({}, r, patch) : r);
+    // 13 past days: BRAVO was fine until Dec 10 and flagged from Dec 11; JULIET was flagged until Dec 13 and is fine now; the rest never moved.
+    ev(`window.__6strips = (function(){ var out = []; for(var i = 13; i >= 1; i--){ var d = mesoAddDays('2026-12-16', -i);
+        out.push({d:d, lv:{hotel:'ok', golf:'ok', alpha:'ok', foxtrot:anlFoxtrot('2026-12-16').lvl, india:anlIndia('2026-12-16').lvl, bravo: d >= '2026-12-11' ? 'red' : 'ok', juliet: d <= '2026-12-13' ? 'amber' : 'ok'}}); } return out; })();
+      anlStrips = function(){ return window.__6strips; };`);
+    w.__6std = stdWith('bulk', {lvl:'red', kind:'loss', rate:-0.4, since:'2026-12-11', why:'Lost weight last week (−0.40 lb/week): 2 losing weeks since it last cleared.', consequence:'', clearsWhen:'Two weeks in a row at or above 0.5 lb/week.'});
+    ev("showMainTab('ops', 'desk');");
+    const deskBefore = ev('JSON.stringify(agState().desk)'), sB = ev('JSON.stringify(S)');
+    const cards = J('deskAnalystCards(anlPass(), anlStrips())');
+    ok('cards: a flagged analyst and one whose level changed inside the strip get a card; the rest are named in one line',
+      cards.cards.map(c => c.id).join() === 'bravo,juliet' && cards.cards[0].since === '2026-12-11' && cards.cards[1].since === '2026-12-14' && cards.steady.indexOf('hotel') >= 0 && cards.steady.indexOf('kilo') >= 0, JSON.stringify(cards.cards.map(c => [c.id, c.since])) + ' ' + cards.steady.join());
+    ev("showMainTab('ops', 'desk'); renderDesk();");
+    const anText = ev(DESK + ".querySelector('#deskAnalysts').textContent");
+    ok('Desk: the cards carry the callsign, the lead, the reading and what would change it, apart from the coaches\' board', ev(DESK + ".querySelectorAll('#deskAnalysts .desk-an').length") === 2 && /BRAVO · analyst, ECHO/.test(anText) && /changed Dec 11/.test(anText) &&
+      /Lost weight last week/.test(anText) && /What would change it: Two weeks in a row/.test(anText) && /Unchanged for 14 days, nothing flagged: [A-Z, ]*HOTEL/.test(anText) && ev(DESK + ".querySelectorAll('#deskBoard .desk-an').length") === 0);
+    ok('cards are never stored and never posted: the Desk\'s stored items and S are byte-identical after drawing them', ev('JSON.stringify(agState().desk)') === deskBefore && ev('JSON.stringify(S)') === sB);
+    ok('a card is a colour, an icon and a reason: it never names its level', !/\b(amber|red|green|off standard|slipping)\b/i.test(anText) && ev(DESK + ".querySelector('#deskAnalysts .desk-an[data-an=\"bravo\"] .sq-st i').textContent") === ev('STD_ICON.red'));
+    ok('a card takes its level from the same read as the Hub\'s tile', ev("deskAnalystCards(anlPass(), anlStrips()).cards[0].r.lvl") === ev("anlState().bravo.lvl") && ev("anlState().bravo.lvl") === 'red');
+    // flagged for longer than the strip: still a card, dated from the Standard's own "since"
+    w.__6std = stdWith('bulk', {lvl:'red', kind:'loss', rate:-0.4, since:'2026-11-30', why:'Lost weight last week.', consequence:'', clearsWhen:'Two weeks in a row at or above 0.5 lb/week.'});
+    ev("window.__6strips.forEach(function(d){ d.lv.bravo = 'red'; d.lv.juliet = 'ok'; }); renderDesk();");
+    ok('a reading flagged for longer than the strip still has its card, dated from the Standard\'s own since', ev(DESK + ".querySelectorAll('#deskAnalysts .desk-an').length") === 1 && /since Nov 30/.test(ev(DESK + ".querySelector('#deskAnalysts .desk-an[data-an=\"bravo\"]').textContent")));
+    w.__6std = QUIET;
+    ev("window.__6strips.forEach(function(d){ d.lv.bravo = 'ok'; d.lv.juliet = 'ok'; }); renderDesk();");
+    ok('nothing flagged and nothing changed: no card, only the one line', ev(DESK + ".querySelectorAll('#deskAnalysts .desk-an').length") === 0 && /Unchanged for 14 days/.test(ev(DESK + ".querySelector('#deskAnalysts').textContent")));
+    ev("S.overhaul.analysts = false; renderDesk();");
+    ok('Analysts switched off: no analyst part on the Desk', ev(DESK + ".querySelector('#deskAnalysts')") === null && ev(DESK + ".querySelector('#deskWatch')") !== null);
+    ev("delete S.overhaul.analysts;");
+
+    // ---- filters, by agent and by tier, kept across a repaint ----
+    w.__6std = stdWith('bulk', {lvl:'red', kind:'loss', rate:-0.4, since:'2026-12-11', why:'Lost weight last week.', consequence:'', clearsWhen:'Two weeks in a row at or above 0.5 lb/week.'});
+    ev("window.__6strips.forEach(function(d){ d.lv.alpha = d.d >= '2026-12-12' ? 'amber' : 'ok'; });");
+    w.__6std = w.__6std.map(r => r.pillar === 'lifts' ? Object.assign({}, r, {lvl:'amber', since:'2026-12-12', why:'Barbell Bench Press: slowing.', clearsWhen:'The watch reads it on track.', lifts:[{lift:'Barbell Bench Press', lvl:'amber', word:'slowing'}]}) : r);
+    ev("agState().desk = [{id:'dk1', agent:'delta', text:'Bench note.', at:'2026-12-15T21:00:00.000Z', day:'2026-12-15'}, {id:'dk2', agent:'echo', text:'Weight note.', at:'2026-12-15T21:01:00.000Z', day:'2026-12-15'}];");
+    add(BENCH); add({series:'bw', op:'below', thr:158, within:1});
+    ev('renderDesk();');
+    ok('filter: everything shows both coaches\' posts, both analysts and both watches', ev(DESK + ".querySelectorAll('#deskBoard .desk-i').length") === 2 && ev(DESK + ".querySelectorAll('#deskAnalysts .desk-an').length") === 2 && ev(DESK + ".querySelectorAll('#deskWatch .desk-w').length") === 2);
+    ev(DESK + ".querySelector('#deskFilters .desk-f[onclick*=\"echo\"]').click();");
+    ok('filter by agent: ECHO\'s post, ECHO\'s analysts and the watch in ECHO\'s lane, nothing of DELTA\'s', ev(DESK + ".querySelectorAll('#deskBoard .desk-i').length") === 1 && /Weight note/.test(ev(DESK + ".querySelector('#deskBoard').textContent")) &&
+      ev(DESK + ".querySelectorAll('#deskAnalysts .desk-an').length") === 1 && ev(DESK + ".querySelector('#deskAnalysts .desk-an').getAttribute('data-an')") === 'bravo' && ev(DESK + ".querySelectorAll('#deskWatch .desk-w').length") === 1 && /bodyweight/.test(ev(DESK + ".querySelector('#deskWatch .desk-w').textContent")));
+    ev('renderDesk();');
+    ok('filter: it is module-scoped, so a repaint keeps it', ev('deskFilter.agent') === 'echo' && ev(DESK + ".querySelectorAll('#deskBoard .desk-i').length") === 1 && ev(DESK + ".querySelector('#deskFilters .desk-f.on[onclick*=\"echo\"]')") !== null);
+    ev("deskFilterSet('agent', 'all'); deskFilterSet('tier', 'coaches');");
+    ok('filter by tier: Coaches hides the analysts\' cards', ev(DESK + ".querySelector('#deskAnalysts')") === null && ev(DESK + ".querySelectorAll('#deskBoard .desk-i').length") === 2);
+    ev("deskFilterSet('tier', 'analysts');");
+    ok('filter by tier: Analysts hides the coaches\' board', ev(DESK + ".querySelector('#deskBoard')") === null && ev(DESK + ".querySelectorAll('#deskAnalysts .desk-an').length") === 2);
+    ev("deskFilterSet('tier', 'bogus'); deskFilterSet('agent', 'constructor');");
+    ok('filter: a value outside the set changes nothing', ev('deskFilter.tier') === 'analysts' && ev('deskFilter.agent') === 'all');
+    ev("deskFilterSet('tier', 'all');");
+
+    // ---- needs your answer ----
+    ev("agState().questions = [{id:'q6', agent:'echo', q:'Is the school week changing your lunch?', why:'So I can plan around it.', choices:['Yes', 'No'], at:'2026-12-16T02:00:00.000Z', day:'2026-12-16'}]; renderDesk();");
+    ok('an open question is pinned on top with its choices', ev(DESK + ".querySelectorAll('#deskNeed .desk-n[data-kind=\"qa\"] .lv-chip').length") === 2 && /ECHO asks/.test(ev(DESK + ".querySelector('#deskNeed').textContent")) &&
+      ev(DESK + ".querySelector('#deskNeed').compareDocumentPosition(" + DESK + ".querySelector('#deskWatch')) & 4") === 4);
+    ev(DESK + ".querySelector('#deskNeed .desk-n[data-kind=\"qa\"] .lv-chip').click();");
+    ok('tapping a choice there answers it, and the Desk repaints without it', ev("agState().questions[0].ans.choice") === 'Yes' && ev(DESK + ".querySelector('#deskNeed .desk-n[data-kind=\"qa\"]')") === null);
+    ev("window.__6log('2026-12-16', 175, [5, 5, 4]); window.__6log('2026-12-17', 170, [6, 5, 5]);"); setDay('2026-12-17');
+    ev('renderDesk();');
+    const firedId = ev("watchList().filter(function(v){ return v.state === 'fired'; })[0].id");
+    ok('a fired watch is pinned on top and has left the Watching list', ev(DESK + ".querySelectorAll('#deskNeed .desk-n[data-kind=\"fired\"]').length") === 1 && ev(DESK + ".querySelectorAll('#deskWatch .desk-w').length") === 1 && /Watching · 1 of 5/.test(ev(DESK + ".textContent")));
+    ev("window.__6cf = 0; window.confirm = function(){ window.__6cf++; return false; }; window.__6sv = 0;");
+    ev(DESK + ".querySelector('#deskNeed .desk-n[data-kind=\"fired\"] .btn').click();");
+    ok('Clear on a fired watch is one tap: a cancel row, a save(), no question asked', ev('window.__6cf') === 0 && ev('window.__6sv') === 1 && ev("S.watches.some(function(r){ return r.cancel === " + JSON.stringify(firedId) + "; })") === true && ev(DESK + ".querySelector('#deskNeed')") === null);
+    ev(DESK + ".querySelector('#deskWatch .desk-w .btn').click();");
+    ok('Remove on an open watch asks first, and saying no removes nothing', ev('window.__6cf') === 1 && ev('watchList().filter(watchLive).length') === 1);
+    ev("window.confirm = function(){ return true; };");
+
+    // ---- his own form ----
+    ev('__6b(); renderDesk();');
+    ev(DESK + ".querySelector('#deskWatch .btn').click();");
+    ok('form: Add a watch opens it, with the lifts of the split in force and no bodyweight lift', ev(DESK + ".querySelector('#watchForm')") !== null && ev("Array.prototype.map.call(document.querySelectorAll('#watchLift option'), function(o){ return o.value; }).join()") === 'Barbell Bench Press,Cable Row');
+    ev("var el = document.getElementById('watchThr'); el.value = '210'; el.oninput(); renderDesk();");
+    ok('form: what he typed survives a repaint (the draft is module-scoped)', ev("document.getElementById('watchThr').value") === '210' && ev('watchDraft.open') === true);
+    ev("document.getElementById('watchThr').value = ''; watchDraft.thr = ''; window.__6sv = 0;");
+    ev(DESK + ".querySelector('#watchForm .btn:not(.ghost)').click();");
+    ok('form: an empty number is refused in the form, with a mark, and nothing is saved', ev('S.watches.length') === 0 && ev('window.__6sv') === 0 && /✖/.test(ev("document.getElementById('watchErr').textContent")) && ev('watchDraft.open') === true);
+    ev("document.getElementById('watchThr').value = '210'; document.getElementById('watchWithin').value = '2';");
+    ev(DESK + ".querySelector('#watchForm .btn:not(.ghost)').click();");
+    ok('form: Watch it saves his watch and closes the form', ev('S.watches.length') === 1 && ev('S.watches[0].by') === 'me' && ev('S.watches[0].thr') === 210 && ev('S.watches[0].within') === 2 && ev('S.watches[0].lift') === 'Barbell Bench Press' && ev('watchDraft.open') === false &&
+      ev(DESK + ".querySelectorAll('#deskWatch .desk-w').length") === 1);
+
+    // ---- the Desk with the switch off, and a failure that is not hidden ----
+    ev("window.__6log('2026-12-16', 175, [5, 5, 4]); window.__6log('2026-12-16', 170, [6, 5, 5]);");
+    ev("agState().desk = [{id:'dk1', agent:'delta', text:'Bench note.', at:'2026-12-15T21:00:00.000Z', day:'2026-12-15'}, {id:'dk9', agent:'delta', text:'Watch this.', at:'2026-12-15T21:02:00.000Z', day:'2026-12-15', watch:{series:'e1rm', lift:'Barbell Bench Press', op:'below', thr:200, within:2}}];");
+    ok('...before the switch goes off there is a fired watch and an offer, both in the bell', ev("watchList()[0].state") === 'fired' && ev('watchOffers().length') === 1 && J('watchNotifItems()').length === 2);
+    ev("S.overhaul.deskPlus = false; renderDesk();");
+    ok('Desk switch off: the board exactly as it was, with no watches, cards or filters, and no bell items', ev(DESK + ".querySelector('#deskWatch')") === null && ev(DESK + ".querySelector('#deskFilters')") === null && ev(DESK + ".querySelector('#deskAnalysts')") === null &&
+      /Their read, not the app’s numbers/.test(ev(DESK + ".querySelector('.desk-intro').textContent")) && ev(DESK + ".querySelectorAll('.desk-i').length") === 2 && !/Proposes a watch/.test(ev(DESK + ".textContent")) && J('watchNotifItems()').length === 0 && ev('watchOffers().length') === 0);
+    ev("delete S.overhaul.deskPlus; watchList = function(){ throw new Error('boom'); }; renderDesk();");
+    ok('if the top part cannot be drawn it says so on screen, and the coaches\' board is still there', /could not be drawn/.test(ev(DESK + ".querySelector('#deskTopErr').textContent")) && ev(DESK + ".querySelectorAll('#deskBoard .desk-i').length") === 2);
+    ev("watchList = window.__6WL;");
+
+    // ---- sync: a watch written after the snapshot survives the pull ----
+    ev('__6b()');
+    ev("window.__6snap = JSON.parse(JSON.stringify(S)); window.__6snap.meta = {changedAt:Date.now() - 60000};");
+    const wsync = add(BENCH).id;
+    ev("applyPulled(window.__6snap, Date.now() - 30000);");
+    ok('sync: a watch made on this device after the snapshot was exported is not lost to the pull', ev('S.watches.length') === 1 && ev('S.watches[0].id') === wsync);
+
+    // ---- the Plan of Record: stored and shown ----
+    ev('__6b()');
+    const P = {id:'pr1', week:'2026-12-14', by:'zulu', day:'2026-12-13', at:10, pri:[
+      {standard:'show', check:{type:'sessions', n:4}, byDate:'2026-12-20', text:'Four sessions <b>this</b> week.'},
+      {standard:'bulk', check:{type:'bwUp', lb:0.5}, byDate:'2026-12-20'},
+      {standard:'lifts', check:{type:'topSet', lift:'Barbell Bench Press'}, byDate:'2026-12-18'}]};
+    const rowOk = r => ev('planRowOk(' + JSON.stringify(r) + ')');
+    const mod = f => { const c = JSON.parse(JSON.stringify(P)); f(c); return c; };
+    ok('plan: a row of three priorities, each a pillar, a check from the fixed set and a day in its week, passes', rowOk(P) === true);
+    [['a week that is not a Monday', c => { c.week = '2026-12-15'; }],
+     ['a check outside the fixed set', c => { c.pri[0].check = {type:'steps', n:8000}; }],
+     ['a check filed under another pillar', c => { c.pri[0].standard = 'intake'; }],
+     ['a count outside its range', c => { c.pri[0].check.n = 9; }],
+     ['a count that is a string', c => { c.pri[0].check.n = '4'; }],
+     ['a bodyweight gain above the band\'s top', c => { c.pri[1].check.lb = 2; }],
+     ['a day outside the plan\'s week', c => { c.pri[0].byDate = '2026-12-21'; }],
+     ['a fourth priority', c => { c.pri.push({standard:'intake', check:{type:'calDays', n:5}, byDate:'2026-12-20'}); }],
+     ['no priorities', c => { c.pri = []; }],
+     ['a writer that is neither ZULU nor him', c => { c.by = 'delta'; }],
+     ['a pillar that does not exist', c => { c.pri[0].standard = 'sleep'; }],
+     ['text over the limit', c => { c.pri[0].text = new Array(160).join('x'); }]
+    ].forEach(b => ok('plan row refused: ' + b[0], rowOk(mod(b[1])) === false));
+    ev('S.planRecord = [' + JSON.stringify(P) + '];');
+    ok('plan: the plan for a week is read from its row, and another week has none', ev("planFor('2026-12-14').id") === 'pr1' && ev("planFor('2026-12-07')") === null && ev('planNow().id') === 'pr1');
+    ev('S.planRecord.push(' + JSON.stringify(mod(c => { c.id = 'pr2'; c.at = 20; c.by = 'me'; c.pri = [c.pri[0]]; delete c.pri[0].text; })) + ');');
+    ok('plan: the newest valid row for the week wins', ev('planNow().id') === 'pr2');
+    ev('S.planRecord.push(' + JSON.stringify(mod(c => { c.id = 'pr3'; c.at = 30; c.pri[0].check = {type:'steps'}; })) + ');');
+    ok('plan: a newer row that fails the check is ignored, never repaired, and the last good one stands', ev('planNow().id') === 'pr2' && ev("S.planRecord[2].pri[0].check.type") === 'steps');
+    ev("S.planRecord.push({id:'pc1', cancel:'pr2', week:'2026-12-14', at:40});");
+    ok('plan: withdrawing a row is a row, and the one before it stands again', ev('planNow().id') === 'pr1' && ev('S.planRecord.length') === 4);
+    ev("showMainTab('home'); showMainTab('ops', 'desk');");
+    const sP = ev('JSON.stringify(S)');
+    ev("renderDesk();");
+    const pc = ev(DESK + ".querySelector('#planCardDesk').innerHTML");
+    ok('Desk: the plan leads, each priority with its pillar, the check in the app\'s own words and its day', ev(DESK + ".querySelectorAll('#planCardDesk .plan-p').length") === 3 && /Showing up/.test(pc) && /4 sessions logged/.test(pc) && /by Dec 20/.test(pc) &&
+      /Bodyweight up at least 0\.5 lb on the week/.test(pc) && /Barbell Bench Press: a set at the weight the app called/.test(pc) && /week of Dec 14 · ZULU/.test(pc) &&
+      ev(DESK + ".querySelector('#planCardDesk').compareDocumentPosition(" + DESK + ".querySelector('#deskWatch')) & 4") === 4);
+    ok('Desk: the coach\'s line is escaped', /Four sessions &lt;b&gt;this&lt;\/b&gt; week\./.test(pc));
+    ev("showMainTab('home'); renderHome();");
+    ok('Today: the plan sits right under the Standards, and drawing it leaves S byte-identical', ev("document.querySelectorAll('#home #planCard .plan-p').length") === 3 && ev('JSON.stringify(S)') === sP &&
+      (ev("document.querySelector('#home .std-card')") === null || ev("document.querySelector('#home .std-card').compareDocumentPosition(document.querySelector('#home #planCard')) & 4") === 4));
+    setDay('2026-12-21');
+    ev("renderHome(); showMainTab('ops', 'desk'); renderDesk();");
+    ok('a week with no plan: Today shows no card, and the Desk says there is none', ev("document.querySelector('#home #planCard')") === null && /No plan for this week/.test(ev(DESK + ".querySelector('#planCardDesk').textContent")));
+    setDay('2026-12-16');
+    ev("S.overhaul.planRecord = false; renderHome(); renderDesk();");
+    ok('Plan of Record switched off: no card anywhere and no plan in force', ev("document.querySelector('#home #planCard')") === null && ev(DESK + ".querySelector('#planCardDesk')") === null && ev('planNow()') === null);
+  } catch (e) {
+    ok('desk expansion section', false, e.stack);
+  } finally {
+    ev("todayKey = window.__6Today; plateauWatch = window.__6PW; predLifts = window.__6PL; stdState = window.__6Std; save = window.__6Save; anlStrips = window.__6Strips; watchList = window.__6WL; window.confirm = window.__6Confirm; window.alert = window.__6Alert;" +
+       "if(window.__6E) e1rmSeries = window.__6E; _stdSince = {}; _anlStrip = {key:null, days:[]}; deskFilter = {agent:'all', tier:'all'}; watchDraftReset(); S = JSON.parse(window.__6S);" +
+       "if(window.__6LS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__6LS);" +
+       "(function(){ var n = JSON.parse(window.__6Nav); try{ setMode(n.mode); showMainTab(n.main); }catch(e){} })();" +
+       "['__6S','__6LS','__6Today','__6PW','__6PL','__6Std','__6Save','__6Strips','__6WL','__6Confirm','__6Alert','__6Nav','__6day','__6n','__6log','__6b','__6w','__6sv','__6std','__6keep','__6strips','__6E','__6snap','__6cf'].forEach(function(k){ try{ delete window[k]; }catch(e){} });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);
