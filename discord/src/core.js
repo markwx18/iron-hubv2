@@ -320,6 +320,85 @@ export function diffAlerts(data, prevSeen) {
   return { init: false, cur, channels };
 }
 
+/* ---------- V5 stage 11: /ironhub standards, desk, plan, away ----------
+   All four read ONLY the app's own snapshot (discord_view.json, built by discordView() in the app). The Worker works
+   none of it out: a Standard, a verdict or a watch computed a second time here could quietly disagree with the app,
+   which is the bulkRate() lesson the view exists for. A section the app has switched off is absent from the
+   snapshot, and the reply says so rather than showing an empty card as a clean bill. A status is its colour plus an
+   icon and a word, never the colour's name. Every string from the snapshot goes through safe(): coach posts and
+   reasons are model or user text. */
+const LVL_COLOR = { red: COLORS.red, amber: 0xE9B44C, ok: COLORS.cyan, held: COLORS.dim, nodata: COLORS.dim };
+const LVL_RANK = { red: 2, amber: 1 };
+function worstColor(lvls) {
+  let w = null;
+  lvls.forEach((l) => { if ((LVL_RANK[l] || 0) > (LVL_RANK[w] || 0)) w = l; });
+  return w ? LVL_COLOR[w] : (lvls.some((l) => l === 'ok') ? COLORS.cyan : COLORS.dim);
+}
+function absentNote(view, nowMs, what) {
+  if (!view || !view.generatedAt) return snapshotNote(view, nowMs);
+  return what + ' is not in the snapshot: it is switched off in the app, or the app has not synced since the update. ' + snapshotNote(view, nowMs);
+}
+const field = (name, value, inline) => ({ name: clip(name, LIM.fieldName), value: clip(value || '—', LIM.fieldValue), inline: !!inline });
+
+export function standardsMessage(view, nowMs) {
+  const s = view && view.standards;
+  if (!s || !Array.isArray(s.rows) || !s.rows.length) return { embeds: [{ title: 'Standards', description: absentNote(view, nowMs, 'The Standards card'), color: COLORS.dim }] };
+  const fields = s.rows.slice(0, 10).map((r) => field((r.icon || '') + ' ' + safe(r.label) + ' · ' + safe(r.word),
+    [r.why, r.motion ? 'Plan in motion: ' + r.motion : '', r.held ? 'Held until ' + r.held : '', r.clears ? 'Clears when: ' + r.clears : ''].filter(Boolean).map(safe).join('\n')));
+  return { embeds: [{ title: 'Standards', color: worstColor(s.rows.map((r) => r.lvl)), fields, description: snapshotNote(view, nowMs), footer: { text: 'Worked out by the app from your data. Change anything in the app.' } }] };
+}
+
+export function deskMessage(view, nowMs) {
+  const d = view && view.desk;
+  if (!d) return { embeds: [{ title: 'Desk', description: absentNote(view, nowMs, 'The Desk'), color: COLORS.dim }] };
+  const embeds = [];
+  const an = Array.isArray(d.analysts) ? d.analysts : [];
+  embeds.push({
+    title: 'Desk — analysts', color: worstColor(an.map((a) => a.lvl)),
+    description: an.length ? clip(an.map((a) => (a.icon || '') + ' **' + safe(a.name) + '** · ' + safe(a.word) + (a.since ? ' (since ' + safe(a.since) + ')' : '') + (a.line ? '\n' + safe(a.line) : '')).join('\n'), LIM.desc)
+                           : 'Nothing flagged and nothing changed in the last two weeks.' + (d.steady ? ' ' + d.steady + ' analysts steady.' : ''),
+  });
+  const w = Array.isArray(d.watches) ? d.watches : [];
+  if (w.length) embeds.push({ title: 'Watches', color: w.some((x) => x.state === 'fired' || x.state === 'broken') ? COLORS.amber : COLORS.dim,
+    description: clip(w.map((x) => (WATCH_ICON[x.state] || '•') + ' ' + safe(x.text) + ' — ' + safe(x.progress)).join('\n'), LIM.desc) });
+  const p = Array.isArray(d.posts) ? d.posts : [];
+  p.slice(0, 5).forEach((x) => {
+    const m = AGENT_META[x.agent] || { name: String(x.agent || '?').toUpperCase(), color: COLORS.dim };
+    embeds.push({ title: clip(m.name + (x.title ? ' · ' + safe(x.title) : ''), LIM.title), description: clip(safe(x.text), 1500), color: m.color, footer: { text: String(x.day || '') } });
+  });
+  embeds[0].description += '\n' + snapshotNote(view, nowMs);
+  return fitEmbeds(embeds, '');
+}
+const WATCH_ICON = { open: '👁', fired: '🔔', broken: '⚠️', done: '✓', ended: '–' };
+
+export function planMessage(view, nowMs) {
+  const p = view && view.plan;
+  if (!p) return { embeds: [{ title: 'Plan of Record', description: absentNote(view, nowMs, 'The Plan of Record'), color: COLORS.dim }] };
+  const embeds = [];
+  const one = (title, wk) => {
+    const items = Array.isArray(wk.items) ? wk.items : [];
+    return { title: clip(title + ' · week of ' + wk.week, LIM.title), color: wk.by === 'zulu' ? COLORS.zulu : COLORS.amber,
+      fields: items.slice(0, 5).map((it) => field((it.icon || '') + ' ' + safe(it.std) + ': ' + safe(it.check), safe(it.verdict))),
+      footer: { text: (wk.line ? wk.line + ' · ' : '') + (wk.by === 'zulu' ? 'written by ZULU' : 'set by you from the app\'s suggestion') } };
+  };
+  if (p.now) embeds.push(one('This week', p.now));
+  else embeds.push({ title: 'Plan of Record · this week', color: COLORS.dim,
+    description: 'No plan for this week.' + (Array.isArray(p.suggest) && p.suggest.length ? ' The app suggests:\n' + p.suggest.map((s) => '• ' + safe(s)).join('\n') + '\nSet it on the Desk in the app.' : '') });
+  if (p.last) embeds.push(one('Last week', p.last));
+  embeds[0].description = (embeds[0].description ? embeds[0].description + '\n' : '') + snapshotNote(view, nowMs);
+  return fitEmbeds(embeds, '');
+}
+
+export function awayMessage(view, nowMs) {
+  const a = view && view.away;
+  if (!a) return { embeds: [{ title: 'Time away', description: absentNote(view, nowMs, 'Holds'), color: COLORS.dim }] };
+  const b = Array.isArray(a.blocks) ? a.blocks : [];
+  if (!b.length) return { embeds: [{ title: 'Time away', description: 'No trip, sick days or exams coming up.\n' + snapshotNote(view, nowMs), color: COLORS.dim }] };
+  const lines = b.slice(0, 10).map((x) => (x.now ? '‖ **Now** · ' : '• ') + safe(x.title) + ' · ' + safe(x.span) + ' (' + x.days + ' day' + (x.days === 1 ? '' : 's') + ')' +
+    (x.gym && x.gym !== 'none' ? ' · ' + safe(x.gym) + ' gym' : '') + (x.held ? '\n  Held: ' + safe(x.held) : ''));
+  return { embeds: [{ title: 'Time away', color: COLORS.dim, description: clip(lines.join('\n') + '\n\nThose days are not misses. Add or cancel a block in the app.\n' + snapshotNote(view, nowMs), LIM.desc) }] };
+}
+
 /* ---------- chart data ---------- */
 export function chartSeries(view, exercise) {
   const pts = view && view.charts && view.charts[exercise];

@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 5072 assertions, about 2 minutes. Must be
+**Test suite:** `node test_agents.js`. Currently 5087 assertions, about 2 minutes. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -658,6 +658,17 @@ motion", and a fast-gain amber.
 - Where it lives: a Play row in the Inbox (`vl:`, routine) from the letter's Sunday to `VL_INBOX_DAYS` after, the
   Library's letters with past ones in a fold, and a Play button on the old Agents view's letter. Today gets no card.
 
+**Stage 11, Discord** (no switch of its own: each section follows its stage's switch)
+- **Discord is still a window, not a door.** `/ironhub standards`, `desk`, `plan` and `away` read only `discord_view.json`;
+  the Worker works none of it out, and `core.js` never reads the raw data file for them. No webhook, no alert, no write.
+- **`discordView()` builds each section from the app's own reader** (`dvStandards()` from `stdState()`, `dvDesk()` from
+  `deskAnalystCards()`, `watchList()` and `agDeskItems()`, `dvPlan()` from `planScore()` and `planSuggest()`, `dvAway()`
+  from `holdBlocks()`), flattened to words: a status travels as the app's word and icon, never a colour's name.
+- **A section whose switch is off is `null`**, and the Worker says it is off rather than drawing an empty card. Each is in
+  its own `try`, each line is capped (`dvClip()`), and **the size cap runs last**, over the whole file, so it sheds
+  charts, never a section, and never the whole file (`DISCORD_VIEW_MAX`).
+- The Worker goes live only after `npx wrangler deploy` and `node register-commands.js` from `discord/` (Mark's step).
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
@@ -670,4 +681,5 @@ motion", and a fast-gain amber.
 | 7 Accountability: a plan scored by the app, the Weekly Review inside the letter call, the Monthly Review behind its own switch | built 2026-11-13 (`v5h`) |
 | 8 Organization: one Inbox worked out when read, a card budget per section, Today in five zones, the Hub in five views, a per-device depth | built 2026-11-13 (`v5i`) |
 | 9 Video letter: six scenes drawn from his data, numbers only through tokens, played in the app with the phone's voice | built 2026-11-13 (`v5j`) |
-| 10 Reskin · 11 Discord | not started |
+| 11 Discord: /ironhub standards, desk, plan and away, read-only from the app's own snapshot | built 2026-11-13 (`v5k`) |
+| 10 Reskin | not started |

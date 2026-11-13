@@ -10,6 +10,10 @@ change still happens in the app.
 | `/ironhub chart exercise:` | e1RM trend chart as a PNG image (best set per week, last 26 weeks) |
 | `/ironhub week` | Weekly volume by muscle group, this week vs last week |
 | `/ironhub proposals` | Pending agent proposals (view only) |
+| `/ironhub standards` | The five Standards: each one's word, reason, what clears it, a plan in motion or a hold |
+| `/ironhub desk` | The Desk: flagged analysts, your watches, the newest coach posts |
+| `/ironhub plan` | The Plan of Record: this week scored by the app, last week, or the app's suggestion |
+| `/ironhub away` | Trips, sick days and exams, now and coming up |
 | `/ironhub pr [count]` | Recent PRs |
 | `/ironhub log agent: [count]` | Full, untrimmed agent reasoning |
 | `/ironhub compare session: scope: [exercise:]` | A past session vs the most recent matching one |

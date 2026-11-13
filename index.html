@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-13-v5j">
+<meta name="ironhub-build" content="2026-11-13-v5k">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -7112,6 +7112,62 @@ function syncPayload(){
    Discord nicety can never cost a sync. */
 const DISCORD_VIEW_FILE = 'discord_view.json';
 const DISCORD_VIEW_MAX = 60000;   // chars -- it rides along on every push AND every 60s pull
+/* V5 stage 11: the four read-only sections the Worker shows (/ironhub standards, desk, plan, away). Each is the app's
+   own reading, flattened to words; null while its switch is off, so the Worker can say "switched off" rather than
+   show an empty card as a clean bill. Statuses travel as the app's word and icon, never a colour's name. */
+const DV_TEXT_MAX = 300;          // characters of any one line of text in the snapshot
+const DV_POSTS = 5, DV_WATCHES = 5, DV_BLOCKS = 5;
+function dvClip(s, n){ s = String(s == null ? '' : s); n = n || DV_TEXT_MAX; return s.length <= n ? s : s.slice(0, n - 1)+'…'; }
+function dvStandards(t){
+  if(!stdOn()) return null;
+  return {rows:stdState(t).map(function(r){
+    return {pillar:r.pillar, label:r.label, lvl:r.lvl, word:STD_WORD[r.lvl] || '', icon:STD_ICON[r.lvl] || '', why:dvClip(r.why),
+      clears:dvClip(r.clearsWhen), motion:dvClip(r.motion), held:r.held ? dvClip(fmtDate(r.held.until)+(r.held.why ? ' ('+r.held.why+')' : '')) : ''};
+  })};
+}
+function dvDesk(t){
+  if(!deskPlusOn()) return null;
+  const out = {analysts:[], steady:0, watches:[], posts:[]};
+  try{
+    if(ovOn('analysts')){
+      const dc = deskAnalystCards(anlPass(), anlStrips());
+      out.steady = dc.steady.length;
+      out.analysts = dc.cards.map(function(c){
+        return {name:ANALYSTS[c.id].name, lead:ANALYSTS[c.id].lead, lvl:c.r.lvl, word:dvClip(c.r.word, 80), icon:STD_ICON[c.r.lvl] || '', line:dvClip(c.r.line), since:c.since ? homeShortDate(c.since) : ''};
+      });
+    }
+  }catch(e){ out.analysts = []; }
+  try{
+    out.watches = watchList(t).filter(function(v){ return v.state === 'open' || v.state === 'fired' || v.state === 'broken'; }).slice(0, DV_WATCHES)
+      .map(function(v){ return {text:dvClip(v.text, 120), state:v.state, progress:dvClip(watchProgress(v), 160)}; });
+  }catch(e){ out.watches = []; }
+  try{
+    out.posts = deskNewest(agDeskItems()).slice(0, DV_POSTS).map(function(x){ return {agent:x.agent, day:x.day || '', title:dvClip(x.title, 120), text:dvClip(x.text, 600)}; });
+  }catch(e){ out.posts = []; }
+  return out;
+}
+function dvPlanWeek(wk, asOf){
+  const s = planScore(wk, asOf);
+  if(!s) return null;
+  return {week:wk, by:s.row.by, line:planScoreLine(s), items:s.items.map(function(it){
+    const W = PLAN_V[it.v.v] || PLAN_V.nodata;
+    return {std:STD_LABEL[it.p.standard] || it.p.standard, check:dvClip(planCheckSay(it.p.check), 160), verdict:dvClip(planVerdictText(it.p, it.v), 200), icon:W.ic, v:it.v.v};
+  })};
+}
+function dvPlan(t){
+  if(!planOn()) return null;
+  const wk = weekKeyOf(t), out = {now:null, last:null, suggest:[]};
+  try{ out.now = dvPlanWeek(wk); }catch(e){ out.now = null; }
+  try{ out.last = dvPlanWeek(mesoAddDays(wk, -7)); }catch(e){ out.last = null; }
+  if(!out.now){ try{ out.suggest = planSuggest().map(function(p){ return dvClip(planCheckSay(p.check), 160); }); }catch(e){ out.suggest = []; } }
+  return out;
+}
+function dvAway(t){
+  if(!ovOn('holds')) return null;
+  return {blocks:holdBlocks().filter(function(b){ return b.to >= t; }).slice(0, DV_BLOCKS).map(function(b){
+    return {kind:b.kind, title:HOLD_TITLE[b.kind], from:b.from, to:b.to, span:holdSpan(b), days:holdLen(b), gym:b.gym, now:b.from <= t, held:holdHeldNames(b)};
+  })};
+}
 function discordView(){
   const now = new Date(), today = todayKey();
   const v = {app:'ironhub-discord', v:1, generatedAt:now.getTime(), date:today, build:''};
@@ -7130,6 +7186,14 @@ function discordView(){
     v.week = {start: weekStartKey(), lastStart: lw.start, lastEnd: lw.end,
       groups: MUSCLE_GROUPS.map(g=>Object.assign({group:g, sets:0, status:'off'}, byBroad[g]||{}, {lastSets: last[g]||0}))};
   }catch(e){ v.week = null; }
+  /* V5 stage 11: the Standards, the Desk, the Plan of Record and time away, for the Worker's /ironhub standards, desk,
+     plan and away. Each is built by the app's own readers (stdState(), anlPass(), watchList(), planScore(), holdBlocks()),
+     so Discord can never disagree with the app; each is absent while its switch is off, and each is in its own try
+     and capped (dvClip()), so none of them can cost a sync. Nothing here is read back by any device. */
+  try{ v.standards = dvStandards(today); }catch(e){ v.standards = null; }
+  try{ v.desk = dvDesk(today); }catch(e){ v.desk = null; }
+  try{ v.plan = dvPlan(today); }catch(e){ v.plan = null; }
+  try{ v.away = dvAway(today); }catch(e){ v.away = null; }
   try{
     // Best e1RM per Monday-week, newest lifts first, last 26 weeks. The same e1rmSeries() the
     // Analytics tab plots, so a Discord chart and the in-app chart are the same line.
@@ -7147,10 +7211,6 @@ function discordView(){
       const pts = Object.keys(wk).sort().slice(-26).map(k=>[k, wk[k]]);
       if(pts.length) v.charts[ex] = pts;
     });
-    // Size cap: shed the least-recently-trained lifts first, never truncate a series mid-line.
-    while(JSON.stringify(v).length > DISCORD_VIEW_MAX && Object.keys(v.charts).length){
-      const ks = Object.keys(v.charts); delete v.charts[ks[ks.length-1]];
-    }
   }catch(e){ v.charts = null; }
   try{
     const days = {};
@@ -7158,6 +7218,14 @@ function discordView(){
     Object.keys(activeSplitObj()).forEach(k=>{ days[k] = dayName(k) || ''; });
     v.days = days;
   }catch(e){ v.days = null; }
+  // Size cap: shed the least-recently-trained lifts first, never truncate a series mid-line. Last, after every section,
+  // so it measures the whole file (V5 stage 11: run before the day names, it let the four new sections push a big view
+  // ~50 characters over, and an oversized file is not written at all).
+  try{
+    while(v.charts && JSON.stringify(v).length > DISCORD_VIEW_MAX && Object.keys(v.charts).length){
+      const ks = Object.keys(v.charts); delete v.charts[ks[ks.length-1]];
+    }
+  }catch(e){}
   return v;
 }
 function discordViewFile(){

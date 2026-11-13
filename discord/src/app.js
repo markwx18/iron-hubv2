@@ -111,6 +111,11 @@ export async function runCommand(ix, env, deps) {
     case 'status': msgs = core.statusMessage(g.view, g.data, now); break;
     case 'week': msgs = core.weekMessage(g.view, now); break;
     case 'proposals': msgs = core.proposalsMessage(g.data); break;
+    // V5 stage 11: the app's own snapshot and nothing else (core.js says why).
+    case 'standards': msgs = core.standardsMessage(g.view, now); break;
+    case 'desk': msgs = core.deskMessage(g.view, now); break;
+    case 'plan': msgs = core.planMessage(g.view, now); break;
+    case 'away': msgs = core.awayMessage(g.view, now); break;
     case 'pr': msgs = core.prMessage(g.data, optVal(opts, 'count')); break;
     case 'log': msgs = core.logMessages(g.data, optVal(opts, 'agent'), optVal(opts, 'count')); break;
     case 'compare': {

@@ -19683,6 +19683,71 @@ setTimeout(async () => {
     try { ev('renderHome(); renderNotif();'); } catch (e) {}
   }
 
+  console.log('\n=== DISCORD: STANDARDS, DESK, PLAN AND AWAY IN THE SNAPSHOT, BUILT BY THE APP, EACH BEHIND ITS SWITCH (2026-11-13) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    ev("window.__11S = JSON.stringify(S); window.__11Today = todayKey; window.__11Std = stdState; window.__11Anl = anlPass; window.__11Str = anlStrips; window.__11PS = planSuggest;" +
+       "window.__11day = '2026-12-16'; todayKey = function(){ return window.__11day; };" +
+       "window.__11std = [{pillar:'bulk', label:'Bulk pace', lvl:'red', why:'Two losing weeks.', clearsWhen:'Two weeks at or above 0.5 lb.', motion:'', since:'2026-12-01'}," +
+       "  {pillar:'show', label:'Showing up', lvl:'ok', why:'', clearsWhen:'', motion:''}, {pillar:'lifts', label:'Lifts', lvl:'amber', why:'JM Press falling.', clearsWhen:'', motion:'a reset approved Dec 8'}," +
+       "  {pillar:'intake', label:'Intake', lvl:'held', was:'amber', held:{until:'2026-12-20', why:'away'}, why:'', clearsWhen:'', motion:''}, {pillar:'recovery', label:'Recovery', lvl:'nodata', why:'Too few readings.', clearsWhen:'', motion:''}];" +
+       "stdState = function(){ return JSON.parse(JSON.stringify(window.__11std)); };" +
+       "anlPass = function(){ return {std:{}, reads:{bravo:{id:'bravo', lvl:'red', word:'Losing weight', line:'Down 0.3 lb on the week.'}, alpha:{id:'alpha', lvl:'ok', word:'Climbing', line:'x'}, hotel:{id:'hotel', lvl:'ok', word:'Steady', line:'x'}}}; };" +
+       "anlStrips = function(){ return []; };" +
+       "window.__11b = function(ov){ S = JSON.parse(JSON.stringify(DEFAULT_STATE)); S.overhaul = Object.assign({selector:false}, ov || {}); S.logs = []; S.planRecord = []; S.holds = []; S.watches = []; agState().desk = []; agState().proposals = []; window.__11day = '2026-12-16'; };");
+    ev('__11b()');
+    const V = () => J('discordView()');
+    let v = V();
+    ok('standards: every pillar with the app\'s word and icon, its reason, what clears it, a plan in motion, a hold', v.standards && v.standards.rows.length === 5 &&
+      v.standards.rows[0].word === 'Off standard' && v.standards.rows[0].icon === '✖' && v.standards.rows[0].why === 'Two losing weeks.' && /0\.5 lb/.test(v.standards.rows[0].clears) &&
+      v.standards.rows[2].motion === 'a reset approved Dec 8' && /away/.test(v.standards.rows[3].held) && v.standards.rows[3].word === 'Held', JSON.stringify(v.standards && v.standards.rows[3]));
+    ok('standards: no level is named by its colour in the words he reads', !/\b(red|amber|green)\b/i.test(JSON.stringify(v.standards.rows.map(r => [r.word, r.why, r.clears, r.held]))));
+    ok('desk: the analysts the Desk would show, with their words; the steady ones counted', v.desk && v.desk.analysts.length === 1 && v.desk.analysts[0].name === 'BRAVO' && v.desk.analysts[0].word === 'Losing weight' && v.desk.analysts[0].icon === '✖' && v.desk.steady === 2, JSON.stringify(v.desk));
+    ok('plan: no plan this week carries the app\'s own suggestion', v.plan && v.plan.now === null && v.plan.suggest.length >= 1 && typeof v.plan.suggest[0] === 'string', JSON.stringify(v.plan));
+    ok('away: nothing ahead is an empty list, not an absent section', v.away && Array.isArray(v.away.blocks) && v.away.blocks.length === 0);
+    // the Desk: watches and posts, as the Desk reads them
+    ev("S.watches.push({id:'w11', series:'bw', op:'below', thr:150, within:1, by:'me', day:'2026-12-10', at:1}); agState().desk.push({id:'d11', agent:'delta', day:'2026-12-15', at:'2026-12-15T21:00:00Z', title:'Bench', text:'Hold 180 one more week. ' + new Array(200).join('words ')});");
+    v = V();
+    ok('desk: an open watch in its own words, and the newest coach post, clipped', v.desk.watches.length === 1 && v.desk.watches[0].text === ev("watchText(S.watches[0])") && ['open', 'fired', 'broken'].indexOf(v.desk.watches[0].state) >= 0 && v.desk.watches[0].progress === ev("watchProgress(watchList()[0])") &&
+      v.desk.posts.length === 1 && v.desk.posts[0].agent === 'delta' && v.desk.posts[0].text.length <= 600 && /…$/.test(v.desk.posts[0].text), JSON.stringify(v.desk.watches));
+    // the plan: this week's and last week's, scored by the app
+    ev("S.planRecord.push({id:'p11', week:'2026-12-14', by:'zulu', day:'2026-12-13', at:1, pri:[{standard:'show', check:{type:'sessions', n:4}, byDate:'2026-12-20'}]});" +
+       "S.planRecord.push({id:'p11b', week:'2026-12-07', by:'me', day:'2026-12-07', at:1, pri:[{standard:'show', check:{type:'sessions', n:3}, byDate:'2026-12-13'}]});" +
+       "S.logs.push({id:'l11', date:'2026-12-14', day:'D1', entries:[]}); S.logs.push({id:'l11b', date:'2026-12-15', day:'D1', entries:[]});");
+    v = V();
+    ok('plan: this week\'s priority with the app\'s verdict and icon, ZULU\'s, the same words the card uses', v.plan.now && v.plan.now.by === 'zulu' && v.plan.now.items[0].check === '4 sessions logged' &&
+      v.plan.now.items[0].verdict === ev("planVerdictText(planNow().pri[0], planVerdict(planNow().pri[0], planNow()))") && v.plan.now.items[0].icon === '…' && v.plan.now.items[0].std === 'Showing up' && v.plan.suggest.length === 0, JSON.stringify(v.plan.now));
+    ok('plan: last week, set by him, read as over', v.plan.last && v.plan.last.by === 'me' && v.plan.last.items[0].v === 'missed' && /0 of 3/.test(v.plan.last.items[0].verdict), JSON.stringify(v.plan.last));
+    // away
+    ev("S.holds.push({id:'h11', from:'2026-12-14', to:'2026-12-18', kind:'sick', gym:'none', note:'flu <b>', at:1}); S.holds.push({id:'h11b', from:'2026-12-28', to:'2027-01-01', kind:'trip', gym:'hotel', note:'', at:2}); S.holds.push({id:'h11c', from:'2026-11-01', to:'2026-11-03', kind:'trip', gym:'none', note:'', at:3});");
+    v = V();
+    ok('away: the block in force and the one coming, with span, days, gym and what each holds; a past block and his note are left out', v.away.blocks.length === 2 && v.away.blocks[0].now === true && v.away.blocks[0].title === 'Sick' && v.away.blocks[0].days === 5 &&
+      v.away.blocks[1].now === false && v.away.blocks[1].gym === 'hotel' && v.away.blocks[1].span === 'Dec 28 to Jan 1' && /Showing up/.test(v.away.blocks[1].held) && !/flu/.test(JSON.stringify(v.away)), JSON.stringify(v.away));
+    // switches off: each section is absent, and the rest of the file is as it was
+    ev("__11b({standards:false, deskPlus:false, planRecord:false, holds:false})");
+    v = V();
+    ok('off: each section is null while its switch is off', v.standards === null && v.desk === null && v.plan === null && v.away === null);
+    ok('off: the older sections are still there', !!v.status && !!v.week && v.app === 'ironhub-discord');
+    // a section that throws costs that section only, never the file
+    ev("__11b(); stdState = function(){ throw new Error('boom'); };");
+    v = J("(function(){ try{ return discordView(); }catch(e){ return {threw:String(e)}; } })()");   // a throw must fail by name, not crash the section
+    ok('a section that throws is null, and the file is still written', v.standards === null && !!v.desk && ev('!!discordViewFile()') === true);
+    ev("stdState = function(){ return JSON.parse(JSON.stringify(window.__11std)); };");
+    // the size cap sheds charts, never a section
+    ev("window.__11Max = DISCORD_VIEW_MAX;");
+    const big = ev("(function(){ for(var i=0;i<40;i++){ var d = mesoAddDays('2026-06-01', i*3); S.logs.push({id:'z'+i, date:d, day:'D1', entries:[{exercise:'Lift '+(i%30), sets:[{w:100+i, r:5}]}]}); } return JSON.stringify(discordView()).length; })()");
+    const vv = V();
+    ok('size: the cap runs last over the whole file, so it sheds a chart before it could drop the file or a section', big <= ev('DISCORD_VIEW_MAX') && !!vv.standards && !!vv.plan &&
+      ev("(function(){ var s = discordViewFile(); return !!s && JSON.parse(s.content).standards !== undefined; })()") === true);
+    ok('size: the four sections\' text is capped', JSON.stringify(vv.standards).length < 4000 && ev("dvClip(new Array(500).join('x')).length") === ev('DV_TEXT_MAX'));
+    ok('it never costs a sync: the push still carries the data file if the view throws', (ev("window.__11DV = discordView; discordView = function(){ throw new Error('x'); };"), J('Object.keys(syncFiles())').length) === 1 && (ev("discordView = window.__11DV;"), true));
+  } catch (e) {
+    ok('discord view section', false, e.stack);
+  } finally {
+    ev("if(window.__11DV) discordView = window.__11DV; todayKey = window.__11Today; stdState = window.__11Std; anlPass = window.__11Anl; anlStrips = window.__11Str; planSuggest = window.__11PS; S = JSON.parse(window.__11S);" +
+       "Object.keys(window).filter(function(k){ return /^__11/.test(k); }).forEach(function(k){ try{ delete window[k]; }catch(e){} });");
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }, 1200);

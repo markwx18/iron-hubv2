@@ -69,6 +69,27 @@ const VIEW = {
     groups: [{ group: 'Chest', sets: 12, status: 'green', lastSets: 14 }, { group: 'Hamstrings', sets: 3.5, status: 'red', lastSets: 6 }] },
   charts: { 'Barbell Bench Press': [['2026-06-01', 188.3], ['2026-07-06', 198], ['2026-08-31', 204.2]] },
   days: { D2: 'Push', D3: 'Legs', D4: 'Upper' },
+  // V5 stage 11: sections the app works out (discordView()). Messy on purpose: a reason with a mention in it, a held row,
+  // an analyst with no line, a broken watch, a coach post with a code fence.
+  standards: { rows: [
+    { pillar: 'bulk', label: 'Bulk pace', lvl: 'red', word: 'Off standard', icon: '✖', why: 'Two losing weeks @everyone.', clears: 'Two weeks at or above 0.5 lb.', motion: '', held: '' },
+    { pillar: 'show', label: 'Showing up', lvl: 'ok', word: 'On track', icon: '✓', why: '', clears: '', motion: '', held: '' },
+    { pillar: 'lifts', label: 'Lifts', lvl: 'amber', word: 'Slipping', icon: '▲', why: 'JM Press falling.', clears: '', motion: 'a reset approved Nov 8', held: '' },
+    { pillar: 'intake', label: 'Intake', lvl: 'held', word: 'Held', icon: '‖', why: '', clears: '', motion: '', held: 'Sep 20 (away)' },
+    { pillar: 'recovery', label: 'Recovery', lvl: 'nodata', word: 'No data', icon: '–', why: 'Too few readings.', clears: '', motion: '', held: '' }] },
+  desk: {
+    analysts: [{ name: 'BRAVO', lead: 'echo', lvl: 'red', word: 'Losing weight', icon: '✖', line: 'Down 0.3 lb on the week.', since: 'Nov 2' },
+               { name: 'ALPHA', lead: 'delta', lvl: 'amber', word: 'Slowing', icon: '▲', line: '', since: '' }],
+    steady: 6,
+    watches: [{ text: 'Bench top set below 185 lb', state: 'fired', progress: 'Fired Sep 9: 180 lb on the last reading.' },
+              { text: 'Bodyweight below 160 lb', state: 'broken', progress: 'It could not be read.' }],
+    posts: [{ agent: 'delta', day: '2026-09-09', title: 'Bench', text: 'Hold 180 ```break``` one more week.' }] },
+  plan: {
+    now: { week: '2026-09-07', by: 'zulu', line: '1 of 2 met', items: [
+      { std: 'Showing up', check: '4 sessions logged', verdict: 'Met · 4 of 4', icon: '✓', v: 'met' },
+      { std: 'Bulk pace', check: 'Bodyweight up at least 0.5 lb on the week', verdict: 'Open · Judged once the week is over.', icon: '…', v: 'open' }] },
+    last: { week: '2026-08-31', by: 'me', line: 'nothing could be judged', items: [{ std: 'Intake', check: 'Calories at or over target on 5 days', verdict: 'Missed · 2 of 5', icon: '✖', v: 'missed' }] } },
+  away: { blocks: [{ kind: 'trip', title: 'Away', from: '2026-09-11', to: '2026-09-15', span: 'Sep 11 to Sep 15', days: 5, gym: 'hotel', now: false, held: 'Showing up and Bulk pace' }] },
 };
 const NOW = Date.parse('2026-09-10T14:00:00Z');
 
@@ -159,7 +180,7 @@ console.log('=== READ ONLY ===');
   ok('no write verb is ever aimed at GitHub', !/api\.github\.com[\s\S]{0,200}method:\s*'(PATCH|POST|PUT|DELETE)'/.test(srcText));
   // And behaviourally: run every command and every alert path, record every request.
   const deps = makeDeps(DATA, VIEW);
-  for (const [n, o] of [['status'], ['week'], ['proposals'], ['pr'], ['log', [{ name: 'agent', value: 'delta' }]],
+  for (const [n, o] of [['status'], ['week'], ['proposals'], ['standards'], ['desk'], ['plan'], ['away'], ['pr'], ['log', [{ name: 'agent', value: 'delta' }]],
     ['compare', [{ name: 'session', value: 'a' }, { name: 'scope', value: 'session' }]], ['chart', [{ name: 'exercise', value: 'Barbell Bench Press' }]]]) {
     await run(cmd(n, o), deps);
   }
@@ -234,6 +255,61 @@ console.log('=== COMMAND OUTPUT ===');
   await run(cmd('log', [{ name: 'agent', value: 'zulu' }, { name: 'count', value: 6 }]), dl);
   const dc = discordCalls(dl);
   ok('log: overflow goes out as follow-up messages', dc.length > 1 && dc[0].method === 'PATCH' && dc.slice(1).every((c) => c.method === 'POST' && c.url.endsWith('/webhooks/app1/itok')), dc.map((c) => c.method).join(','));
+}
+
+/* ---------- V5 stage 11: standards, desk, plan, away ---------- */
+console.log('=== V5 COMMANDS: THE APP\'S OWN SNAPSHOT, READ ONLY ===');
+{
+  const st = core.standardsMessage(VIEW, NOW).embeds[0];
+  const names = st.fields.map((f) => f.name);
+  ok('standards: five rows, each its icon, label and word, in the app\'s order', names.length === 5 && names[0] === '✖ Bulk pace · Off standard' && names[2] === '▲ Lifts · Slipping' && names[3] === '‖ Intake · Held', JSON.stringify(names));
+  ok('standards: a level is never named by its colour', !/\b(red|amber|green)\b/i.test(JSON.stringify(st.fields)));
+  ok('standards: the reason, the plan in motion, the hold and the exit are carried', /Two losing weeks/.test(st.fields[0].value) && /Clears when: Two weeks/.test(st.fields[0].value) &&
+    /Plan in motion: a reset approved Nov 8/.test(st.fields[2].value) && /Held until Sep 20/.test(st.fields[3].value));
+  ok('standards: the embed takes the worst level\'s colour', st.color === core.COLORS.red);
+  ok('standards: @everyone in a reason is defused', !/@everyone/.test(st.fields[0].value), st.fields[0].value);
+  const quiet = core.standardsMessage({ ...VIEW, standards: { rows: VIEW.standards.rows.map((r) => ({ ...r, lvl: 'ok' })) } }, NOW).embeds[0];
+  ok('standards: nothing flagged is the good colour, not the warning one', quiet.color === core.COLORS.cyan);
+  const off = core.standardsMessage({ ...VIEW, standards: undefined }, NOW).embeds[0];
+  ok('standards: switched off in the app is said, not shown as an empty clean card', /not in the snapshot/.test(off.description) && !off.fields, off.description);
+  ok('standards: no snapshot yet says so', /open the app/.test(core.standardsMessage(null, NOW).embeds[0].description));
+
+  const dk = core.deskMessage(VIEW, NOW);
+  const dEmb = Array.isArray(dk) ? dk.flatMap((m) => m.embeds) : dk.embeds;
+  ok('desk: the analysts first, worst colour, each with its word and since', dEmb[0].title === 'Desk — analysts' && dEmb[0].color === core.COLORS.red && /✖ \*\*BRAVO\*\* · Losing weight \(since Nov 2\)/.test(dEmb[0].description) && /▲ \*\*ALPHA\*\* · Slowing/.test(dEmb[0].description), dEmb[0].description);
+  ok('desk: watches with their state, a broken one said as broken', dEmb[1].title === 'Watches' && /🔔 Bench top set below 185 lb — Fired Sep 9/.test(dEmb[1].description) && /⚠️ Bodyweight below 160 lb — It could not be read\./.test(dEmb[1].description));
+  ok('desk: a coach post in the coach\'s colour, its code fence defused', dEmb[2].color === core.COLORS.amber && /DELTA · Bench/.test(dEmb[2].title) && !/```/.test(dEmb[2].description));
+  const calm = core.deskMessage({ ...VIEW, desk: { analysts: [], steady: 8, watches: [], posts: [] } }, NOW);
+  ok('desk: a quiet Desk says so, and adds no empty watch card', calm.embeds.length === 1 && /Nothing flagged/.test(calm.embeds[0].description) && /8 analysts steady/.test(calm.embeds[0].description));
+  ok('desk: off is said', /not in the snapshot/.test(core.deskMessage({ ...VIEW, desk: undefined }, NOW).embeds[0].description));
+
+  const pl = core.planMessage(VIEW, NOW);
+  const pEmb = Array.isArray(pl) ? pl.flatMap((m) => m.embeds) : pl.embeds;
+  ok('plan: this week, each priority with the app\'s verdict, in ZULU\'s colour when ZULU wrote it', /This week · week of 2026-09-07/.test(pEmb[0].title) && pEmb[0].color === core.COLORS.zulu &&
+    pEmb[0].fields[0].name === '✓ Showing up: 4 sessions logged' && pEmb[0].fields[0].value === 'Met · 4 of 4' && /written by ZULU/.test(pEmb[0].footer.text) && /1 of 2 met/.test(pEmb[0].footer.text));
+  ok('plan: last week too, set by him', /Last week · week of 2026-08-31/.test(pEmb[1].title) && /set by you/.test(pEmb[1].footer.text) && /Missed · 2 of 5/.test(pEmb[1].fields[0].value));
+  const none = core.planMessage({ ...VIEW, plan: { now: null, last: null, suggest: ['4 sessions logged', 'Calories at or over target on 5 days'] } }, NOW);
+  ok('plan: no plan this week shows the app\'s suggestion and where to set it', /No plan for this week/.test(none.embeds[0].description) && /• 4 sessions logged/.test(none.embeds[0].description) && /on the Desk in the app/.test(none.embeds[0].description));
+  ok('plan: off is said', /not in the snapshot/.test(core.planMessage({ ...VIEW, plan: undefined }, NOW).embeds[0].description));
+
+  const aw = core.awayMessage(VIEW, NOW).embeds[0];
+  ok('away: each block with its span, days, gym and what it holds', /• Away · Sep 11 to Sep 15 \(5 days\) · hotel gym/.test(aw.description) && /Held: Showing up and Bulk pace/.test(aw.description) && /not misses/.test(aw.description), aw.description);
+  const nowBlock = core.awayMessage({ ...VIEW, away: { blocks: [{ ...VIEW.away.blocks[0], now: true, days: 1, gym: 'none' }] } }, NOW).embeds[0];
+  ok('away: a block in force says Now; one day is a day; no gym says nothing', /‖ \*\*Now\*\*/.test(nowBlock.description) && /\(1 day\)/.test(nowBlock.description) && !/none gym/.test(nowBlock.description));
+  ok('away: nothing coming up says so', /No trip, sick days or exams/.test(core.awayMessage({ ...VIEW, away: { blocks: [] } }, NOW).embeds[0].description));
+  ok('away: off is said', /not in the snapshot/.test(core.awayMessage({ ...VIEW, away: undefined }, NOW).embeds[0].description));
+
+  // Through the handler: each command edits @original with the right card.
+  for (const [n, re] of [['standards', /Standards/], ['desk', /Desk — analysts/], ['plan', /Plan|This week/], ['away', /Time away/]]) {
+    const d = makeDeps(DATA, VIEW);
+    await run(cmd(n), d);
+    const e = discordCalls(d)[0];
+    ok('handler: /ironhub ' + n + ' answers with its card', e && e.method === 'PATCH' && re.test(JSON.stringify(payloadOf(e).embeds)), e && JSON.stringify(payloadOf(e)).slice(0, 200));
+  }
+  // The registry carries the four, read-only words only.
+  const reg = fs.readFileSync(path.join(here, 'register-commands.js'), 'utf8');
+  ok('register: the four commands are registered', ['standards', 'desk', 'plan', 'away'].every((n) => reg.indexOf("name: '" + n + "'") >= 0));
+  ok('the four never read the raw data file: only the snapshot', !/standardsMessage\([^)]*g\.data|deskMessage\([^)]*g\.data|planMessage\([^)]*g\.data|awayMessage\([^)]*g\.data/.test(fs.readFileSync(path.join(SRC, 'app.js'), 'utf8')));
 }
 
 /* ---------- compare ---------- */

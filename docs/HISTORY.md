@@ -3175,3 +3175,33 @@ section, and is now guarded). The Worker side of Discord is stage 11.
 
 **Not verified.** Speech on his iPhone: jsdom has no `speechSynthesis` (the suite stubs it), and the browser check had
 no voice to hear. The first Sunday letter after this build is the first real row.
+
+### V5 stage 11: Discord, four more read-only commands (2026-11-13, `v5k`)
+
+**What it is.** `/ironhub standards`, `/ironhub desk`, `/ironhub plan` and `/ironhub away`, the spec's "safe version":
+Discord stays a window. No alert, no webhook, no new secret, no write. The spec's other half (alerts pushed when a
+Standard turns red or a watch fires) needs an outbound path and his say, so it was not built.
+
+**Why the app builds the sections and the Worker only draws them.** The Discord view exists because the Worker once
+risked re-deriving numbers the app owns (the `bulkRate()` lesson). A Standard, a plan verdict or a watch's state worked
+out again in the Worker would be a second copy that could disagree. So `discordView()` gained four sections built by the
+app's own readers (`dvStandards()`, `dvDesk()`, `dvPlan()`, `dvAway()`), flattened to words, and the four Worker messages
+read only the snapshot. The suite checks the handler never passes the raw data file to them.
+
+**Off is said, not drawn.** A section whose switch is off is `null`, and the Worker answers "not in the snapshot:
+switched off in the app, or the app has not synced since the update". An empty card would read as a clean bill, which the
+Standards rule forbids.
+
+**The size cap.** `discordView()` sheds the least-recently-trained charts until the file fits `DISCORD_VIEW_MAX`, and a
+file still too big is not written at all. The moved clock caught the first version: the shedding loop ran inside the
+charts block, before the day names, so the four new sections pushed the old suite's big fixture 31 to 55 characters over
+and the file was dropped (two old assertions red on all seven instants). The loop now runs last, over the whole file. On his state the whole view is 15,468 characters of 60,000 (the
+sections about 3,200), built in 487 ms in jsdom.
+
+**What his Discord would show today.** Standards: Bulk pace off standard ("Last week: +1.00 lb/week (in the band), after
+2 losing weeks"), the rest with their words. Desk: BRAVO and ALPHA flagged ("Barbell Back Squat slowing"). Plan: no plan
+this week, with the app's three suggestions. Away: nothing coming up. His note on a hold is left out of the snapshot.
+
+**Tests.** 15 new app assertions (5087 in all) and 39 new Worker assertions (126 in all). 10 app mutants and 9 Worker
+mutants, each red at its named assertion (one first crashed its section, now guarded). Nothing is deployed:
+`npx wrangler deploy` and `node register-commands.js` from `discord/` are Mark's steps.

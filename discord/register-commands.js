@@ -21,6 +21,10 @@ export const COMMAND = {
       { type: STRING, name: 'exercise', description: 'Lift', required: true, autocomplete: true }] },
     { type: SUB, name: 'week', description: 'Weekly volume by muscle group' },
     { type: SUB, name: 'proposals', description: 'Pending agent proposals (approve in the app)' },
+    { type: SUB, name: 'standards', description: 'The five Standards, as the app worked them out' },
+    { type: SUB, name: 'desk', description: 'The Desk: analysts, watches and recent coach posts' },
+    { type: SUB, name: 'plan', description: 'The Plan of Record: this week, scored, and last week' },
+    { type: SUB, name: 'away', description: 'Trips, sick days and exams, now and coming up' },
     { type: SUB, name: 'pr', description: 'Recent PR history', options: [
       { type: INTEGER, name: 'count', description: 'How many (default 10)', min_value: 1, max_value: 25 }] },
     { type: SUB, name: 'log', description: 'Recent full reasoning from an agent', options: [

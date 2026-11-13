@@ -321,3 +321,16 @@ ZULU's Sunday letter can now be watched as well as read: about half a minute, si
 **One new paid switch, off:** *Video letter in ZULU's words* (Settings, V5 switches). With it on, the same Sunday letter call also has ZULU write the six spoken lines. One call, not two: about 1 to 3 cents a month. ZULU cannot put a number in a line. Where a number belongs it writes a placeholder and the app fills it in from your data. A line with any number of ZULU's own, or one that is too long, is swapped for the app's own line.
 
 If you want none of it, turn off "Video letter" in the same place.
+
+## Four more Discord commands (Nov 13)
+
+Discord can now show the newer parts of the app. Still read-only: nothing typed in Discord changes anything.
+
+- **`/ironhub standards`**: your five Standards, each with its word and icon, the reason, what clears it, and whether a plan is in motion or it is held.
+- **`/ironhub desk`**: the analysts that are flagged, your watches (and whether one fired), and the newest coach posts.
+- **`/ironhub plan`**: this week's Plan of Record, each priority scored by the app, plus last week. With no plan it shows the app's suggestion.
+- **`/ironhub away`**: trips, sick days and exams, now and coming up. Your notes on them are not sent.
+
+Everything comes from what the app works out on each sync, so Discord always agrees with the app. If a part is switched off in the app, the command says so.
+
+**To turn them on:** from the `discord` folder run `npx wrangler deploy`, then `node register-commands.js` (with the same three values as before) so Discord shows the new commands.
