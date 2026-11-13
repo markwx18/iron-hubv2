@@ -626,6 +626,9 @@ motion", and a fast-gain amber.
   input is never moved.** `cbApply()` is idempotent (`cbUnwrap()` first).
 - **Depth is a per-device pref** (`uiDepth()`, `uiPref('depth')`, never in `S`): Basic is the budget, Intermediate
   `CB_BUDGET_MID`, Advanced none. A card tagged `data-depth` folds below its depth; stage 10 does the tagging.
+- **A merged view's later part gets a divider, and the divider is a `::before`.** In a section laid out as a grid it is
+  a grid item, so it needs `grid-column:1 / -1` (Flags on Now, `#invest.on.stacked::before`). A section that is a
+  grid and moves into a merged view gets the same rule.
 - A test of the layout with the switch off calls `orgOff()` / `orgBack()` (a stub on `orgOn()`, which survives `S`
   being replaced).
 

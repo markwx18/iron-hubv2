@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-13-v5i">
+<meta name="ironhub-build" content="2026-11-13-v5i2">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -974,6 +974,9 @@
     /* Investigate is a control rail + findings feed, not a text flow — a naive
        column split orphans the "Active flags" heading away from its own cards. */
     #invest.on{display:grid; grid-template-columns:330px minmax(0,1fr); gap:18px; align-items:start;}
+    /* On the Hub's Now view Flags is the second part, so it gets the merged view's divider (V5 stage 8). That divider is a
+       ::before, and in a grid a ::before is a grid item: it took the first cell and pushed both columns one cell along. */
+    #invest.on.stacked::before{grid-column:1 / -1;}
     .inv-left{position:sticky; top:14px;}
     .inv-left .card{margin-top:0;}
     .inv-right > .card:first-child, .inv-right > .sub:first-child{margin-top:0;}

@@ -3105,3 +3105,13 @@ own `try`) by crashing the run. The first pass had six that did not go red at th
 second typing guard no test could reach, so it was removed; the tab switch applying the budget, hidden by the
 observer; Now's plan-card id, hidden by a fixture with no plan) and three crashed the section instead of failing
 by name, now guarded.
+
+**Found after shipping (2026-11-13, `v5i2`).** On his laptop Flags came out wrong on Now: the investigation rail sat in the
+wide right column and the flags dropped below it. On a wide screen `#invest` is a two-column grid, and on Now it is the
+second part of a merged view, so it got the `stacked` divider. That divider is a `::before`, and in a grid a `::before` is a
+grid item: it took the first cell and pushed both columns one along. Before stage 8 Flags was never a second part, so
+this could not happen. The fix gives the divider `grid-column:1 / -1`. jsdom has no layout, so the suite asserts the branch
+(Flags is stacked on Now, and the stylesheet spans the divider); at 1280 px in a real browser on his state the rail
+moved from x 586 (659 wide) back to x 238 (330 wide), with the flags beside it at the same top. Shipped as its own commit
+while row F had Stage 9 half-built in the same checkout, built from the stage 8 commit and committed without touching
+its work.

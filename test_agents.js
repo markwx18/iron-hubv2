@@ -19313,6 +19313,10 @@ setTimeout(async () => {
        JSON.stringify(J("navShows('ops','hub_now')")) === JSON.stringify(['hub_now', 'invest']) && JSON.stringify(J("navShows('ops','outlook')")) === JSON.stringify(['forecasts', 'hub_out']));
     ev("showReviewTab('invest');");
     ok('hub: Flags stays reachable from Now, and opens on it', ev('navMemory.ops') === 'hub_now' && ev("document.getElementById('invest').classList.contains('on')") === true && ev("document.getElementById('hub_now').classList.contains('on')") === true);
+    // jsdom has no layout, so this asserts the branch: on Now, Flags is a stacked part, and the stylesheet makes that divider
+    // span the whole Flags grid on a wide screen (a ::before in a grid is a grid item and took the first cell; seen on his laptop).
+    ok('hub: on Now, Flags is a stacked part, and its divider spans the desktop grid', ev("document.getElementById('invest').classList.contains('stacked')") === true &&
+       /#invest\.on\.stacked::before\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/.test(ev("Array.prototype.map.call(document.querySelectorAll('style'), function(s){ return s.textContent; }).join(' ')")));
     await tick();
     const now = ev("document.getElementById('hub_now').innerHTML");
     ok('now: the Standards in brief, the whole Inbox with each request as its own card', /hub-std/.test(now) && /Bulk pace/.test(now) && ev("document.querySelectorAll('#hub_now .ag-prop').length") === 1 && /agApprove\('p8a'\)/.test(now));
