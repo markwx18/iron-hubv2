@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-13-v5h">
+<meta name="ironhub-build" content="2026-11-13-v5i">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -345,6 +345,25 @@
   .notif-b{font-size:11px; color:var(--muted); margin-top:3px; line-height:1.45;}
   .notif-when{font-family:var(--mono); font-size:9px; color:var(--dim); margin-top:4px;}
   .notif-empty{padding:16px 12px; font-size:12px; color:var(--muted); line-height:1.5;}
+  /* V5 stage 8: the Inbox. One row per item: a type chip, the title, the body, and its one-tap actions. */
+  .ibx-r{padding:10px 0 10px 10px; border-left:2px solid var(--line); border-bottom:1px solid var(--line); min-width:0;}
+  .ibx-r:last-child{border-bottom:none;}
+  .notif-panel .ibx-r{padding:10px 12px;}
+  .ibx-h{display:flex; align-items:baseline; gap:8px; min-width:0;}
+  .ibx-chip{flex:none; font-family:var(--mono); font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+            border:1px solid var(--line2); border-radius:6px; padding:1px 5px;}
+  .ibx-t{font-size:13px; font-weight:600; color:var(--text); min-width:0; overflow-wrap:anywhere;}
+  .ibx-b{font-size:12px; color:var(--muted); line-height:1.45; margin-top:4px; overflow-wrap:anywhere;}
+  #ibxToday .ibx-b{display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}
+  .ibx-a{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+  .ibx-more{margin-top:10px;}
+  .ibx-foot{padding:10px 12px; border-top:1px solid var(--line);}
+  .cc-go{margin-top:10px;}
+  .cc-go .btn{width:100%;}
+  .depth-seg{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:10px;}
+  .depth-seg button{font-family:var(--disp); font-size:13px; letter-spacing:.04em; text-transform:uppercase; padding:9px 4px; border-radius:var(--r-ctl);
+                    border:1px solid var(--line2); background:none; color:var(--muted); cursor:pointer; min-width:0;}
+  .depth-seg button.on{background:var(--panel2); color:var(--text); border-color:var(--amber);}
   .pain-btn{border:1px solid var(--line2); background:transparent; color:var(--muted); font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:2px; cursor:pointer;}
   .pain-btn.on{color:var(--red); border-color:var(--red-dim);}
   .pain-row{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:8px; padding-top:8px; border-top:1px solid var(--line);}
@@ -2393,6 +2412,9 @@
         <section id="desk"></section>
         <section id="forecasts"></section>
         <section id="invest"></section>
+        <section id="hub_now" data-title="Now"></section>
+        <section id="hub_out" data-title="Outlook"></section>
+        <section id="hub_lib" data-title="Library"></section>
         <section id="meso"></section>
         <section id="log"></section>
         <section id="settings"></section>
@@ -10664,6 +10686,7 @@ function renderSettings(){
     '<div style="flex:none"><button class="btn sm ghost" onclick="resetAll()" style="color:var(--bad);border-color:var(--bad)">Reset Everything</button></div></div>'+
     '<p class="small" style="margin-top:8px">Export regularly — localStorage can be wiped by browser cleanup. The JSON file is your backup.</p></div>';
   app += html;
+  try{ const dc = depthCardHTML(); if(dc) app += '<h2>Detail</h2>'+dc; }catch(e){}   // V5 stage 8, per device
   app += ovCardHTML();   // V5 switches: empty until a stage registers one
   // Folded by default and remembered per device: eleven sections on one page was the complaint.
   el.innerHTML = '<div class="set-head"><span class="cc-eyebrow">This device</span><h2 class="hub-title">Settings</h2></div>'+
@@ -11042,6 +11065,23 @@ const REVIEW_RENDER = {progress:renderProgressV2, road:renderRoad, bulk:renderBu
    navResolve() route every existing call (including old group names like 'analytics') to
    where that section lives now.
    ============================================================ */
+/* V5 stage 8: the Hub in five views while the Organization switch is on. Now merges its own section with Flags, so
+   Flags is reachable from Now; Outlook merges Forecasts with its own part. Every older section keeps its id, and
+   NAV_LEGACY sends each one to the view that shows it under whichever set is in force. */
+OV.organize = {label:'Organization: one Inbox, lighter screens', paid:false, note:'Everything waiting on you in one Inbox (the bell, and the top three on Today), Today in five zones, the Hub in five views, and at most five open cards on a screen with the rest one tap away. Worked out on the device. No model call.'};
+const NAV_HUB_V4 = [
+  {id:'ops',         label:'Agents'},
+  // The agents' board, its own tab (his ask, 2026-10-21: "a new category inside the hub, like Agents and Flags").
+  {id:'desk',        label:'Desk'},
+  // Ask an agent about the future, and the app keeps score (his ask, 2026-11-03).
+  {id:'forecasts',   label:'Forecasts'},
+  {id:'invest',      label:'Flags'}];
+const NAV_HUB_V5 = [
+  {id:'hub_now',     label:'Now',     show:['hub_now','invest']},
+  {id:'ops',         label:'Agents'},
+  {id:'desk',        label:'Desk'},
+  {id:'outlook',     label:'Outlook', show:['forecasts','hub_out']},
+  {id:'hub_lib',     label:'Library'}];
 const NAV_MODEL = [
   {id:'home',     label:'Today',    ic:'today', subs:[
     {id:'home',        label:'Today'}]},
@@ -11067,13 +11107,9 @@ const NAV_MODEL = [
     {id:'an_recovery', label:'Ready'}]},
   // Coach keeps the internal id 'ops': the agent layer, its tests and the refresh gate all
   // key off it, and a rename would buy nothing but churn.
-  {id:'ops',      label:'Hub',      ic:'coach', top:true, subs:[
-    {id:'ops',         label:'Agents'},
-    // The agents' board, its own tab (his ask, 2026-10-21: "a new category inside the hub, like Agents and Flags").
-    {id:'desk',        label:'Desk'},
-    // Ask an agent about the future, and the app keeps score (his ask, 2026-11-03).
-    {id:'forecasts',   label:'Forecasts'},
-    {id:'invest',      label:'Flags'}]},
+  // The Hub's views depend on the Organization switch (V5 stage 8), so they are read through a getter: every reader
+  // of NAV_MODEL (the sub-nav, the rail, navShows(), the suite) sees the views in force, and nothing else changed.
+  {id:'ops',      label:'Hub',      ic:'coach', top:true, get subs(){ return orgOn() ? NAV_HUB_V5 : NAV_HUB_V4; }},
   {id:'settings', label:'Settings', ic:'gear', top:true, subs:[
     {id:'settings',    label:'General'}]}
 ];
@@ -11090,7 +11126,13 @@ const NAV_LEGACY = {
   road:['progress','strength'], an_overload:['progress','an_overload'],
   an_fatigue:['progress','an_fatigue'],
   bulk:['body','bulk'], fuel:['body','fuel'], an_dev:['body','an_dev'], an_recovery:['body','an_recovery'],
-  invest:['ops','invest'], desk:['ops','desk'], forecasts:['ops','forecasts'],
+  desk:['ops','desk'],
+  // These move with the Organization switch (V5 stage 8). Off, the three new sections fall back to the Agents view.
+  get invest(){ return orgOn() ? ['ops','hub_now'] : ['ops','invest']; },
+  get forecasts(){ return orgOn() ? ['ops','outlook'] : ['ops','forecasts']; },
+  get hub_now(){ return orgOn() ? ['ops','hub_now'] : ['ops','ops']; },
+  get hub_out(){ return orgOn() ? ['ops','outlook'] : ['ops','ops']; },
+  get hub_lib(){ return orgOn() ? ['ops','hub_lib'] : ['ops','ops']; },
   // Coach was folded into ZULU inside OPERATIONS -- keep the old id routing so any existing
   // showReviewTab('coach') call still lands somewhere real instead of Progress.
   coach:['ops','ops'], ops:['ops','ops'],
@@ -11120,7 +11162,10 @@ function navSubObj(mainId, subId){ const m = navMain(mainId); return m ? m.subs.
 function navShows(mainId, subId){ const so = navSubObj(mainId, subId); return (so && so.show) || [subId]; }
 /* Paint every part of a view. The one path both a tab switch and the refresh tick use, so a
    merged view can never have one part go stale. */
-function navRenderSub(mainId, subId){ navShows(mainId, subId).forEach(id=>{ (REVIEW_RENDER[id]||function(){})(); }); }
+function navRenderSub(mainId, subId){
+  navShows(mainId, subId).forEach(id=>{ (REVIEW_RENDER[id]||function(){})(); });
+  cbApplyShown();   // the card budget (V5 stage 8): after every part is drawn, never inside a renderer
+}
 const NAV_IC = {
   today:'M4 11.5 12 5l8 6.5V20h-5v-5h-6v5H4z',
   train:'M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11',
@@ -11241,7 +11286,8 @@ function renderSubnav(){
   el.classList.add('has');
   // Four views or fewer (every group now) fit one row on a 320px phone, so they read as a
   // segmented control. More than that falls back to the scrolling strip.
-  const seg = m.subs.length <= 4;
+  // Five fit too: the Hub's five views (V5 stage 8) are short words, checked at 320px.
+  const seg = m.subs.length <= 5;
   el.classList.toggle('seg', seg);
   const btns = m.subs.map(s=>{
     const on = navMemory[m.id]===s.id;
@@ -11280,6 +11326,8 @@ function renderTopNav(){
 /* legacy shim: every old showReviewTab('x') call still lands in the right place */
 function showReviewTab(t){
   const map = NAV_LEGACY[t];
+  // Flags sits under the Inbox on Now (V5 stage 8): name the section, so the view opens on it rather than at its top.
+  if(map && t === 'invest' && map[1] !== t){ showMainTab(map[0], t); return; }
   if(map){ showMainTab(map[0], map[1]); return; }
   showMainTab('progress');
 }
@@ -22285,7 +22333,7 @@ function renderForecasts(){
   const el = document.getElementById('forecasts');
   if(!el) return;
   let h = '';
-  try{ h = hubForecastsHTML(); }catch(e){ console.warn('forecasts failed', e); h = '<div class="card"><p class="ag-empty">Forecasts could not be drawn.</p></div>'; }
+  try{ h = hubForecastsHTML(); }catch(e){ console.warn('forecasts failed', e); h = '<div class="card" data-fail><p class="ag-empty">Forecasts could not be drawn.</p></div>'; }
   el.innerHTML = h;
 }
 /* His taps. A rating replaces his own earlier one for the same forecast; Remove is a typo fix, the day it was made,
@@ -24946,7 +24994,7 @@ function qaCardHTML(){
 /* The asking agent's Hub card. */
 function qaHubHTML(id){
   const open = qaOpen();
-  if(open && open.agent === id) return '<div class="hub-track"><span class="hub-track-k">Asked you</span><span class="hub-track-v">'+esc(open.q)+'</span><span class="hub-track-a">Answer it on Today.</span></div>';
+  if(open && open.agent === id) return '<div class="hub-track"><span class="hub-track-k">Asked you</span><span class="hub-track-v">'+esc(open.q)+'</span><span class="hub-track-a">'+(orgOn() ? 'Answer it in the Inbox.' : 'Answer it on Today.')+'</span></div>';
   const last = qaNewest(qaList()).find(function(q){ return q && q.agent === id && qaAnswered(q); });
   if(last) return '<div class="hub-track"><span class="hub-track-k">Last question</span><span class="hub-track-v">'+esc(last.q)+'</span>'+
     '<span class="hub-track-a">'+(last.ans.skipped ? 'You skipped it.' : 'You said: '+esc(last.ans.choice))+'</span></div>';
@@ -26970,7 +27018,7 @@ function hubDeskHTML(){
   if(!deskPlusOn()) return deskBoardHTML(false);
   let top;
   try{ top = deskPlusTopHTML(); }
-  catch(e){ console.warn('desk top failed', e); top = '<div class="card" id="deskTopErr"><p class="small" style="color:var(--bad)">✖ The watches and the analysts’ cards could not be drawn. The coaches’ board is below.</p></div>'; }
+  catch(e){ console.warn('desk top failed', e); top = '<div class="card" id="deskTopErr" data-fail><p class="small" style="color:var(--bad)">✖ The watches and the analysts’ cards could not be drawn. The coaches’ board is below.</p></div>'; }
   return top+(deskFilter.tier === 'analysts' ? '' : deskBoardHTML(true));
 }
 function deskToggleAll(){ deskAll = !deskAll; renderDesk(); }
@@ -27312,7 +27360,7 @@ function planCardHTML(where){
   if(!planOn()) return '';
   const wk = weekKeyOf(todayKey()), row = planFor(wk);
   const head = '<div class="plan-h"><b>Plan of Record</b><span class="pw-note">week of '+esc(homeShortDate(wk))+(row ? ' · '+(row.by === 'zulu' ? 'ZULU' : 'set by you') : '')+'</span></div>';
-  const id = where === 'desk' ? 'planCardDesk' : 'planCard';
+  const id = where === 'desk' ? 'planCardDesk' : where === 'now' ? 'planCardNow' : 'planCard';   // 'now' is the Hub's Now view (V5 stage 8)
   let extra = '';
   try{ extra = planCardExtraHTML(where, wk, row); }catch(e){ extra = ''; }
   if(!row){
@@ -27558,7 +27606,7 @@ function planCardExtraHTML(where, wk, row){
   const lw = mesoAddDays(wk, -7);
   if(where === 'desk' || daysBetween(wk, t) < PLAN_LAST_DAYS){
     const s = planScore(lw);
-    if(s) h += '<div class="plan-last" id="'+(where === 'desk' ? 'planLastDesk' : 'planLast')+'"><span class="plan-std">Last week · '+esc(planScoreLine(s))+'</span>'+
+    if(s) h += '<div class="plan-last" id="'+(where === 'desk' ? 'planLastDesk' : where === 'now' ? 'planLastNow' : 'planLast')+'"><span class="plan-std">Last week · '+esc(planScoreLine(s))+'</span>'+
       s.items.map(function(it){ const W = PLAN_V[it.v.v] || PLAN_V.nodata;
         return '<span class="plan-v" data-v="'+it.v.v+'" style="color:'+W.col+'"><i aria-hidden="true">'+W.ic+'</i><span>'+esc(planCheckSay(it.p.check))+' · '+esc(planVerdictText(it.p, it.v))+'</span></span>'; }).join('')+'</div>';
   }
@@ -29644,7 +29692,15 @@ function renderHome(){
   else if(dc && dc.conf !== 'none') why = (dc.why && dc.why.length ? dc.why.join(' · ')+'. ' : '')+(DC_WHAT[dc.call] || '');
   else if(rd) why = 'Readiness '+rd.label+(rd.source === 'WHOOP' ? ', from WHOOP.' : ', from your check-in.');
   else why = 'No readiness reading yet — you’ll be asked when you start a session.';
-  h += '<p class="cc-why">'+esc(why)+'</p></div><div class="cc-main">';
+  h += '<p class="cc-why">'+esc(why)+'</p></div>';
+  // V5 stage 8: Today in five zones while Organization is on. Off, the page below is exactly as it was.
+  if(orgOn()){
+    const z = homeZonesHTML(t, rd, dc, callForPlan, brief, streak);
+    el.innerHTML = h+'<div class="cc-main" data-cb-root>'+z.html+'</div></div>';
+    try{ stdMarkTick(z.stdNow); }catch(e){}
+    return;
+  }
+  h += '<div class="cc-main">';
   // The Standards lead the page (V5 stage 1). Computed here and nowhere stored: Today still only reads.
   let stdNow = null;   // read once for the card and the top-bar mark
   try{ if(stdOn()){ stdNow = stdState(); h += stdCardHTML(stdNow); } }catch(e){ console.warn('standards card failed', e); }
@@ -29705,6 +29761,25 @@ function renderHome(){
   try{ if(waPhase() === 'active'){ h += waCardHTML(); waVisible = true; } }catch(e){ console.warn('winter arc card failed', e); }
 
   /* -- the fold: everything slower-moving, still one tap away -- */
+  let d = homeTilesHTML(rd, t, streak);
+  try{ d += dayCallCardHTML(t); }catch(e){ console.warn('day call card failed', e); }
+  if(!waVisible){ try{ d += waCardHTML(); }catch(e){ console.warn('winter arc card failed', e); } }
+  d += homeFuelFoldHTML(t);
+  if(!pend.length && !flags.length){
+    // An empty day must read as a finished screen, not a hole.
+    d += '<div class="dash-sec">Waiting on you</div><div class="card"><p class="dash-quiet">Nothing needs a decision from you. '+
+         (t.rest ? 'It’s a rest day — eat your surplus and sleep.'
+                 : 'Targets are set for '+esc(t.dayKey)+' — just train.')+'</p></div>';
+  }
+  d += homeJumpHTML();
+  h += subSection('Details & raw data', d, false,
+    {pref:'home.details', summary:'tiles · today’s call · '+(waVisible ? '' : 'Winter Arc · ')+'fuel timing · jump to', cls:'grp'});
+  h += '</div></div>';
+  el.innerHTML = h;
+  try{ stdMarkTick(stdNow); }catch(e){}
+}
+/* The three tiles at the top of Today's fold: recovery, what is scheduled, the streak. */
+function homeTilesHTML(rd, t, streak){
   let d = '<div class="dash-hero">';
   d += '<div class="dash-tile"><div class="dt-l">Recovery</div>'+
        '<div class="dt-v" style="color:'+(rd?readinessColor(rd.tone):'var(--dim)')+'">'+
@@ -29719,33 +29794,78 @@ function renderHome(){
        '<div class="dt-s">'+(function(){ const L = streakStats().longest;
          if(streak>0) return 'session'+(streak===1?'':'s')+' without a missed day'+(L > streak ? ' · best '+L : '');
          return L > 0 ? 'Start one today. Best run: '+L+'.' : 'Start one today.'; })()+'</div></div>';
-  d += '</div>';
-  try{ d += dayCallCardHTML(t); }catch(e){ console.warn('day call card failed', e); }
-  if(!waVisible){ try{ d += waCardHTML(); }catch(e){ console.warn('winter arc card failed', e); } }
-  // Fuel timing, only when there is a workout time to hang it off. Its own fold, remembered.
+  return d+'</div>';
+}
+/* Fuel timing, only when there is a workout time to hang it off. Its own fold, remembered. */
+function homeFuelFoldHTML(t){
   fuelInit();
-  if(!t.rest && S.fuel.workoutTime){
-    d += '<div class="dash-sec">Fuel timing</div>'+
-      subSection('Workout at '+fuelClockFrom(S.fuel.workoutTime, 0), fuelTimingHTML({bare:true}), true,
-        {pref:'home.fuel', summary:fuelNextLine(), cls:'grp'});
-  }
-  if(!pend.length && !flags.length){
-    // An empty day must read as a finished screen, not a hole.
-    d += '<div class="dash-sec">Waiting on you</div><div class="card"><p class="dash-quiet">Nothing needs a decision from you. '+
-         (t.rest ? 'It’s a rest day — eat your surplus and sleep.'
-                 : 'Targets are set for '+esc(t.dayKey)+' — just train.')+'</p></div>';
-  }
-  d += '<div class="dash-sec">Jump to</div><div class="card"><div class="dash-jump">'+
+  if(t.rest || !S.fuel.workoutTime) return '';
+  return '<div class="dash-sec">Fuel timing</div>'+
+    subSection('Workout at '+fuelClockFrom(S.fuel.workoutTime, 0), fuelTimingHTML({bare:true}), true,
+      {pref:'home.fuel', summary:fuelNextLine(), cls:'grp'});
+}
+function homeJumpHTML(){
+  return '<div class="dash-sec">Jump to</div><div class="card"><div class="dash-jump">'+
     '<button class="btn sm" onclick="setMode(\'live\')">⚡ Start / open LIVE</button>'+
     '<button class="btn ghost sm" onclick="showReviewTab(\'ops\')">Hub</button>'+
     '<button class="btn ghost sm" onclick="showReviewTab(\'progress\')">Progress</button>'+
     '<button class="btn ghost sm" onclick="showReviewTab(\'bulk\')">Body</button>'+
     '</div></div>';
+}
+/* Today in five zones (V5 stage 8): 1 the orders (the Standards, the Plan of Record, a hold, a running Winter Arc),
+   2 today's session with Start, 3 the Inbox's top three, 4 the agents and the brief, 5 everything else in one fold.
+   Each part is tried on its own, so one that throws costs that part. It only reads, like the page it replaces. */
+const HOME_ZONES = ['orders', 'session', 'inbox', 'agents', 'details'];
+function homeZonesHTML(t, rd, dc, callForPlan, brief, streak){
+  let h = '', stdNow = null, waVisible = false;
+  // 1. Orders
+  try{ if(stdOn()){ stdNow = stdState(); h += stdCardHTML(stdNow); } }catch(e){ console.warn('standards card failed', e); }
+  try{ h += planCardHTML('home'); }catch(e){ console.warn('plan card failed', e); }
+  try{ h += holdTodayHTML(); }catch(e){ console.warn('hold banner failed', e); }
+  try{ if(waPhase() === 'active'){ h += waCardHTML(); waVisible = true; } }catch(e){ console.warn('winter arc card failed', e); }
+  // 2. Today's session, with Start
+  try{
+    const kl = live ? [] : todayKeyLifts(t.dayKey, callForPlan, 2);
+    h += '<div class="cc-head"><span class="dash-sec">Today’s session</span></div><div class="cc-lifts" id="ccSession">'+kl.map(function(x, i){
+      const d = x.delta;
+      const chg = (d === null || d === undefined) ? '' : (d > 0 ? '+'+d : d < 0 ? String(d) : '=');
+      return '<div class="cc-lift"><span class="cc-lift-k">'+(i === 0 ? 'Key' : 'Next')+'</span><span class="cc-lift-n">'+esc(x.name)+'</span>'+
+        (x.w > 0 ? '<span class="cc-lift-v">'+x.w+' × '+x.lo+'–'+x.hi+'</span>' : '<span class="cc-lift-v cc-dim">'+(x.lo ? x.lo+'–'+x.hi : '')+'</span>')+
+        '<span class="cc-lift-d'+(d > 0 ? ' up' : '')+'">'+chg+'</span></div>';
+    }).join('')+
+    '<div class="cc-go"><button class="btn'+(t.rest || t.logged || live ? ' ghost' : '')+'" onclick="setMode(\'live\')">⚡ '+
+      (live ? 'Back to the session' : t.rest || t.logged ? 'Open LIVE' : 'Start '+esc(t.dayKey))+'</button></div></div>';
+  }catch(e){ console.warn('session zone failed', e); }
+  // 3. The Inbox's top three
+  try{ h += inboxTodayHTML(t); }catch(e){ console.warn('inbox zone failed', e); h += '<div class="card" data-fail><p class="small" style="color:var(--bad)">✖ The Inbox could not be drawn. The bell still lists what is waiting.</p></div>'; }
+  // 4. The agents
+  try{ h += homeAgentsHTML(); }catch(e){ console.warn('agents strip failed', e); }
+  try{ h += homeBriefHTML(brief); }catch(e){ console.warn('brief card failed', e); }
+  // 5. Details, folded
+  let d = '';
+  try{ d += homeExpectHTML(); }catch(e){ console.warn('expect tiles failed', e); }
+  try{ d += homePlateauHTML(); }catch(e){ console.warn('plateau chips failed', e); }
+  try{ d += expChipHTML(); }catch(e){ console.warn('experiment chip failed', e); }
+  try{
+    const db = agDebriefRecent();
+    if(db){
+      const row = function(k, v){ return v ? '<div class="db-row"><span class="db-k">'+k+'</span><span class="small">'+esc(v)+'</span></div>' : ''; };
+      d += '<div class="dash-sec">Last session</div><div class="card">'+row('Went well', db.well)+row('Change', db.change)+row('Next time', db.next)+
+        '<p class="small" style="color:var(--dim);margin-top:8px">DELTA · '+esc(fmtDate(db.date))+' · '+esc(db.day||'')+'</p></div>';
+    }
+  }catch(e){ console.warn('debrief card failed', e); }
+  try{ d += wpCardHTML(); }catch(e){ console.warn('week plan card failed', e); }
+  try{ d += holdCardHTML(); }catch(e){ console.warn('holds card failed', e); }
+  try{ d += waLaunchHTML(); }catch(e){ console.warn('winter arc launch card failed', e); }
+  if(!waVisible){ try{ d += waCardHTML(); }catch(e){ console.warn('winter arc card failed', e); } }
+  try{ d += homeTilesHTML(rd, t, streak); }catch(e){ console.warn('tiles failed', e); }
+  try{ d += dayCallCardHTML(t); }catch(e){ console.warn('day call card failed', e); }
+  try{ d += homeFuelFoldHTML(t); }catch(e){ console.warn('fuel timing failed', e); }
+  try{ d += '<div class="dash-sec">Detail on every screen</div>'+depthCardHTML('home'); }catch(e){}
+  d += homeJumpHTML();
   h += subSection('Details & raw data', d, false,
-    {pref:'home.details', summary:'tiles · today’s call · '+(waVisible ? '' : 'Winter Arc · ')+'fuel timing · jump to', cls:'grp'});
-  h += '</div></div>';
-  el.innerHTML = h;
-  try{ stdMarkTick(stdNow); }catch(e){}
+    {pref:'home.details', summary:'the last session · trips and holds · tiles · today’s call · '+(waVisible ? '' : 'Winter Arc · ')+'fuel timing · detail', cls:'grp'});
+  return {html:h, stdNow:stdNow};
 }
 
 /* ---- notification centre ----
@@ -29833,7 +29953,7 @@ function notifVisible(){
 /* Clearing is a real user action -- it should not resurface on his other device just because
    this one has not synced yet -- so it touches+pushes like any other entry point. */
 function notifClear(){
-  S.notifCleared = notifItems().map(function(i){ return i.id; });
+  S.notifCleared = inboxLiveIds();   // the Inbox's ids with Organization on, the bell's with it off
   save();
   renderNotif();
 }
@@ -29841,7 +29961,7 @@ function notifClear(){
    dismissed a proposal he had not read yet. Bounded the same way notifClear() is: only ids that
    notifItems() still produces are kept, so a resolved proposal's id drops out on the next write. */
 function notifDismiss(id){
-  const live = notifItems().map(function(i){ return i.id; });
+  const live = inboxLiveIds();
   const kept = notifClearedIds().filter(function(x){ return live.indexOf(x) >= 0; });
   if(kept.indexOf(id) < 0) kept.push(id);
   S.notifCleared = kept;
@@ -29863,6 +29983,8 @@ function notifToggle(){
   renderNotif();
 }
 function notifCount(){
+  // With Organization on (V5 stage 8) the bell is the Inbox's badge: one count for both.
+  if(orgOn()){ try{ return inboxItems().length; }catch(e){} }
   return notifVisible().length;
 }
 function renderNotif(){
@@ -29885,6 +30007,7 @@ function renderNotifDraw(){
   btn.className = 'notif-btn'+(n?' has':'');
   panel.className = 'notif-panel'+(notifOpen?' open':'');
   if(!notifOpen){ panel.innerHTML = ''; return; }
+  if(orgOn()){ try{ panel.innerHTML = inboxPanelHTML(); return; }catch(e){ console.warn('inbox panel failed', e); } }
   const items = notifVisible().filter(function(i){ return i.body || i.title; });
   let h = '<div class="notif-head"><span>Notifications</span>'+
           (items.length ? '<button class="pain-btn" style="margin-left:auto" onclick="notifClear()">clear</button>' : '')+
@@ -29903,6 +30026,398 @@ function renderNotifDraw(){
         : '<div class="notif-empty">Nothing to tell you. No proposals waiting, no flags open, '+
           'and no brief yet today.</div>');
   panel.innerHTML = h;
+}
+
+/* ============================================================
+   ORGANIZATION (V5 stage 8, 2026-11-13). One Inbox, a card budget per section, Today in five zones, the Hub in five
+   views, and a per-device depth switch. A structural change, not a restyle: every section id and handler is kept.
+   - THE INBOX IS DERIVED WHEN READ (inboxItems()), from the sources that exist: everything the bell carried
+     (notifItems()) plus the few "waiting on you" things that only ever had a card (held requests, a finished swap
+     trial, the Monday stock check, an experiment session to answer, the app's plan suggestion). There is no new
+     store, so there is no sync trap. Clearing an item is the bell's own list (S.notifCleared, a save()).
+   - Priority is fixed: a red Standard first, then requests and anything that failed, then routine (INBOX_PRI).
+     A request cannot be cleared from the Inbox: it leaves when he answers it, as a red Standard leaves only by its
+     exit condition.
+   - THE CARD BUDGET is applied to the DOM after a section is drawn (cbApply()), never by a renderer: at most
+     CB_BUDGET open cards in a section (Today CB_BUDGET_HOME), the rest moved into one fold with a one-line summary.
+     Moving keeps every node, so every id, handler and querySelector still finds what it found. A fold is not an
+     open card and is never moved, so raw data stays last. A FAILURE IS NEVER FOLDED: an element that carries
+     [data-fail], or holds one, stays open where it is. A focused input is never moved (that would close the
+     keyboard): the budget waits for the next repaint.
+   - THE DEPTH SWITCH is a per-device pref (uiPref 'depth': basic, mid, adv; default basic), never in S. It works
+     through the same fold: Basic keeps the budget, Intermediate allows CB_BUDGET_MID, Advanced has no budget. A card
+     tagged data-depth="mid" or "adv" goes into the fold below that depth whatever the count (stage 10 tags them).
+   - With the switch off, nothing here runs: the bell, Today and the Hub are exactly what they were.
+   ============================================================ */
+function orgOn(){ return ovOn('organize'); }
+const CB_BUDGET = 5, CB_BUDGET_HOME = 6, CB_BUDGET_MID = 8;
+const INBOX_TODAY = 3;   // Today shows the top three, then "N more"
+// Already on Today in a zone of their own (the Standards card, the Plan of Record, the brief), so Today's three skip them.
+const INBOX_ON_TODAY = ['std:', 'plan:', 'brief:'];
+const INBOX_PRI = {red:0, ask:1, fail:1, routine:2};
+// What an open card is, at the top of a section: a panel. Headings, lines of text and folds are not cards; a wrapper
+// that holds a panel counts once.
+const CB_CARD_SEL = '.card, .goal-card, .bodymap-card, .str-sec, .std, .ag-prop, .ag-chat, .hub-agent, .cc-lifts, .cc-agents, .ibx, .lg-list, .lib-list';
+const CB_TEXT_TAGS = ['H1','H2','H3','H4','P'];
+/* The type chip and the priority, from the item's own id. The id prefixes are the sources' own (notifItems()). */
+const INBOX_TYPES = [
+  ['std:', 'Standard'], ['prop:', 'Request'], ['held:', 'Held'], ['qa:', 'Question'], ['swt:', 'Swap trial'], ['exp:', 'Experiment'],
+  ['watchoffer:', 'Watch'], ['watchbad:', 'Watch'], ['watch:', 'Watch'], ['plansug:', 'Plan'], ['plan:', 'Plan'], ['flag:', 'Flag'],
+  ['fam:', 'Pantry'], ['stock:', 'Stock'], ['fc:', 'Forecast'], ['plateau:', 'Lifts'], ['prf:', 'Lifts'], ['pr:', 'Lifts'], ['brief:', 'Brief'],
+  ['deloadplan:', 'Deload'], ['deload:', 'Deload'], ['skip:', 'Schedule'],
+  ['letter:', 'Letter'], ['recap:', 'Recap'], ['clock:', 'Server'], ['spend:', 'Spend'], ['water:', 'Water']
+];
+const INBOX_ASK = ['prop:', 'held:', 'qa:', 'swt:', 'exp:', 'watchoffer:', 'fam:'];   // requests: answered, never cleared
+const INBOX_FAIL = ['watchbad:', 'clock:'];
+function inboxPre(id, list){ id = String(id || ''); return list.some(function(p){ return id.indexOf(p) === 0; }); }
+function inboxType(id){
+  id = String(id || '');
+  for(let i = 0; i < INBOX_TYPES.length; i++) if(id.indexOf(INBOX_TYPES[i][0]) === 0) return INBOX_TYPES[i][1];
+  return 'Note';
+}
+function inboxPriOf(it){
+  const id = String(it.id || '');
+  if(id.indexOf('std:') === 0) return /^std:[^:]+:red:/.test(id) ? INBOX_PRI.red : INBOX_PRI.ask;
+  if(inboxPre(id, INBOX_ASK)) return INBOX_PRI.ask;
+  if(inboxPre(id, INBOX_FAIL) || /:cap$/.test(id)) return INBOX_PRI.fail;
+  return INBOX_PRI.routine;
+}
+/* Every item, cleared or not. Each source is tried on its own: one that throws costs its items, never the Inbox. */
+function inboxRaw(){
+  const out = [];
+  try{ notifItems().forEach(function(i){ out.push(i); }); }catch(e){ console.warn('inbox: bell items failed', e); }
+  try{
+    const held = agHeld();
+    if(held.length) out.push({id:'held:'+held.map(function(p){ return p.id; }).join(','), tone:AGENTS.zulu.col,
+      title:'ZULU held '+held.length+' request'+(held.length === 1 ? '' : 's'), body:held.map(function(p){ return ((AGENTS[p.agent] || {}).name || p.agent)+': '+p.title; }).join(' · '),
+      when:null, go:"showReviewTab('hub_now')"});
+  }catch(e){}
+  try{
+    const z = swtPending();
+    if(z) out.push({id:'swt:'+z.row.id, tone:'var(--violet)', title:'Swap trial finished: keep '+z.row.to+'?', body:z.row.to+' stood in for '+z.row.from+'. Keep it or go back.',
+      when:null, go:"showReviewTab('hub_now')"});
+  }catch(e){}
+  try{
+    const x = expActive(), T = expT(x);
+    if(x && T){
+      const ask = expSessions(x).filter(function(z){ return z.state === 'unanswered'; }).length;
+      if(ask) out.push({id:'exp:'+x.id+':'+ask, tone:AGENTS[T.owner].col, title:'Experiment: '+ask+' session'+(ask === 1 ? '' : 's')+' to answer',
+        body:T.label+(x.lift ? ' · '+x.lift : '')+'. Your answer decides whether a session counts.', when:null, go:"showReviewTab('hub_out')"});
+    }
+  }catch(e){}
+  try{
+    if(fpStockCardHTML('home')) out.push({id:'stock:'+mesoMondayOf(todayKey()), tone:'var(--amber)', title:'New week: still have these?',
+      body:'Tap anything you have run out of. The rest carries over.', when:null, go:"showReviewTab('hub_now')"});
+  }catch(e){}
+  try{
+    if(planOn() && !planNow()){
+      const sg = planSuggest();
+      if(sg.length) out.push({id:'plansug:'+weekKeyOf(todayKey()), tone:'var(--amber)', title:'No plan for this week yet',
+        body:'The app suggests '+sg.length+' priorit'+(sg.length === 1 ? 'y' : 'ies')+' from your Standards. One tap on the Desk sets them.', when:null, go:"showReviewTab('desk')"});
+    }
+  }catch(e){}
+  return out.map(function(i, n){
+    return Object.assign({}, i, {type:inboxType(i.id), pri:inboxPriOf(i), ask:inboxPre(i.id, INBOX_ASK), n:n});
+  });
+}
+/* What he sees: cleared items gone (a request and a sticky red never are), sorted by priority, in source order within one. */
+function inboxItems(){
+  // Read, never initialised: notifClearedIds() creates the list, and Today must leave S byte-identical.
+  const cleared = Array.isArray(S.notifCleared) ? S.notifCleared : [];
+  return inboxRaw().filter(function(i){ return i.sticky || i.ask || cleared.indexOf(i.id) < 0; })
+    .sort(function(a, b){ return (a.pri - b.pri) || (a.n - b.n); });
+}
+/* The ids a dismissal may keep: what the Inbox produces with the switch on, what the bell produces with it off. */
+function inboxLiveIds(){ return (orgOn() ? inboxRaw() : notifItems()).map(function(i){ return i.id; }); }
+/* One row: chip, title, body, and its one-tap actions. A request's own buttons are its source's (Approve and Reject
+   call agApprove() / agReject(), which re-check everything); Open is the source's own `go`; Clear is notifDismiss(). */
+function inboxRowHTML(i, inPanel){
+  let acts = '';
+  const pid = /^prop:/.test(i.id) ? i.id.slice(5) : '';
+  if(pid) acts += '<button class="btn sm" data-id="'+esc(pid)+'" data-act="approve" onclick="inboxDo(this)">Approve</button>'+
+                  '<button class="btn ghost sm" data-id="'+esc(pid)+'" data-act="reject" onclick="inboxDo(this)">Reject</button>';
+  // A source's go is app code built for an onclick (the bell inserts it the same way), already escaped where it carries a name.
+  if(i.go) acts += '<button class="btn ghost sm" onclick="'+(inPanel ? 'notifToggle();' : '')+i.go+'">Open</button>';
+  if(!i.ask && !i.sticky) acts += '<button class="btn ghost sm" data-id="'+esc(i.id)+'" data-act="clear" onclick="inboxDo(this)">Clear</button>';
+  return '<div class="ibx-r" data-pri="'+i.pri+'" style="border-left-color:'+i.tone+'"><div class="ibx-h"><span class="ibx-chip">'+esc(i.type)+'</span>'+
+    '<span class="ibx-t">'+esc(i.title)+'</span></div>'+(i.body ? '<p class="ibx-b">'+esc(i.body)+'</p>' : '')+
+    (acts ? '<div class="ibx-a">'+acts+'</div>' : '')+'</div>';
+}
+function inboxDo(el){
+  const id = el && el.getAttribute && el.getAttribute('data-id'), act = el && el.getAttribute('data-act');
+  if(!id) return;
+  try{
+    if(act === 'approve') agApprove(id);
+    else if(act === 'reject') agReject(id);
+    else if(act === 'clear') notifDismiss(id);
+  }catch(e){ console.warn('inbox action failed', e); }
+  // The source repaints its own screen; the one he is looking at may be another (Today, the bell).
+  try{ renderNotif(); }catch(e){}
+  try{ rerenderActive(true); }catch(e){}
+}
+/* Today's third zone. Nothing waiting reads as a finished screen, not a hole. */
+function inboxTodayHTML(t){
+  const all = inboxItems(), items = all.filter(function(i){ return !inboxPre(i.id, INBOX_ON_TODAY); }), more = all.length - Math.min(INBOX_TODAY, items.length);
+  let h = '<div class="cc-head"><span class="dash-sec">Inbox</span>'+(all.length ? '<span class="cc-note">'+all.length+' waiting</span>' : '')+'</div>';
+  if(!items.length && more > 0) return h+'<div class="card ibx" id="ibxToday"><p class="dash-quiet">Nothing else waiting: the Standards, the plan and the brief are on this page.</p>'+
+    '<button class="btn ghost sm ibx-more" onclick="showReviewTab(\'hub_now\')">Open the Inbox</button></div>';
+  if(!items.length) return h+'<div class="card ibx"><p class="dash-quiet">Nothing needs a decision from you. '+
+    (t && t.rest ? 'It’s a rest day: eat your surplus and sleep.' : 'Targets are set'+(t && t.dayKey ? ' for '+esc(t.dayKey) : '')+': just train.')+'</p></div>';
+  return h+'<div class="card ibx" id="ibxToday">'+items.slice(0, INBOX_TODAY).map(function(i){ return inboxRowHTML(i); }).join('')+
+    (more > 0 ? '<button class="btn ghost sm ibx-more" onclick="showReviewTab(\'hub_now\')">'+more+' more in the Inbox</button>' : '')+'</div>';
+}
+/* The whole Inbox, on the Hub's Now view. An item that has a card of its own (a request, the question, the trial,
+   the stock check, the pantry update) shows that card, with its own controls; the rest are rows. */
+function inboxFullHTML(){
+  // The Standards card sits right above on Now, so the list does not repeat what it shows. The bell still lists them first.
+  const all = inboxItems(), items = stdOn() ? all.filter(function(i){ return !/^std:/.test(i.id); }) : all;
+  let h = '<div class="cc-head"><span class="dash-sec">Inbox</span><span class="cc-note">'+(items.length ? items.length+' waiting, most urgent first' : 'nothing waiting')+'</span></div>';
+  if(!items.length) return h+'<div class="card ibx"><p class="dash-quiet">Nothing '+(all.length ? 'else ' : '')+'needs a decision from you.</p></div>';
+  const rows = [];
+  const flush = function(){ if(rows.length){ h += '<div class="card ibx">'+rows.join('')+'</div>'; rows.length = 0; } };
+  items.forEach(function(i){
+    let card = '';
+    try{
+      if(/^prop:/.test(i.id)){ const p = agPending().filter(function(q){ return 'prop:'+q.id === i.id; })[0]; if(p) card = agPropHTML(p); }
+      else if(/^held:/.test(i.id)) card = inboxHeldHTML();
+      else if(/^qa:/.test(i.id)) card = qaCardHTML();
+      else if(/^swt:/.test(i.id)) card = swtDecideCardHTML();
+      else if(/^stock:/.test(i.id)) card = fpStockCardHTML('home');
+      else if(/^fam:/.test(i.id)) card = famInboxCardHTML();
+    }catch(e){ card = ''; }
+    if(card){ flush(); h += card; } else rows.push(inboxRowHTML(i, false));
+  });
+  flush();
+  return h;
+}
+/* The bell's panel with Organization on: the same list, most urgent first, and the way to the full Inbox. */
+function inboxPanelHTML(){
+  const items = inboxItems(), clearable = items.some(function(i){ return !i.ask && !i.sticky; });
+  let h = '<div class="notif-head"><span>Inbox</span>'+
+    (clearable ? '<button class="pain-btn" style="margin-left:auto" onclick="notifClear()">clear</button>' : '')+
+    '<button class="pain-btn"'+(clearable ? '' : ' style="margin-left:auto"')+' onclick="notifToggle()">close</button></div>';
+  h += items.length ? items.map(function(i){ return inboxRowHTML(i, true); }).join('')
+                    : '<div class="notif-empty">Nothing waiting on you. No requests, no question, no Standard off.</div>';
+  return h+'<div class="ibx-foot"><button class="btn ghost sm" onclick="notifToggle();setMode(\'review\');showReviewTab(\'hub_now\')">Open the Inbox</button></div>';
+}
+function inboxHeldHTML(){
+  const held = agHeld();
+  if(!held.length) return '';
+  return '<div class="card ag-held"><div class="small" style="color:var(--dim);margin-bottom:6px">Held by ZULU ('+held.length+')</div>'+
+    held.map(function(p){ const A = AGENTS[p.agent] || {name:p.agent, col:'var(--muted)'};
+      return '<div class="ag-held-row"><div class="ag-held-t"><b style="color:'+A.col+'">'+esc(A.name)+'</b> '+esc(p.title)+'</div>'+
+        '<div class="small">ZULU: '+esc(p.heldWhy || '')+'</div>'+
+        '<button class="btn ghost sm" data-prop="'+esc(p.id)+'" onclick="agShowAnyway(this.dataset.prop)">Show anyway</button></div>'; }).join('')+'</div>';
+}
+
+/* ---- the Hub's three new views (only reachable with the switch on) ---- */
+/* Now: the orders (the Standards in brief, the Plan of Record), the whole Inbox, the week's plan, then Flags. */
+function renderHubNow(){
+  const el = document.getElementById('hub_now'); if(!el) return;
+  if(!orgOn()){ el.innerHTML = ''; return; }
+  let h = '<div class="hub-head"><span class="cc-eyebrow">Hub</span><h2 class="hub-title">Now</h2></div>';
+  try{ h += hubNowStdHTML(); }catch(e){ h += '<div class="card" data-fail><p class="small" style="color:var(--bad)">✖ The Standards could not be read.</p></div>'; }
+  try{ h += planCardHTML('now'); }catch(e){ console.warn('plan card failed', e); }
+  try{ h += inboxFullHTML(); }catch(e){ console.warn('inbox failed', e); h += '<div class="card" data-fail><p class="small" style="color:var(--bad)">✖ The Inbox could not be drawn. The bell still lists what is waiting.</p></div>'; }
+  try{
+    const _wp = wpForDate(todayKey());
+    if(_wp && _wp.reply && _wp.reply.summary) h += '<div class="cc-head"><span class="dash-sec">This week</span></div><div class="card"><p class="small">'+esc(_wp.reply.summary)+'</p>'+
+      (_wp.reply.days||[]).map(function(d){ return '<div class="db-row"><span class="db-k">'+esc(fmtDate(d.date))+'</span><span class="small">'+esc(d.note)+'</span></div>'; }).join('')+
+      '<p class="small" style="color:var(--dim);margin-top:6px">You said: '+esc(wpInputLine(_wp) || 'nothing in particular')+'</p></div>';
+  }catch(e){ console.warn('week plan card failed', e); }
+  el.innerHTML = h;
+}
+/* The Standards in one card: what is flagged, with its reason, and the way to the full card on Today. It reads the
+   one result (stdState()); nothing here is worked out twice. */
+function hubNowStdHTML(){
+  if(!stdOn()) return '';
+  const rows = stdState(), bad = stdFlagged(rows);
+  const line = bad.length ? bad.length+' of '+rows.length+' need attention' : 'All '+rows.length+' as they should be, or not enough data to say';
+  return '<div class="card hub-std"><div class="plan-h"><b>Standards</b><span class="pw-note">'+esc(line)+'</span></div>'+
+    bad.map(function(r){ return '<p class="small" style="margin-top:6px"><b style="color:'+STD_COL[r.lvl]+'"><span aria-hidden="true">'+STD_ICON[r.lvl]+'</span> '+esc(r.label)+' · '+esc(STD_WORD[r.lvl])+'</b> '+esc(r.why || '')+'</p>'; }).join('')+
+    '<button class="btn ghost sm" style="margin-top:8px" onclick="stdGo()">All five on Today</button></div>';
+}
+/* Outlook, under Forecasts: experiments, and the watches in one line (they live on the Desk). */
+function renderHubOut(){
+  const el = document.getElementById('hub_out'); if(!el) return;
+  if(!orgOn()){ el.innerHTML = ''; return; }
+  let h = '';
+  try{ const _xh = expCardHTML(); h += '<h2>Experiments</h2>'+(_xh || '<div class="card"><p class="ag-empty">No experiment running. The coaches propose one when the data asks a question.</p></div>'); }
+  catch(e){ console.warn('experiments card failed', e); h += '<div class="card" data-fail><p class="small" style="color:var(--bad)">✖ The experiments could not be drawn.</p></div>'; }
+  try{
+    if(deskPlusOn()){
+      const ws = watchList(), open = ws.filter(function(v){ return v.state === 'open'; }).length, fired = ws.filter(function(v){ return v.state === 'fired'; }).length,
+            broken = ws.filter(function(v){ return v.state === 'broken'; }).length;
+      h += '<h2>Watches</h2><div class="card"'+(broken ? ' data-fail' : '')+'><p class="small">'+
+        (ws.length ? open+' open, '+fired+' fired'+(broken ? ', <b style="color:var(--bad)">✖ '+broken+' could not be read</b>' : '') : 'No watches yet.')+
+        ' Watches are set and read on the Desk.</p><button class="btn ghost sm" style="margin-top:8px" onclick="showReviewTab(\'desk\')">Open the Desk</button></div>';
+    }
+  }catch(e){ h += '<div class="card" data-fail><p class="small" style="color:var(--bad)">✖ The watches could not be read.</p></div>'; }
+  el.innerHTML = h;
+}
+/* Library: the weekly letter, the Evidence Library (only once he has turned it on), and the way to the technique cards. */
+function renderHubLib(){
+  const el = document.getElementById('hub_lib'); if(!el) return;
+  if(!orgOn()){ el.innerHTML = ''; return; }
+  let h = '<div class="hub-head"><span class="cc-eyebrow">Hub</span><h2 class="hub-title">Library</h2></div>';
+  try{
+    const L = agLetter();
+    h += '<h2>Weekly letter</h2>'+(L ? '<div class="card"><p class="pw-note">'+esc(fmtDate(L.week))+'</p><p class="small" style="white-space:pre-wrap;line-height:1.55;margin-top:6px">'+esc(L.text)+'</p></div>'
+                                     : '<div class="card"><p class="ag-empty">No letter yet. ZULU writes one each Sunday night.</p></div>');
+  }catch(e){ console.warn('letter card failed', e); }
+  try{
+    h += '<h2>Evidence</h2>';
+    if(evOn()){
+      const shelves = {};
+      EVIDENCE.forEach(function(e){ const k = (e.tags && e.tags[0]) || 'other'; (shelves[k] = shelves[k] || []).push(e); });
+      h += '<div class="card"><p class="small">'+EVIDENCE.length+' findings, each with its source. “What it means for you” is the app’s inference, not the paper’s claim.</p></div>'+
+        Object.keys(shelves).sort().map(function(k){
+          return subSection('Evidence · '+k, shelves[k].map(function(e){ return '<div class="ev-check">'+evEntryHTML(e)+evChipHTML(e)+'</div>'; }).join(''), false,
+            {pref:'lib.ev.'+k, summary:shelves[k].length+' finding'+(shelves[k].length === 1 ? '' : 's'), cls:'grp'});
+        }).join('');
+    } else {
+      h += '<div class="card"><p class="small">The Evidence Library is off until you have checked ten of its entries against their sources. The ten are in Settings, under the V5 switches.</p>'+
+        '<button class="btn ghost sm" style="margin-top:8px" onclick="setMode(\'review\');showMainTab(\'settings\')">Open Settings</button></div>';
+    }
+  }catch(e){ console.warn('evidence shelf failed', e); }
+  h += '<h2>Technique</h2><div class="card"><p class="small">Cues, set-up and common mistakes for every lift are in Train, under Library.</p>'+
+    '<button class="btn ghost sm" style="margin-top:8px" onclick="showReviewTab(\'library\')">Open technique cards</button></div>';
+  el.innerHTML = h;
+}
+/* A Hub action repaints the Agents view (renderOps()) or the Desk; with this switch on, what it changed may be on Now or
+   Outlook instead. Only a view he is looking at is repainted, and never one he is typing in. */
+function orgHubRepaint(){
+  if(!orgOn()) return;
+  [['hub_now', renderHubNow], ['hub_out', renderHubOut]].forEach(function(p){
+    const el = document.getElementById(p[0]);
+    if(!el || !el.classList.contains('on')) return;
+    const a = document.activeElement;
+    if(a && a !== document.body && el.contains(a)) return;
+    try{ p[1](); }catch(e){ console.warn(p[0]+' repaint failed', e); }
+  });
+}
+
+/* ---- the depth switch (per device) ---- */
+const DEPTH_LEVELS = ['basic', 'mid', 'adv'];
+const DEPTH_LABEL = {basic:'Basic', mid:'Intermediate', adv:'Advanced'};
+function uiDepth(){ const d = uiPref().depth; return DEPTH_LEVELS.indexOf(d) >= 0 ? d : 'basic'; }
+function depthSet(d){
+  if(DEPTH_LEVELS.indexOf(d) < 0) return;
+  uiPrefSet('depth', d);   // a choice about this screen, so per device and never in S
+  try{ renderSettings(); }catch(e){}
+  try{ rerenderActive(true); }catch(e){}
+}
+function depthTap(el){ depthSet(el && el.getAttribute && el.getAttribute('data-d')); }
+function depthCardHTML(where){
+  if(!orgOn()) return '';
+  const cur = uiDepth();
+  return '<div class="card" id="'+(where === 'home' ? 'depthCardHome' : 'depthCard')+'"><p class="small"><b>How much each screen shows.</b> Basic keeps every screen to '+CB_BUDGET+' open cards (Today '+CB_BUDGET_HOME+
+    ') and folds the rest; Intermediate shows '+CB_BUDGET_MID+'; Advanced shows everything. This device only. Raw data stays last, and a failure is never folded.</p>'+
+    '<div class="depth-seg" role="radiogroup" aria-label="Detail">'+DEPTH_LEVELS.map(function(d){
+      return '<button role="radio" aria-checked="'+(d === cur ? 'true' : 'false')+'" class="'+(d === cur ? 'on' : '')+'" data-d="'+d+'" onclick="depthTap(this)">'+DEPTH_LABEL[d]+'</button>';
+    }).join('')+'</div></div>';
+}
+/* How many open cards a section may show at this depth. Infinity is "no budget". */
+function cbBudgetFor(secId, depth){
+  depth = depth || uiDepth();
+  if(depth === 'adv') return Infinity;
+  if(secId === 'home') return CB_BUDGET_HOME;
+  return depth === 'mid' ? CB_BUDGET_MID : CB_BUDGET;
+}
+const DEPTH_RANK = {basic:0, mid:1, adv:2};
+function cbKind(el, depth){
+  if(!el || el.nodeType !== 1) return 'skip';
+  if(el.hasAttribute('data-cb-more')) return 'skip';
+  if(el.classList.contains('sub')) return 'fold';                         // a fold, raw data included: never counted, never moved
+  if(el.matches('[data-fail]') || el.querySelector('[data-fail]')) return 'fail';
+  const dt = el.getAttribute('data-depth');
+  if(dt && DEPTH_RANK[dt] !== undefined && DEPTH_RANK[dt] > DEPTH_RANK[depth]) return 'deep';
+  if(el.matches(CB_CARD_SEL) || el.querySelector(CB_CARD_SEL)) return 'card';
+  if(CB_TEXT_TAGS.indexOf(el.tagName) >= 0 || el.classList.contains('dash-sec') || el.classList.contains('cc-head')) return 'text';
+  return 'other';
+}
+/* Where a section's cards sit: the section itself, or the element it marks with data-cb-root (Today's main column). */
+function cbRoot(sec){ return (sec && sec.querySelector('[data-cb-root]')) || sec; }
+/* Put back what an earlier pass folded, exactly where the fold stood. Idempotent: a section with no fold is untouched. */
+function cbUnwrap(sec){
+  const root = cbRoot(sec); if(!root) return;
+  Array.prototype.slice.call(root.children).forEach(function(f){
+    if(!f.hasAttribute('data-cb-more')) return;
+    const body = f.querySelector('.sub-body');
+    while(body && body.firstChild) root.insertBefore(body.firstChild, f);
+    root.removeChild(f);
+  });
+}
+/* The open cards a section shows now: a card at its root that is not inside a closed fold. */
+function cbOpenCount(sec){
+  const root = cbRoot(sec); if(!root) return 0;
+  const depth = uiDepth();
+  return Array.prototype.filter.call(root.children, function(c){ const k = cbKind(c, depth); return k === 'card' || k === 'fail' || k === 'deep'; }).length;
+}
+function cbApply(sec){
+  if(!sec || !sec.id) return;
+  const a = document.activeElement, typing = a && a !== document.body && sec.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName || '');
+  if(typing) return;   // moving a node blurs it: wait for the next repaint
+  cbUnwrap(sec);
+  if(!orgOn()) return;
+  const depth = uiDepth(), budget = cbBudgetFor(sec.id, depth), root = cbRoot(sec);
+  const kids = Array.prototype.slice.call(root.children), kinds = kids.map(function(c){ return cbKind(c, depth); });
+  // The cut is the first card past the budget. A failure counts toward the budget but never moves.
+  let n = 0, cut = kids.length;
+  for(let i = 0; i < kids.length; i++){
+    if(kinds[i] === 'card'){ if(n >= budget){ cut = i; break; } n++; }
+    else if(kinds[i] === 'fail') n++;
+  }
+  // The headings and lines of text just above the first folded card belong to it.
+  let start = cut;
+  if(cut < kids.length) while(start > 0 && kinds[start - 1] === 'text') start--;
+  // Past the cut everything moves but folds and failures; a card tagged deeper than this depth moves wherever it is.
+  const idx = [];
+  kids.forEach(function(c, i){
+    const k = kinds[i];
+    if(k === 'deep' || (i >= start && (k === 'card' || k === 'text' || k === 'other'))) idx.push(i);
+  });
+  const cards = idx.filter(function(i){ return kinds[i] === 'card' || kinds[i] === 'deep'; }).length;
+  if(!cards) return;
+  const moveSet = idx.map(function(i){ return kids[i]; });
+  const titles = [];
+  idx.forEach(function(i){
+    const c = kids[i], t = kinds[i] === 'text' && c.tagName !== 'P' ? (c.textContent || '').trim() : '';
+    if(t && titles.indexOf(t) < 0 && titles.length < 3) titles.push(t.slice(0, 28));
+  });
+  const sum = cards+' more card'+(cards === 1 ? '' : 's')+(titles.length ? ' · '+titles.join(' · ') : '');
+  const wrap = document.createElement('div');
+  wrap.innerHTML = subSection('More on this screen', '', false, {pref:'cb.'+sec.id, summary:esc(sum), cls:'grp cb-more'});
+  const fold = wrap.firstElementChild;
+  fold.setAttribute('data-cb-more', '');
+  root.insertBefore(fold, moveSet[0]);
+  const body = fold.querySelector('.sub-body');
+  moveSet.forEach(function(c){ body.appendChild(c); });
+}
+/* Every section a view shows, after it is drawn. Sections are budgeted one by one, as the rule is per section. */
+function cbApplyShown(){
+  try{
+    document.querySelectorAll('#reviewMode main > section.on').forEach(cbApply);
+  }catch(e){ console.warn('card budget failed', e); }
+  try{ if(_cbObs) _cbObs.takeRecords(); }catch(e){}
+}
+/* A renderer called directly (a tap's own repaint) bypasses navRenderSub(), so the budget also follows any redraw of a
+   section's children. The observer only reacts to a section that is on screen, and its own moves are dropped. */
+let _cbObs = null;
+function cbWatch(){
+  if(_cbObs || typeof MutationObserver !== 'function') return;
+  _cbObs = new MutationObserver(function(recs){
+    const seen = [];
+    recs.forEach(function(r){
+      let sec = r.target;
+      while(sec && !(sec.tagName === 'SECTION' && sec.parentElement && sec.parentElement.tagName === 'MAIN')) sec = sec.parentElement;
+      if(sec && seen.indexOf(sec) < 0) seen.push(sec);
+    });
+    seen.forEach(function(sec){ if(sec.classList.contains('on')){ try{ cbApply(sec); }catch(e){ console.warn('card budget failed', e); } } });
+    try{ _cbObs.takeRecords(); }catch(e){}
+  });
+  // Today's cards sit one level down, but its main column is redrawn with the section, so watching sections is enough.
+  document.querySelectorAll('#reviewMode main > section').forEach(function(sec){ _cbObs.observe(sec, {childList:true}); });
 }
 
 /* ---- rendering ---- */
@@ -31308,11 +31823,18 @@ function renderOpsDraw(){
       (_agBriefRunning?'ZULU is writing this morning'+String.fromCharCode(8217)+'s brief'+String.fromCharCode(8230)
         :'Not written yet today \u2014 it goes out each morning once your WHOOP recovery lands.')+'</p></div>';
   }
-  h += '<h2>Pending proposals'+(pend.length?' ('+pend.length+')':'')+'</h2>';
-  h += pend.length ? pend.map(agPropHTML).join('')
+  // V5 stage 8: with Organization on, requests, held requests, the finished trial, experiments, the week's plan and the
+  // letter live on Now, Outlook and Library; this view is the coaches themselves. Off, it is exactly as it was.
+  const _org = orgOn();
+  if(_org){
+    h += '<div class="card"><p class="small">'+(pend.length ? pend.length+' request'+(pend.length === 1 ? '' : 's')+' waiting. ' : 'No request waiting. ')+
+      'Requests and everything else waiting on you are in the Inbox.</p><button class="btn ghost sm" style="margin-top:8px" onclick="showReviewTab(\'hub_now\')">Open the Inbox</button></div>';
+  }
+  if(!_org) h += '<h2>Pending proposals'+(pend.length?' ('+pend.length+')':'')+'</h2>';
+  if(!_org) h += pend.length ? pend.map(agPropHTML).join('')
                    : '<div class="card"><p class="ag-empty">Nothing awaiting your approval.</p></div>';
   // Cross-review: what ZULU held back, with its reason, one tap from the queue.
-  try{
+  if(!_org) try{
     const held = agHeld();
     if(held.length) h += '<div class="card ag-held"><div class="small" style="color:var(--dim);margin-bottom:6px">Held by ZULU ('+held.length+')</div>'+
       held.map(function(p){ const A = AGENTS[p.agent] || {name:p.agent, col:'var(--muted)'};
@@ -31321,9 +31843,9 @@ function renderOpsDraw(){
           '<button class="btn ghost sm" data-prop="'+esc(p.id)+'" onclick="agShowAnyway(this.dataset.prop)">Show anyway</button></div>'; }).join('')+'</div>';
   }catch(e){}
 
-  try{ const _sd = swtDecideCardHTML(), _sh = selCardHTML(); if(_sd || _sh) h += '<h2>Lift fit</h2>'+_sd+_sh; }catch(e){ console.warn('selector card failed', e); }
-  try{ const _xh = expCardHTML(); if(_xh) h += '<h2>Experiments</h2>'+_xh; }catch(e){ console.warn('experiments card failed', e); }
-  try{
+  try{ const _sd = _org ? '' : swtDecideCardHTML(), _sh = selCardHTML(); if(_sd || _sh) h += '<h2>Lift fit</h2>'+_sd+_sh; }catch(e){ console.warn('selector card failed', e); }
+  if(!_org) try{ const _xh = expCardHTML(); if(_xh) h += '<h2>Experiments</h2>'+_xh; }catch(e){ console.warn('experiments card failed', e); }
+  if(!_org) try{
     const _wp = wpForDate(todayKey());
     if(_wp && _wp.reply && _wp.reply.summary) h += '<h2>This week</h2><div class="card"><p class="small">'+esc(_wp.reply.summary)+'</p>'+
       (_wp.reply.days||[]).map(function(d){ return '<div class="db-row"><span class="db-k">'+esc(fmtDate(d.date))+'</span><span class="small">'+esc(d.note)+'</span></div>'; }).join('')+
@@ -31339,7 +31861,7 @@ function renderOpsDraw(){
     h += hubFeedHTML(a.log.slice(0,40));
   }
   h += '</div>'+(a.log.length?'<div style="margin-top:8px"><button class="btn ghost sm" onclick="if(confirm(\'Clear the activity log? Proposals and memory are kept.\')){agState().log=[];save();renderOps();}">Clear log</button></div>':'');
-  if(_letter){
+  if(_letter && !_org){
     h += subSection('Weekly letter \u2014 '+fmtDate(_letter.week),
       '<div class="card flat"><p class="small" style="white-space:pre-wrap;line-height:1.55">'+
       esc(_letter.text)+'</p></div>', false);
@@ -31355,6 +31877,7 @@ function renderOpsDraw(){
     else if(prevTop != null) box.scrollTop = prevTop;
   }
   _opsSig = opsSignature();
+  orgHubRepaint();   // what a Hub action changed may be on Now or Outlook now (V5 stage 8)
 }
 REVIEW_RENDER.ops = renderOps;
 /* The Desk's own Hub tab, between Agents and Flags (his ask, 2026-10-21). It only reads, so the 30 s repaint can
@@ -31364,12 +31887,16 @@ function renderDesk(){
   const el = document.getElementById('desk');
   if(!el) return;
   let h = '';
-  try{ h = hubDeskHTML(); }catch(e){ console.warn('desk failed', e); h = '<div class="card"><p class="ag-empty">The Desk could not be drawn.</p></div>'; }
+  try{ h = hubDeskHTML(); }catch(e){ console.warn('desk failed', e); h = '<div class="card" data-fail><p class="ag-empty">The Desk could not be drawn.</p></div>'; }
   el.innerHTML = h;
+  orgHubRepaint();
 }
 REVIEW_RENDER.desk = renderDesk;
 /* The Forecasts tab (2026-11-03). It only reads, so the 30 s repaint can draw it freely; Ask, a rating and Remove repaint it. */
 REVIEW_RENDER.forecasts = renderForecasts;
+REVIEW_RENDER.hub_now = renderHubNow;   // V5 stage 8: only reachable with the Organization switch on
+REVIEW_RENDER.hub_out = renderHubOut;
+REVIEW_RENDER.hub_lib = renderHubLib;
 /* Coach is gone as a tab; anything that still calls renderCoach now repaints OPERATIONS.
    Declared last so hoisting makes this the live definition. */
 function renderCoach(){ renderOps(); }
@@ -32202,6 +32729,7 @@ _bootPull.then((pulled)=>{
   try{ setInterval(whoopMaybeKick, 15*60*1000); }catch(e){}
 });
 try{ startLiveRefresh(); }catch(e){}
+try{ cbWatch(); }catch(e){}   // the card budget follows a section's own repaints (V5 stage 8)
 }
 /* The family pantry check: a family link opens its own page and never starts the app, so nothing on
    their phone syncs, runs an agent or holds his data. A reply link starts the app as usual where his data

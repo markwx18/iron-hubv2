@@ -42,6 +42,11 @@ const dom = new JSDOM(html, {
 const w = dom.window;
 const ev = (expr) => w.eval(expr);
 const call = (fn, ...args) => { w.__a = args; return w.eval(fn + '.apply(null, window.__a)'); };
+/* V5 stage 8: a test of the layout as it was before Organization (the bell as a list, requests on the Agents view,
+   the question on Today) runs with that switch off, which is still a path he can take. orgOn() is the only reader of
+   the switch, so stubbing it survives the many places a test replaces S wholesale. The stage 8 section tests it on. */
+function orgOff(){ ev("if(!window.__orgReal) window.__orgReal = orgOn; orgOn = function(){ return false; };"); }
+function orgBack(){ ev("if(window.__orgReal){ orgOn = window.__orgReal; delete window.__orgReal; }"); }
 
 /* Freeze the HOUR for one call under test, and hold it frozen until that call is DONE.
    Six copies of this used to live inline, and every one of them restored the real clock on the
@@ -172,7 +177,9 @@ setTimeout(async () => {
   ev("showMainTab('plan');");
   ok('...a group that no longer exists lands on its default section', ev('activeMainTab') === 'train' && ev('activeReviewTab') === 'meso');
   ev("showReviewTab('invest');");
-  ok('...Investigate flags live under Coach', ev('activeMainTab') === 'ops' && ev('activeReviewTab') === 'invest');
+  // With Organization on (V5 stage 8) Flags is part of the Hub's Now view, and the view is opened on it.
+  ok('...Investigate flags live under Coach', ev('activeMainTab') === 'ops' && ev('activeReviewTab') === (ev('orgOn()') ? 'hub_now' : 'invest') &&
+     ev("document.getElementById('invest').classList.contains('on')") === true);
   // a remembered section that moved out of a group must not be reopened inside it
   ev("navMemory = {progress:'log'}; showMainTab('progress');");
   ok('a remembered section from the old grouping is not reopened in the wrong group',
@@ -5441,6 +5448,7 @@ setTimeout(async () => {
   }
 
   console.log('=== DASHBOARD / STATUS STRIP / NOTIFICATIONS ===');
+  orgOff();   // V5 stage 8: this section is about the layout with Organization off
   try {
     const savedRd = ev('JSON.stringify(S.readiness)');
     ev("S.readiness = [{date:todayKey(), tier:'high', sleep:8, sore:'mild', energy:'good'}];");
@@ -5526,7 +5534,9 @@ setTimeout(async () => {
     ev("MODE = 'review'; notifOpen = false; agState().proposals = [];");
   }
 
+  orgBack();
   console.log('=== CLEAR NOTIFICATIONS ===');
+  orgOff();   // V5 stage 8: this section is about the layout with Organization off
   try {
     ev("delete S.notifCleared; agState().proposals = []; S.invest = {flags:[], history:[], overrides:{}, lastAuto:{}};");
     ev("agState().proposals = [{id:'pxa', agent:'delta', title:'Clear-test proposal', reasoning:'r', " +
@@ -5593,6 +5603,7 @@ setTimeout(async () => {
     ev("MODE = 'review'; notifOpen = false; agState().proposals = []; delete S.notifCleared;");
   }
 
+  orgBack();
   console.log('=== EFFORT LEVER ===');
   try {
     // buckets fall out of the lever
@@ -7517,6 +7528,7 @@ setTimeout(async () => {
   }
 
   console.log('=== DAILY BRIEF + WEEKLY LETTER ===');
+  orgOff();   // V5 stage 8: this section is about the layout with Organization off
   try {
     // The letter is weekly, gated on the day of week, so this cannot be written against
     // "today" -- on six days out of seven that assertion would be vacuously true. Drive
@@ -7610,6 +7622,7 @@ setTimeout(async () => {
     ev("if(Date.prototype.__realGetDay){ Date.prototype.getDay = Date.prototype.__realGetDay; delete Date.prototype.__realGetDay; }");
   }
 
+  orgBack();
   console.log('=== AGENTS SEE EVERY SESSION, AND SEE IT STRAIGHT ===');
   try {
     const savedLogsD = ev('JSON.stringify(S.logs)');
@@ -7894,6 +7907,7 @@ setTimeout(async () => {
   }
 
   console.log('=== RENDER ===');
+  orgOff();   // V5 stage 8: this section is about the layout with Organization off
   try {
     ev('renderOps')();
     const out = w.document.getElementById('ops').innerHTML;
@@ -7918,6 +7932,7 @@ setTimeout(async () => {
      alone is not the signal; only a revision where ironhub_data.json actually CHANGED counts.
      Whole-snapshot last-writer-wins cannot distinguish "the writer has not heard about this
      record yet" from "some device deleted this record"; the per-record write stamp can. */
+  orgBack();
   console.log('=== SYNC: A STALE SNAPSHOT CANNOT DELETE NEWER RECORDS ===');
   const syncSaved = ev('JSON.stringify(S)');
   try {
@@ -10418,6 +10433,7 @@ setTimeout(async () => {
 
   // ============ EXPERIMENTS (2026-09-28) ============
   console.log('=== EXPERIMENTS ===');
+  orgOff();   // V5 stage 8: this section is about the layout with Organization off
   const s3Saved = ev('JSON.stringify(S)');
   try {
     const xd = n => ev('mesoAddDays(todayKey(), ' + n + ')');
@@ -10603,6 +10619,7 @@ setTimeout(async () => {
   ok('cleanup: real state restored after the experiments section', ev('JSON.stringify(S)') === s3Saved);
 
   // ============ THE SUNDAY CHECK-IN (2026-09-28) ============
+  orgBack();
   console.log('=== SUNDAY CHECK-IN ===');
   const s4Saved = ev('JSON.stringify(S)');
   ev('window.__wpRealToday = todayKey; window.__wpRealCall = callClaude;');
@@ -11065,6 +11082,7 @@ setTimeout(async () => {
   }
 
   console.log('=== V4 STAGE 2: DISMISS ONE NOTIFICATION AT A TIME ===');
+  orgOff();   // V5 stage 8: this section is about the layout with Organization off
   try {
     w.__ndSaved = ev('JSON.stringify(S)');
     ev("agState().proposals = [" +
@@ -11097,6 +11115,7 @@ setTimeout(async () => {
     ev('if(window.__ndSaved){ S = JSON.parse(window.__ndSaved); delete window.__ndSaved; } notifOpen = false;');
   }
 
+  orgBack();
   console.log('=== V4 STAGE 2: SPEND LEDGER AND THE MONTHLY CAP ===');
   try {
     w.__spSaved = ev('JSON.stringify(S)');
@@ -12619,7 +12638,12 @@ setTimeout(async () => {
     ok('notify: a lift that moved up a level gets its own notice, keyed by lift, level and day', n.length === 1 && n[0].id === "plateau:Zz O'Brien Row:red:" + T(-1) &&
        n[0].title === 'Plateau watch — Zz O\'Brien Row stalled' && /^Moved to stalled after .*: 5 sessions at 180, reps flat\. Tap for the likely factors\.$/.test(n[0].body), JSON.stringify(n));
     ev("live = null; notifOpen = true; renderNotif();");
+    // With Organization on (V5 stage 8) the bell is the Inbox, and the tap is the row's Open button.
+    const oci = ev("(function(){ var b = [].slice.call(document.querySelectorAll('#notifPanel .ibx-r .btn')).find(function(x){ return /pwShow/.test(x.getAttribute('onclick') || ''); }); return b ? b.getAttribute('onclick') : ''; })()");
+    ok('notify: in the Inbox, Open opens that lift, the name safely quoted', oci === 'notifToggle();pwShow("Zz O\'Brien Row")', oci);
+    orgOff(); ev('renderNotif();');
     const oc = ev("(function(){ var b = [].slice.call(document.querySelectorAll('#notifPanel .notif-item')).find(function(x){ return /pwShow/.test(x.getAttribute('onclick') || ''); }); return b ? b.getAttribute('onclick') : ''; })()");
+    orgBack();
     ok('notify: its tap opens that lift, the name safely quoted', oc === 'notifToggle();pwShow("Zz O\'Brien Row")', oc);
     ev("notifOpen = false; renderNotif(); pwRising = function(){ return []; };");
     ev("dashToday = function(){ return {dayKey: 'D1', rest: false, logged: false, name: 'Zz'}; }; dayCall = function(){ return {call: 'normal', conf: 'none', why: []}; };" +
@@ -13981,6 +14005,7 @@ setTimeout(async () => {
   }
 
   console.log('=== QUESTIONS FROM THE AGENTS (2026-10-05) ===');
+  orgOff();   // V5 stage 8: this section is about the layout with Organization off
   try {
     w.__qaSaved = ev('JSON.stringify(S)');
     ev("window.__qaTK = todayKey; todayKey = function(){ return '2026-10-05'; };");
@@ -14125,6 +14150,7 @@ setTimeout(async () => {
     ev('if(window.__qaSaved){ S = JSON.parse(window.__qaSaved); delete window.__qaSaved; } localStorage.setItem(LS_KEY, JSON.stringify(S));');
   }
 
+  orgBack();
   console.log('=== FAMILY PANTRY CHECK (2026-10-05) ===');
   try {
     w.__fmSaved = ev('JSON.stringify(S)');
@@ -14269,6 +14295,7 @@ setTimeout(async () => {
   }
 
   console.log('=== FAMILY PANTRY DROP BOX (2026-10-09) ===');
+  orgOff();   // V5 stage 8: this section is about the layout with Organization off
   {
     const fdFetch = w.fetch;
     const calls = [];
@@ -14442,6 +14469,7 @@ setTimeout(async () => {
     }
   }
 
+  orgBack();
   console.log('=== LYING LEG CURL PER SIDE, AND THE LIVE INFO BUTTON (2026-10-05) ===');
   try {
     w.__lcSaved = ev('JSON.stringify(S)');
@@ -15453,6 +15481,7 @@ setTimeout(async () => {
   }
 
   console.log('=== VOLUME LAST, AND ZULU’S CROSS-REVIEW (2026-10-18) ===');
+  orgOff();   // V5 stage 8: this section is about the layout with Organization off
   // DELTA queued a 4th set on Cable Row: stalled, a third of its tagged sets grind or fail. The stall line listed
   // "more sets" first. Now more sets on a stalled, grinding lift is refused everywhere agConflict() runs, and ZULU
   // may hold a specialist's new request it judges wrong, which he can still Show anyway.
@@ -15523,6 +15552,7 @@ setTimeout(async () => {
   }
 
   // ============ CHARLIE THE SUPERVISOR, AND CHANGING THE WEEK (2026-10-19) ============
+  orgBack();
   console.log('=== CHARLIE THE SUPERVISOR, AND CHANGING THE WEEK (2026-10-19) ===');
   ev('window.__svS = JSON.stringify(S); window.__svToday = todayKey; window.__svSched = scheduledDayFor; window.__svCall = callClaude; window.__svCcwd = callClaudeWithData;');
   try {
@@ -16136,8 +16166,10 @@ setTimeout(async () => {
     const er = desk2.find(x => x.agent === 'echo' && x.re);
     ok('desk: ECHO’s answer is threaded under DELTA’s note, to DELTA', er && er.re === toEcho.id && er.to === 'delta');
     // --- the Hub: the Desk is its own tab, after Agents (his ask, 2026-10-21); Forecasts follows it (2026-11-03) ---
+    orgOff();   // the four views as they were; with Organization on the Hub has five (the stage 8 section)
     ok('hub: the Desk is a Hub tab of its own, between Agents and Forecasts', JSON.stringify(ev("navMain('ops').subs.map(function(x){ return x.id + ':' + x.label; })")) === JSON.stringify(['ops:Agents', 'desk:Desk', 'forecasts:Forecasts', 'invest:Flags']) &&
        JSON.stringify(ev("NAV_LEGACY.desk")) === JSON.stringify(['ops', 'desk']) && JSON.stringify(ev("NAV_LEGACY.forecasts")) === JSON.stringify(['ops', 'forecasts']));
+    orgBack();
     ev("setMode('review'); showMainTab('ops');");
     ok('hub: the Agents view no longer carries the Desk', ev("!!document.querySelector('#ops .desk')") === false && !/The Desk/.test(ev("document.getElementById('ops').innerHTML")));
     ev("showMainTab('ops', 'desk');");
@@ -16790,8 +16822,9 @@ setTimeout(async () => {
 
     // --- his side ---
     ev("setMode('review'); showMainTab('ops', 'forecasts');");
+    // With Organization on (V5 stage 8) Forecasts leads the Outlook view.
     ok('tab: Forecasts is a Hub tab of its own, after the Desk', ev("document.getElementById('forecasts').classList.contains('on') && !document.getElementById('desk').classList.contains('on') && !document.getElementById('ops').classList.contains('on')") === true &&
-       ev("navMemory.ops || activeReviewTab") === 'forecasts');
+       ev("navMemory.ops || activeReviewTab") === (ev('orgOn()') ? 'outlook' : 'forecasts'));
     const fh = ev("document.getElementById('forecasts').innerHTML");
     ok('tab: the record ring, the form, open forecasts and settled ones', /Forecasts that held/.test(fh) && /id="fcGo"/.test(fh) && /Open · /.test(fh) && /Settled · /.test(fh));
     ok('tab: model text is escaped', /You are climbing &lt;i&gt;about&lt;\/i&gt;/.test(fh) && !/<i>about<\/i>/.test(fh));
@@ -17256,7 +17289,11 @@ setTimeout(async () => {
     const vis = J('notifVisible()').filter(i => /^std:/.test(i.id));
     ok('bell: a red with nothing being tried cannot be cleared; an amber can', vis.length === 1 && /^std:lifts:red/.test(vis[0].id), JSON.stringify(vis.map(i => i.id)));
     ev("notifOpen = true; renderNotif();");
+    // With Organization on (V5 stage 8) the bell is the Inbox: the red row has no Clear. Off, the list has no dismiss.
+    ok('bell: and in the Inbox it has no Clear button', (() => { const el = [...w.document.querySelectorAll('#notifPanel .ibx-r')].find(x => /Lifts/.test(x.textContent)); return !!el && !el.querySelector('[data-act="clear"]'); })());
+    orgOff(); ev('renderNotif();');
     ok('bell: and it has no dismiss button', (() => { const el = [...w.document.querySelectorAll('#notifPanel .notif-item')].find(x => /Lifts/.test(x.textContent)); return !!el && !el.querySelector('.notif-x'); })());
+    orgBack();
     ok('bell: the pass-through never outlives the repaint', ev('_stdPass') === null);
     ev("notifOpen = false; renderNotif(); MODE = 'review';");
     ev('renderHome()');   // the first paint of a fresh state fills in its lazy keys (agState(), fuelInit()): not the Standards
@@ -18266,7 +18303,13 @@ setTimeout(async () => {
     ev("setMode('review'); showMainTab('home'); renderHome();");   // the first paint fills lazy defaults, as it always did
     const hb = ev('JSON.stringify(S)');
     ev('renderHome();');
-    ok('Today shows the card and only reads', ev("document.querySelectorAll('.swt-card').length") >= 1 && ev("document.querySelectorAll('.swt-card .btn[data-id]').length") >= 2 && ev('JSON.stringify(S)') === hb);
+    // With Organization on (V5 stage 8) Today shows it as an Inbox row, and the card itself is on the Hub's Now view.
+    ok('Today shows it in the Inbox and only reads', /Swap trial/.test(ev("(document.getElementById('ibxToday') || {}).textContent || ''")) && ev('JSON.stringify(S)') === hb);
+    ev('renderHubNow();');
+    ok('Now shows the card, with its two buttons', ev("document.querySelectorAll('#hub_now .swt-card .btn[data-id]').length") >= 2);
+    orgOff(); ev('renderHome();');
+    ok('Today shows the card and only reads', ev("document.querySelectorAll('#home .swt-card').length") >= 1 && ev("document.querySelectorAll('#home .swt-card .btn[data-id]').length") >= 2 && ev('JSON.stringify(S)') === hb);
+    orgBack(); ev('renderHome();');
     ok('a trial that left the lift off its day is not "left out"', J("selSkips('Cable Row', 4)").absent === 0 && ev("agSwapGround('Cable Row', 'Barbell Row')") === '');
     ok('queue: a permanent swap to the lift the trial favoured now has grounds', ev("agSwapGround('Cable Row', 'Row Machine')") === 'trial' && ev("agValidateFix({type:'swapEx', payload:{from:'Cable Row', to:'Row Machine'}}, 'delta')") !== null);
     const sKeep = ev('JSON.stringify(S)');
@@ -18400,7 +18443,8 @@ setTimeout(async () => {
     ok('Hub: picking one asks first, and saying no starts nothing', ev('window.__scf.length') === 1 && /Your split is not changed/.test(ev('window.__scf[0]')) && ev('expActive()') === null);
     ev("window.confirm = function(m){ window.__scf.push(m); return true; }; window.__ssv = 0; save = function(t){ if(t !== false) window.__ssv++; return window.__sSave.apply(this, arguments); };");
     ev(OPS5 + ".querySelector('.sel-row.open .swap-row').click();");
-    ok('Hub: saying yes starts the trial with a save(), and the card shows the stand-in on trial', ev("(expActive() || {}).to") === 'Row Machine' && ev('window.__ssv') >= 1 && ev(OPS5 + ".querySelector('.sel-h[data-lift=\"Row Machine\"] .sel-v').textContent") === '◆On trial' && ev(OPS5 + ".querySelector('.exp-card')") !== null);
+    ok('Hub: saying yes starts the trial with a save(), and the card shows the stand-in on trial', ev("(expActive() || {}).to") === 'Row Machine' && ev('window.__ssv') >= 1 && ev(OPS5 + ".querySelector('.sel-h[data-lift=\"Row Machine\"] .sel-v').textContent") === '◆On trial' &&
+       (ev('orgOn()') ? (ev('renderHubOut()'), ev("document.querySelector('#hub_out .exp-card')") !== null) : ev(OPS5 + ".querySelector('.exp-card')") !== null));
     ev("save = window.__sSave; window.confirm = function(){ return true; };");
     ev("selOpenLift = 'Barbell Bench Press'; expStop(); S.experiments.lastEnded = ''; renderOps();");
     ok('Hub: bench shows its rows and why it is held, and no way to put it on trial', ev(OPS5 + ".querySelectorAll('.sel-row.open .sel-ev').length") >= 7 && /never swapped/.test(ev(OPS5 + ".querySelector('.sel-row.open').textContent")) && ev(OPS5 + ".querySelector('.sel-row.open .btn')") === null);
@@ -19189,6 +19233,202 @@ setTimeout(async () => {
        "if(window.__7LS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__7LS);" +
        "(function(){ var n = JSON.parse(window.__7Nav); try{ setMode(n.mode); showMainTab(n.main); }catch(e){} })();" +
        "['__7S','__7LS','__7Today','__7PW','__7PL','__7Std','__7Save','__7Confirm','__7Alert','__7Data','__7Call','__7BR','__7STO','__7LD','__7Sync','__7Pull','__7Auto','__7Spend','__7InC','__7Nav','__7day','__7n','__7log','__7b','__7plan','__7v','__7sv','__7std','__7sys','__7reply','__7mid','__7old','__7calls','__7mreply','__7mthrow','__7snap','__7cf','__7MB','__7SJ'].forEach(function(k){ try{ delete window[k]; }catch(e){} });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
+  console.log('\n=== ORGANIZATION: ONE INBOX WORKED OUT WHEN READ, A CARD BUDGET THAT NEVER FOLDS A FAILURE, TODAY IN FIVE ZONES, THE HUB IN FIVE VIEWS, A PER-DEVICE DEPTH (2026-11-13) ===');
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    const tick = () => new Promise(r => setTimeout(r, 0));   // the budget's observer runs as a microtask after a direct repaint
+    ev("window.__8S = JSON.stringify(S); window.__8LS = localStorage.getItem(LS_KEY); window.__8UI = localStorage.getItem(UI_PREF_KEY); window.__8Std = stdState; window.__8Save = save;" +
+       "window.__8Appr = agApprove; window.__8Rej = agReject; window.__8Qa = qaOpen; window.__8Nav = JSON.stringify({mode:MODE, main:activeMainTab}); window.__8Wr = waterReminder;");
+    ev(`window.__8std = [
+        {pillar:'bulk', label:'Bulk pace', lvl:'red', since:mesoAddDays(todayKey(), -9), why:'Two losing weeks.', consequence:'', clearsWhen:'Two weeks in a row at or above 0.5 lb/week.', motion:''},
+        {pillar:'show', label:'Showing up', lvl:'ok', since:null, why:'', consequence:'', clearsWhen:'', motion:''},
+        {pillar:'lifts', label:'Lifts', lvl:'amber', since:mesoAddDays(todayKey(), -3), why:'Squat slowing.', consequence:'', clearsWhen:'', motion:''},
+        {pillar:'intake', label:'Intake', lvl:'ok', since:null, why:'', consequence:'', clearsWhen:'', motion:''},
+        {pillar:'recovery', label:'Recovery', lvl:'nodata', since:null, why:'', consequence:'', clearsWhen:'', motion:''}];
+      stdState = function(){ return JSON.parse(JSON.stringify(window.__8std)); };
+      waterReminder = function(){ return 'Drink through the session.'; };
+      delete S.notifCleared; S.overhaul = {};
+      agState().proposals = [
+        {id:'p8a', agent:'delta', title:'Org request <b>one</b>', reasoning:'r', fix:{type:'cal', payload:{delta:100}}, created:todayKey(), expires:mesoAddDays(todayKey(), 7), status:'pending'},
+        {id:'p8h', agent:'echo', title:'Held request', reasoning:'r', fix:{type:'cal', payload:{delta:50}}, created:todayKey(), expires:mesoAddDays(todayKey(), 7), status:'held', heldWhy:'Too soon after the last one.'}];
+      qaOpen = function(){ return {id:'q8', agent:'delta', q:'How did the squat feel?', why:'It slowed.', choices:['Easy', 'Hard'], at:new Date().toISOString(), day:todayKey()}; };`);
+    // --- the switch ---
+    ok('switch: Organization is a free part, on by default, and orgOn() reads it', J('OV.organize') && ev('OV.organize.paid') === false && !ev('OV.organize.hold') && ev('orgOn()') === true);
+    ev("ovSet('organize', false);");
+    ok('switch: his tap turns it off', ev('orgOn()') === false && ev('S.overhaul.organize') === false);
+    ev("ovSet('organize', true);");
+    // --- the Inbox ---
+    const items = J('inboxItems()');
+    const ids = items.map(i => i.id);
+    ok('inbox: a red Standard is first, then requests and the question, then routine', items[0] && /^std:bulk:red:/.test(items[0].id) && items[0].pri === 0 &&
+       items.findIndex(i => i.id === 'water:' + ev('todayKey()')) > items.findIndex(i => i.id === 'prop:p8a') && items.findIndex(i => i.id === 'prop:p8a') > 0 &&
+       items.every((x, i) => i === 0 || items[i - 1].pri <= x.pri), JSON.stringify(items.map(i => [i.pri, i.id])));
+    ok('inbox: each item has a type chip', (items.find(i => i.id === 'prop:p8a') || {}).type === 'Request' && items[0].type === 'Standard' && (items.find(i => /^held:/.test(i.id)) || {}).type === 'Held' && (items.find(i => i.id === 'qa:q8') || {}).type === 'Question');
+    ok('inbox: a held request and the question come in, though the bell never carried a held one', ids.some(i => /^held:p8h$/.test(i)) && ids.indexOf('qa:q8') >= 0 && !J('notifItems()').some(i => /^held:/.test(i.id)));
+    ok('inbox: it is worked out when read and writes nothing, not even the cleared list', ev('S.notifCleared') === undefined);
+    ok('badge: the bell counts the Inbox', ev('notifCount()') === items.length && items.length !== ev('notifVisible().length'));
+    ev('notifClear()');
+    const after = J('inboxItems()').map(i => i.id);
+    ok('clear: routine goes, a request, the question and a red Standard stay', after.indexOf('water:' + ev('todayKey()')) < 0 && after.indexOf('prop:p8a') >= 0 && after.indexOf('qa:q8') >= 0 && after.some(i => /^std:bulk:red/.test(i)), JSON.stringify(after));
+    ok('clear: the amber Standard can be cleared, as in the bell', !after.some(i => /^std:lifts:amber/.test(i)));
+    ev("delete S.notifCleared; window.__8Held = agHeld; agHeld = function(){ throw new Error('boom'); };");
+    ok('inbox: a source that throws costs its own items, never the Inbox', J('inboxItems()').some(i => i.id === 'prop:p8a') && !J('inboxItems()').some(i => /^held:/.test(i.id)));
+    ev("agHeld = window.__8Held;");
+    // --- Today in five zones ---
+    ev("setMode('review'); showMainTab('home'); renderHome();");
+    await tick();
+    const hb = ev('JSON.stringify(S)');
+    ev('renderHome();');
+    await tick();
+    ok('today: it only reads', ev('JSON.stringify(S)') === hb);
+    const kids = J("Array.prototype.map.call((document.querySelector('#home [data-cb-root]') || {children:[]}).children, function(c){ return c.id || c.className; })");
+    const at = k => kids.findIndex(x => x.indexOf(k) >= 0);
+    ok('today: orders, then the session, the Inbox, the agents, and the details fold last', at('stdCard') === 0 && at('ccSession') > at('stdCard') && at('ibxToday') > at('ccSession') &&
+       at('cc-agents') > at('ibxToday') && /\bsub\b/.test(kids[kids.length - 1]), JSON.stringify(kids));
+    ok('today: the session zone has Start', /setMode\('live'\)/.test(ev("document.getElementById('ccSession').innerHTML")));
+    const rows = J("Array.prototype.map.call(document.querySelectorAll('#ibxToday .ibx-r'), function(r){ return r.textContent; })");
+    ok('today: the Inbox shows three, skipping what has its own zone here (the Standards, the brief)', rows.length === 3 && !rows.some(r => /Bulk pace|Lifts —|Daily brief/.test(r)) && /Request/.test(rows[0]), JSON.stringify(rows));
+    ok('today: then "N more", counting everything waiting', new RegExp((items.length - 3) + ' more in the Inbox').test(ev("document.getElementById('ibxToday').textContent")));
+    ok('today: model text is escaped', /Org request &lt;b&gt;one&lt;\/b&gt;/.test(ev("document.getElementById('ibxToday').innerHTML")));
+    ok('today: the question is not drawn as a second copy here (its input lives on Now)', ev("document.querySelectorAll('#qaNote').length") === 0);
+    // --- one-tap actions ---
+    ev("window.__8a = []; agApprove = function(id){ window.__8a.push('a:' + id); }; agReject = function(id){ window.__8a.push('r:' + id); };");
+    ev("document.querySelector('#ibxToday [data-act=\"approve\"]').click(); document.querySelector('#ibxToday [data-act=\"reject\"]').click();");
+    ok('actions: Approve and Reject are the queue\'s own (which check everything again)', JSON.stringify(J('window.__8a')) === JSON.stringify(['a:p8a', 'r:p8a']));
+    ev("agApprove = window.__8Appr; agReject = window.__8Rej;");
+    ok('actions: a request has no Clear; a routine row does', ev("!!document.querySelector('#ibxToday .ibx-r [data-id=\"p8a\"][data-act=\"approve\"]')") && (() => {
+      const r = [...w.document.querySelectorAll('#ibxToday .ibx-r')]; const req = r.find(x => /Org request/.test(x.textContent));
+      return !!req && !req.querySelector('[data-act="clear"]'); })());
+    // --- the bell is the Inbox ---
+    ev("notifOpen = true; renderNotif();");
+    const ph = ev("document.getElementById('notifPanel').innerHTML");
+    ok('bell: the panel is the Inbox, most urgent first, with the way to the whole list', /<span>Inbox<\/span>/.test(ph) && ev("document.querySelectorAll('#notifPanel .ibx-r').length") === items.length &&
+       /Bulk pace/.test(ev("document.querySelector('#notifPanel .ibx-r').textContent")) && /showReviewTab\('hub_now'\)/.test(ph));
+    ev("notifOpen = false; renderNotif();");
+    // --- the Hub in five views ---
+    ok('hub: five views, Now first, and Flags inside Now', JSON.stringify(J("navMain('ops').subs.map(function(x){ return x.id; })")) === JSON.stringify(['hub_now', 'ops', 'desk', 'outlook', 'hub_lib']) &&
+       JSON.stringify(J("navShows('ops','hub_now')")) === JSON.stringify(['hub_now', 'invest']) && JSON.stringify(J("navShows('ops','outlook')")) === JSON.stringify(['forecasts', 'hub_out']));
+    ev("showReviewTab('invest');");
+    ok('hub: Flags stays reachable from Now, and opens on it', ev('navMemory.ops') === 'hub_now' && ev("document.getElementById('invest').classList.contains('on')") === true && ev("document.getElementById('hub_now').classList.contains('on')") === true);
+    await tick();
+    const now = ev("document.getElementById('hub_now').innerHTML");
+    ok('now: the Standards in brief, the whole Inbox with each request as its own card', /hub-std/.test(now) && /Bulk pace/.test(now) && ev("document.querySelectorAll('#hub_now .ag-prop').length") === 1 && /agApprove\('p8a'\)/.test(now));
+    ok('now: the held request with Show anyway, and the question with its note box', ev("document.querySelectorAll('#hub_now .ag-held [data-prop=\"p8h\"]').length") === 1 && ev("document.querySelectorAll('#hub_now #qaNote').length") === 1);
+    // A Hub action repaints the Agents view; what it changed is on Now, and Now is what he is looking at.
+    ev("window.__8Save2 = save; save = function(){}; agReject('p8a'); save = window.__8Save2;");
+    ok('now: rejecting from it repaints it (renderOps() hands the repaint on)', ev("document.querySelectorAll('#hub_now .ag-prop').length") === 0);
+    ev("agState().proposals.filter(function(p){ return p.id === 'p8a'; }).forEach(function(p){ p.status = 'pending'; delete p.resolved; });");
+    ev("showMainTab('ops','ops');");
+    await tick();
+    const ops = ev("document.getElementById('ops').innerHTML");
+    ok('agents: with the switch on, requests are not repeated here; it points at the Inbox', !/Pending proposals/.test(ops) && /Open the Inbox/.test(ops) && !/ag-held-row/.test(ops));
+    ev("showMainTab('ops','outlook');");
+    ok('outlook: Forecasts leads, then experiments and the watches in one line', ev("document.getElementById('forecasts').classList.contains('on') && document.getElementById('hub_out').classList.contains('on')") === true &&
+       /Experiments/.test(ev("document.getElementById('hub_out').innerHTML")));
+    ev("agState().letter = {text:'A <i>letter</i> about the week.', at:new Date().toISOString(), week:todayKey()}; showMainTab('ops','hub_lib');");
+    const lib = ev("document.getElementById('hub_lib').innerHTML");
+    ok('library: the letter, escaped; the Evidence Library says it is off; the way to the technique cards', /A &lt;i&gt;letter&lt;\/i&gt; about the week\./.test(lib) && /off until you have checked ten/.test(lib) && /showReviewTab\('library'\)/.test(lib));
+    // No id is drawn twice anywhere (Today's plan card, Now's and the Desk's each have their own).
+    // A plan stands, so each screen draws its own plan card.
+    ev("window.__8PF = planFor; planFor = function(wk){ return {id:'o8', week:wk, by:'mark', pri:[]}; }; showMainTab('home'); renderHubNow(); renderDesk();");
+    ok('ids: Today, Now and the Desk each draw a plan card', ev("!!document.getElementById('planCard') && !!document.getElementById('planCardNow') && !!document.getElementById('planCardDesk')"));
+    ev("planFor = window.__8PF;");
+    const dup = J("(function(){ var seen = {}, d = []; document.querySelectorAll('[id]').forEach(function(e){ if(seen[e.id]) d.push(e.id); seen[e.id] = 1; }); return d; })()");
+    // fWorkTime and famShareMsg were drawn twice before this stage (the Fuel section's own parts, also on Today); not stage 8's.
+    ok('ids: no element id is drawn twice with the Hub and Today both drawn', dup.filter(d => ['fWorkTime', 'famShareMsg'].indexOf(d) < 0).length === 0, JSON.stringify(dup));
+    // --- the card budget, on a section built to tell the branches apart ---
+    ev(`(function(){
+      var s = document.getElementById('hub_lib');
+      s.innerHTML = '<h2>Top</h2><div class="card" id="cb1">1</div><div class="card" id="cb2">2</div><p class="small">a line</p><div class="card" id="cb3">3</div>' +
+        '<div class="sub grp" id="cbFold"><div class="sub-head">f</div><div class="sub-body"><div class="card">in a fold</div></div></div>' +
+        '<div class="card" id="cb4">4</div><div class="card" id="cb5">5</div><h2 id="cbH">Later</h2><div class="card" id="cb6">6</div>' +
+        '<div class="card" id="cbFail" data-fail>failed</div><div class="card" id="cb7"><input id="cbIn"></div><div class="card" id="cb8" data-depth="adv">deep</div>' +
+        '<div class="sub grp" id="cbRaw"><div class="sub-head" data-pref="open.raw.x">raw</div><div class="sub-body"></div></div>';
+      document.querySelectorAll('#reviewMode main > section').forEach(function(x){ x.classList.remove('on'); }); s.classList.add('on');
+      _cbObs && _cbObs.takeRecords(); cbApply(s);
+    })()`);
+    const inFold = id => ev("!!document.getElementById('" + id + "').closest('[data-cb-more]')");
+    ok('budget: five cards stay open, the rest are in one fold with a summary', ev("document.querySelectorAll('#hub_lib > [data-cb-more]').length") === 1 && !inFold('cb5') && inFold('cb6') && inFold('cb7') &&
+       /3 more cards · Later/.test(ev("document.querySelector('#hub_lib [data-cb-more] .sub-sum').textContent")), ev("document.querySelector('#hub_lib [data-cb-more] .sub-sum') ? document.querySelector('#hub_lib [data-cb-more] .sub-sum').textContent : ''"));
+    ok('budget: the heading above the first folded card goes with it', inFold('cbH'));
+    ok('budget: a failure is never folded', !inFold('cbFail') && ev("document.getElementById('cbFail').parentElement.id") === 'hub_lib');
+    ok('budget: a fold is never moved, and raw data stays last', !inFold('cbFold') && ev("document.getElementById('hub_lib').lastElementChild.id") === 'cbRaw');
+    ok('budget: moving keeps every node, so an id still finds it', ev("document.getElementById('cb7').querySelector('#cbIn') !== null"));
+    ok('budget: the open count is the budget', ev("cbOpenCount(document.getElementById('hub_lib'))") <= ev('CB_BUDGET') + 1 && ev("cbOpenCount(document.getElementById('hub_lib'))") >= ev('CB_BUDGET'));
+    ev("cbApply(document.getElementById('hub_lib'));");
+    ok('budget: applying again changes nothing (one fold, the same cards)', ev("document.querySelectorAll('#hub_lib [data-cb-more]').length") === 1 && inFold('cb6') && !inFold('cb5'));
+    // a focused input inside a card that would move: the budget waits for the next repaint
+    ev("cbUnwrap(document.getElementById('hub_lib')); document.getElementById('cbIn').focus(); cbApply(document.getElementById('hub_lib'));");
+    ok('budget: never moves a node while he is typing in the section', ev("document.querySelectorAll('#hub_lib [data-cb-more]').length") === 0 && ev("document.activeElement.id") === 'cbIn');
+    // ...nor puts one back: an input already inside the fold, the fold open, a repaint asks again
+    ev("document.getElementById('cbIn').blur(); cbApply(document.getElementById('hub_lib')); document.getElementById('cbIn').focus(); cbApply(document.getElementById('hub_lib'));");
+    ok('budget: an input he is typing in inside the fold stays where it is', inFold('cb7') && ev("document.activeElement.id") === 'cbIn');
+    ev("document.getElementById('cbIn').blur();");
+    // depth
+    ev("uiPrefSet('depth', 'mid'); cbApply(document.getElementById('hub_lib'));");
+    ok('depth: Intermediate shows eight, and a card tagged Advanced still folds', !inFold('cb7') && inFold('cb8'));
+    ev("uiPrefSet('depth', 'adv'); cbApply(document.getElementById('hub_lib'));");
+    ok('depth: Advanced has no budget', ev("document.querySelectorAll('#hub_lib [data-cb-more]').length") === 0);
+    ev("uiPrefSet('depth', 'basic');");
+    ok('depth: it is a per-device pref, never in S', ev('S.depth') === undefined && JSON.parse(ev('localStorage.getItem(UI_PREF_KEY)')).depth === 'basic');
+    ev("uiPrefSet('depth', 'nonsense');");
+    ok('depth: an unknown value reads Basic', ev('uiDepth()') === 'basic');
+    ev("uiPrefSet('depth', 'basic');");
+    // a tab switch applies it before it returns, not only when the observer next runs (REVIEW_RENDER holds the renderer)
+    ev("window.__8Lib = REVIEW_RENDER.hub_lib; REVIEW_RENDER.hub_lib = function(){ document.getElementById('hub_lib').innerHTML = new Array(9).join('<div class=\"card\">y</div>'); }; showMainTab('ops','hub_lib');");
+    ok('budget: a tab switch is budgeted before it returns', ev("document.querySelectorAll('#hub_lib > [data-cb-more]').length") === 1);
+    ev("REVIEW_RENDER.hub_lib = window.__8Lib;");
+    await tick();
+    // a renderer called directly bypasses navRenderSub(): the observer applies the budget to what it drew
+    ev("document.getElementById('hub_lib').innerHTML = new Array(9).join('<div class=\"card\">x</div>');");
+    await tick();
+    ok('budget: a direct repaint of a section on screen is budgeted too', ev("document.querySelectorAll('#hub_lib > [data-cb-more]').length") === 1 && ev("cbOpenCount(document.getElementById('hub_lib'))") === 5);
+    // off: nothing folds, and the old fold is put back where it stood
+    orgOff(); ev("cbApply(document.getElementById('hub_lib'));"); orgBack();
+    ok('budget: off, a section is exactly what its renderer drew', ev("document.querySelectorAll('#hub_lib [data-cb-more]').length") === 0 && ev("document.querySelectorAll('#hub_lib > .card').length") === 8);
+    // --- every real view, with the fixture's data: no section over budget, and no failure behind a fold ---
+    const over = [];
+    const views = J("NAV_MODEL.reduce(function(a, m){ return a.concat(m.subs.map(function(s){ return [m.id, s.id]; })); }, [])");
+    for (const [g, s] of views) {
+      ev("showMainTab('" + g + "','" + s + "');");
+      await tick();
+      J(`Array.prototype.filter.call(document.querySelectorAll('#reviewMode main > section.on'), function(x){ return true; }).map(function(sec){
+          var root = sec.querySelector('[data-cb-root]') || sec, sel = '.card, .goal-card, .bodymap-card, .str-sec, .std, .ag-prop, .ag-chat, .hub-agent, .cc-lifts, .cc-agents, .ibx, .lg-list, .lib-list';
+          var n = Array.prototype.filter.call(root.children, function(c){ return !c.classList.contains('sub') && (c.matches(sel) || c.querySelector(sel)); }).length;
+          var hid = sec.querySelectorAll('.sub:not(.open) [data-fail]').length;
+          return [sec.id, n, hid];
+        })`).forEach(([id, n, hid]) => { if (n > (id === 'home' ? 6 : 5) || hid) over.push(id + ':' + n + (hid ? ' hidden failure' : '')); });
+    }
+    ok('budget: every view, as drawn, keeps each section to its budget (Today 6, the rest 5) and folds no failure', over.length === 0 && views.length >= 17, JSON.stringify(over));
+    // --- Settings ---
+    ev("showMainTab('settings');");
+    ok('settings: the depth control, three choices, Basic marked', ev("document.querySelectorAll('#depthCard [data-d]').length") === 3 && ev("document.querySelector('#depthCard [data-d=\"basic\"]').getAttribute('aria-checked')") === 'true');
+    const sb = ev('JSON.stringify(S)');
+    ev("depthTap(document.querySelector('#depthCard [data-d=\"mid\"]'));");
+    ok('settings: a tap sets this device only and writes nothing to S', ev('uiDepth()') === 'mid' && ev('JSON.stringify(S)') === sb);
+    ev("uiPrefSet('depth', 'basic');");
+    // --- off: the old layout ---
+    orgOff();
+    ev("showMainTab('home'); renderHome();");
+    ok('off: Today is the page it was (no zones, no Inbox rows, requests as cards)', ev("document.querySelector('#home [data-cb-root]')") === null && ev("document.getElementById('ibxToday')") === null && ev("document.querySelectorAll('#home .ag-prop').length") === 1);
+    ok('off: the Hub has its four views and Flags is its own', JSON.stringify(J("navMain('ops').subs.map(function(x){ return x.id; })")) === JSON.stringify(['ops', 'desk', 'forecasts', 'invest']) && JSON.stringify(J('NAV_LEGACY.invest')) === JSON.stringify(['ops', 'invest']));
+    ok('off: the bell counts what it counted', ev('notifCount()') === ev('notifVisible().length'));
+    const domS = J("Array.prototype.map.call(document.querySelectorAll('#reviewMode main > section'), function(s){ return s.id; })");
+    const navS = J("NAV_MODEL.reduce(function(all,n){ return all.concat(n.subs.reduce(function(a,s){ return a.concat(s.show || [s.id]); }, [])); }, [])");
+    ok('off: only the three new sections are unrouted, and every older one is reachable once', JSON.stringify(domS.filter(id => ['today', 'coach'].indexOf(id) < 0 && navS.filter(x => x === id).length !== 1)) === JSON.stringify(['hub_now', 'hub_out', 'hub_lib']));
+    orgBack();
+  } catch (e) {
+    ok('organization section', false, e.stack);
+  } finally {
+    try { orgBack(); } catch (e) {}
+    ev("stdState = window.__8Std; save = window.__8Save; agApprove = window.__8Appr; agReject = window.__8Rej; qaOpen = window.__8Qa; waterReminder = window.__8Wr; if(window.__8Held) agHeld = window.__8Held; if(window.__8PF) planFor = window.__8PF; if(window.__8Lib) REVIEW_RENDER.hub_lib = window.__8Lib;" +
+       "S = JSON.parse(window.__8S); if(window.__8LS === null) localStorage.removeItem(LS_KEY); else localStorage.setItem(LS_KEY, window.__8LS);" +
+       "if(window.__8UI === null) localStorage.removeItem(UI_PREF_KEY); else localStorage.setItem(UI_PREF_KEY, window.__8UI); notifOpen = false;" +
+       "(function(){ var n = JSON.parse(window.__8Nav); try{ setMode(n.mode); showMainTab(n.main); }catch(e){} })();" +
+       "['__8S','__8LS','__8UI','__8Std','__8Save','__8Appr','__8Rej','__8Qa','__8Nav','__8Wr','__8std','__8Held','__8a','__8Save2','__8PF','__8Lib'].forEach(function(k){ try{ delete window[k]; }catch(e){} });");
     try { ev('renderHome(); renderNotif();'); } catch (e) {}
   }
 

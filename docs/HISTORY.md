@@ -3016,3 +3016,92 @@ suggestion with its button (183 by 37 at 320), the standing orders card, and Tod
 
 Not built: a plan he writes by hand (he sets the app's suggestion or ZULU's), a manual "run the monthly review now"
 button, and the Stage 9 video scene spec, which will be a third key on the same reply.
+
+### V5 stage 8: organization (2026-11-13, `v5i`)
+
+**Why.** Seven stages each added a card or a bell item, and each one was right on its own. Today on his state had the
+Standards, a plan, a hold banner, the key lifts, expect tiles, the agents strip, plateau chips, the brief, a question,
+"Waiting on you" with full request cards, a swap-trial card, an experiment chip, the debrief, the week's plan, the
+holds form, a pantry card and the stock check, before the fold. The bell carried some of what waited on him, the Hub
+carried requests, Today carried the question and the trial, and nothing carried held requests except the Agents view.
+The spec asked for a structural fix, not a restyle: one list, a budget per screen, Today in zones, the Hub in views.
+
+**One Inbox, derived when read.** `inboxRaw()` takes every bell item (`notifItems()`, unchanged) and adds the five
+things that only ever had a card: held requests (`agHeld()`), a finished swap trial (`swtPending()`), an experiment
+session to answer, the Monday stock check (`fpStockCardHTML('home')` returning anything), and the app's plan
+suggestion when no plan stands. Each source is in its own `try`, so a source that throws costs its own items and
+never the Inbox (the suite stubs `agHeld()` to throw). There is no new store: clearing uses the bell's own list
+(`S.notifCleared`), and `notifDismiss()` / `notifClear()` now keep the ids the Inbox produces (`inboxLiveIds()`), so an
+inbox-only item can be cleared too. `inboxItems()` reads `S.notifCleared` without initialising it, because
+`notifClearedIds()` creates the array and Today must leave `S` byte-identical (a mutant that calls it goes red).
+
+**Priority and the chip come from the item's id.** The sources already prefix their ids (`std:`, `prop:`, `qa:`,
+`watchbad:`, `clock:` and so on), so `inboxType()` and `inboxPriOf()` read those rather than a new field on every
+source. A red Standard is 0 (`std:<pillar>:red:`), requests and failures are 1, routine is 2. **A request cannot be
+cleared** (`INBOX_ASK`): the bell let him dismiss a proposal, which hid it from the one list meant to hold it; now it
+leaves only when answered, the same rule as a red Standard. An amber Standard can still be cleared, as in the bell.
+
+**One-tap actions are the sources' own.** Approve and Reject call `agApprove()` / `agReject()`, which re-run
+`agValidateFix()`: the Inbox adds no path that writes state. Open is the source's own `go`, inserted as the bell
+inserted it (a source escapes a name it carries; the first version escaped `go` a second time and the plateau
+watch's `pwShow("O'Brien")` came out as `&quot;`, caught by an existing test). `inboxDo()` repaints the active view
+afterwards, because `agApprove()` repaints the Agents view, which may not be the one on screen.
+
+**Today in five zones** (`homeZonesHTML()`, `HOME_ZONES`): orders (the Standards card, the Plan of Record, a hold
+banner, a running Winter Arc), today's session (the key lifts and a Start button), the Inbox's top three, the agents
+strip and the brief, then one fold. Today's three skip what already has a zone there (`INBOX_ON_TODAY`: Standards,
+plan, brief), but "N more" counts everything waiting. The question card, the trial card, request cards, the pantry
+card and the stock card moved to Now: drawn on Today as well, `#qaNote` would have been in the DOM twice. The hero is
+untouched. The old Today is the `else` path, byte for byte, apart from three helpers it now shares
+(`homeTilesHTML()`, `homeFuelFoldHTML()`, `homeJumpHTML()`).
+
+**The Hub in five views** (`NAV_HUB_V5`): Now (`hub_now` merged with `invest`, so Flags is reachable from Now), Agents
+(`ops`), Desk, Outlook (`forecasts` merged with `hub_out`) and Library (`hub_lib`). The Hub group's `subs` is a getter
+on `NAV_MODEL`, and the five moved routes are getters on `NAV_LEGACY`, so every reader (the sub-nav, the rail,
+`navShows()`, the suite's reachability check) sees the set in force without a second model. With the switch off the
+three new sections are the only unrouted ones, and the suite checks exactly that. `showReviewTab('invest')` names the
+section, so Now opens scrolled to Flags. With the switch on, the Agents view drops requests, held requests, the trial
+card, experiments, the week's plan and the letter (they are on Now, Outlook and Library) and says where requests went.
+`renderOps()` and `renderDesk()` end with `orgHubRepaint()`: a Hub action repaints the Agents view, and what it changed
+may be on Now, which is what he is looking at. It repaints only a view that is on screen and never one with focus.
+The sub-nav's segmented control now takes five; at 320 px each tab is 55 px and nothing overflows.
+
+**The card budget is applied to the DOM, not by renderers** (`cbApply()`). Folding inside each of twenty renderers
+would have meant twenty edits and twenty chances to drop an id; moving the overflow into one fold after a section is
+drawn keeps every node, so every id, handler and `querySelector` still finds what it found. An open card is a panel at
+a section's root (`CB_CARD_SEL`), or a wrapper holding one; headings, lines of text and folds are not cards. The cut is
+the first card past the budget; the headings just above it go with it; past the cut everything moves except folds
+(raw data stays last) and failures. **A failure is never folded**: an element with `[data-fail]`, or holding one,
+stays open where it stood (the Desk's, Forecasts' and the Inbox's own failure cards now carry it). **A focused input
+is never moved**, neither folded nor put back, because moving a node blurs it and would close the phone's keyboard.
+`cbApply()` is idempotent (`cbUnwrap()` puts back the previous fold first), so it runs after `navRenderSub()` and again
+from a `MutationObserver` on each section's children (`cbWatch()`), which catches a tap's own direct repaint. The
+observer only acts on a section that is on screen and drops the records its own moves make. Today's root is its main
+column (`data-cb-root`).
+
+**The depth switch** is `uiPref('depth')`, per device and never in `S`: Basic (the budget, the default), Intermediate
+(`CB_BUDGET_MID`, eight) and Advanced (no budget). A card tagged `data-depth="mid"` or `"adv"` folds below that depth
+whatever the count; nothing is tagged yet, which is stage 10's job (the plan's Basic, Intermediate and Advanced
+contents). The control is in Settings (App & data) and at the bottom of Today's fold.
+
+**On his state (read-only, 110 sessions, jsdom and a real browser).** Today holds six open cards: the Standards, the
+Winter Arc card (it is running), the session, the Inbox, the agents and the brief. His Inbox had ten items: Bulk pace (red)
+first, Lifts (amber), then the brief, two plateau notes, two PR notes, water, the stock check and the plan suggestion.
+The bell counted 8 before (it did not carry the stock check or the plan suggestion). Folded: Progress Overview (one
+card), This year (one), Fuel, and Quality (one). Plan, Log, Library, Strength, Overload, Fatigue, Weight, Ready, the
+Desk, Forecasts, Agents, Now, Outlook, Library and Settings fit their budget as drawn. No screen scrolls sideways at
+393 px or 320 px. Drawing Today takes about 115 ms in jsdom against 72 ms for the old page; the Inbox is 57 ms of it,
+mostly `notifItems()`, which the bell was already running on every repaint. The budget itself is about 8 ms a view.
+
+**Found and left alone.** `fWorkTime` and `famShareMsg` are each drawn twice when Today's fold and the Fuel section
+are both in the DOM (fuel timing and the family share card render in both). That predates this stage; the suite's new
+duplicate-id check names them as known.
+
+**Tests.** 57 new assertions (5000 in all). Nine older sections and six single assertions describe the layout with
+the switch off (the bell as a list, requests on the Agents view, the question on Today); they now run with
+`orgOff()`, a stub on `orgOn()` that survives a test replacing `S`, and the stage 8 section tests the switch on. Each
+of those six now asserts both sides. 31 mutants, each red: 30 at the named assertion, and one (a source without its
+own `try`) by crashing the run. The first pass had six that did not go red at their test. Three were real gaps (a
+second typing guard no test could reach, so it was removed; the tab switch applying the budget, hidden by the
+observer; Now's plan-card id, hidden by a fixture with no plan) and three crashed the section instead of failing
+by name, now guarded.

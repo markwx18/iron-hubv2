@@ -292,3 +292,18 @@ Until now the agents proposed things and the app scored each proposal alone. Not
 - *Monthly Review: standing orders.* Once a month, from the server's evening run, ZULU reads the whole month and writes up to five short lines for each coach on what to emphasise. They show on the Desk for five weeks and change nothing in your plan. On the current model one run reads about 10,000 to 11,500 tokens and costs about 5 to 10 cents. It is built to use the same model as everything else; a bigger model for this is your call, and it is one line to change.
 
 If you want none of it, turn off "Plan of Record" in the same place.
+
+## One Inbox, and lighter screens (Nov 13)
+
+Things kept arriving on Today (Standards, a plan, questions, trial results, stock checks), so each screen got longer. This stage puts everything waiting on you in one place and caps how much any screen shows at once. No model is involved and it costs nothing.
+
+- **One Inbox.** Everything that waits on you is in one list: requests from the agents, requests ZULU held back, a question, a finished swap trial, an experiment session to answer, the Monday stock check, a pantry update, a watch, the plan suggestion, forecasts, plateau notes, the brief. A red Standard always comes first, then requests (and anything that failed), then the routine things. Each row has a label saying what kind of thing it is, and buttons that act on it right there: Approve and Reject for a request (the same checks as before), Open, and Clear.
+- **A request cannot be cleared.** It leaves when you answer it, the same way a red Standard leaves only when it is fixed.
+- **The bell is the Inbox.** Its number is the Inbox count, and tapping it opens the same list, most urgent first.
+- **Today is five parts, top to bottom:** your orders (the Standards and the Plan of Record), today's session with a Start button, the top three of the Inbox (it skips what already has its own place on Today) with "N more", the agents with the brief, and one fold with everything else (last session, trips and holds, the tiles, today's call, fuel timing).
+- **The Hub has five tabs:** **Now** (the Standards in brief, the Plan of Record, the whole Inbox with each request, question and trial as its own card, the week's plan, then Flags), **Agents** (the coaches and their squads, the chat, the brief, the log, usage), **Desk**, **Outlook** (forecasts, experiments, your watches in one line) and **Library** (the weekly letter, the Evidence Library once you turn it on, and the way to the technique cards). Tapping the Hub opens Now.
+- **No screen shows more than five cards open (Today six).** The rest sit in one fold at the bottom called "More on this screen", which says how many cards it holds. Open it once and it stays open on this device. Raw data still comes last, and a card that failed to load is never folded away.
+- **How much each screen shows is up to you, per device.** Settings, App & data, Detail: **Basic** (the five-card rule), **Intermediate** (eight), **Advanced** (everything open). It is also at the bottom of Today's fold. Basic is the default.
+- On your data today: Progress, Fuel and Quality each fold a few cards; Today, the Desk, Forecasts, Plan, Log and the Hub's other views fit as they are.
+
+If you want the old layout back, turn off "Organization: one Inbox, lighter screens" in Settings, under V5 switches.

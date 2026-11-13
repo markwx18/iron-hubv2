@@ -69,7 +69,7 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 4943 assertions, about 2 minutes. Must be
+**Test suite:** `node test_agents.js`. Currently 5000 assertions, about 2 minutes. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -173,6 +173,7 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | API | `aiSend()` (the one transport), `aiBody()`, `callClaudeWithData()`, `spendPreflight()`, `aiUsageNote()` |
 | Server and schedulers | `agForegroundCheck()`, `runnerTick()`, `agMaybeAutoRun()`, `agMaybeMorningBrief()` |
 | Screens | `renderHome()`, `renderOps()` (the Hub), `renderDesk()`, `renderSettings()`, `NAV_MODEL`, `NAV_LEGACY`, `showMainTab()` |
+| Organization | `orgOn()`, `inboxItems()` / `inboxRaw()`, `inboxRowHTML()`, `inboxDo()`, `homeZonesHTML()`, `renderHubNow()` / `renderHubOut()` / `renderHubLib()`, `orgHubRepaint()`, `cbApply()`, `cbWatch()`, `uiDepth()` |
 | Folds and prefs | `subSection()`, `rawFold()`, `uiPref()`, `notifItems()` |
 | Charts | the chart kit: `ckText()`, `ckPath()`, `ckMarks()`, `ckW()`; `anFanChartSVG()`, `lineChart()` |
 
@@ -602,6 +603,32 @@ motion", and a fast-gain amber.
   (`ordContextLine()`, capped), never in chat. They change nothing. With the switch off, or with none in force, every
   prompt is byte-identical.
 
+**Stage 8, Organization** (`ovOn('organize')`, free; read it through `orgOn()`)
+- **The Inbox is worked out when read, and has no store** (`inboxItems()`): the bell's items (`notifItems()`) plus the
+  few things that only had a card (held requests, a finished trial, an experiment answer, the stock check, the plan
+  suggestion), each source in its own `try`. Clearing is the bell's own `S.notifCleared`; `inboxItems()` reads it and
+  never initialises it, because Today only reads. A new "waiting on you" thing is a source here, never a new card.
+- **Priority and the type chip come from the item's id prefix** (`INBOX_TYPES`, `INBOX_PRI`): a red Standard first,
+  then requests and failures, then routine. **A request cannot be cleared** (`INBOX_ASK`); it leaves when answered.
+- **An Inbox action is the source's own** (`agApprove()`, `agReject()`, the source's `go`, `notifDismiss()`). The Inbox
+  adds no write path. A source's `go` is inserted as the bell inserts it: it is already escaped.
+- **The bell is the Inbox's badge**: one count (`notifCount()`), one list, most urgent first.
+- **Today is five zones** (`homeZonesHTML()`): orders, the session with Start, the Inbox's top three (skipping what has
+  its own zone, `INBOX_ON_TODAY`), the agents and the brief, one fold. A card with an input (the question) is drawn in
+  one place only, on Now. **A new feature names its zone and its fold before it ships.**
+- **The Hub is five views** (`NAV_HUB_V5`, a getter on `NAV_MODEL`; the moved routes are getters on `NAV_LEGACY`).
+  Off, the three new sections (`hub_now`, `hub_out`, `hub_lib`) are the only unrouted ones. A Hub action ends in
+  `orgHubRepaint()`, which repaints Now or Outlook only when on screen and never with focus inside.
+- **The card budget is applied to the DOM after a section is drawn, never by a renderer** (`cbApply()`, from
+  `navRenderSub()` and a `MutationObserver` on each section). At most `CB_BUDGET` open cards (Today
+  `CB_BUDGET_HOME`); the rest move into one fold. Moving keeps every node, so ids and handlers survive. A fold is never
+  counted or moved (raw data stays last). **A failure is never folded**: a failure card carries `data-fail`. **A focused
+  input is never moved.** `cbApply()` is idempotent (`cbUnwrap()` first).
+- **Depth is a per-device pref** (`uiDepth()`, `uiPref('depth')`, never in `S`): Basic is the budget, Intermediate
+  `CB_BUDGET_MID`, Advanced none. A card tagged `data-depth` folds below its depth; stage 10 does the tagging.
+- A test of the layout with the switch off calls `orgOff()` / `orgBack()` (a stub on `orgOn()`, which survives `S`
+  being replaced).
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
@@ -612,4 +639,5 @@ motion", and a fast-gain amber.
 | 5 Selector: a computed fit score for every lift, swap trials as a third split in force, grounds for a permanent swap | built 2026-11-12 (`v5f`) |
 | 6 Desk: analyst cards derived at render, watches measured when read, the Plan of Record stored and shown | built 2026-11-13 (`v5g`) |
 | 7 Accountability: a plan scored by the app, the Weekly Review inside the letter call, the Monthly Review behind its own switch | built 2026-11-13 (`v5h`) |
-| 8 Organization · 9 Video letter · 10 Reskin · 11 Discord | not started |
+| 8 Organization: one Inbox worked out when read, a card budget per section, Today in five zones, the Hub in five views, a per-device depth | built 2026-11-13 (`v5i`) |
+| 9 Video letter · 10 Reskin · 11 Discord | not started |
