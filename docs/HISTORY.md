@@ -3312,3 +3312,20 @@ to the lights, so the bar had no name at all.
 
 **Left for later.** Deleting the old CSS and the pref (the plan says a week after he switches). The plan builder's
 reps and RPE boxes clip a two-digit number at phone width in both looks (27px wide); it predates this stage.
+
+**Checked on his real state (the same evening, after the push).** His synced state was read once from the gist by id,
+with no token, seeded into the local headless driver with every outside request blocked, and deleted afterwards. All
+20 views and LIVE with a set open, at 393px and 320px, in both looks: nothing past the viewport and no page errors.
+On his data two Standards were red (Bulk pace, Lifts) and one amber (Intake), so the band, the lights, the five
+cells and the lane order were all seen doing their job rather than sitting quiet as on a clean fixture. No bug was
+found and nothing in the build changed. Two things were learned:
+
+- **Progress shows several "More on this screen" folds at Basic.** The Overview is a merged view, and the card budget
+  folds each section on its own (stage 8), so his Overview had two folds in the old look and three under the look at
+  Basic, two of them back to back. Nothing is lost and each fold opens, but one fold per screen would read better. It
+  was left alone: a fold cannot simply take cards from another section, because sections keep their ids and routes.
+- **A check script must start LIVE the way the app does.** The first LIVE picture from his data read "NULL · NULL":
+  the script called `rd3Skip()` unconditionally, and with his check-in already done there was no sheet pending, so it
+  started a session for no day. The app cannot reach that (Skip exists only on the sheet); the script now taps Skip
+  only when `#readyOverlay` is showing. The driver also needs absolute paths: Chrome will not start on a relative
+  `--user-data-dir`.
