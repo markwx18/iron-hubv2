@@ -3329,3 +3329,52 @@ found and nothing in the build changed. Two things were learned:
   started a session for no day. The app cannot reach that (Skip exists only on the sheet); the script now taps Skip
   only when `#readyOverlay` is showing. The driver also needs absolute paths: Chrome will not start on a relative
   `--user-data-dir`.
+
+### V5 stage 12: the engine's second pass (2026-11-13, `v5m`)
+
+**The engine's second pass.** Mark asked, the day V5 finished, whether the app was now more accurate at progressive
+overload. The honest answer was that V5 never touched the engine: stage 5's replay showed 0 changed prescriptions. He
+then asked how to strengthen it. Before proposing anything, the engine's stored calls (`log.decisions`, kept since
+Jul 2) were scored against what he then loaded, on a local copy of his state (101 normal sessions, Jun 10 to Nov 10):
+
+- 84 jumps asked. 41 taken or beaten, 32 stayed at the old weight, 9 went lighter, 2 part-way. Since LIVE showed
+  per-set targets (Oct 5): 14 of 23.
+- The same jump asked over and over: Cable Lateral Raise 20 to 25 or 30 lb twelve times, never taken, while he was
+  doing 20 x 15; Incline Prone Reverse Fly 30 to 35 six times, taken once.
+- 63 "break the stall" decisions in 37 runs; 22 runs lasted one session and 10 ended in a jump the next time.
+- 3 double jumps asked, 0 taken. 2 step-backs in five months. After 14 to 20 days off a lift the top weight was down
+  on 6 of 54 sessions, the same share as a normal gap, so no return-from-break rule was built, and no bad-day guard.
+
+His three answers in plan mode: the prescription changes ship off until he has read the replay; a stuck lift names
+the cause and points to the existing fix (no new reset button); a passed-up jump gets a smaller step if his gear has
+one, else a rep target.
+
+**What the replay changed while building.**
+- The first version counted sessions at the ceiling in one run at one top weight. On his data it missed the leg press
+  entirely: he pyramids (450, 540, 450), so the top weight changes session to session and the run never reached three.
+  The rule now reads what was ASKED: the decision each session stored against the weight he then loaded
+  (`engPasses()`), back to the last jump he took.
+- That needed the replay to be sequential: `scripts/engine_replay.js` writes each configuration's own decision back
+  onto its copy of the session, so the next session sees what THAT engine would have asked. A session a reset or a
+  recover day really shaped keeps the decision it stored.
+- A look-back of 8 sessions forgot his June passes on the lateral raise by September and started asking again. It is
+  30 (`ENG_PASS_LOOK`).
+- The same rows showed a rule nobody had asked for: one set at 540 between two at 450 counted as "every top set at
+  the ceiling" and earned +90 lb, three times. A hypertrophy lift now needs `ENG_HYP_CEIL_SETS` (2) sets at its top
+  weight (`engThinTop()`). This one was not in the approved plan; it is a hold-only rule behind the same held
+  switch, it is named in the report, and setting the constant to 1 removes it.
+- A "coarse step" rule (hold whenever Epley says the next weight would land under the floor) was considered and
+  dropped: he took 15 of 27 such jumps, including 3 of 3 on Incline Dumbbell Curl. What he does with a jump is a
+  better signal than what the formula predicts.
+
+**The replays (539 prescriptions).** Switch off against `v5l`: 0 differences. Switch on against off: 25 weights
+differ, none heavier; in 22 the new weight is nearer what he loaded and in 3 it was more cautious than he was (squat
+Jun 29, Incline Dumbbell Curl Sep 10, Rope Cable Curl Nov 1). The prescribed weight was the weight he loaded on 342
+of 480 before and 357 after; jumps asked and taken 35 of 80 before, 32 of 57 after; "stall" 76 before, 10 after. The
+replay rewinds logs only, so flags he has changed since (Form Focus on the Reverse Fly, MAXED on the abductor) are
+today's in both columns.
+
+**Kept deliberately small.** No change to the Selector's weights, no new write path for an agent, no reset button.
+The step suggestion ("Use +10") is his tap on the Settings writer. The record is rows of the existing Prediction
+record card (`#an_pred` still holds three cards), because it is the same kind of thing: how far to trust the engine,
+worked out when read.

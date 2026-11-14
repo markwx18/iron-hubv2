@@ -69,7 +69,12 @@ catch(e){ console.log('block '+i+' ERROR:', e.message, JSON.stringify(e.loc)); }
 "
 ```
 
-**Test suite:** `node test_agents.js`. Currently 5192 assertions, about 2 minutes. Must be
+**The engine replay:** `node scripts/engine_replay.js --state <his state>.json --on engine2` (one build, a switch off
+against on) or `--a old.html --b iron_hub.html` (two builds). It replays every logged session with only the history
+before it, lists each prescription that differs, and exits 1 if B is ever heavier than A. The state file is his
+data: never committed.
+
+**Test suite:** `node test_agents.js`. Currently 5263 assertions, about 2 minutes. Must be
 `0 failed`. A red suite is never shipped.
 
 **The suite on a moved clock:** `node scripts/clock_run.js` (the V5 dates, three at a time, about
@@ -155,6 +160,7 @@ The full map, one row per feature with every function, is HISTORY.md's "Architec
 | Evidence | `EVIDENCE`, `evEntryOk()`, `evBuild()`, `evidenceFor()`, `evTagsFor()`, `agEvidenceBlock()`, `evCiteClean()`, `evCiteHTML()`, `evCheckHTML()` |
 | Schedule | `currentDayKey()`, `scheduledDayFor()`, `scheduleMode()`, `activeSplitObj()`, `mesoRotationDayFor()` |
 | Progression | `recommend()` and `classifyDecision()` (two trees, kept in step), `buildOneLiveExercise()`, `intraAdvice()` |
+| The engine's second pass | `engOn()`, `engPasses()`, `engPassPlan()`, `engSmallerStep()`, `engEarnReps()`, `engThinTop()`, `engDoubleCapped()`, `engStuck()`, `engRecord()`, `engUseStep()`, `engRecordRowsHTML()`, `engContextLine()`; `scripts/engine_replay.js` |
 | Today's call | `dayCall()`, `callTier()`, `recoveryBaseline()`, `whoopResponse()`, `fatigueIndex()` |
 | Live session | `renderLive()`, `liveSetToLog()`, `endLiveSession()`, `sessionMods()`, `liftLoad()` |
 | Bodyweight and intake | `bulkRate()`, `bulkBand()`, `calTarget()`, `nutTierCal()`, `nutTierPro()` |
@@ -713,6 +719,44 @@ motion", and a fast-gain amber.
   (`techEvidenceHTML()`, `TECH_TAGS`, each lift name anchored), drawn by the library's own `evEntryHTML()`.
 - Not built: the Wire, the Play card on Today, a new LIVE layout (LIVE is reskinned, not rearranged).
 
+**Stage 12, The engine's second pass** (`ovOn('engine2')`, free and held; the record is `ovOn('engineRecord')`, free; DELTA's line is `ovOn('engPrompts')`, paid, off)
+- **Every rule sits behind `engine2`, and it is held** (`engOn()`): it changes what he lifts, so it is off until he has
+  read the replay. Off, `recommend()`, `classifyDecision()`, `intraFirstAim()` and LIVE are byte-identical to `v5l`
+  (replayed: 0 differences in 539 prescriptions).
+- **A rule here only ever holds a weight or takes a smaller step.** `scripts/engine_replay.js` exits 1 if the switch on
+  is ever heavier than off. Run it before moving any `ENG_*` constant.
+- **A passed-up jump is read from what was asked, not from the top weight** (`engPasses()`: the decision each session
+  stored against the weight he then loaded, back to the last jump he took). He pyramids (450, 540, 450), so "a run at
+  one weight" breaks every session. A session that held, or stored no decision, says nothing either way.
+- **After `ENG_PASS_JUMPS` passes the same jump is not asked again** (`engPassPlan()`, inside the ceiling branch after
+  every other hold): a smaller step if his gear has one (`engSmallerStep()`: plates and dumbbells from his gear, a
+  stack only from a step he has taken twice), for `ENG_SMALL_TRIES` tries; then a rep target at the same weight. The
+  codes are `step-small` and `rep-target`.
+- **A rep target carries its own range on the recommendation** (`rec.lo`, `rec.hi`: the old ceiling up to
+  `engEarnReps()`), and `buildOneLiveExerciseBase()` hands it to the dock. A reset uses the lift's own range. The
+  range starts at the old ceiling so a set there is never "short".
+- **A low day never carries a rep target, and promises no jump to a lift that keeps passing one up.** Its tier is
+  `'low'`, which holds before the rep target is reached; with `ENG_PASS_JUMPS` passes it reads "repeat the weight"
+  (`hold`), not "bump deferred".
+- **Reaching the target while working to it earns the ordinary jump once.** At the target any other way it holds and
+  says the jump is his to take; it never goes back to asking every session.
+- **One set at the top weight is not a ceiling on a hypertrophy lift** (`engThinTop()`, `ENG_HYP_CEIL_SETS`): it holds
+  and says what earns the jump, and it is not a stall. Strength lifts keep their own two-set rule.
+- **No double jump when two steps exceed `ENG_DOUBLE_MAX_PCT` of the weight** (`engDoubleCapped()`, both trees).
+- **Three flat sessions are a "stall" only when the plateau watch flags the lift too** (`engStuck()`). Quiet: an
+  ordinary hold with a rep to go for. Flagged: the watch's word and its top likely factor (a factor, never a cause),
+  and where the fix lives. No reset button was added (his choice). If the watch cannot be read the old line stands,
+  and `_engStuckBusy` keeps the watch from ever re-entering the engine.
+- **The first set after a jump aims at what his last session predicts** (`intraFirstAim()`, less `ENG_AIM_MARGIN`,
+  inside the range). The aim still never adds load.
+- **What he did with the engine's jumps is part of the Prediction record, worked out when read** (`engRecord()`,
+  `engRecordRowsHTML()`): rows of that card, never a card of their own, never stored. A reshaped session is set aside.
+- **"Use +10 for this lift" is his tap** (`engUseStep()`): the step his last two increases both used, checked again at
+  the tap, written by `applyExFlag()` (the Settings writer) and a `save()`. It is not an agent path.
+- **DELTA's line is a paid switch** (`engContextLine()`): DELTA only, lifts whose jumps keep being passed up, capped at
+  `ENG_PROMPT_MAX`, absent when there is nothing to say. Off, every prompt is byte-identical.
+- The replay rewinds logs only: the split, flags and settings are today's in both configurations.
+
 | Stage | Status |
 |---|---|
 | 0 Safety rails: switches, moved-clock script, this file trimmed | built 2026-11-11 (`v5a`) |
@@ -727,3 +771,4 @@ motion", and a fast-gain amber.
 | 9 Video letter: six scenes drawn from his data, numbers only through tokens, played in the app with the phone's voice | built 2026-11-13 (`v5j`) |
 | 11 Discord: /ironhub standards, desk, plan and away, read-only from the app's own snapshot | built 2026-11-13 (`v5k`) |
 | 10 The look and the depth layers: Command Deck in Gunmetal behind a per-device pref, statuses as reasons, the red band, depth tags | built 2026-11-13 (`v5l`), off until he approves the screenshots |
+| 12 The engine's second pass: a passed-up jump becomes a smaller step or a rep target, a stall needs the plateau watch, the engine's record | built 2026-11-13 (`v5m`), the rules off until he has read the replay |

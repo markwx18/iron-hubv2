@@ -17646,7 +17646,8 @@ setTimeout(async () => {
     ok('hold: a yes turns it on, and turning it off never asks', ev("ovOn('tHold')") === true && (() => { ev("window.__asked = []; window.__el.checked = false; ovToggle(window.__el);"); return ev('window.__asked.length') === 0 && ev("ovOn('tHold')") === false; })());
     ev("delete OV.tHold; delete window.__el; delete window.__asked; window.confirm = window.__eConfirm; S.overhaul = {};");
     ok('Settings: the held switch reads "waiting on you" while off, and not once on', /Evidence Library<\/b> <span class="pill"[^>]*>free<\/span> <span class="pill"[^>]*>waiting on you/.test(ev('ovCardHTML()')) &&
-      (() => { ev("S.overhaul = {evidence:true};"); const on = !/waiting on you<\/span>/.test(ev('ovCardHTML()')); ev("S.overhaul = {};"); return on; })());
+      // Its own row: since V5 stage 12 the engine switch is held too, and still reads "waiting on you" here.
+      (() => { ev("S.overhaul = {evidence:true};"); const on = !/Evidence Library<\/b> <span class="pill"[^>]*>free<\/span> <span class="pill"[^>]*>waiting on you/.test(ev('ovCardHTML()')); ev("S.overhaul = {};"); return on; })());
     ok('Settings: the card under the switches says to check ten first, and shows none until he asks', /check ten before you turn it on/.test(ev('evCheckHTML()')) && !/Open the source/.test(ev('evCheckHTML()')) && /id="evCheck"/.test(ev('ovCardHTML()')));
     ev('evCheckOpen = true;');
     ok('Settings: the ten open with their findings, each linking out, the inference labelled as the app\'s', (() => { const h = ev('evCheckHTML()');
@@ -20058,6 +20059,251 @@ setTimeout(async () => {
        "['an_fatigue', 'fuel', 'hub_lib', 'an_strength'].forEach(function(id){ document.getElementById(id).innerHTML = ''; });" +
        "(function(){ var n = JSON.parse(window.__10Nav); try{ setMode(n.mode); showMainTab(n.main); }catch(e){} })();" +
        "Object.keys(window).filter(function(k){ return /^__10/.test(k); }).forEach(function(k){ try{ delete window[k]; }catch(e){} });");
+    try { ev('renderHome(); renderNotif();'); } catch (e) {}
+  }
+
+  console.log('\n=== V5 STAGE 12: THE ENGINE’S SECOND PASS (2026-11-13) ===');
+  ev("window.__12S = JSON.stringify(S); window.__12PR = plateauRisk; window.__12PC = plateauCauses; window.__12DA = deloadActive; window.__12Save = save; window.__12Confirm = window.confirm; window.__12Alert = window.alert;");
+  try {
+    const J = s => JSON.parse(ev('JSON.stringify(' + s + ')'));
+    const D = n => ev('mesoAddDays(todayKey(), ' + n + ')');
+    const s3 = (w, r, e) => [{w, r, e: e || 'solid'}, {w, r, ef: 58}, {w, r, e: e || 'solid'}];
+    let _id = 12120000;
+    // one session of one lift, with the decision LIVE stored when it was built (or none)
+    const L = (off, nm, sets, dec, extra) => Object.assign({id: ++_id, date: D(off), day: 'D1', entries: [{exercise: nm, sets}]}, dec ? {decisions: {[nm]: dec}} : {}, extra || {});
+    const up = (from, to, code) => ({code: code || 'increase', from, to, moved: true, reason: ''});
+    const held = (w, code) => ({code: code || 'hold', from: w, to: w, moved: false, reason: ''});
+    const setLogs = logs => ev('S.logs = ' + JSON.stringify(logs) + ';');
+    const sw = on => ev('S.overhaul = ' + JSON.stringify(on ? {engine2: true} : {}) + ';');
+    const both = nm => ({c: J("classifyDecision(" + JSON.stringify(nm) + ", 'ok')"), r: J("recommend(" + JSON.stringify(nm) + ", 'ok')")});
+    ev("S.deload = null; S.meso = {template:null, active:null}; S.settings.repLow = 8; S.settings.repHigh = 12; S.readiness = []; S.experiments ={active:null, history:[], declined:{}, lastEnded:''};" +
+       "deloadActive = function(){ return false; };" +
+       "S.split.D1.exercises = S.split.D1.exercises.concat([{name:'Zz Plate Loaded Press', inc:15}, {name:'Zz Plate Loaded Sled', inc:90}, {name:'Zz Stack Row', inc:15}, {name:'Zz Dumbbell Fly', inc:5}, {name:'Zz Light Raise', inc:5}, {name:'Zz Heavy Row', inc:10}]);");
+    const FLY = 'Zz Pass Fly';   // not in the split: a pin stack with the default 5 lb step, and no smaller step ever taken
+
+    // --- the switches ---
+    ok('switches: the engine rules are free and HELD (off until he turns them on), the record is free and on, the prompt line is paid and off',
+       ev("OV.engine2.paid === false && OV.engine2.hold === true && OV.engineRecord.paid === false && !OV.engineRecord.hold && OV.engPrompts.paid === true") &&
+       (() => { ev('S.overhaul = {};'); return ev("ovOn('engine2')") === false && ev("ovOn('engineRecord')") === true && ev("ovOn('engPrompts')") === false && ev('engOn()') === false; })());
+
+    // --- a jump passed up twice: a rep target instead of the same jump again ---
+    const passed2 = [L(-30, FLY, [{w: 30, r: 11, e: 'solid'}, {w: 30, r: 10, e: 'solid'}, {w: 30, r: 10, e: 'grind'}], held(30)),
+                     L(-22, FLY, s3(30, 12), held(30)), L(-14, FLY, s3(30, 12), up(30, 35)), L(-6, FLY, [{w: 30, r: 13, e: 'solid'}, {w: 30, r: 12, ef: 60}, {w: 30, r: 12, e: 'solid'}], up(30, 35))];
+    setLogs(passed2); sw(false);
+    const off1 = both(FLY);
+    ok('off: a jump passed up twice is asked a third time, exactly as before', off1.c.code === 'increase' && off1.c.to === 35 && off1.r.sets[0].w === 35 && off1.r.lo === undefined && off1.r.hi === undefined, JSON.stringify(off1.c));
+    sw(true);
+    const on1 = both(FLY);
+    ok('on: after two passes the same jump is not asked again: a rep target at the same weight', on1.c.code === 'rep-target' && on1.c.to === 30 && on1.c.moved === false && on1.r.sets[0].w === 30, JSON.stringify(on1.c));
+    ok('on: the range becomes the old ceiling up to the reps that earn the jump (30 to 35 lb needs 15)', on1.r.lo === 12 && on1.r.hi === 15 && /30 lb × 12–15/.test(on1.r.target) && /build to 15 reps at 30 lb on every set/.test(on1.r.detail), on1.r.target + ' | ' + on1.r.detail);
+    ok('on: it says what happened, as a fact (the last 2 jumps asked were not taken)', /The last 2 jumps asked on this lift were not taken/.test(on1.r.detail) && /last 2 jumps asked were not taken/.test(on1.c.reason));
+    setLogs(passed2.slice(0, 3));
+    const one = both(FLY);
+    ok('on: ONE pass is not enough: the jump is asked again', one.c.code === 'increase' && one.c.to === 35 && one.r.sets[0].w === 35, JSON.stringify(one.c));
+    // a session that held, or stored nothing, says nothing either way
+    setLogs([passed2[2], L(-10, FLY, [{w: 30, r: 11, e: 'solid'}, {w: 30, r: 12, e: 'solid'}, {w: 30, r: 10, e: 'grind'}], held(30)), L(-8, FLY, s3(30, 12)), passed2[3]]);
+    ok('on: a session that held, and one with no stored decision, neither count nor break the count', both(FLY).c.code === 'rep-target');
+    // a jump he TOOK starts a new chapter
+    setLogs([L(-40, FLY, s3(30, 12), up(30, 35)), L(-33, FLY, s3(30, 12), up(30, 35)), L(-26, FLY, [{w: 35, r: 9, e: 'solid'}, {w: 35, r: 8, e: 'solid'}, {w: 35, r: 8, e: 'grind'}], up(30, 35)),
+             L(-19, FLY, s3(35, 12), held(35)), L(-12, FLY, s3(35, 12), up(35, 40))]);
+    const chap = both(FLY);
+    ok('on: a jump he took resets the count: one pass since then asks the ordinary jump', chap.c.code === 'increase' && chap.c.to === 40 && chap.r.sets[0].w === 40, JSON.stringify(chap.c));
+    ok('on: engPasses reads back to the jump he took and no further', (() => { const p = J("engPasses('" + FLY + "', historyFor('" + FLY + "'))"); return p.passed === 1 && p.small === 0 && p.last === 'increase'; })());
+    // a deload session's decision is never read, even when it shares a day with a normal session and comes first
+    setLogs([passed2[2], Object.assign(L(-6, FLY, s3(20, 10), up(30, 35)), {deload: true}), L(-6, FLY, s3(30, 12), held(30))]);
+    ok('on: a deload session is not a pass', J("engPasses('" + FLY + "', historyFor('" + FLY + "'))").passed === 1);
+
+    // --- reaching the target: the jump is offered once, then it is his to take ---
+    // 15s, not 16: a bigger leap than that from 12s is the spike guard's to hold first, and that is not what is under test
+    const atEarn = last => [passed2[2], passed2[3], L(-3, FLY, [{w: 30, r: 15, e: 'solid'}, {w: 30, r: 15, ef: 62}, {w: 30, r: 15, e: 'solid'}], last)];
+    setLogs(atEarn(held(30, 'rep-target')));
+    const earned = both(FLY);
+    ok('on: reaching the rep target while working to it earns the ordinary jump', earned.c.code === 'increase' && earned.c.to === 35 && earned.r.sets[0].w === 35 && earned.r.lo === undefined, JSON.stringify(earned.c));
+    setLogs(atEarn(up(30, 35)));
+    const open = both(FLY);
+    ok('on: at the target with that jump passed up too, it holds and says the jump is his to take, rather than asking every session',
+       open.c.code === 'rep-target' && open.r.sets[0].w === 30 && /35 lb is there when you want it/.test(open.r.detail) && /his to take/.test(open.c.reason) && open.r.hi === 15, open.r.detail);
+    ok('earn reps: Epley for the floor at the next weight, kept to one over the range up to ENG_REP_EXT over',
+       ev('engEarnReps(30, 35, 8, 12)') === 15 && ev('engEarnReps(155, 160, 8, 12)') === 13 && ev('engEarnReps(450, 540, 8, 12)') === 15 && ev('engEarnReps(155, 160, 3, 6)') === 7 && ev('ENG_REP_EXT') === 3);
+
+    // --- a smaller step first, when his gear has one ---
+    const PRESS = 'Zz Plate Loaded Press';
+    const pressLogs = decs => [L(-28, PRESS, s3(105, 12), held(105)), L(-21, PRESS, s3(120, 9), up(105, 120))].concat(
+      decs.map((d, i) => L(-14 + i * 4, PRESS, i % 2 ? s3(120, 12) : [{w: 120, r: 12, e: 'solid'}, {w: 120, r: 13, ef: 61}, {w: 120, r: 12, e: 'solid'}], d)));
+    setLogs(pressLogs([up(120, 135), up(120, 135)])); sw(false);
+    ok('off: plates with a 15 lb step ask for the same 15 again', both(PRESS).c.to === 135);
+    sw(true);
+    const sm = both(PRESS);
+    ok('on: two passes on a plate lift with a 15 lb step: a smaller step his plates can load (120 to 125)', sm.c.code === 'step-small' && sm.c.from === 120 && sm.c.to === 125 && sm.c.moved === true && sm.r.sets[0].w === 125 && sm.r.lo === undefined && /A smaller step than 135 lb: take 125 lb/.test(sm.r.detail), JSON.stringify(sm.c));
+    setLogs(pressLogs([up(120, 135), up(120, 135), up(120, 125, 'step-small')]));
+    ok('on: the smaller step is offered a second time', both(PRESS).c.code === 'step-small');
+    setLogs(pressLogs([up(120, 135), up(120, 135), up(120, 125, 'step-small'), up(120, 125, 'step-small')]));
+    const sm3 = both(PRESS);
+    ok('on: passed up ENG_SMALL_TRIES times too, the rep target takes over', sm3.c.code === 'rep-target' && sm3.r.sets[0].w === 120 && ev('ENG_SMALL_TRIES') === 2, JSON.stringify(sm3.c));
+    ok('smaller step: on plates it is at least 1.5% of the weight (10 on a 540 sled, never 5), and none when the step is already the smallest',
+       ev("engSmallerStep('Zz Plate Loaded Sled', 540, 90)") === 10 && ev("engSmallerStep('Zz Plate Loaded Press', 120, 15)") === 5 && ev("engSmallerStep('Barbell Bench Press', 155, 5)") === null && ev("engSmallerStep('Zz Dumbbell Fly', 30, 5)") === null);
+    // a pin stack is not modelled: only a step UP he has actually taken, twice
+    const ROW = 'Zz Stack Row';
+    setLogs([L(-40, ROW, s3(100, 12)), L(-33, ROW, s3(110, 10)), L(-26, ROW, s3(110, 12)), L(-19, ROW, s3(120, 9)), L(-12, ROW, s3(120, 12), up(120, 135)), L(-5, ROW, s3(120, 12), up(120, 135))]);
+    ok('smaller step: on a stack, the smallest step up he has taken twice (10, where 15 is set)', ev("engSmallerStep('" + ROW + "', 120, 15)") === 10 && both(ROW).c.to === 130 && both(ROW).c.code === 'step-small');
+    setLogs([L(-33, ROW, s3(110, 10)), L(-19, ROW, s3(120, 9)), L(-12, ROW, s3(120, 12), up(120, 135)), L(-5, ROW, s3(120, 12), up(120, 135))]);
+    ok('smaller step: a step he took only once is not one the machine is known to have, so it is a rep target', ev("engSmallerStep('" + ROW + "', 120, 15)") === null && both(ROW).c.code === 'rep-target');
+
+    // --- no double jump when two steps are a large share of the weight ---
+    const RAISE = 'Zz Light Raise', HROW = 'Zz Heavy Row';
+    const easy = (w, r) => [{w, r, ef: 92}, {w, r, ef: 88}, {w, r, ef: 90}];
+    setLogs([L(-9, RAISE, s3(20, 11)), L(-4, RAISE, easy(20, 12)), L(-9, HROW, s3(300, 11)), L(-4, HROW, easy(300, 12))]); sw(false);
+    ok('off: every set easy at the ceiling doubles the jump, whatever its size (20 to 30 lb)', both(RAISE).c.code === 'double' && both(RAISE).r.sets[0].w === 30);
+    sw(true);
+    const dbl = both(RAISE);
+    ok('on: two steps of 5 on 20 lb is half the weight: one step, not two', dbl.c.code === 'increase' && dbl.c.to === 25 && dbl.r.sets[0].w === 25 && !/double jump/.test(dbl.r.detail), JSON.stringify(dbl.c));
+    ok('on: two steps of 10 on 300 lb is under the cap: still a double', both(HROW).c.code === 'double' && both(HROW).r.sets[0].w === 320 && /double jump of 20 lb/.test(both(HROW).r.detail) && ev('ENG_DOUBLE_MAX_PCT') === 10);
+
+    // --- one set at the top weight is not a ceiling on a hypertrophy lift ---
+    const SLED = 'Zz Plate Loaded Sled';
+    const pyramid = [L(-12, SLED, [{w: 450, r: 12, e: 'solid'}, {w: 540, r: 10, e: 'grind'}, {w: 450, r: 12, e: 'solid'}]), L(-5, SLED, [{w: 450, r: 12, e: 'solid'}, {w: 540, r: 12, ef: 64}, {w: 450, r: 12, e: 'solid'}])];
+    setLogs(pyramid); sw(false);
+    ok('off: one set at 540 between two at 450 earns the whole 90 lb step', both(SLED).c.code === 'increase' && both(SLED).r.sets[0].w === 630);
+    sw(true);
+    const thin = both(SLED);
+    ok('on: it holds, and says what earns the jump', thin.c.code === 'hold' && thin.r.sets[0].w === 540 && /One set at 540 lb reached 12/.test(thin.c.reason) && /540 lb × 12 on 2 sets/.test(thin.r.target) && /Get 2 sets at 540 lb to 12/.test(thin.r.detail), thin.r.target + ' | ' + thin.c.reason);
+    setLogs([pyramid[0], L(-5, SLED, [{w: 540, r: 12, e: 'solid'}, {w: 540, r: 12, ef: 64}, {w: 450, r: 12, e: 'solid'}])]);
+    ok('on: two sets at the top weight at the ceiling earn it', both(SLED).c.code === 'increase' && both(SLED).r.sets[0].w === 630);
+    setLogs([pyramid[1], Object.assign({}, pyramid[1], {id: 12129901, date: D(-3)}), Object.assign({}, pyramid[1], {id: 12129902, date: D(-1)})]);
+    ok('on: three such sessions are the thin-top hold, never a "stall", in both trees', both(SLED).c.code === 'hold' && /One set at 540/.test(both(SLED).c.reason) && /12 on 2 sets/.test(both(SLED).r.target) && !/stall/i.test(both(SLED).r.target + both(SLED).r.detail));
+
+    // --- a stall is only called one when the plateau watch agrees ---
+    const STK = 'Zz Stuck Press';
+    setLogs([L(-20, STK, [{w: 100, r: 10, e: 'solid'}, {w: 100, r: 9, e: 'solid'}, {w: 100, r: 9, e: 'grind'}]), L(-13, STK, [{w: 100, r: 10, e: 'solid'}, {w: 100, r: 9, ef: 70}, {w: 100, r: 8, e: 'grind'}]),
+             L(-6, STK, [{w: 100, r: 10, e: 'solid'}, {w: 100, r: 9, e: 'grind'}, {w: 100, r: 8, e: 'grind'}])]);
+    sw(false);
+    const st0 = both(STK);
+    ok('off: three flat sessions read "break the stall", as before', st0.c.code === 'stall' && /break the stall/.test(st0.r.target) && /drop 10%/.test(st0.c.reason));
+    sw(true);
+    ev("plateauRisk = function(){ return {lvl:'green', word:'on track'}; }; plateauCauses = function(){ return [{title:'Recovery slump', txt:'4 of 7 days 15+ under your usual (61%)', conf:'High', score:0.57}]; };");
+    const stQ = both(STK);
+    ok('on, watch quiet: an ordinary hold with a rep to go for, not a stall', stQ.c.code === 'hold' && stQ.r.sets[0].w === 100 && /100 lb × beat 10/.test(stQ.r.target) && /does not flag this lift/.test(stQ.r.detail) && !/stall/i.test(stQ.r.target + stQ.r.detail), stQ.r.target);
+    ev("plateauRisk = function(){ return {lvl:'amber', word:'holding'}; };");
+    const stF = both(STK);
+    ok('on, watch flags it: a stall, with the watch’s word and its top likely factor, worded as a factor', stF.c.code === 'stall' && stF.r.sets[0].w === 100 && /reads this lift as holding/.test(stF.r.detail) &&
+       /Likely factor: Recovery slump \(4 of 7 days/.test(stF.r.detail) && /Likely factor: Recovery slump/.test(stF.c.reason) && !/cause|because/i.test(stF.r.detail), stF.r.detail);
+    ok('on, flagged: it points at the existing fixes and adds no button of its own', /request from DELTA, or from the flag on the Hub/.test(stF.r.detail) && !/<button|onclick/.test(stF.r.detail));
+    ev("plateauCauses = function(){ return []; };");
+    ok('on, flagged, nothing stands out: it says so and invents no factor', /Nothing else stands out in the last four weeks/.test(both(STK).r.detail) && !/Likely factor/.test(both(STK).r.detail));
+    ev("plateauRisk = function(){ throw new Error('watch down'); };");
+    ok('on, the watch cannot be read: the old line stands', both(STK).c.code === 'stall' && /break the stall/.test(both(STK).r.target));
+    ev("window.__12Depth = 0; plateauRisk = function(nm){ window.__12Depth++; if(window.__12Depth > 5) throw new Error('recursed'); recommend(nm, 'ok'); return {lvl:'amber', word:'holding'}; };");
+    ok('on: a watch that ever called back into the engine cannot recurse (the guard gives the inner call the old line)', (() => { const r = both(STK); return r.c.code === 'stall' && ev('window.__12Depth') <= 4 && ev('_engStuckBusy') === false; })(), String(ev('window.__12Depth')));
+    ev("plateauRisk = window.__12PR; plateauCauses = window.__12PC;");
+    ok('the weight is the same whether the watch is quiet, flags it, or cannot be read', stQ.r.sets[0].w === 100 && stF.r.sets[0].w === 100 && st0.r.sets[0].w === 100);
+
+    // --- the first set after a jump aims at what his last session predicts ---
+    setLogs([L(-5, SLED, [{w: 540, r: 12, e: 'solid'}, {w: 540, r: 12, ef: 66}, {w: 540, r: 11, e: 'solid'}])]);
+    sw(false);
+    ok('off: the first set on a heavier weight aims at the floor', ev("intraFirstAim({name:'" + SLED + "', targetW:550, lo:8, hi:12})") === 8);
+    sw(true);
+    ok('on: it aims one rep under what Epley predicts there (540x12 puts 550 at 11, so 10)', ev("intraFirstAim({name:'" + SLED + "', targetW:550, lo:8, hi:12})") === 10 && ev('ENG_AIM_MARGIN') === 1);
+    ok('on: never over the top of the range, never under the floor', ev("intraFirstAim({name:'" + SLED + "', targetW:545, lo:8, hi:9})") === 9 && ev("intraFirstAim({name:'" + SLED + "', targetW:700, lo:8, hi:12})") === 8);
+    ok('on: the same weight still asks one more rep, and a lighter one the reps he owns (unchanged)', ev("intraFirstAim({name:'" + SLED + "', targetW:540, lo:8, hi:12})") === 12 && ev("intraFirstAim({name:'" + SLED + "', targetW:500, lo:8, hi:12})") === 12);
+
+    // --- LIVE carries the rep target's range, and gives it up for a lighter day or a reset ---
+    setLogs(passed2); sw(true);
+    const lv = J("buildOneLiveExerciseBase('" + FLY + "', null, {call:'normal'})");
+    ok('LIVE: the dock is asked for the rep target’s range at the same weight', lv.targetW === 30 && lv.lo === 12 && lv.hi === 15 && lv._decision.code === 'rep-target' && /12–15/.test(lv.recTarget), JSON.stringify([lv.targetW, lv.lo, lv.hi]));
+    ok('LIVE: the first set aims one over what he did, inside the new range', ev("intraFirstAim(buildOneLiveExerciseBase('" + FLY + "', null, {call:'normal'}))") === 14);
+    ok('LIVE: a set at the old ceiling is not "short" (the range starts there)', J("(function(){ var ex = buildOneLiveExerciseBase('" + FLY + "', null, {call:'normal'}); ex.sets = [{w:30, r:12, e:'solid'}]; return intraAdviceCalc(ex); })()").tag !== 'Back off');
+    sw(false);
+    const lv0 = J("buildOneLiveExerciseBase('" + FLY + "', null, {call:'normal'})");
+    ok('LIVE, off: the lift’s own range and the jump, as before', lv0.targetW === 35 && lv0.lo === 8 && lv0.hi === 12 && lv0._decision.code === 'increase');
+    sw(true);
+    ev("window.__12Inv = JSON.stringify(invState().overrides); invState().overrides['" + FLY + "'] = invResetRecord(25, 14, 'Test');");
+    const lvR = J("buildOneLiveExerciseBase('" + FLY + "', null, {call:'normal'})");
+    ok('LIVE: a reset is a deliberate weight with the lift’s own range, never a rep target’s', lvR.targetW === 25 && lvR.lo === 8 && lvR.hi === 12 && lvR._decision.code === 'inv-override', JSON.stringify([lvR.targetW, lvR.lo, lvR.hi]));
+    ev("invState().overrides = JSON.parse(window.__12Inv);");
+    // a low day never carries a rep target (the tier is 'low', and a low day holds before the rep target is reached)
+    setLogs([L(-22, 'Barbell Row', s3(150, 12), held(150)), L(-14, 'Barbell Row', s3(150, 12), up(150, 155)), L(-6, 'Barbell Row', s3(150, 12), up(150, 155))]);
+    const lvC = J("buildOneLiveExerciseBase('Barbell Row', null, {call:'recover'})"), lvN = J("buildOneLiveExerciseBase('Barbell Row', null, {call:'normal'})"), lvE = J("buildOneLiveExerciseBase('Barbell Row', null, {call:'easy'})");
+    ok('LIVE: on a normal day that lift is on a rep target', lvN._decision.code === 'rep-target' && lvN.targetW === 150 && lvN.lo === 12, JSON.stringify([lvN._decision.code, lvN.targetW, lvN.lo, lvN.hi]));
+    ok('LIVE: on an easy or recover day it keeps its own range, and is never heavier than the normal day', lvC.lo === 8 && lvC.hi === 12 && lvE.lo === 8 && lvE.hi === 12 && lvC.targetW <= 150 && lvE.targetW === 150, JSON.stringify([lvC.targetW, lvC.lo, lvC.hi, lvE.targetW, lvE.lo, lvE.hi]));
+    // and it is not promised the jump "next session" on a low day, when the next normal day will ask for something else
+    const lowOn = {c: J("classifyDecision('Barbell Row', 'low')"), r: J("recommend('Barbell Row', 'low')")};
+    ok('low day, on: a lift whose jump keeps being passed up just repeats the weight', lowOn.c.code === 'hold' && lowOn.r.sets[0].w === 150 && /\(low day\)/.test(lowOn.r.target) && !/earned the jump|next session/.test(lowOn.r.detail) && lowOn.r.lo === undefined, lowOn.r.target + ' | ' + lowOn.r.detail);
+    sw(false);
+    const lowOff = {c: J("classifyDecision('Barbell Row', 'low')"), r: J("recommend('Barbell Row', 'low')")};
+    ok('low day, off: the jump is deferred, as before', lowOff.c.code === 'defer' && /bump deferred/.test(lowOff.r.target) && /earned the jump to 155 lb/.test(lowOff.r.detail) && lowOff.r.sets[0].w === 150);
+    sw(true);
+    setLogs([L(-14, 'Barbell Row', s3(150, 12), held(150)), L(-6, 'Barbell Row', s3(150, 12), up(150, 155))]);
+    ok('low day, on: with only one pass the jump is still deferred', J("classifyDecision('Barbell Row', 'low')").code === 'defer' && /bump deferred/.test(J("recommend('Barbell Row', 'low')").target));
+
+    // --- the two trees agree, and on is never heavier than off ---
+    const states = [passed2, passed2.slice(0, 3), atEarn(held(30, 'rep-target')), atEarn(up(30, 35)), pressLogs([up(120, 135), up(120, 135)]),
+                    pressLogs([up(120, 135), up(120, 135), up(120, 125, 'step-small'), up(120, 125, 'step-small')]), pyramid,
+                    [L(-9, RAISE, s3(20, 11)), L(-4, RAISE, easy(20, 12))], [L(-9, HROW, s3(300, 11)), L(-4, HROW, easy(300, 12))]];
+    const names = [FLY, FLY, FLY, FLY, PRESS, PRESS, SLED, RAISE, HROW];
+    let agree = true, lighter = true, note = '';
+    states.forEach((st, i) => {
+      setLogs(st);
+      sw(false); const a = both(names[i]);
+      sw(true); const b = both(names[i]);
+      if(b.c.to !== b.r.sets[0].w || a.c.to !== a.r.sets[0].w){ agree = false; note += ' tree#' + i; }
+      if(!(b.r.sets[0].w <= a.r.sets[0].w)){ lighter = false; note += ' heavier#' + i; }
+    });
+    ok('recommend() and classifyDecision() name the same weight in every case, on and off', agree, note);
+    ok('with the switch on no prescription is heavier than with it off', lighter, note);
+    setLogs(passed2); sw(true);
+    ok('reading a prescription changes nothing in his state (Today only reads)', (() => { const b4 = ev('JSON.stringify(S)'); ev("recommend('" + FLY + "', 'ok'); classifyDecision('" + FLY + "', 'ok'); buildOneLiveExerciseBase('" + FLY + "', null, {call:'normal'}); engRecord(); engRecordRowsHTML(); engContextLine('delta');"); return ev('JSON.stringify(S)') === b4; })());
+
+    // --- the engine's record ---
+    const REC = 'Zz Stack Row';
+    const recLogs = [L(-60, REC, s3(100, 12), null), L(-53, REC, s3(110, 9), up(100, 115), {plan: {[REC]: {w: 115, lo: 8, hi: 12, n: 3}}}),
+      L(-46, REC, s3(110, 12), held(110)), L(-39, REC, s3(120, 8), up(110, 125), {plan: {[REC]: {w: 125, lo: 8, hi: 12, n: 3}}}),
+      L(-32, REC, s3(120, 12), held(120)), L(-25, REC, s3(120, 12), up(120, 135)), L(-18, REC, [{w: 120, r: 12, e: 'solid'}, {w: 120, r: 13, ef: 60}, {w: 120, r: 12, e: 'solid'}], up(120, 135)),
+      L(-14, REC, [{w: 120, r: 13, e: 'solid'}, {w: 120, r: 12, ef: 63}, {w: 120, r: 12, e: 'solid'}], up(120, 135)),   // a third pass: part-way (2) and passed (3) must not be equal, or swapping them would go unseen
+      Object.assign(L(-11, REC, s3(70, 10), up(120, 135)), {deload: true}), L(-4, 'Zz Taken Curl', s3(40, 9), up(35, 40), {plan: {'Zz Taken Curl': {w: 40, lo: 8, hi: 12, n: 3}}}),
+      L(-3, 'Zz Taken Curl', s3(45, 6), up(40, 45), {plan: {'Zz Taken Curl': {w: 45, lo: 8, hi: 12, n: 3}}})];
+    setLogs(recLogs); ev('S.overhaul = {};');
+    const R = J('engRecord()'), rr = R.byLift.filter(o => o.name === REC)[0], rc = R.byLift.filter(o => o.name === 'Zz Taken Curl')[0];
+    ok('record: asked, taken part-way and passed are counted from the stored decision against the weight he loaded', rr.asked === 5 && rr.taken === 0 && rr.part === 2 && rr.passed === 3 && rr.streak === 5, JSON.stringify(rr));
+    ok('record: a deload session is set aside, not counted as a pass', R.asked === 7 && rr.asked === 5 && R.part === 2 && R.passed === 3);
+    ok('record: a taken jump is scored against the bottom of the range it was given', rc.asked === 2 && rc.taken === 2 && rc.ranged === 2 && rc.landed === 1 && rc.streak === 0, JSON.stringify(rc));
+    ok('record: the lifts that keep passing a jump up come first', R.byLift[0].name === REC);
+    ok('record: his last two increases both used +10 where 15 is set, so that step is suggested', rr.suggest === 10 && rr.inc === 15 && J('S.split.D1.exercises').filter(x => x.name === REC)[0].inc === 15);
+    const card = ev('predRecordCardHTML()');
+    ok('record: the Prediction record card carries the row and the lift, and is still one card', /id="engRecRow"/.test(card) && /<b>2 of 7<\/b> jumps the engine asked for were taken; 3 passed up, 2 taken part-way/.test(card) && /Zz Stack Row/.test(card) && /last 5 jumps not taken/.test(card) && (card.match(/class="card"/g) || []).length === 1, card.slice(card.indexOf('engRecRow') - 30, card.indexOf('engRecRow') + 400));
+    ok('record: the button carries the lift and the step in data attributes, never inside the handler', /<button class="btn ghost sm" data-lift="Zz Stack Row" data-step="10" onclick="engUseStepTap\(this\)">Use \+10<\/button>/.test(card));
+    ok('record: with the engine switch off the card says what turning it on would do; on, it does not', /offered a smaller step or a rep target/.test(card) && (() => { ev('S.overhaul = {engine2:true};'); const c2 = ev('predRecordCardHTML()'); ev('S.overhaul = {};'); return !/offered a smaller step or a rep target/.test(c2) && /id="engRecRow"/.test(c2); })());
+    // his tap: the same writer Settings uses, checked again at the tap, and a save()
+    ev("window.__12Saves = []; save = function(t){ window.__12Saves.push(t === undefined ? 'touch' : t); };");
+    ok('step: a step that is not the one suggested is refused and nothing is written', J("engUseStep('" + REC + "', 5)").ok === false && J("engUseStep('Zz Taken Curl', 5)").ok === false && J('S.split.D1.exercises').filter(x => x.name === REC)[0].inc === 15 && ev('window.__12Saves.length') === 0);
+    ev("S.split.D2.exercises = S.split.D2.exercises.concat(['" + REC + "']);");
+    ok('step: his tap sets it on every slot of the lift, and it is a save() that touches', J("engUseStep('" + REC + "', 10)").ok === true && J('S.split.D1.exercises').filter(x => x.name === REC)[0].inc === 10 &&
+       J('S.split.D2.exercises').filter(x => (x.name || x) === REC)[0].inc === 10 && ev("incForExercise('" + REC + "')") === 10 && J('window.__12Saves').join() === 'touch');
+    ok('step: once applied the suggestion is gone, and the same tap again changes nothing', J('engRecord()').byLift.filter(o => o.name === REC)[0].suggest === null && J("engUseStep('" + REC + "', 10)").ok === false && ev('window.__12Saves.length') === 1);
+    ok('step: out of range, a maxed machine or a lift outside the split is never suggested', ev("engStepOk('" + REC + "', 0.25)") === false && ev("engStepOk('" + REC + "', 150)") === false && ev("engStepOk('Zz Nowhere', 10)") === false &&
+       (() => { ev("applyExFlag('" + REC + "', {maxed:true});"); const m = ev("engStepOk('" + REC + "', 10)"); ev("applyExFlag('" + REC + "', {maxed:false});"); return m === false; })());
+    ev("save = window.__12Save;");
+    ev("S.overhaul = {engineRecord:false};");
+    ok('record off: no rows, no suggestion applied, and the card is as it was', ev('engRecordRowsHTML()') === '' && !/engRecRow/.test(ev('predRecordCardHTML()')) && J("engUseStep('" + REC + "', 10)").ok === false);
+
+    // --- DELTA's line is a paid switch, and off it is not there ---
+    setLogs(recLogs); ev('S.overhaul = {};');
+    const base0 = ev("agBaseContext('delta')");
+    ok('prompt: with the paid switch off the line is empty for every agent', ['zulu', 'charlie', 'delta', 'echo'].every(id => ev("engContextLine('" + id + "')") === ''));
+    ev("S.overhaul = {engPrompts:true, at:{engPrompts:todayKey()}};");
+    const line = ev("engContextLine('delta')");
+    ok('prompt: on, DELTA gets the lifts whose jumps keep being passed up, as facts, capped', /^\nENGINE RECORD \(worked out by the app/.test(line) && /Zz Stack Row: the last 5 jumps the engine asked for were not taken \(0 of 5 taken in the window; set step 10 lb\)/.test(line) && !/Zz Taken Curl/.test(line) && line.length <= ev('ENG_PROMPT_MAX') + 120, line);
+    ok('prompt: on, only DELTA', ['zulu', 'charlie', 'echo'].every(id => ev("engContextLine('" + id + "')") === ''));
+    ok('prompt: on, DELTA’s context carries it; off, the context is byte-identical to before', ev("agBaseContext('delta')").indexOf(line) >= 0 && (() => { ev('S.overhaul = {};'); return ev("agBaseContext('delta')") === base0; })());
+    ev("S.overhaul = {engPrompts:true, at:{engPrompts:todayKey()}};");
+    setLogs(recLogs.slice(8));
+    ok('prompt: on with nothing passed up, the line is absent (a quiet night is byte-identical)', ev("engContextLine('delta')") === '');
+    ev("S.overhaul = {engPrompts:true, engineRecord:false, at:{engPrompts:todayKey()}};"); setLogs(recLogs);
+    ok('prompt: it needs the record switch on as well', ev("engContextLine('delta')") === '');
+  } catch (e) {
+    ok('engine second pass section', false, e.stack);
+  } finally {
+    ev("plateauRisk = window.__12PR; plateauCauses = window.__12PC; deloadActive = window.__12DA; save = window.__12Save; window.confirm = window.__12Confirm; window.alert = window.__12Alert; S = JSON.parse(window.__12S);" +
+       "Object.keys(window).filter(function(k){ return /^__12/.test(k); }).forEach(function(k){ try{ delete window[k]; }catch(e){} });");
     try { ev('renderHome(); renderNotif();'); } catch (e) {}
   }
 

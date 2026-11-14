@@ -356,3 +356,39 @@ Two things to know before you switch:
 - **It has not been seen on your iPhone.** It was checked in a desktop browser at phone widths (393 and 320 pixels).
 
 Once you turn on the Evidence Library (still waiting on your ten checks), the technique cards for bench, squat, JM press, dips and lateral raises also show what the library found for that lift.
+
+## The engine learns from what you did (Nov 13): built, and off until you read this
+
+V5 never touched the part of the app that picks your weights. This does. I scored the engine's past calls against your own 101 sessions first, and built only what that showed. The new rules are **off**, and your weights are prescribed exactly as before until you turn them on.
+
+**What your history showed**
+
+- The engine asked for a jump 84 times. You took 41. On 32 you stayed at the old weight.
+- It asked for the same jump again and again: Cable Lateral Raise 20 to 25 or 30 lb twelve times, never taken, while you were doing 20 x 15.
+- One set at 540 on the leg press, between two at 450, was enough to earn a 90 lb jump to 630. You never took it.
+- It said "break the stall" 63 times, always with the same two options. Most of those cleared by themselves the next session.
+- After a jump it always aimed your first set at the bottom of the range, even when your last session said you had more.
+
+**What changes when you turn it on** (Settings, V5 switches, "Engine: learns from the jumps you pass up")
+
+- **A jump you pass up twice is not asked a third time.** If your gear has a smaller step it offers that (120 to 125 instead of 135). If not, it gives a rep target at the same weight, for example "20 lb x 12 to 15", and the jump is earned when you hit the top of it.
+- **When you hit that target, the jump is offered once.** Pass it up again and it stops asking: it tells you the weight is there when you want it.
+- **One set at the top weight does not earn a jump.** You need two sets there at the top of the range. Bench and squat already worked this way.
+- **No double jump on a light lift.** Two steps at once is only offered when that is 10% of the weight or less.
+- **"Stall" is only said when the plateau watch agrees.** Otherwise it is an ordinary hold with a rep to go for. When the watch does agree, the line names the watch's top likely factor and points to the fix you already have (a request from DELTA, or the flag on the Hub).
+- **The first set after a jump aims at what your last session predicts**, one rep under, instead of always the floor.
+- **It never asks for more weight than the engine does today.** Every rule only holds a weight or takes a smaller step.
+
+**The replay on your sessions** (each session replayed with only the history before it, 539 prescriptions)
+
+- Switch off: identical to the build you are running. 0 differences.
+- Switch on: 25 weights differ, and none is heavier. In 22 of the 25 the new weight is closer to what you actually loaded. In 3 it was more cautious than you were (squat on Jun 29, Incline Dumbbell Curl on Sep 10, Rope Cable Curl on Nov 1: you took the jump it would have held).
+- Jumps asked and taken go from 35 of 80 to 32 of 57.
+- "Stall" goes from 76 lines to 10.
+- The replay uses your split and settings as they are today, so it is a close picture of the past, not an exact one.
+
+**On now, free: the engine's record.** Progress, Predictions, on the Prediction record card. It shows how many of the engine's jumps you took, and which lifts keep passing one up. Where your last two increases both used a different step than the lift is set to, it offers a one-tap fix ("Use +10").
+
+**One new paid switch, off:** *Engine record in DELTA's nightly prompt*. DELTA is told which lifts keep passing up a jump. About 1 to 5 cents a month.
+
+Not built, because your history gave no reason to: a rule for a bad day (the engine stepped a weight back only twice in five months) and a rule for the first session after time off (your top weights did not drop after two or three weeks away from a lift). The trip in December is the first real test of the second one.

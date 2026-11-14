@@ -9,3 +9,7 @@ discord/.wrangler/
 
 # pantry worker local state
 pantry/.wrangler/
+
+# his state, exported for scripts/engine_replay.js: never commit
+replay_state*.json
+*.state.json

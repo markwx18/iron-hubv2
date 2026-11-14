@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Iron Hub">
-<meta name="ironhub-build" content="2026-11-13-v5l">
+<meta name="ironhub-build" content="2026-11-13-v5m">
 <title>Iron Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3703,6 +3703,117 @@ function atCeiling(sets, topW, hi, str){
   if(str) return top.filter(function(s){ return (+s.r||0) >= hi; }).length >= STR_CEIL_SETS;
   return Math.min.apply(null, top.map(function(s){ return +s.r||0; })) >= hi;
 }
+/* ================= THE ENGINE'S SECOND PASS (V5 stage 12, 2026-11-13) =================
+   Scored against his own 101 sessions, the engine asked for a jump 84 times and he took 41: it asked for Incline Prone
+   Reverse Fly 30 to 35 lb six times and got it once, said "break the stall" 63 times with the same two options, and
+   after a jump always aimed at the floor. It had no memory of what he did with its last call. These rules give it one.
+   - All of it sits behind `engine2`, a free switch that is HELD (off until he has read the replay and turned it on).
+     Off, recommend(), classifyDecision(), intraFirstAim() and LIVE are byte-identical to the build before.
+   - Like every caution here, a rule only ever holds a weight or takes a SMALLER step. scripts/engine_replay.js checks
+     that over his sessions: with the switch on, no prescription is heavier than with it off.
+   - Each rule is one helper, called by recommend() AND classifyDecision(), so the two trees cannot drift.
+   - Stateless: everything is read from the logs, so a pull cannot un-count anything. */
+OV.engineRecord = {label:'Engine record', paid:false, note:'On the Prediction record: how many of the engine’s jumps you took, which lifts keep passing one up, and a one-tap step size when you keep using a different one. Worked out on the device. No model call.'};
+OV.engine2 = {label:'Engine: learns from the jumps you pass up', paid:false, hold:true, note:'Changes what the app prescribes. A jump you pass up twice becomes a smaller step or a rep target; one set at the top weight no longer earns a jump; “stall” is only said when the plateau watch agrees; the first set after a jump aims at the reps your last session predicts. Never more weight than today’s engine. Read the replay in the update notes first.'};
+OV.engPrompts = {label:'Engine record in DELTA’s nightly prompt', paid:true, note:'Hands DELTA the lifts that keep passing up a jump, at most 500 characters a night: an estimated 1 to 5 cents a month. Needs Engine record on.'};
+const ENG_PASS_JUMPS = 2;        // jumps asked and not taken, with none taken since, before the same jump stops being asked
+const ENG_PASS_LOOK = 30;        // how many of the lift's sessions back that is read (8 forgot his June passes by September)
+const ENG_SMALL_TRIES = 2;       // times a smaller step is offered and not taken before the rep target takes over
+const ENG_HYP_CEIL_SETS = 2;     // sets at the top weight a hypertrophy lift needs before the ceiling earns a jump
+const ENG_JUMP_RE = /^(increase|double|form-increase|step-small)$/;   // the decision codes that ask for more weight
+const ENG_SMALL_MIN_PCT = 1.5;   // a smaller step on plates is at least this share of the weight (5 lb on a 540 leg press is noise)
+const ENG_REP_EXT = 3;           // how far past the range a rep target may run
+const ENG_DOUBLE_MAX_PCT = 10;   // no double jump when two steps are more than this share of the weight
+const ENG_AIM_MARGIN = 1;        // the first set after a jump aims this many reps under what his e1RM predicts
+function engOn(){ try{ return ovOn('engine2'); }catch(e){ return false; } }
+function engTop(sets){ return Math.max.apply(null, [0].concat((sets||[]).map(function(s){ return +s.w||0; }))); }
+/* What he did with the engine's last calls on this lift, read from the decision each session stored when it was built
+   (log.decisions) against the top weight he then loaded. hist is historyFor() order, newest first.
+     passed: jumps asked and not taken, back to the last one he DID take (that one starts a new chapter)
+     small:  how many of those were already the smaller step
+     last:   the code the newest session carried
+   A session with no stored decision, or one that held, says nothing either way. It reads what was asked, not the top
+   weight, because he pyramids (450, 540, 450): a run "at one weight" would break every session. */
+function engPasses(nm, hist){
+  const dec = {};
+  (S.logs||[]).forEach(function(l){
+    if(!l || l.deload || !l.decisions || Array.isArray(l.decisions)) return;
+    const d = l.decisions[nm];
+    if(d && typeof d === 'object' && !dec[l.date]) dec[l.date] = d;
+  });
+  const out = {passed:0, small:0, last:''};
+  for(let i = 0; i < (hist||[]).length && i < ENG_PASS_LOOK; i++){
+    const d = dec[hist[i].date];
+    if(i === 0) out.last = (d && d.code) || '';
+    if(!d || !ENG_JUMP_RE.test(d.code || '') || !(+d.to > 0)) continue;
+    if(engTop(hist[i].sets) >= +d.to) break;
+    out.passed++;
+    if(d.code === 'step-small') out.small++;
+  }
+  return out;
+}
+/* A hypertrophy lift with fewer than ENG_HYP_CEIL_SETS sets at its top weight has not earned a jump on them: one set at
+   540 between two at 450 used to earn +90 on his leg press. The strength lifts already have the two-set rule. */
+function engThinTop(topSets, str, ff){ return engOn() && !str && !ff && (topSets||[]).length < ENG_HYP_CEIL_SETS; }
+/* A step up smaller than the lift's own, or null. Plates and dumbbells: his gear (the smallest pair is 2.5 a side),
+   never under ENG_SMALL_MIN_PCT of the weight. Anything else is not modelled, so it is the smallest step UP he has
+   actually taken between two sessions, at least twice: a step the machine is known to have. */
+function engSmallerStep(nm, topW, inc){
+  const g = liftLoad(nm);
+  let s = null;
+  if(g.kind === 'bar' || g.kind === 'plates' || g.kind === 'db'){
+    const unit = g.kind === 'db' ? (+g.step || GEAR_DB_STEP) : 5;
+    s = Math.max(1, Math.ceil((topW * ENG_SMALL_MIN_PCT / 100) / unit - 1e-9)) * unit;
+    if(g.kind === 'db' && topW + s > g.max) s = null;
+  } else {
+    const h = historyFor(nm), seen = {};
+    for(let i = 0; i + 1 < h.length; i++){
+      const d = Math.round((engTop(h[i].sets) - engTop(h[i+1].sets)) * 100) / 100;
+      if(d > 0) seen[d] = (seen[d] || 0) + 1;
+    }
+    Object.keys(seen).forEach(function(k){ if(seen[k] >= 2 && (s === null || +k < s)) s = +k; });
+  }
+  return (s !== null && s > 0 && s < inc - 1e-9) ? s : null;
+}
+/* The reps at this weight that predict the floor at the next one (Epley), kept to hi+1..hi+ENG_REP_EXT. */
+function engEarnReps(topW, nw, lo, hi){
+  const need = topW > 0 ? Math.ceil(30 * (epley(nw, lo) / topW - 1) - 1e-9) : hi + 1;
+  return Math.max(hi + 1, Math.min(hi + ENG_REP_EXT, need));
+}
+function engDoubleCapped(inc, topW){ return topW > 0 && (inc * 2) / topW * 100 > ENG_DOUBLE_MAX_PCT; }
+/* What a lift at the ceiling is asked for once its jump has been passed up ENG_PASS_JUMPS times, instead of the same
+   jump again. null = the ordinary jump.
+     small: a smaller step, until that has been passed up ENG_SMALL_TRIES times too.
+     reps:  hold the weight; the range becomes hi..earn and the jump is earned at `earn` reps. Reaching `earn` while
+            working to it hands the lift back to the ordinary jump ONCE (null). At `earn` any other way (`open`: he was
+            already there, or that jump was passed up as well) it holds and says the jump is his to take. */
+function engPassPlan(nm, hist, topW, lo, hi, str, inc){
+  const p = engPasses(nm, hist);
+  if(p.passed < ENG_PASS_JUMPS) return null;
+  const small = engSmallerStep(nm, topW, inc);
+  if(small && p.small < ENG_SMALL_TRIES) return {kind:'small', passed:p.passed, step:small, to:Math.round((topW + small) * 100) / 100};
+  const earn = engEarnReps(topW, topW + inc, lo, hi);
+  const m0 = atCeiling(hist[0].sets, topW, earn, str);
+  if(m0 && p.last === 'rep-target') return null;
+  return {kind:'reps', passed:p.passed, earn:earn, open:m0, lo:hi, hi:earn, to:topW};
+}
+/* Does the plateau watch agree this lift is stuck, and what is its top likely factor? {flagged:false} when the watch
+   does not flag it; null when the watch cannot be read, and the old line stands. plateauRisk() never calls back into
+   recommend(), and the guard keeps it that way if that ever changes. */
+let _engStuckBusy = false;
+function engStuck(nm){
+  if(_engStuckBusy) return null;
+  _engStuckBusy = true;
+  try{
+    const r = plateauRisk(nm);
+    if(!r) return null;
+    if(!pwIssue(r)) return {flagged:false};
+    let c = null;
+    try{ c = (plateauCauses(nm) || [])[0] || null; }catch(e){ c = null; }
+    return {flagged:true, word:String(r.word || 'holding'), cause:c ? {title:String(c.title || ''), txt:String(c.txt || '')} : null};
+  }catch(e){ return null; }
+  finally{ _engStuckBusy = false; }
+}
 function recommend(ex, ready){
   const hist = historyFor(ex);
   const ff = isFormFocus(ex);
@@ -3723,7 +3834,9 @@ function recommend(ex, ready){
   // ceilReps is still the rep metric the stall check compares; atCeil is what earns a jump.
   const str = !ff && isStrMode(ex);
   const ceilReps = str ? maxReps : minReps;
-  const atCeil = atCeiling(last.sets, topW, hi, str);
+  // V5 stage 12: one set at the top weight is not a ceiling on a hypertrophy lift (engThinTop). Off: as it was.
+  const _thin = engThinTop(topSets, str, ff);
+  const atCeil = atCeiling(last.sets, topW, hi, str) && !_thin;
   /* ceilReps made the UPWARD decision mode-aware and every downward branch still tested raw
      minReps, which is wrong for a strength lift in a specific and costly way: a top double at
      a NEW heaviest weight is the entire point of the lift, not a missed set. 275x2 logged after
@@ -3790,6 +3903,7 @@ function recommend(ex, ready){
       if(ceilReps<=ceil2) stall = true;
     }
   }
+  if(_thin && minReps >= hi) stall = false;   // the thin-top hold below says what earns the jump; it is not a stall
   if(atCeil){
     /* MAXED: there is no heavier pin or plate on this machine, so "you earned the jump" has
        nowhere to go. classifyDecision() has always known this; recommend() did not \u2014 so the LIVE
@@ -3801,9 +3915,16 @@ function recommend(ex, ready){
     if(isMaxed(ex)){
       return {target:topW+' lb \u00d7 '+hi+'+ (maxed)', detail:'You hit the '+hi+'-rep ceiling ('+summ(last.sets)+'), but this machine is MAXED \u2014 there is no heavier setting. Progress from here is a rep beyond '+hi+', an extra set, or a slower eccentric at '+topW+' lb.'+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
     }
-    if(allEasy) inc = inc*2;
+    // V5 stage 12: no double jump when two steps are a large share of the weight (engDoubleCapped). Off: as it was.
+    const _inc1 = inc, _dbl = allEasy && !(engOn() && engDoubleCapped(inc, topW));
+    if(_dbl) inc = inc*2;
     const nw = topW+inc;
     if(ready==='low'){
+      // V5 stage 12: a lift whose jump keeps being passed up is not promised it "next session" on a low day. The
+      // next normal day asks for a smaller step or a rep target, so the low day just repeats the weight.
+      if(engOn() && engPasses(ex, hist).passed >= ENG_PASS_JUMPS){
+        return {target:topW+' lb \u00d7 '+hi+' (low day)', detail:'Readiness is low today ('+summ(last.sets)+'). Repeat '+topW+' lb and keep it crisp.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+      }
       return {target:topW+' lb \u00d7 '+hi+' (bump deferred)', detail:'You earned the jump to '+nw+' lb ('+summ(last.sets)+'), but readiness is low today. Repeat '+topW+' lb, keep it crisp, and take the jump next session at full strength.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
     }
     // The spike guard (see e1Spike). classifyDecision() carries the same branch ('spike-hold').
@@ -3819,8 +3940,23 @@ function recommend(ex, ready){
     if(hadGrind && !allEasy && !(prevTopW===topW && _pAt)){
       return {target:topW+' lb \u00d7 '+hi+' (own it first)', detail:'You reached '+hi+' ('+summ(last.sets)+'), but on grinders. Repeat '+topW+' lb once and make those reps clean \u2014 the jump to '+nw+' lb comes next time.'+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
     }
+    /* A passed-up jump (V5 stage 12): the last ENG_PASS_JUMPS jumps asked on this lift were not taken, so the same
+       jump is not asked again. A smaller step if his gear has one, else a rep target at this weight. Placed after
+       every hold above, so it can only ever replace a jump with less. classifyDecision() carries the same branch
+       ('step-small', 'rep-target'). */
+    const _pp = engOn() ? engPassPlan(ex, hist, topW, lo, hi, str, _inc1) : null;
+    if(_pp && _pp.kind === 'small'){
+      return {target:_pp.to+' lb \u00d7 '+lo+'+', detail:'The last '+_pp.passed+' jumps asked on this lift were not taken ('+summ(last.sets)+'). A smaller step than '+(topW+_inc1)+' lb: take '+_pp.to+' lb, reps reset to '+lo+'.'+pushNote, sets:[{w:_pp.to,r:''},{w:_pp.to,r:''},{w:_pp.to,r:''}]};
+    }
+    if(_pp){
+      const _how = str ? ' on '+STR_CEIL_SETS+' sets' : ' on every set';
+      return {target:topW+' lb \u00d7 '+_pp.lo+'\u2013'+_pp.hi, lo:_pp.lo, hi:_pp.hi,
+        detail:(_pp.open ? 'You are at '+_pp.earn+' reps at '+topW+' lb ('+summ(last.sets)+'). '+(topW+_inc1)+' lb is there when you want it; until then keep the reps.'
+                         : 'The last '+_pp.passed+' jumps asked on this lift were not taken ('+summ(last.sets)+'). Instead of asking for '+(topW+_inc1)+' lb again: build to '+_pp.earn+' reps at '+topW+' lb'+_how+', and the jump is earned.')+pushNote,
+        sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    }
     const hitTxt = str ? STR_CEIL_SETS+' sets at '+topW+' lb hit '+hi+' reps ('+summ(last.sets)+').' : 'You hit '+hi+'+ on every top set ('+summ(last.sets)+').';
-    return {target:nw+' lb \u00d7 '+lo+'+', detail:hitTxt+(allEasy?' All tagged easy \u2014 taking a double jump of '+inc+' lb.':' Load goes up '+inc+' lb \u2014 reps reset to the bottom of the range.')+(hadGrind?' Last bump was a grind, so expect this to feel heavy \u2014 that\u2019s normal.':'')+pushNote, sets:[{w:nw,r:''},{w:nw,r:''},{w:nw,r:''}]};
+    return {target:nw+' lb \u00d7 '+lo+'+', detail:hitTxt+(_dbl?' All tagged easy \u2014 taking a double jump of '+inc+' lb.':' Load goes up '+inc+' lb \u2014 reps reset to the bottom of the range.')+(hadGrind?' Last bump was a grind, so expect this to feel heavy \u2014 that\u2019s normal.':'')+pushNote, sets:[{w:nw,r:''},{w:nw,r:''},{w:nw,r:''}]};
   }
   if(stall && isMaxed(ex)){
     // A flat load on a maxed machine is the equipment ceiling, not a stall. Mirrors
@@ -3828,6 +3964,17 @@ function recommend(ex, ready){
     return {target:topW+' lb \u00d7 add a rep (maxed)', detail:'Three sessions at '+topW+' lb ('+summ(last.sets)+'), but this machine is MAXED \u2014 there is no heavier setting, so a flat load here is expected rather than a problem. Chase a rep, an extra set, or a slower eccentric.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
   }
   if(stall){
+    /* V5 stage 12: three flat sessions are only called a stall when the plateau watch (the one source) flags the lift
+       too. On his history 22 of 37 "stalls" lasted one session and 10 ended in a jump. Quiet: an ordinary hold with a
+       rep to go for. Flagged: the watch's top likely factor, worded as a factor, and where the fix lives. The weight
+       is the same in all three. classifyDecision() mirrors it. */
+    const _sk = engOn() ? engStuck(ex) : null;
+    if(_sk && !_sk.flagged){
+      return {target:topW+' lb \u00d7 beat '+maxReps, detail:'Three sessions at '+topW+' lb without a rep gained ('+summ(last.sets)+'). The plateau watch does not flag this lift, so: same load, and add 1 rep to your weakest set.'+(ready==='low'?' Low readiness: matching last session counts as a win today.':'')+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    }
+    if(_sk){
+      return {target:topW+' lb \u2014 hold, see why', detail:'Three sessions at '+topW+' lb without a rep gained ('+summ(last.sets)+'), and the plateau watch reads this lift as '+_sk.word+'. '+(_sk.cause ? 'Likely factor: '+_sk.cause.title+' ('+_sk.cause.txt+').' : 'Nothing else stands out in the last four weeks.')+' Hold '+topW+' lb today. A fix comes as a request from DELTA, or from the flag on the Hub\u2019s Now view.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    }
     return {target:topW+' lb \u2014 break the stall', detail:'Three sessions at '+topW+' lb without rep progress ('+summ(last.sets)+'). Options: tighten rest to 2\u20133 min and push the first set hard, or drop ~10% for one session and rebuild.', sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
   }
   if(minReps>=lo){
@@ -3837,8 +3984,11 @@ function recommend(ex, ready){
       : str ? 'get '+STR_CEIL_SETS+' sets to '+hi+' reps before the weight moves.' : 'add at least 1 rep to your weakest set before the weight moves.');
     if(allEasy) d = 'Last: '+summ(last.sets)+', all tagged easy. You\u2019re leaving too much in the tank \u2014 take every set to 1\u20132 reps shy of failure today.';
     else if(hadFail) d = 'Last: '+summ(last.sets)+' with a failed set. Hold '+topW+' lb, stop each set 1 rep before breakdown, and win back the reps.';
+    // The thin-top hold (V5 stage 12): the ceiling was reached, on too few sets at this weight to earn the jump.
+    const _oneH = _thin && minReps >= hi;
+    if(_oneH) d = 'Last: '+summ(last.sets)+'. '+(topSets.length === 1 ? 'One set' : topSets.length+' sets')+' at '+topW+' lb reached '+hi+'. Get '+ENG_HYP_CEIL_SETS+' sets at '+topW+' lb to '+hi+' and the jump is earned.';
     if(ready==='low') d += ' Low readiness: matching last session counts as a win today.';
-    return {target:topW+' lb \u00d7 '+(_one ? hi+' on '+STR_CEIL_SETS+' sets' : 'beat '+maxReps), detail:d+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
+    return {target:topW+' lb \u00d7 '+((_one || _oneH) ? hi+' on '+(_oneH ? ENG_HYP_CEIL_SETS : STR_CEIL_SETS)+' sets' : 'beat '+maxReps), detail:d+pushNote, sets:[{w:topW,r:''},{w:topW,r:''},{w:topW,r:''}]};
   }
   if(hadFail && !strHeavyAttempt){
     const dw = Math.max(topW - inc, inc);
@@ -11889,10 +12039,16 @@ function buildOneLiveExerciseBase(nm, homeEquipList, opts){
   // Form Focus lifts train 12-20, exactly as recommend() and classifyDecision() already say.
   // Using exRepMode() alone showed 8-12 in LIVE and backed him off below 8 on a lift whose
   // whole point is the higher range.
-  const {lo,hi} = isFormFocus(nm) ? {lo:FORM_LO, hi:FORM_HI} : exRepMode(nm);
+  const _rr = isFormFocus(nm) ? {lo:FORM_LO, hi:FORM_HI} : exRepMode(nm);
   let decision; try{ decision = classifyDecision(nm, tier); }catch(e){ decision = null; }
   // investigation target override (reset & rebuild)
   const _ov = (typeof invOverrideFor==='function') ? invOverrideFor(nm) : null;
+  /* A rep target (V5 stage 12) carries its own range on the recommendation, so the dock, the aim and intraAdvice()
+     all ask for what the card says. A reset is a deliberate weight with the lift's own range. An easy or recover day
+     never carries one: its tier is 'low', and recommend() holds a low day before it reaches the rep target. With the
+     engine switch off recommend() sets neither field. */
+  let lo = _rr.lo, hi = _rr.hi;
+  if(!_ov && rec.lo > 0 && rec.hi >= rec.lo){ lo = rec.lo; hi = rec.hi; }
   if(_ov){
     firstW = _ov.w;
     rec.target = _ov.w+' lb \u00d7 '+lo+'\u2013'+hi+' (rebuild)';
@@ -12071,7 +12227,14 @@ function intraFirstAim(ex){
   const top = ls.sets.reduce(function(m, s){ return (+s.w || 0) > (+m.w || 0) ? s : m; }, ls.sets[0]);
   const tw = +top.w || 0, tr = +top.r || 0;
   if(!(w > 0) || !(tr > 0)) return lo;
-  if(w > tw) return lo;
+  if(w > tw){
+    /* V5 stage 12: on a heavier weight, the reps his last session predicts there (Epley on its best set), less a
+       margin, instead of always the floor: 5 of his 29 taken jumps were back at the ceiling the very next session.
+       Still inside the range, and it never adds load. */
+    if(!engOn()) return lo;
+    const e1 = sessionBestE1(ls.sets);
+    return Math.max(lo, Math.min(hi, Math.floor(30 * (e1 / w - 1) + 1e-9) - ENG_AIM_MARGIN));
+  }
   if(w < tw) return Math.max(lo, Math.min(hi, tr));
   return Math.max(lo, Math.min(hi, tr + 1));
 }
@@ -15105,7 +15268,8 @@ function classifyDecision(ex, ready){
   const maxReps = Math.max(...topSets.map(s=>+s.r||0));
   const str = !ff && isStrMode(nm);
   const ceilReps = str ? maxReps : minReps;
-  const atCeil = atCeiling(last.sets, topW, hi, str);   // the two-set rule -- see recommend()
+  const _thin = engThinTop(topSets, str, ff);            // mirrors recommend(): one set at the top is not a ceiling
+  const atCeil = atCeiling(last.sets, topW, hi, str) && !_thin;   // the two-set rule -- see recommend()
   // Mirrors recommend()'s strHeavyAttempt -- see the reasoning there.
   const prevTopW = hist.length>1 ? Math.max(0, ...hist[1].sets.map(s=>+s.w||0)) : 0;
   const strHeavyAttempt = str && (prevTopW===0 || topW >= prevTopW);
@@ -15147,6 +15311,7 @@ function classifyDecision(ex, ready){
       if(ceilReps<=ceil2) stall=true;
     }
   }
+  if(_thin && minReps >= hi) stall = false;   // mirrors recommend()
   if(atCeil){
     if(isMaxed(nm)){
       // Earned a jump, but there's no heavier setting to jump to. Keep the load and let the
@@ -15154,6 +15319,9 @@ function classifyDecision(ex, ready){
       return {code:'maxed-ceiling', from:topW, to:topW, moved:false,
         reason:'Hit the '+hi+'-rep ceiling at '+topW+' lb, but this machine is MAXED \u2014 no heavier setting. Add a rep beyond '+hi+', add a set, or slow the eccentric instead of adding load.'};
     }
+    // Mirrors recommend() (V5 stage 12): no "deferred jump" on a lift whose jump keeps being passed up.
+    if(ready==='low' && engOn() && engPasses(nm, hist).passed >= ENG_PASS_JUMPS) return {code:'hold', from:topW, to:topW, moved:false,
+      reason:'Low readiness, and the last jumps asked on this lift were not taken — repeated '+topW+' lb.'};
     if(ready==='low') return {code:'defer', from:topW, to:topW, moved:false,
       reason:'Earned the jump (hit '+hi+' reps), but readiness was low \u2014 deferred, repeated '+topW+' lb to take the jump fresh.'};
     // Mirrors recommend()'s spike guard.
@@ -15164,21 +15332,39 @@ function classifyDecision(ex, ready){
     const _pAt = hist.length>1 && atCeiling(hist[1].sets, topW, hi, str);
     if(hadGrind && !allEasy && !(prevTopW===topW && _pAt)) return {code:'grind-hold', from:topW, to:topW, moved:false,
       reason:'Hit the '+hi+'-rep ceiling, but on grinders \u2014 repeated '+topW+' lb once to own it before the jump.'};
-    if(allEasy){ const nw=topW+inc*2; return {code:'double', from:topW, to:nw, moved:true,
+    // Mirrors recommend()'s run at the ceiling (V5 stage 12): a smaller step, or a rep target, never the same jump again.
+    const _pp = engOn() ? engPassPlan(nm, hist, topW, lo, hi, str, inc) : null;
+    if(_pp && _pp.kind === 'small') return {code:'step-small', from:topW, to:_pp.to, moved:true,
+      reason:'At the '+hi+'-rep ceiling, and the last '+_pp.passed+' jumps asked were not taken — a smaller step, '+topW+'→'+_pp.to+' lb, instead of '+(topW+inc)+'.'};
+    if(_pp) return {code:'rep-target', from:topW, to:topW, moved:false,
+      reason:_pp.open ? 'At '+_pp.earn+' reps at '+topW+' lb — held; '+(topW+inc)+' lb is his to take when he wants it.'
+                      : 'At the '+hi+'-rep ceiling, and the last '+_pp.passed+' jumps asked were not taken — held at '+topW+' lb with a rep target: '+_pp.earn+' reps earns the jump to '+(topW+inc)+'.'};
+    // Mirrors recommend(): no double jump when two steps are a large share of the weight.
+    if(allEasy && !(engOn() && engDoubleCapped(inc, topW))){ const nw=topW+inc*2; return {code:'double', from:topW, to:nw, moved:true,
       reason:'Hit the '+hi+'-rep ceiling AND all sets tagged easy \u2014 double jump '+topW+'\u2192'+nw+' lb.'}; }
     const nw=topW+inc; return {code:'increase', from:topW, to:nw, moved:true,
       reason:'Hit the '+hi+'-rep ceiling ('+(str?STR_CEIL_SETS+' top sets':'every top set')+') \u2014 weight up '+topW+'\u2192'+nw+' lb, reps reset to '+lo+'.'+(hadGrind?' (last was a grind \u2014 expect heavy.)':'')};
   }
   if(stall && isMaxed(nm)) return {code:'maxed-hold', from:topW, to:topW, moved:false,
     reason:'Holding at '+topW+' lb \u2014 this machine is MAXED, so a flat weight here is the ceiling, not a stall. Chase reps or an extra set.'};
-  if(stall) return {code:'stall', from:topW, to:topW, moved:false,
-    reason:'3 sessions at '+topW+' lb with no rep progress \u2014 held to break the stall (tighten rest or drop 10% to rebuild).'};
+  if(stall){
+    // Mirrors recommend() (V5 stage 12): a stall only when the plateau watch flags the lift too.
+    const _sk = engOn() ? engStuck(nm) : null;
+    if(_sk && !_sk.flagged) return {code:'hold', from:topW, to:topW, moved:false,
+      reason:'3 sessions at '+topW+' lb with no rep gained, and the plateau watch does not flag it \u2014 held at '+topW+' lb; add a rep to the weakest set.'};
+    if(_sk) return {code:'stall', from:topW, to:topW, moved:false,
+      reason:'3 sessions at '+topW+' lb with no rep progress, and the plateau watch reads it as '+_sk.word+' \u2014 held. '+(_sk.cause ? 'Likely factor: '+_sk.cause.title+' ('+_sk.cause.txt+').' : 'Nothing else stands out in the last four weeks.')};
+    return {code:'stall', from:topW, to:topW, moved:false,
+      reason:'3 sessions at '+topW+' lb with no rep progress \u2014 held to break the stall (tighten rest or drop 10% to rebuild).'};
+  }
   if(minReps>=lo){
     const _one = str && topSets.some(s=>(+s.r||0)>=hi);   // mirrors recommend(): the two-set rule's hold
     let r = _one ? 'One set reached '+hi+' at '+topW+' lb \u2014 held; a second set at '+hi+' earns the jump.'
       : 'In range but not at ceiling \u2014 held at '+topW+' lb, '+(str?'get '+STR_CEIL_SETS+' sets to '+hi+' reps':'add a rep to your weakest set')+' before load moves.';
     if(allEasy) r='In range and all tagged easy \u2014 held at '+topW+' lb but leaving reps in the tank; take sets 1\u20132 shy of failure.';
     else if(hadFail) r='In range with a failed set \u2014 held at '+topW+' lb to win back the reps cleanly.';
+    // Mirrors recommend()'s thin-top hold.
+    if(_thin && minReps >= hi) r=(topSets.length === 1 ? 'One set' : topSets.length+' sets')+' at '+topW+' lb reached '+hi+' \u2014 held; '+ENG_HYP_CEIL_SETS+' sets at '+topW+' lb to '+hi+' earns the jump.';
     return {code:'hold', from:topW, to:topW, moved:false, reason:r};
   }
   if(strHeavyAttempt) return {code:'str-top', from:topW, to:topW, moved:false,
@@ -21602,6 +21788,122 @@ function predRecord(sinceKey){
   return out;
 }
 function predPct(n, d){ return d ? Math.round(n/d*100)+'%' : '\u2014'; }
+/* ---- what he did with the engine's jumps (V5 stage 12) ----
+   Part of the prediction record, and the same kind of thing: worked out when read, from the decision each session
+   stored when it was built against the weight he then loaded. Never stored. A session reshaped away from the plan
+   (sessionModLift) is set aside, exactly as the top-set record sets it aside.
+     asked   jumps the engine asked for            taken  he loaded that weight or more
+     part    he went up, by less than asked        passed he did not go up
+     landed  of the taken ones whose range was recorded, he made the bottom of the range at the new weight
+     streak  how many asked jumps in a row, newest first, were not taken
+     suggest the step his last two increases both used, when it is not the lift's set step (see engUseStep) */
+const ENG_REC_SHOW = 5, ENG_PROMPT_MAX = 500;
+function engRecordOn(){ try{ return ovOn('engineRecord'); }catch(e){ return false; } }
+function engStepOk(nm, step){
+  const inSplit = Object.keys(S.split || {}).some(function(dk){ return ((S.split[dk] || {}).exercises || []).some(function(x){ return exName(x) === nm; }); });
+  return inSplit && isFinite(step) && step >= INC_MIN && step <= INC_MAX && Math.abs(step * 2 - Math.round(step * 2)) < 1e-9 && !isMaxed(nm) && !isBodyweight(nm);
+}
+function engRecord(sinceKey){
+  const since = sinceKey || '0000-00-00', by = {}, lastTop = {};
+  const logs = (S.logs || []).filter(function(l){ return l && l.date && Array.isArray(l.entries); }).slice()
+    .sort(function(a, b){ return a.date.localeCompare(b.date) || ((+a.id || 0) - (+b.id || 0)); });
+  logs.forEach(function(l){
+    const mods = sessionMods(l);
+    l.entries.forEach(function(e){
+      const nm = e && e.exercise;
+      if(!nm || !(e.sets && e.sets.length) || isBodyweight(nm)) return;
+      const top = engTop(e.sets);
+      if(!(top > 0) || sessionModLift(mods, nm)) return;
+      const o = by[nm] || (by[nm] = {name:nm, asked:0, taken:0, part:0, passed:0, landed:0, ranged:0, streak:0, steps:[]});
+      const prev = lastTop[nm];
+      lastTop[nm] = top;
+      if(l.date < since) return;
+      if(prev > 0 && top > prev) o.steps.push(Math.round((top - prev) * 100) / 100);
+      const d = (l.decisions && !Array.isArray(l.decisions)) ? l.decisions[nm] : null;
+      if(!d || !ENG_JUMP_RE.test(d.code || '') || !(+d.to > +d.from)) return;
+      o.asked++;
+      if(top >= +d.to){
+        o.taken++; o.streak = 0;
+        const lo = +(((l.plan || {})[nm] || {}).lo) || 0;
+        if(lo > 0){ o.ranged++; if(e.sets.some(function(s){ return (+s.w || 0) >= +d.to && (+s.r || 0) >= lo; })) o.landed++; }
+      } else {
+        if(top > +d.from) o.part++; else o.passed++;
+        o.streak++;
+      }
+    });
+  });
+  const out = {asked:0, taken:0, part:0, passed:0, landed:0, ranged:0, byLift:[]};
+  Object.keys(by).forEach(function(k){
+    const o = by[k], n = o.steps.length;
+    let inc = 0; try{ inc = +incForExercise(k) || 0; }catch(e){ inc = 0; }
+    o.inc = inc;
+    const a = n >= 2 ? o.steps[n - 1] : null;
+    o.suggest = (a !== null && a === o.steps[n - 2] && inc > 0 && Math.abs(a - inc) > 1e-9 && engStepOk(k, a)) ? a : null;
+    ['asked', 'taken', 'part', 'passed', 'landed', 'ranged'].forEach(function(f){ out[f] += o[f]; });
+    out.byLift.push(o);
+  });
+  out.byLift.sort(function(a, b){ return b.streak - a.streak || b.asked - a.asked || a.name.localeCompare(b.name); });
+  return out;
+}
+/* His tap on "Use +10 for this lift". The same writer Settings uses (applyExFlag, every slot), the same range check
+   (INC_MIN..INC_MAX, half pounds), and the suggestion is worked out again at the tap: a stale button changes nothing. */
+function engUseStep(nm, step){
+  step = +step;
+  if(!engRecordOn()) return {ok:false, error:'The engine record is switched off.'};
+  let row = null;
+  try{ row = engRecord().byLift.filter(function(r){ return r.name === nm; })[0] || null; }catch(e){ row = null; }
+  if(!row || row.suggest === null || Math.abs(row.suggest - step) > 1e-9) return {ok:false, error:'That is no longer the step your last two increases used.'};
+  applyExFlag(nm, {inc:step});
+  save();
+  return {ok:true};
+}
+function engUseStepTap(el){
+  const r = engUseStep(el.getAttribute('data-lift'), el.getAttribute('data-step'));
+  if(!r.ok) alert(r.error);
+  try{ renderAnPred(); }catch(e){}
+}
+/* The rows for the Prediction record card: one line of totals, then the lifts worth a look (a jump passed up twice or
+   more in a row, or a step to suggest). '' when the switch is off or nothing was ever asked. */
+function engRecordRowsHTML(){
+  if(!engRecordOn()) return '';
+  let R; try{ R = engRecord(); }catch(e){ return '<div class="db-row"><span class="db-k">Jumps</span><span class="small" style="color:var(--bad)">\u2716 Could not be read.</span></div>'; }
+  if(!R.asked) return '';
+  const miss = R.part + R.passed;
+  let h = '<div class="db-row" id="engRecRow"><span class="db-k">Jumps</span><span class="small"><b>'+R.taken+' of '+R.asked+'</b> jumps the engine asked for were taken'+
+    (miss ? '; '+R.passed+' passed up'+(R.part ? ', '+R.part+' taken part-way' : '') : '')+'.'+
+    (R.ranged ? ' Of '+R.ranged+' taken with a recorded range, '+R.landed+' made the bottom of the range.' : '')+(R.asked < 8 ? ' <span style="color:var(--dim)">\u00b7 small sample</span>' : '')+'</span></div>';
+  const look = R.byLift.filter(function(o){ return o.streak >= ENG_PASS_JUMPS || o.suggest !== null; }).slice(0, ENG_REC_SHOW);
+  if(look.length){
+    h += '<div style="margin-top:8px">'+look.map(function(o){
+      const bits = [];
+      if(o.streak >= ENG_PASS_JUMPS) bits.push('last '+o.streak+' jumps not taken');
+      if(o.suggest !== null) bits.push('your last two increases were +'+o.suggest+' lb, the set step is '+o.inc);
+      return '<div class="db-row" style="align-items:center"><span class="db-k" style="width:auto;flex:1;min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.name)+'</b>'+
+        '<span class="small" style="color:var(--muted)">'+esc(bits.join('; '))+'</span></span>'+
+        (o.suggest !== null ? '<button class="btn ghost sm" data-lift="'+esc(o.name)+'" data-step="'+o.suggest+'" onclick="engUseStepTap(this)">Use +'+o.suggest+'</button>' : '')+'</div>';
+    }).join('')+'</div>'+
+    (ovOn('engine2') ? '' : '<p class="small" style="color:var(--dim);margin-top:6px">With \u201cEngine: learns from the jumps you pass up\u201d on (Settings, V5 switches), a lift here is offered a smaller step or a rep target instead of the same jump again.</p>');
+  }
+  return h;
+}
+/* DELTA's line (paid switch `engPrompts`, off): the lifts whose jumps keep being passed up, as facts. DELTA only, capped,
+   and absent when there is nothing to say, so a quiet night's prompt is byte-identical. */
+function engContextLine(id){
+  if(id !== 'delta') return '';
+  let on = false; try{ on = ovOn('engPrompts') && engRecordOn(); }catch(e){ on = false; }
+  if(!on) return '';
+  let R; try{ R = engRecord(mesoAddDays(todayKey(), -56)); }catch(e){ return ''; }
+  const rows = R.byLift.filter(function(o){ return o.streak >= ENG_PASS_JUMPS; });
+  if(!rows.length) return '';
+  const head = '\nENGINE RECORD (worked out by the app from the last 8 weeks. Facts, not advice):\n';
+  let left = ENG_PROMPT_MAX; const lines = [];
+  rows.forEach(function(o){
+    const ln = o.name+': the last '+o.streak+' jumps the engine asked for were not taken ('+o.taken+' of '+o.asked+' taken in the window; set step '+o.inc+' lb).';
+    if(ln.length > left) return;
+    left -= ln.length; lines.push(ln);
+  });
+  return lines.length ? head+'- '+lines.join('\n- ')+'\n' : '';
+}
 function predRecordCardHTML(){
   let R; try{ R = predRecord(); }catch(e){ return ''; }
   const since8 = mesoAddDays(todayKey(), -56);
@@ -21629,6 +21931,8 @@ function predRecordCardHTML(){
            (T.ape !== null ? '. Typical miss '+(Math.round(T.ape*1000)/10)+'% of e1RM' : '')+'.'+small(T.n)
          : 'No prescriptions to score yet.')+
     (T.interrupted ? ' <span style="color:var(--dim)">·'+T.interrupted+' interrupted</span>' : '')+'</span></div>';
+  // What he did with the engine's jumps (V5 stage 12): rows of this card, never a card of their own.
+  try{ h += engRecordRowsHTML(); }catch(e){}
   const E = R.e1rm28;
   h += '<div class="db-row"><span class="db-k">4-week e1RM</span><span class="small">'+
     (E.n ? '<b>'+E.hits+' of '+E.n+'</b> landed inside the forecast range; typical miss on the middle line '+(Math.round(E.ape*1000)/10)+'%.'+small(E.n)
@@ -26956,6 +27260,8 @@ function agBaseContext(id){
   try{ sqd = anlSquadLine(id); }catch(e){ sqd = ''; }
   // The Selector's marked lifts and their candidates (V5 stage 5): DELTA only, behind the paid switch, when one is due.
   try{ sqd += selContextLine(id); }catch(e){}
+  // The lifts whose jumps keep being passed up (V5 stage 12): DELTA only, behind its own paid switch.
+  try{ sqd += engContextLine(id); }catch(e){}
   // Its watches that fired (V5 stage 6): behind the paid switch, and only on the nights after one fires.
   try{ sqd += watchFiredLine(id); }catch(e){}
   // Standing orders from the Monthly Review (V5 stage 7): behind its paid switch, while they are in force.
